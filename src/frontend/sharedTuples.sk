@@ -1,0 +1,37 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SharedTuples;
+
+const min_size: Int = 2;
+const max_size: Int = 10;
+
+const tuple_root_name: String = "Tuple";
+
+const tuple_field_root_name: String = "i";
+
+fun is_tuple_class(str: String): Bool {
+  str.startsWith(tuple_root_name) &&
+    (str.stripPrefix(tuple_root_name).toIntOption() match {
+    | None() -> false
+    | Some(i) -> min_size <= i && i <= max_size
+    })
+}
+
+fun tuple_arity(str: String): Int {
+  invariant(str.startsWith(tuple_root_name), "ICE not a tuple class");
+  str.stripPrefix(tuple_root_name).toIntOption() match {
+  | Some(i) if (min_size <= i && i <= max_size) -> i
+  | _ -> invariant_violation("ICE not a tuple class")
+  }
+}
+
+fun tuple_name(arity: Int): String {
+  tuple_root_name + arity
+}
+
+module end;

@@ -1,0 +1,273 @@
+{
+  "module": "ParseTree",
+  "trees": [
+    ["SourceUnit", ["begin", "moduleAliases", "declarations", "end"]],
+
+    ["Module", ["moduleKeyword", "name", "semiColon", "declarations", "end"]],
+    ["ModuleEnd", ["moduleKeyword", "end", "semiColon"]],
+    ["ModuleAlias", ["moduleKeyword", "aliasKeyword", "name", "equals", "value", "semiColon"]],
+
+    ["Annotation", ["at", "name", "arguments"]],
+
+    ["TypeParameters", ["elements"]],
+    ["TypeParameter", [
+      "variance",
+      "name",
+      "constraints"
+    ]],
+    ["WhenTypeClause", [
+      "subtype",
+      "supertypes"
+    ]],
+    ["TypeName", ["name"]],
+    ["VoidType", ["token"]],
+    ["InstType", ["token"]],
+    ["FrozenType", ["token"]],
+    ["UnderscoreType", ["token"]],
+    ["NonNullableType", ["token"]],
+    ["ThisType", ["token"]],
+    ["OptionTypeSpecifier", ["question", "elementType"]],
+    ["MutableTypeSpecifier", ["mutableKeyword", "elementType"]],
+    ["ReadonlyTypeSpecifier", ["readonlyKeyword", "elementType"]],
+    ["AwaitableTypeSpecifier", ["caret", "elementType"]],
+    ["GlobalQualifiedTypeName", ["period", "name"]],
+    ["DottedQualifiedTypeName", ["left", "period", "right"]],
+    ["ColonColonQualifiedTypeName", ["left", "colonColon", "right"]],
+    ["ParenTypeSpecifier", ["openParen", "element", "closeParen"]],
+    ["TupleTypeSpecifier", ["elements"]],
+    ["GenericTypeName", ["name", "arguments"]],
+    ["LambdaTypeSpecifier", ["modifierOpt", "arguments", "arrow", "returnType"]],
+    ["LambdaParameterType", ["nameColon", "typeSpecifier"]],
+    ["ColonTypeSpecifier", ["colon", "typeSpecifier"]],
+
+    ["PositionalParameter", [
+      "modifiers",
+      "nameColon",
+      "typeSpecifier",
+      "defaultValue"
+    ]],
+    ["ParameterNameColon", ["name", "colon"]],
+    ["PositionalParameters", ["parameters"]],
+    ["NamedParameter", [
+      "modifiers",
+      "name",
+      "colon",
+      "typeSpecifier",
+      "defaultValue"
+    ]],
+    ["NamedParameters", ["parameters"]],
+    ["TypeInitializer", ["equal", "typeSpecifier"]],
+
+    ["TypeAliasDeclaration", [
+      "modifiers",
+      "typeKeyword",
+      "name",
+      "typeParameters",
+      "initializer",
+      "semiColon"
+    ]],
+    ["GlobalConstant", [
+      "modifiers",
+      "constKeyword",
+      "name",
+      "colon",
+      "typeSpecifier",
+      "initializer",
+      "semiColon"
+    ]],
+    ["FunctionDeclaration", [
+      "modifiers",
+      "funKeyword",
+      "name",
+      "typeParameters",
+      "parameters",
+      "colon",
+      "returnType",
+      "body"
+    ]],
+    ["Initializer", [
+      "equal",
+      "value"
+    ]],
+
+    ["ClassDeclaration", [
+      "modifiers",
+      "classKeyword",
+      "name",
+      "typeParameters",
+      "constructor",
+      "extendsUses",
+      "body"
+    ]],
+    ["TraitDeclaration", [
+      "modifiers",
+      "traitKeyword",
+      "name",
+      "typeParameters",
+      "constructor",
+      "extendsUses",
+      "body"
+    ]],
+    ["ClassConstructorDeclaration", [
+      "modifiers",
+      "parameters"
+    ]],
+    ["Extends", ["extendsKeyword", "baseTypes"]],
+    ["Uses", ["usesKeyword", "typeClasses"]],
+    ["ConditionalUse", ["typeName", "conditions"]],
+    ["Children", ["childrenKeyword", "equal", "bar", "childClasses"]],
+    ["ChildClass", ["annotations", "name", "constructor"]],
+    ["DefaultTypeConstantValue", ["defaultKeyword", "typeSpecifier"]],
+    ["ColonTypeConstraint", ["colon", "constraint"]],
+    ["ColonTypeParameterConstraints", ["colon", "constraints"]],
+    ["TypeConstant", [
+      "modifiers",
+      "typeKeyword",
+      "name",
+      "typeParameters",
+      "colonConstraint",
+      "value",
+      "semiColon"
+    ]],
+    ["From", ["from", "name"]],
+    ["Constant", [
+      "modifiers",
+      "constKeyword",
+      "name",
+      "colonTypeSpecifier",
+      "value",
+      "semiColon"
+    ]],
+    ["WhenParameters", ["elements"]],
+    ["MethodDeclaration", [
+      "modifiers",
+      "funKeyword",
+      "name",
+      "typeParameters",
+      "whenParameters",
+      "parameters",
+      "colon",
+      "returnType",
+      "body",
+      "semiColon"
+    ]],
+
+    ["ConstPattern", ["value"]],
+    ["NamePattern", ["name"]],
+    ["VoidPattern", ["voidKeyword"]],
+    ["TuplePattern", ["elements"]],
+    ["ParenPattern", ["openParen", "pattern", "closeParen"]],
+    ["ClassPattern", ["typeName", "arguments"]],
+    ["NamedArgumentValuePattern", ["fatArrow", "pattern"]],
+    ["NamedArgumentPattern", ["name", "pattern"]],
+    ["NamedPatternArguments", ["arguments"]],
+    ["PositionalPatternArguments", ["arguments"]],
+    ["AtPattern", ["identifier", "at", "pattern"]],
+    ["NegativeLiteralPattern", ["minus", "value"]],
+
+    ["Block", ["openCurly", "expressions", "closeCurly" ]],
+    ["IfExpression", [
+      "ifKeyword",
+      "ifControl",
+      "trueBranch",
+      "falseBranch"
+    ]],
+    ["ElseBranch", [
+      "elseKeyword",
+      "value"
+    ]],
+    ["TupleExpression", ["values"]],
+    ["ThrowExpression", ["throwKeyword", "value"]],
+    ["CatchClause", ["catchKeyword", "branches"]],
+    ["TryExpression", ["tryKeyword", "body", "catchClause"]],
+    ["ParenExpression", ["openParen", "value", "closeParen"]],
+    ["IfClause", ["ifKeyword", "expression"]],
+    ["PatternBranchBlock", ["openCurly", "branches", "closeCurly"]],
+    ["PatternBranchList", ["bar", "branches"]],
+    ["PatternBranch", ["patterns", "ifClause", "arrow", "value"]],
+    ["BinaryExpression", ["left", "operator", "right"]],
+    ["MemberSelectionExpression", ["object", "operator", "member"]],
+    ["UnaryExpression", ["operator", "operand"]],
+    ["WithExpression", ["value", "withKeyword", "arguments"]],
+    ["MatchExpression", ["value", "match", "branches"]],
+    ["IsExpression", ["value", "is", "pattern"]],
+    ["AsExpression", ["value", "asKeyword", "pattern"]],
+    ["NamedArguments", ["arguments"]],
+    ["PositionalArguments", ["arguments"]],
+    ["NamedArgument", ["name", "value"]],
+    ["NamedArgumentValue", ["fatArrow", "value"]],
+    ["CallExpression", ["func", "typeArguments", "arguments"]],
+    ["CallArrayExpression", ["func", "typeArguments", "bang", "arguments"]],
+    ["MapElement", ["key", "fatArrow", "value"]],
+    ["CallMapExpression", ["func", "typeArguments", "bang", "arguments"]],
+    ["TypeAnnotatedExpression", [
+      "openParen",
+      "value",
+      "colon",
+      "typeSpecifier",
+      "closeParen"
+    ]],
+    ["CompoundBindingExpression", [
+      "left",
+      "operator",
+      "right"
+    ]],
+    ["SimpleBindingExpression", [
+      "left",
+      "colonTypeSpecifier",
+      "equal",
+      "right"
+    ]],
+    ["GlobalExpression", []],
+    ["LambdaParameter", [
+      "name",
+      "colonTypeSpecifier"
+    ]],
+    ["LambdaExpression", [
+      "modifierOpt",
+      "parameters",
+      "arrow",
+      "body"
+    ]],
+    ["TemplateLiteralExpressionElement", [
+      "dollar",
+      "expression"
+    ]],
+    ["TemplateLiteralExpression", [
+      "elements"
+    ]],
+    ["DoLoopExpression", [
+      "doKeyword",
+      "body",
+      "whileKeyword",
+      "condition",
+      "elseOpt"
+    ]],
+    ["WhileLoopExpression", [
+      "whileKeyword",
+      "condition",
+      "body",
+      "elseOpt"
+    ]],
+    ["InfiniteLoopExpression", [
+      "loopKeyword",
+      "body"
+    ]],
+    ["ForEachLoopExpression", [
+      "forEachKeyword",
+      "openParen",
+      "value",
+      "inKeyword",
+      "collection",
+      "closeParen",
+      "body",
+      "elseOpt"
+    ]],
+    ["ForEachKeyValue", ["key", "fatArrow", "value"]],
+    ["YieldExpression", ["yieldKeyword", "value"]],
+    ["ReturnExpression", ["returnKeyword", "value"]],
+    ["BreakExpression", ["breakKeyword", "value"]],
+    ["YieldBreakExpression", ["yieldKeyword", "breakKeyword"]],
+    ["ForEachFieldMacro", ["keyword", "params", "body"]]
+  ]
+}

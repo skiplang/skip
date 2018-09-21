@@ -1,0 +1,11 @@
+fun main(): void {
+  funToInsts.sortBy(
+    a ~> a.i0.funInfo.gfunction
+    // (a, b) ~> cmp(a.i0.funInfo.gfunction, b.i0.funInfo.gfunction)
+  );
+
+  funToInsts.sortBy({
+    a ~> a.i0.funInfo.gfunction
+    // (a, b) ~> cmp(a.i0.funInfo.gfunction, b.i0.funInfo.gfunction)
+  });
+}

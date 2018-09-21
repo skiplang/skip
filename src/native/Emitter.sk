@@ -1,0 +1,95 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Emitter;
+
+// This class is useful to emit a new function from scratch.
+//
+// To use this, you make a FunInfo with the attributes of the function you
+// want and then create an Emitter with it via Emitter::make.
+//
+// Call emitter.emitInstr() to append instrs, emitter.newBlockID() to
+// allocate block IDs and emitter.flushBlock(nextBlockID) to start a new
+// block. Finally, call emitter.finish() to get the resulting function.
+mutable class .Emitter{} extends Rewrite {
+  static fun make(
+    funInfo: FunInfo,
+    paramNames: Array<String>,
+    env: GlobalEnv,
+    superpositions: UnorderedSet<FunSuperpositionID>,
+  ): mutable Emitter {
+    optinfo = static::emptyOptInfo(funInfo, paramNames, superpositions);
+    entryBlock = optinfo.getBlock(BlockID(0));
+
+    mutable static{
+      optinfo,
+      env,
+      pos => funInfo.pos,
+      funParams => optinfo.f.params,
+      funType => optinfo.f.funType,
+      nextBlockID => entryBlock.id,
+      prettyBlockName => entryBlock.prettyName,
+    };
+  }
+
+  // Create dummy empty function and make OptimizerInfo for it.
+  static fun emptyOptInfo(
+    funInfo: FunInfo,
+    paramNames: Array<String>,
+    superpositions: UnorderedSet<FunSuperpositionID>,
+  ): mutable OptimizerInfo {
+    // Make a dummy but legal Function with one instr, so we can
+    // reuse the "Rewrite" infrastructure to rewrite it completely.
+    //
+    // Yes, this is a bit of a hack.
+    pos = funInfo.pos;
+    entryBlock = Block{
+      id => BlockID(0),
+      pos,
+      params => Array[],
+      prettyName => "entry",
+      instrs => Array[
+        Unreachable{
+          id => InstrID(funInfo.funType.params.size()),
+          typ => tVoid,
+          pos,
+          why => "dummy optinfo function",
+        },
+      ],
+    };
+
+    f = Function{
+      id => funInfo.id,
+      name => funInfo.name,
+      gfunction => funInfo.gfunction,
+      isDisasm => funInfo.isDisasm,
+      isMemoized => funInfo.isMemoized,
+      isNative => funInfo.isNative,
+      isRuntimeExport => funInfo.isRuntimeExport,
+      exportStyle => funInfo.exportStyle,
+      funType => funInfo.funType,
+      annotations => funInfo.annotations,
+      pos => funInfo.pos,
+      params => funInfo.funType.params.mapWithIndex((i, t) ->
+        FunParam{id => InstrID(i), typ => t, pos, prettyName => paramNames[i]}
+      ),
+      blocks => Array[entryBlock],
+      superpositions,
+    };
+
+    OptimizerInfo::make(f)
+  }
+
+  mutable fun finish(passDescription: String, verifyAtEnd: Bool): Function {
+    this.startNewBlock();
+    this.finishAndCheckIfChanged(passDescription, verifyAtEnd).i0
+  }
+
+  protected mutable fun optimizeInstr(Stmt): Bool {
+    invariant_violation("This should not be called for Emitter.")
+  }
+}

@@ -1,0 +1,28 @@
+class Foo(x: Int) {
+  fun foo(i: Foo): Int {
+    i.x
+  }
+}
+
+fun bar(_: Int): String {
+  "Pa"
+}
+
+fun pair(): (Int, String) {
+  (0, "")
+}
+
+fun my_fst(p: (Int, String)): Int {
+  p.i0
+}
+
+fun my_snd(p: (Int, String)): String {
+  p.i1
+}
+
+fun main(): void {
+  _: Int = pair() |> my_fst;
+  _: String = pair() |> my_snd;
+  o = Foo(42);
+  print_raw(id(o) |> o.foo |> bar |> s -> (s |> x -> x + "ss\n"))
+}

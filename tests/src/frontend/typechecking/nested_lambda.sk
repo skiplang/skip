@@ -1,0 +1,10 @@
+fun foo(x: Int): Int ~> (Int ~> Int) {
+  y ~> (_ ~> x + y)
+}
+
+fun main(): void {
+  f = foo(40);
+  g = f(2);
+  x = g(100);
+  print_raw(if (x == 42) "Pass\n" else "fail")
+}

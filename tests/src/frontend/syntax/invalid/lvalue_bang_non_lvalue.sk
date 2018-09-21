@@ -1,0 +1,4 @@
+fun main(): String {
+  !f() = 42;
+  "Fail"
+}

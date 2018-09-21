@@ -1,0 +1,7 @@
+fun main(): String {
+  try {
+    a()
+  } catch(e) {
+    x
+  }
+}

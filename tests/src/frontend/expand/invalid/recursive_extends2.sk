@@ -1,0 +1,2 @@
+base class X extends Y
+base class Y extends X

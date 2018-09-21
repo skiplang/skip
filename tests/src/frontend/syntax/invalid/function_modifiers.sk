@@ -1,0 +1,6 @@
+base fun f(): void { void }
+
+fun main(): String {
+  "Fail"
+}
+

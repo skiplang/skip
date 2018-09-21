@@ -1,0 +1,8 @@
+trait Add {
+  fun +(inst): Int;
+}
+
+fun bad<T: Add, T2: Add>(x: T, y: T2): Int {
+  v = Array[x, y];
+  v[0] + v[1]
+}

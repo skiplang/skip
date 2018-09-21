@@ -1,0 +1,151 @@
+mutable base class Animal(mutable id: Int = 0) uses Hashable, Equality
+
+mutable class Cow() extends Animal {
+  readonly fun hash(): Int {
+    this.id.hash()
+  }
+  readonly fun ==(other: Animal): Bool {
+    this.id == other.id
+  }
+}
+
+@test
+fun testSimple(): void {
+  m = UnorderedSet::mcreate(0);
+  assertEqual(m.size(), 0);
+  assertFalse(m.contains(99));
+
+  m.insert(99);
+  assertEqual(m.size(), 1);
+  assertTrue(m.contains(99));
+
+  m.insert(99);
+  assertEqual(m.size(), 1);
+  assertTrue(m.contains(99));
+
+  assertTrue(m.maybeInsert(45));
+  assertEqual(m.size(), 2);
+  assertTrue(m.contains(45));
+  assertFalse(m.maybeInsert(45));
+  assertEqual(m.size(), 2);
+  assertTrue(m.contains(45));
+
+  m.clear();
+  assertTrue(m.isEmpty());
+  assertEqual(m.size(), 0);
+
+  assertFalse(m.contains(45));
+  assertFalse(m.contains(99))
+}
+
+@test
+fun testMaybeRemove(): void {
+  s = mutable UnorderedSet[10, 20, 30];
+  assertFalse(s.maybeRemove(15));
+  assertTrue(s.maybeRemove(20));
+  assertEqual(s.size(), 2);
+  assertTrue(s.contains(10));
+  assertFalse(s.contains(20));
+  assertTrue(s.contains(30))
+}
+
+@test
+fun testCollectionLiteral(): void {
+  m = UnorderedSet["key"];
+  assertTrue(m.contains("key"))
+}
+
+@test
+fun testFromItems(): void {
+  m = Array["key"].collect(UnorderedSet);
+  assertTrue(m.contains("key"))
+}
+
+@test
+fun testFromItems1(): void {
+  s = UnorderedSet["a", "b", "c"];
+  assertEqual(s, s.collect(UnorderedSet));
+}
+
+@test
+fun testMutableFromItems(): void {
+  s = mutable UnorderedSet["a", "b", "c"];
+  assertEqual(s, UnorderedSet::mcreateFromItems(s));
+}
+
+@test
+fun testFilterReturnsSet(): void {
+  a = UnorderedSet[0, 1, 2];
+  b: UnorderedSet<Int> = a.filter(x -> x > 0);
+  assertEqual(b.toArray().sorted(), Array[1, 2])
+}
+
+@test
+fun testExtend(): void {
+  a = mutable UnorderedSet<Animal>[Cow(0), Cow(1)];
+  b = mutable Array[Cow(0), Cow(12), Cow(19)];
+  a.extend(b);
+  assertEqual(a.toArray().map(q -> q.id).sorted(), Array[0, 1, 12, 19])
+}
+
+@test
+fun testUnion(): void {
+  a = UnorderedSet<Animal>[Cow(0), Cow(1)];
+  b = mutable Array[Cow(0), Cow(12), Cow(19), Cow(19), Cow(19)];
+  c = a.union(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[0, 1, 12, 19])
+}
+
+@test
+fun testSubtract(): void {
+  a = mutable UnorderedSet<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(1), Cow(3), Cow(5), Cow(7), Cow(9)];
+  a.subtract(b);
+  assertEqual(a.toArray().map(q -> q.id).sorted(), Array[0, 2, 4])
+}
+
+@test
+fun testDifference(): void {
+  a = UnorderedSet<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(1), Cow(3), Cow(5), Cow(7), Cow(9)];
+  c = a.difference(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[0, 2, 4])
+}
+
+@test
+fun testIntersection(): void {
+  a = UnorderedSet<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(2), Cow(3), Cow(4), Cow(5), Cow(6)];
+  c = a.intersection(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[2, 3, 4])
+}
+
+@test
+fun testContainsAll(): void {
+  a = UnorderedSet[0, 1, 2, 3, 4];
+  b = mutable Array[0, 2, 4];
+  assertTrue(a.containsAll(b));
+  c = mutable Array[3, 4, 5];
+  assertFalse(a.containsAll(c));
+}
+
+@test
+fun testContainsAny(): void {
+  a = UnorderedSet[0, 1, 2, 3, 4];
+  b = mutable Array[4, 5, 6];
+  assertTrue(a.containsAny(b));
+  c = mutable Array[5, 6, 7];
+  assertFalse(a.containsAny(c));
+}
+
+@test
+fun testJoin(): void {
+  // Items should be joined in iteration order
+  set = UnorderedSet[1, 2, 3];
+  items = mutable Vector[];
+  set.each(items.push);
+  assertEqual(set.join(", "), items.join(", "));
+  // exact result is expected to change along with the hash algorithm and
+  // Map implementation:
+  assertEqual(set.join(", "), "3, 2, 1");
+}

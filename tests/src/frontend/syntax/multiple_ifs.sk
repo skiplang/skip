@@ -1,0 +1,21 @@
+fun p(): Bool {
+  false
+}
+
+fun main(): void {
+  print_raw(
+    if (p()) {
+      "Hello"
+    } else if (p()) {
+      "He" + "llo"
+    } else if (p()) {
+      x = "He";
+      x + "llo"
+    } else {
+      x = "P";
+      y = "a";
+      z = "ss";
+      x + y + z + "\n"
+    },
+  )
+}

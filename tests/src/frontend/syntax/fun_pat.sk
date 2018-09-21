@@ -1,0 +1,12 @@
+fun main(): void {
+  void
+}
+
+base class X {
+  fun test(): Int
+  | Y() -> 1
+  | Z() -> 2
+}
+
+base class Y extends X
+class Z() extends Y

@@ -1,0 +1,39 @@
+base class Wuut {
+  children =
+  | Woah(Bool)
+}
+
+base class Qux {
+  children =
+  | Baz{y: Wuut}
+}
+base class Foo {
+  children =
+  | Bar{x: Qux}
+}
+
+fun main(): void {
+  x = Bar{x => Baz{y => Woah(true)}};
+  print_raw(
+    x match {
+    | Bar{
+      x => t,
+    } if (
+      t match {
+      | Baz{
+        y => q,
+      } if (
+        q match {
+        | Woah(h) if (h) -> true
+        | _ -> false
+        }
+      ) ->
+        true
+      | _ -> false
+      }
+    ) ->
+      "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

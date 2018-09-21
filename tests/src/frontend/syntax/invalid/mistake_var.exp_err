@@ -1,0 +1,6 @@
+File "./syntax/invalid/mistake_var.sk", line 2, characters 7-11:
+Unexpected 'var'. Variables are declared without a leading keyword: 'myint = ...'
+1 | fun main(): String {
+2 |   var myint = 10;
+  |       ^^^^^
+3 | }

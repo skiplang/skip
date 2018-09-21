@@ -1,0 +1,14 @@
+base class P
+class C(int: Int) extends P
+
+fun main(): void {
+  x: P = C(5);
+  _y = x as C(5);
+  try {
+    _z = x as C(3);
+    print_string("fail")
+  } catch {
+  | InvalidCast _ -> void
+  };
+  print_string("Pass")
+}

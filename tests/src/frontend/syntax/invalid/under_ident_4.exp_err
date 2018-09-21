@@ -1,0 +1,7 @@
+File "./syntax/invalid/under_ident_4.sk", line 4, characters 16-16:
+You cannot use a variable that starts with _
+2 |   fun matcher(): T {
+3 |     this match {
+4 |     | Foo _ -> _
+  |                ^
+5 |     }

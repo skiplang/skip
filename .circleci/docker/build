@@ -1,0 +1,14 @@
+#!/bin/bash
+set -ex
+
+# If you change these values make sure to change them in config.yml
+# (key: "jobs/build/docker/image") too.
+IMAGE=aorenste/skip-ci
+VERSION=5
+
+docker pull ubuntu:18.04
+
+docker rmi ${IMAGE}:${VERSION} || true
+
+docker build -t ${IMAGE}:${VERSION} $(dirname "$0")/skip
+docker push ${IMAGE}:${VERSION}

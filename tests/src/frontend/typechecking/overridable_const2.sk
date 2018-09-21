@@ -1,0 +1,11 @@
+base class Foo {
+  overridable const x: Int = 42;
+}
+
+class Bar() extends Foo {
+  const x: Int = 43;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

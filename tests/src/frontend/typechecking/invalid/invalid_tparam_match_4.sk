@@ -1,0 +1,7 @@
+class C<T>(value: T)
+
+fun getMaxTimeFromFilter<V: Show>(x: C<V>): Nullable<Int> {
+  x match {
+  | C(Int _) -> Null()
+  }
+}

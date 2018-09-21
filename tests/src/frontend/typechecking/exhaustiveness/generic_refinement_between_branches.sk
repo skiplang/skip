@@ -1,0 +1,22 @@
+base class Expr<T>
+class EmptyIntExpr<T: Int>() extends Expr<T>
+class IntExpr<T: Int>(i: T) extends Expr<T>
+class EmptyStrExpr<T: String>() extends Expr<T>
+class StrExpr<T: String>(s: T) extends Expr<T>
+
+base class P<+T, +U: Expr<T>>()
+class IP<+T: Int, +U: Expr<T>>(ie: U) extends P<T, U>
+class SP<+T: String, +U: Expr<T>>(ie: U) extends P<T, U>
+
+fun test<T, U: Expr<T>>(p: P<T, U>): void {
+  p match {
+  | IP(EmptyIntExpr()) -> void
+  | IP(IntExpr _) -> void
+  | SP(EmptyStrExpr()) -> void
+  | SP(StrExpr _) -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

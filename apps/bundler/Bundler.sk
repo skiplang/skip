@@ -1,0 +1,49 @@
+module Bundler;
+
+// The result of bundling a source 'path' into its final 'content'.
+class BundlerResult{
+  // The source path that this result describes
+  path: String,
+  // The bundled version of the source path
+  content: String,
+}
+
+// Create a bundle for a single path, transitively inlining required
+// dependencies to produce a single output file.
+async memoized fun bundle(path: String): ^BundlerResult {
+  // Read and parse the source file to determine its dependencies
+  parserResult = Parser.parse(Reactive.openFile(path));
+  // Output content is initially empty
+  content = "";
+  // Recursively bundle dependencies and inline them
+  for (moduleName in parserResult.requires) {
+    // "Resolve" paths to dependencies. For demonstration purposes we
+    // assume that all require() calls use relative or absolute paths;
+    // for a production version we would need to follow node's module
+    // resolution procedure.
+    modulePath = Path.join(Path.dirname(path), moduleName + ".js");
+    // Bundle the dependency
+    bundlerResult = await bundle(modulePath);
+    // Inline its content
+    !content = content + bundlerResult.content
+  };
+  // Finally, append the content of the source module
+  !content = content + parserResult.remainingText;
+  // and return the bundle result
+  BundlerResult{path, content}
+}
+
+// Build a map from filename => bundled output of that file
+memoized fun buildBundleMap(files: Array<String>): Map<String, String> {
+  items = awaitSynchronously(
+    files.genMap(file ~>
+      async {
+        bundlerResult = await bundle(file);
+        (bundlerResult.path, bundlerResult.content)
+      }
+    ),
+  );
+  items.collect(Map);
+}
+
+module end;

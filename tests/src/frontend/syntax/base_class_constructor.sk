@@ -1,0 +1,5 @@
+base class Foo final (f1: Int)
+
+fun main(): void {
+  print_string("Pass")
+}

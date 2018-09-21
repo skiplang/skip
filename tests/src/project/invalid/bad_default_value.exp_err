@@ -1,0 +1,2 @@
+File "invalid/bad_default_value/skip.project.json"
+Default value 'bad' is not a valid value for variable 'v'.

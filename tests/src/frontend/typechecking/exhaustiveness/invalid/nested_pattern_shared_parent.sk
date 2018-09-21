@@ -1,0 +1,47 @@
+base class Other
+base class MySeq<T> {
+  children =
+  | MyArray(T)
+  | MyList(T)
+}
+extension class MyList extends Other
+
+base class MyParams<T> {
+  children =
+  | MyPositional(MyArray<T>)
+  | MyNamed(Map<String, T>)
+}
+
+fun test0(right: MyParams<Int>): String {
+  right match {
+  | MyPositional(MyList(e)) -> "1digit" + e
+  | _ -> "other"
+  }
+}
+
+base class Tester {
+  type T1: MyList<Int>;
+  type T2: MySeq<Int>;
+  type T3 = MySeq<Int>;
+
+  fun test0(right: MyParams<Int>): String {
+    right match {
+    | MyPositional(this::T1(e)) -> "1digit" + e
+    | _ -> "other"
+    }
+  }
+
+  fun test1(right: MyParams<Int>): String {
+    right match {
+    | MyPositional(this::T2 _) -> "1digit"
+    | _ -> "other"
+    }
+  }
+
+  fun test2(right: MyParams<Int>): String {
+    right match {
+    | MyPositional(this::T3 _) -> "1digit"
+    | _ -> "other"
+    }
+  }
+}

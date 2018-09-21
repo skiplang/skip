@@ -1,0 +1,21 @@
+File "./typechecking/invalid/same_tparams_7.sk", line 3, characters 3-26:
+The value returned from the function is incompatible with the return type 'mutable Foo<T>'
+1 | mutable class Foo<T>(mutable v: T)
+2 | fun no<T>(x: mutable Foo<T>): mutable Foo<T> {
+3 |   mutable Foo(freeze(x).v)
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^
+4 | }
+
+File "./typechecking/invalid/same_tparams_7.sk", line 2, characters 26-26:
+The invariant type: frozen T
+1 | mutable class Foo<T>(mutable v: T)
+2 | fun no<T>(x: mutable Foo<T>): mutable Foo<T> {
+  |                          ^
+3 |   mutable Foo(freeze(x).v)
+
+File "./typechecking/invalid/same_tparams_7.sk", line 2, characters 43-43:
+Is incompatible with the invariant type: T
+1 | mutable class Foo<T>(mutable v: T)
+2 | fun no<T>(x: mutable Foo<T>): mutable Foo<T> {
+  |                                           ^
+3 |   mutable Foo(freeze(x).v)

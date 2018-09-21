@@ -1,0 +1,19 @@
+base class A {
+  overridable static fun foo(): String {
+    "A::foo"
+  }
+}
+
+class Z<T2>() extends A {
+  static fun bar(): String {
+    "B::bar"
+  }
+  static fun foo(): String {
+    x = static;
+    x::bar()
+  }
+}
+
+fun main(): void {
+  print_raw(A::foo() + Z::foo() + "\n")
+}

@@ -1,0 +1,197 @@
+--- test_params
+fn1()
+fn1_b(false)
+fn1_b(true)
+fn1_i(0)
+fn1_i(9223372036854775807)
+fn1_i(-9223372036854775808)
+fn1_f(0.0)
+fn1_f(1.7976931348623157e+308)
+fn1_f(2.2250738585072014e-308)
+fn1_s(short)
+fn1_s(this is a long string)
+fn1_m(HH.Null)
+fn1_m(HH.Bool(true))
+fn1_m(HH.Int(123))
+fn1_m(HH.Float(4.5))
+fn1_m(HH.String(abcde))
+fn1_o0(<object:HhvmObject0(#1)>)
+fn1_o1(<object:HhvmObject1(#1)>)
+SKIP_HhvmInterop_Gather_gatherCollect(object<HhvmObject2>, HhvmObject2)
+SKIP_HhvmInterop_Gather_gatherCleanup()
+fn1_o2(HhvmObject2(32, 33))
+fn1_a(<array:HhvmArray(#1)>)
+sk_fn1_shape1(Shape1)
+SKIP_HHVM_Shape_getField_Mixed(array<Shape2>, a)
+SKIP_HHVM_Shape_getField_Mixed(array<Shape2>, b)
+sk_fn1_shape2(Shape2(40, 41))
+SKIP::Vector::HH_varray::get(array<Tuple2>, 0)
+SKIP::Vector::HH_varray::get(array<Tuple2>, 1)
+sk_fn1_tuple((100, 101))
+--- test_nullable_params
+null
+fn3_b(false)
+fn3_b(true)
+null
+fn3_i(0)
+fn3_i(9223372036854775807)
+fn3_i(-9223372036854775808)
+null
+fn3_f(0.0)
+fn3_f(1.7976931348623157e+308)
+fn3_f(2.2250738585072014e-308)
+null
+fn3_s(short)
+fn3_s(this is a long string)
+null
+fn3_o0(<object0:<object:HhvmObject0(#1)>>)
+null
+fn3_o1(<object1:<object:HhvmObject1(#1)>>)
+null
+fn3_a(<array:<array:HhvmArray(#1)>>)
+--- test_option_params
+null
+fn5_b(false)
+fn5_b(true)
+null
+fn5_i(0)
+fn5_i(9223372036854775807)
+fn5_i(-9223372036854775808)
+null
+fn5_f(0.0)
+fn5_f(1.7976931348623157e+308)
+fn5_f(2.2250738585072014e-308)
+null
+fn5_s(short)
+fn5_s(this is a long string)
+null
+fn5_o0(<object0:<object:HhvmObject0(#1)>>)
+null
+fn5_o1(<object1:<object:HhvmObject1(#1)>>)
+null
+SKIP_HHVM_Object_getField_Mixed(object<HhvmObject2>, a)
+SKIP_HHVM_Object_getField_Mixed(object<HhvmObject2>, b)
+fn5_o2(HhvmObject2(50, 60))
+null
+fn5_a(<array:<array:HhvmArray(#1)>>)
+null
+fn5_shape1(Shape1)
+null
+SKIP_HHVM_Shape_getField_Mixed(array<Shape2>, a)
+SKIP_HHVM_Shape_getField_Mixed(array<Shape2>, b)
+fn5_shape2(Shape2(51, 61))
+--- test_returns
+false
+true
+0
+-9223372036854775808
+9223372036854775807
+0.000000
+3.125000
+-6.250000
+short
+this is a long string
+object<HhvmObject0>
+object<HhvmObject1>
+SKIP_HhvmInterop_ObjectCons_create(HhvmObject2)
+SKIP_HhvmInterop_ObjectCons_setFieldMixed(object<HhvmObject2>, a, 200)
+SKIP_HhvmInterop_ObjectCons_setFieldMixed(object<HhvmObject2>, b, 201)
+SKIP_HhvmInterop_ObjectCons_finish(object<HhvmObject2>)
+object<HhvmObject2>
+array<HhvmArray>
+array<Shape1>
+SKIP_HhvmInterop_ShapeCons_create(Shape2)
+SKIP_HhvmInterop_ShapeCons_setFieldMixed(array<Shape2>, a, 300)
+SKIP_HhvmInterop_ShapeCons_setFieldMixed(array<Shape2>, b, 301)
+SKIP_HhvmInterop_ShapeCons_finish(array<Shape2>)
+array<Shape2>
+variant#int(123)
+variant#string(this is a test string)
+variant#null
+HH_varray::internalCreate()
+HH_varray::append(array<varray>, 123)
+HH_varray::append(array<varray>, 321)
+array<varray>
+--- test_nullable_returns
+sk_fn4_b0: variant#null
+sk_fn4_b1: variant#bool(false)
+sk_fn4_b2: variant#bool(true)
+sk_fn4_i0: variant#null
+sk_fn4_i1: variant#int(-9223372036854775808)
+sk_fn4_i2: variant#int(9223372036854775807)
+sk_fn4_f0: variant#null
+sk_fn4_f1: variant#float(3.125000)
+sk_fn4_s0: variant#null
+sk_fn4_s1: variant#string(short)
+sk_fn4_s2: variant#string(this is a longer string)
+sk_fn4_o0_0: variant#null
+sk_fn4_o0_1: variant#object(object<HhvmObject0>)
+sk_fn4_o1_0: variant#null
+sk_fn4_o1_1: variant#object(object<HhvmObject1>)
+sk_fn4_a_0: variant#null
+sk_fn4_a_1: variant#array(array<HhvmArray>)
+--- test_option_returns
+arg: 123
+sk_fn6_b0: variant#null
+arg: 123
+sk_fn6_b1: variant#bool(false)
+arg: 123
+sk_fn6_b2: variant#bool(true)
+arg: 123
+sk_fn6_i0: variant#null
+arg: 123
+sk_fn6_i1: variant#int(-9223372036854775808)
+arg: 123
+sk_fn6_i2: variant#int(9223372036854775807)
+arg: 123
+sk_fn6_f0: variant#null
+arg: 123
+sk_fn6_f1: variant#float(3.125000)
+arg: 123
+sk_fn6_s0: variant#null
+arg: 123
+sk_fn6_s1: variant#string(short)
+arg: 123
+sk_fn6_s2: variant#string(this is a longer string)
+arg: 123
+sk_fn6_o0_0: variant#null
+arg: 123
+sk_fn6_o0_1: variant#object(object<HhvmObject0>)
+arg: 123
+sk_fn6_o1_0: variant#null
+arg: 123
+sk_fn6_o1_1: variant#object(object<HhvmObject1>)
+arg: 123
+sk_fn6_o2_0: variant#null
+arg: 123
+SKIP_HhvmInterop_ObjectCons_create(HhvmObject2)
+SKIP_HhvmInterop_ObjectCons_setFieldMixed(object<HhvmObject2>, a, 100)
+SKIP_HhvmInterop_ObjectCons_setFieldMixed(object<HhvmObject2>, b, 101)
+SKIP_HhvmInterop_ObjectCons_finish(object<HhvmObject2>)
+sk_fn6_o2_1: variant#object(object<HhvmObject2>)
+arg: 123
+sk_fn6_a_0: variant#null
+arg: 123
+sk_fn6_a_1: variant#array(array<HhvmArray>)
+arg: 123
+sk_fn6_shape1_0: variant#null
+arg: 123
+sk_fn6_shape1_1: variant#array(array<Shape1>)
+arg: 123
+sk_fn6_shape2_0: variant#null
+arg: 123
+SKIP_HhvmInterop_ShapeCons_create(Shape2)
+SKIP_HhvmInterop_ShapeCons_setFieldMixed(array<Shape2>, a, 200)
+SKIP_HhvmInterop_ShapeCons_setFieldMixed(array<Shape2>, b, 201)
+SKIP_HhvmInterop_ShapeCons_finish(array<Shape2>)
+sk_fn6_shape2_1: variant#array(array<Shape2>)
+--- test_gather_param
+SKIP_HhvmInterop_Gather_gatherCollect(object<Gather>, GatherTest.Gather)
+SKIP_HhvmInterop_Gather_gatherCleanup()
+sk_fn7
+--- bug1
+variant#int(42)
+variant#int(26)
+--- bug2
+variant#int(0)
+variant#int(1)

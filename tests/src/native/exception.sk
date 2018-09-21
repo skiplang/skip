@@ -1,0 +1,4 @@
+fun main(): void {
+  throw KeyNotFound();
+  print_raw("No exception")
+}

@@ -1,0 +1,994 @@
+// A valid sequence must yield size() >= 0 items, this
+// returns a negative size() value.
+mutable class NegativeSizeSequence<T>() extends Sequence<T> {
+  readonly fun size(): Int {
+    -1
+  }
+
+  readonly fun values(): mutable Iterator<T> {
+    invariant_violation("No iterator for mock invalid Seq.")
+  }
+}
+
+// A valid sequence must yield size() items, this has
+// size() == 1 but yields zero items.
+mutable class YieldLessThanSizeItemsSequence<T>() extends Sequence<T> {
+  readonly fun size(): Int {
+    1
+  }
+
+  readonly fun values(): mutable Iterator<T> {
+    mutable YieldLessThanSizeHintItemsIterator()
+  }
+}
+
+// A valid iterator must return sizeHint() >= 0 (or None())
+// this returns a negative value.
+mutable class NegativeSizeHintIterator<T>() extends Iterator<T> {
+  readonly fun sizeHint(): ?Int {
+    Some(-1)
+  }
+
+  mutable fun next(): ?T {
+    None()
+  }
+}
+// A valid iterator must return exactly sizeHint() items:
+// this class claims to return 1 item but returns zero.
+mutable class YieldLessThanSizeHintItemsIterator<T>() extends Iterator<T> {
+  readonly fun sizeHint(): ?Int {
+    Some(1)
+  }
+
+  mutable fun next(): ?T {
+    None()
+  }
+}
+
+mutable class ConcreteIndexedSequence<+T>(
+  inner: mutable Vector<T>,
+) extends MutableIndexedSequence<T> {
+  // An IndexedSequence<> with as little defined as possible (to test the raw
+  // IndexedSequence implementations)
+
+  static fun mcreate(capacity: Int = 0): mutable this {
+    mutable ConcreteIndexedSequence(Vector<T>::mcreate(capacity));
+  }
+
+  readonly fun size(): Int {
+    this.inner.size()
+  }
+
+  readonly fun chill(): this {
+    ConcreteIndexedSequence(this.inner.chill())
+  }
+
+  readonly fun get(index: Int): T {
+    this.inner.get(index)
+  }
+
+  mutable fun set(index: Int, value: T): void {
+    this.inner.set(index, value)
+  }
+
+  mutable fun push(value: T): void {
+    this.inner.push(value)
+  }
+
+  mutable fun maybePop(): ?T {
+    this.inner.maybePop()
+  }
+}
+
+base class Factory() {
+  fun createFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): MutableIndexedSequence<Int>;
+  fun mcreateFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): mutable MutableIndexedSequence<Int>;
+  fun mcreate(capacity: Int = 0): mutable MutableIndexedSequence<Int>;
+}
+
+class VectorFactory() extends Factory {
+  fun createFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): MutableIndexedSequence<Int> {
+    Vector<Int>::createFromItems(items)
+  }
+
+  fun mcreateFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): mutable MutableIndexedSequence<Int> {
+    Vector<Int>::mcreateFromItems(items)
+  }
+
+  fun mcreate(capacity: Int = 0): mutable MutableIndexedSequence<Int> {
+    Vector<Int>::mcreate(capacity)
+  }
+}
+
+class IndexedSequenceFactory() extends Factory {
+  fun createFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): MutableIndexedSequence<Int> {
+    ConcreteIndexedSequence<Int>::createFromItems(items)
+  }
+
+  fun mcreateFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): mutable MutableIndexedSequence<Int> {
+    ConcreteIndexedSequence<Int>::mcreateFromItems(items)
+  }
+
+  fun mcreate(capacity: Int = 0): mutable MutableIndexedSequence<Int> {
+    ConcreteIndexedSequence<Int>::mcreate(capacity)
+  }
+}
+
+class RadixTreeVectorFactor() extends Factory {
+  fun createFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): MutableIndexedSequence<Int> {
+    Persistent.RadixTreeVector::createFromItems(items)
+  }
+
+  fun mcreateFromItems<I: readonly Sequence<Int>>(
+    items: I,
+  ): mutable MutableIndexedSequence<Int> {
+    Persistent.RadixTreeVector::mcreateFromItems(items)
+  }
+
+  fun mcreate(capacity: Int = 0): mutable MutableIndexedSequence<Int> {
+    Persistent.RadixTreeVector::mcreate(capacity)
+  }
+}
+
+mutable class IndexedSequenceTest(factory: Factory) {
+  // create()
+  fun doTestCreate(): void {
+    seq = this.factory.createFromItems(Array[]);
+    assertEqual(seq.size(), 0);
+    // assertThrows(() -> seq.get(0));
+    // assertThrows(() -> seq.first());
+    // assertThrows(() -> seq.last());
+  }
+
+  // mcreate()
+  fun doTestMCreate(): void {
+    seq = this.factory.mcreate(0);
+    assertEqual(seq.size(), 0);
+    assertEqual(seq.capacity(), 0);
+    // assertThrows(() -> seq.get(0));
+    // assertThrows(() -> seq.set(0, 1));
+    // assertThrows(() -> seq.first());
+    // assertThrows(() -> seq.last());
+    seq.push(42);
+    assertEqual(seq.size(), 1);
+    assertTrue(seq.capacity() >= 1);
+    assertEqual(seq[0], 42);
+    assertEqual(seq.first(), 42);
+    assertEqual(seq.last(), 42);
+  }
+
+  fun doTestMCreateWithNegativeCapacityThrows(): void {
+    assertThrows(() -> this.factory.mcreate(-1));
+  }
+
+  // createFromItems
+  fun doTestCreateFromItems(): void {
+    seq = this.factory.createFromItems(Array[1, 3, 5, 7, 9]);
+    assertEqual(seq.size(), 5);
+    for (index in Range(0, 5)) {
+      assertEqual(seq[index], index * 2 + 1);
+    };
+  }
+
+  fun doTestCreateFromItemsThrowsForNegativeSizeSequence(): void {
+    assertThrows(() -> this.factory.createFromItems(NegativeSizeSequence()));
+  }
+
+  fun doTestCreateFromItemsThrowsForYieldLessThanSizeItemsSequence(): void {
+    assertThrows(() ->
+      this.factory.createFromItems(YieldLessThanSizeItemsSequence<Int>())
+    );
+  }
+
+  // mcreateFromItems
+  fun doTestMCreateFromItems(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    assertEqual(seq.size(), 5);
+    assertEqual(seq.capacity(), 5);
+    for (index in Range(0, 5)) {
+      assertEqual(seq[index], index * 2 + 1);
+    }
+  }
+
+  fun doTestMCreateFromItemsThrowsForNegativeSizeSequence(): void {
+    assertThrows(() ->
+      this.factory.mcreateFromItems(mutable NegativeSizeSequence())
+    );
+  }
+
+  fun doTestMCreateFromItemsThrowsForYieldLessThanSizeItemsSequence(): void {
+    assertThrows(() ->
+      this.factory.mcreateFromItems(YieldLessThanSizeItemsSequence<Int>())
+    );
+  }
+
+  // indexOf
+  fun doTestIndexOf(): void {
+    seq = this.factory.createFromItems(Array[1, 3, 5, 7, 9]);
+    assertTrue(seq.indexOf(-1).isNone());
+    assertTrue(seq.indexOf(10).isNone());
+    assertTrue(seq.indexOf(1).isSome());
+    assertEqual(seq.indexOf(1).fromSome(), 0);
+    assertTrue(seq.indexOf(9).isSome());
+    assertEqual(seq.indexOf(9).fromSome(), 4);
+  }
+
+  // clone
+  fun doTestCloneFrozenToMutable(): void {
+    seq = this.factory.createFromItems(Array[1, 3, 5, 7, 9]);
+    seq2 = seq.clone();
+    seq2.set(0, -1);
+    assertEqual(seq2.get(0), -1);
+  }
+
+  fun doTestCloneMutableToMutable(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq2 = seq.clone();
+    seq2.set(0, -1);
+    assertEqual(seq.get(0), 1); // original unchanged when clone modified
+    assertEqual(seq2.get(0), -1);
+    seq.set(0, -2);
+    assertEqual(seq.get(0), -2);
+    assertEqual(seq2.get(0), -1); // clone unchanged when original modified
+  }
+
+  fun doTestCloneWithReserveCapacity(): void {
+    seq = this.factory.createFromItems(Array[]);
+    seq2 = seq.clone(10);
+    assertSeqEqual(seq, seq2);
+    // this is a hint - not a guarantee
+    //assertEqual(seq2.capacity(), 10);
+  }
+
+  // clear
+  fun doTestClear(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq.push(11);
+    seq.clear();
+    assertEqual(seq.size(), 0);
+  }
+
+  // get/maybeGet
+  fun doTestGet(): void {
+    seq = this.factory.createFromItems(Array[42]);
+    assertEqual(seq.get(0), 42);
+    assertEqual(seq.maybeGet(0).fromSome(), 42);
+    assertThrows(() -> seq.get(1)); // out of bounds
+    assertTrue(seq.maybeGet(1).isNone());
+  }
+
+  // set
+  fun doTestSet(): void {
+    seq = this.factory.mcreateFromItems(Array[42]);
+    seq.set(0, 43);
+    assertEqual(seq.get(0), 43);
+    assertEqual(seq.maybeGet(0).fromSome(), 43);
+    assertThrows(() -> seq.set(1, 44)); // out of bounds
+    seq.push(-1);
+    seq.set(1, 44);
+    assertEqual(seq.get(1), 44);
+    assertEqual(seq.maybeGet(1).fromSome(), 44);
+  }
+
+  // push/pop
+  fun doTestPush(): void {
+    seq = this.factory.mcreateFromItems(Array[]);
+    seq.push(42);
+    assertEqual(seq.size(), 1);
+    assertEqual(seq.get(0), 42);
+    x = seq.pop();
+    assertEqual(x, 42);
+    assertEqual(seq.size(), 0);
+    assertThrows(() -> seq.get(0));
+  }
+
+  // size/isEmpty
+  fun doTestSizing(): void {
+    seq = this.factory.createFromItems(Array[1, 3, 5]);
+    assertEqual(seq.size(), 3);
+    assertFalse(seq.isEmpty());
+    !seq = this.factory.createFromItems(Array[]);
+    assertEqual(seq.size(), 0);
+    assertTrue(seq.isEmpty());
+  }
+
+  // slice
+  fun doTestSlice(): void {
+    seq = this.factory.createFromItems(Array[0, 1, 2, 3, 4]);
+    seq2 = seq.slice(0, 1);
+    assertSeqEqual(seq2, Array[0]);
+    seq3 = seq.slice(0, 5);
+    assertSeqEqual(seq3, Array[0, 1, 2, 3, 4]);
+    seq4 = seq.slice(3, 5);
+    assertSeqEqual(seq4, Array[3, 4]);
+    seq5 = seq.slice(4, 5);
+    assertSeqEqual(seq5, Array[4]);
+    seq6 = seq.slice(4, 10);
+    assertSeqEqual(seq6, Array[4]);
+    seq7 = seq.slice(5, 10);
+    assertSeqEqual(seq7, Array[]);
+    seq8 = seq.slice(5, 5);
+    assertSeqEqual(seq8, Array[]);
+
+    // Negative
+    seq9 = seq.slice(0, -2);
+    assertSeqEqual(seq9, Array[0, 1, 2]);
+    seq10 = seq.slice(-2, -1);
+    assertSeqEqual(seq10, Array[3]);
+
+    // Empty
+    seq11 = seq.slice(10, 10);
+    assertSeqEqual(seq11, Array[]);
+    seq12 = seq.slice(3, 2);
+    assertSeqEqual(seq12, Array[]);
+    seq13 = seq.slice(-2, -3);
+    assertSeqEqual(seq13, Array[]);
+
+    // No upperbound
+    seq14 = seq.slice(2);
+    assertSeqEqual(seq14, Array[2, 3, 4]);
+  }
+
+  // splice
+  fun doTestSpliceWithoutDelete(): void {
+    base = this.factory.createFromItems(Array[0, 1, 2, 3, 4, 5]);
+    splice = this.factory.createFromItems(Array[7, 8]);
+
+    // beginning
+    seq = base.clone();
+    seq.splice(0, 0, splice);
+    assertSeqEqual(seq, Array[7, 8, 0, 1, 2, 3, 4, 5]);
+
+    // middle
+    !seq = base.clone();
+    seq.splice(3, 3, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 7, 8, 3, 4, 5]);
+
+    // just before end
+    !seq = base.clone();
+    seq.splice(4, 4, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 7, 8, 4, 5]);
+
+    // at end
+    !seq = base.clone();
+    seq.splice(5, 5, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 7, 8, 5]);
+
+    // past end
+    !seq = base.clone();
+    seq.splice(6, 6, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5, 7, 8]);
+  }
+
+  fun doTestSpliceWithoutInsert(): void {
+    base = this.factory.createFromItems(Array[0, 1, 2, 3, 4, 5]);
+    splice = this.factory.createFromItems(Array[]);
+
+    // beginning
+    seq = base.clone();
+    seq.splice(0, 1, splice);
+    assertSeqEqual(seq, Array[1, 2, 3, 4, 5]);
+
+    // middle
+    !seq = base.clone();
+    seq.splice(3, 4, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 4, 5]);
+
+    // just before end
+    !seq = base.clone();
+    seq.splice(4, 5, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 5]);
+
+    // at end
+    !seq = base.clone();
+    seq.splice(5, 6, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4]);
+
+    // past end
+    !seq = base.clone();
+    seq.splice(6, 7, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5]);
+  }
+
+  fun doTestSpliceDeleteCountLessThanInsertCount(): void {
+    base = this.factory.createFromItems(Array[0, 1, 2, 3, 4, 5]);
+    splice = this.factory.createFromItems(Array[7, 8]);
+
+    // beginning
+    seq = base.clone();
+    seq.splice(0, 1, splice);
+    assertSeqEqual(seq, Array[7, 8, 1, 2, 3, 4, 5]);
+
+    // middle
+    !seq = base.clone();
+    seq.splice(3, 4, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 7, 8, 4, 5]);
+
+    // just before end
+    !seq = base.clone();
+    seq.splice(4, 5, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 7, 8, 5]);
+
+    // at end
+    !seq = base.clone();
+    seq.splice(5, 6, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 7, 8]);
+
+    // past end
+    !seq = base.clone();
+    seq.splice(6, 7, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5, 7, 8]);
+  }
+
+  fun doTestSpliceDeleteCountGreaterThanInsertCount(): void {
+    base = this.factory.createFromItems(Array[0, 1, 2, 3, 4, 5]);
+    splice = this.factory.createFromItems(Array[7, 8]);
+
+    // beginning
+    seq = base.clone();
+    seq.splice(0, 3, splice);
+    assertSeqEqual(seq, Array[7, 8, 3, 4, 5]);
+
+    // middle
+    !seq = base.clone();
+    seq.splice(2, 5, splice);
+    assertSeqEqual(seq, Array[0, 1, 7, 8, 5]);
+
+    // up to end
+    !seq = base.clone();
+    seq.splice(3, 6, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 7, 8]);
+
+    // overlapping end
+    !seq = base.clone();
+    seq.splice(4, 7, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 7, 8]);
+
+    // at end
+    !seq = base.clone();
+    seq.splice(5, 9, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 7, 8]);
+
+    // past end
+    !seq = base.clone();
+    seq.splice(6, 9, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5, 7, 8]);
+  }
+
+  fun doTestSpliceDeleteCountEqualsInsertCount(): void {
+    base = this.factory.createFromItems(Array[0, 1, 2, 3, 4, 5]);
+    splice = this.factory.createFromItems(Array[7, 8, 9]);
+
+    // beginning
+    seq = base.clone();
+    seq.splice(0, 3, splice);
+    assertSeqEqual(seq, Array[7, 8, 9, 3, 4, 5]);
+
+    // middle
+    !seq = base.clone();
+    seq.splice(2, 5, splice);
+    assertSeqEqual(seq, Array[0, 1, 7, 8, 9, 5]);
+
+    // up to end
+    !seq = base.clone();
+    seq.splice(3, 6, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 7, 8, 9]);
+
+    // overlapping end
+    !seq = base.clone();
+    seq.splice(4, 7, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 7, 8, 9]);
+
+    // at end
+    !seq = base.clone();
+    seq.splice(5, 8, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 7, 8, 9]);
+
+    // past end
+    !seq = base.clone();
+    seq.splice(6, 9, splice);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5, 7, 8, 9]);
+  }
+
+  fun doTestSpliceInvalid1(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2]);
+    assertThrows(() ->
+      seq.splice(-1, 1, this.factory.createFromItems(Array[]))
+    );
+  }
+
+  fun doTestSpliceInvalid2(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2]);
+    assertThrows(() ->
+      seq.splice(1, -1, this.factory.createFromItems(Array[]))
+    );
+  }
+
+  // append
+  fun doTestAppend(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2]);
+    seq.extend(Vector[3, 4, 5]);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5]);
+  }
+
+  // concat
+  fun doTestConcat(): void {
+    seq = this.factory.createFromItems(Array[0, 1, 2]);
+    seq2 = seq.concat(Vector[3, 4, 5]);
+    assertSeqEqual(seq2, Array[0, 1, 2, 3, 4, 5]);
+  }
+
+  // insert
+  fun doTestInsert(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4]);
+    seq2 = seq.clone();
+    seq2.insert(0, 42);
+    assertSeqEqual(seq2, Array[42, 0, 1, 2, 3, 4]);
+    seq3 = seq.clone();
+    seq3.insert(2, 42);
+    assertSeqEqual(seq3, Array[0, 1, 42, 2, 3, 4]);
+    seq4 = seq.clone();
+    seq4.insert(4, 42);
+    assertSeqEqual(seq4, Array[0, 1, 2, 3, 42, 4]);
+    seq5 = seq.clone();
+    seq5.insert(5, 42);
+    assertSeqEqual(seq5, Array[0, 1, 2, 3, 4, 42]);
+    // assertThrows(() -> seq.insert(-1, 42));
+    // assertThrows(() -> seq.insert(6, 42));
+  }
+
+  // delete
+  fun doTestDelete(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4]);
+    seq2 = seq.clone();
+    seq2.delete(0);
+    assertSeqEqual(seq2, Array[1, 2, 3, 4]);
+    seq3 = seq.clone();
+    seq3.delete(2);
+    assertSeqEqual(seq3, Array[0, 1, 3, 4]);
+    seq4 = seq.clone();
+    seq4.delete(4);
+    assertSeqEqual(seq4, Array[0, 1, 2, 3]);
+  }
+
+  // diff
+  fun doTestDiff(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 5, 0, 1]);
+    seq2 = seq.difference(Vector[1, 3, 5]);
+    assertSeqEqual(seq2, Array[0, 2, 4, 0]);
+  }
+
+  // intersect
+  fun doTestIntersect(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 5, 0, 1]);
+    seq2 = seq.intersection(Vector[1, 3, 5]);
+    assertSeqEqual(seq2, Array[1, 3, 5, 1]);
+  }
+
+  // unique
+  fun doTestUnique(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 3, 2, 1, 0]);
+    seq2 = seq.unique();
+    assertSeqEqual(seq2, Array[0, 1, 2, 3, 4]);
+  }
+
+  // partition
+  fun doTestPartition(): void {
+    (pass, fail) = (Vector[0, 1, 2, 3, 4, 5]).partition(x -> x % 2 == 0);
+    assertSeqEqual(pass, Array[0, 2, 4]);
+    assertSeqEqual(fail, Array[1, 3, 5]);
+  }
+
+  // groupBy
+  fun doTestGroupBy(): void {
+    grouped = (Vector[0, 1, 2, 3, 4, 5]).groupBy(x -> x % 3);
+    assertEqual(grouped.size(), 3);
+    assertSeqEqual(grouped.get(0), Array[0, 3]);
+    assertSeqEqual(grouped.get(1), Array[1, 4]);
+    assertSeqEqual(grouped.get(2), Array[2, 5]);
+  }
+
+  // reverse/reversed
+  fun doTestReverse(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4]);
+    seq2 = seq.clone();
+    seq2.reverse();
+    assertEqual(seq2.size(), 5);
+    assertSeqEqual(seq2, Array[4, 3, 2, 1, 0]);
+
+    seq3 = seq.reversed();
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4]); // original unchanged
+    assertSeqEqual(seq3, Array[4, 3, 2, 1, 0]);
+  }
+
+  // sort/sorted
+  fun doTestSort(): void {
+    seq = this.factory.mcreateFromItems(Array[-9, 12, 13, 7, 7, 0, -100]);
+    sorted = Array[-100, -9, 0, 7, 7, 12, 13];
+    reverseSorted = Array[13, 12, 7, 7, 0, -9, -100];
+
+    seq2 = seq.clone();
+    seq2.sort();
+    assertSeqEqual(seq2, sorted);
+
+    seq3 = seq.clone();
+    seq3.sortBy(id, (a, b) ~> a.compare(b));
+    assertSeqEqual(seq3, sorted);
+
+    seq4 = seq.clone();
+    seq4.sortBy(id, (a, b) ~> b.compare(a)); // reverse sort
+    assertSeqEqual(seq4, reverseSorted);
+
+    seq5 = seq.sorted();
+    assertSeqEqual(seq5, sorted);
+
+    seq6 = seq.sortedBy(id, (a, b) ~> a.compare(b));
+    assertSeqEqual(seq6, sorted);
+
+    seq7 = seq.sortedBy(id, (a, b) ~> b.compare(a)); // reverse sort
+    assertSeqEqual(seq7, reverseSorted);
+  }
+
+  fun doTestSortRandom(): void {
+    base = Range(0, 100).collect(Vector);
+    count = 10; // max items to draw in each sample
+    samples = 50;
+    rng = Random::mcreate(94759283);
+    // Create 50 samples of various sizes/ordering and verify that all
+    // permutations are sorted correctly.
+    for (_ in Range(0, samples)) {
+      sample = base.sample(rng, rng.random(0, count));
+      // mutable sort
+      seq = sample.clone();
+      seq.sort();
+      assertSorted(seq);
+      // immutable sorted
+      seq2 = sample.sorted();
+      assertSorted(seq2);
+    }
+  }
+
+  fun doTestSort1(): void {
+    seq = this.factory.mcreateFromItems(Array[1, -1]);
+    seq.sort();
+    assertSorted(seq);
+  }
+
+  // shuffle
+  // NOTE: Snapshot values are the results given the current implementation
+  // of Array.hash() and Random.Splitmix64.
+  fun doTestShuffle(): void {
+    init = Array[-100, -9, 0, 7, 7, 12, 13];
+    seq = this.factory.mcreateFromItems(init);
+    expected = Array[-100, 7, 7, -9, 12, 0, 13]; // snapshot
+    seed = Random::mcreate(init.hash());
+    seq.shuffle(seed);
+    assertSeqEqual(seq, expected);
+  }
+
+  // sample
+  // NOTE: Snapshot values are the results given the current implementation
+  // of Vector.hash() and Random.Splitmix64.
+  fun doTestSample(): void {
+    init = Array[-100, -9, 0, 7, 7, 12, 13];
+    seq = this.factory.createFromItems(init);
+    seed = Random::create(init.hash());
+    assertSeqEqual(seq.sample(seed.clone(), 1), Array[-9]); // snapshot
+    // assertSeqEqual(seq.sample(seed.clone(), 2), Array[0, 12]); // snapshot
+    // assertSeqEqual(seq.sample(seed.clone(), 3), Array[7, 13, 0]); // snapshot
+    // assertSeqEqual(seq.sample(seed.clone(), 4), Array[7, 13, 0, 12]); // snapshot
+    // assertSeqEqual(seq.sample(seed.clone(), 5), Array[12, -9, 0, 13, 7]); // snapshot
+    // assertSeqEqual(
+    //   seq.sample(seed.clone(), 6),
+    //   Array[13, -9, 0, 7, 7, 12],
+    // ); // snapshot
+    //
+    // // edge cases:
+    // assertSeqEqual(seq.sample(seed.clone(), 0), Array[]); // k=0 returns empty
+    // assertSeqEqual(seq.sample(seed.clone(), 7), seq); // k>=size returns list as-is
+    // assertSeqEqual(seq.sample(seed.clone(), 8), seq); // k>=size returns list as-is
+  }
+
+  // resize
+  fun doTestResizeShrink(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq.resize(3, -1);
+    assertSeqEqual(seq, Array[1, 3, 5]);
+  }
+
+  fun doTestResizeExpandInPlace(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq.ensureCapacity(6);
+    seq.resize(6, -1);
+    assertSeqEqual(seq, Array[1, 3, 5, 7, 9, -1]);
+  }
+
+  fun doTestResizeExpandGrow(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq.resize(6, -1);
+    assertSeqEqual(seq, Array[1, 3, 5, 7, 9, -1]);
+  }
+
+  fun doTestResizeNoop(): void {
+    seq = this.factory.mcreateFromItems(Array[1, 3, 5, 7, 9]);
+    seq.resize(5, -1);
+    assertSeqEqual(seq, Array[1, 3, 5, 7, 9]);
+  }
+
+  // retain
+  fun doTestKeepWhereKeepingSome(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 5]);
+    seq.keepWhere(x -> x % 2 == 0);
+    assertSeqEqual(seq, Array[0, 2, 4]);
+  }
+
+  fun doTestKeepWhereKeepingAll(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 5]);
+    seq.keepWhere(_ -> true);
+    assertSeqEqual(seq, Array[0, 1, 2, 3, 4, 5]);
+  }
+
+  fun doTestKeepWhereKeepingNone(): void {
+    seq = this.factory.mcreateFromItems(Array[0, 1, 2, 3, 4, 5]);
+    seq.keepWhere(_ -> false);
+    assertSeqEqual(seq, Array[]);
+  }
+}
+
+fun forEachTestClass(f: IndexedSequenceTest -> void): void {
+  f(IndexedSequenceTest(VectorFactory()));
+  f(IndexedSequenceTest(IndexedSequenceFactory()));
+  f(IndexedSequenceTest(RadixTreeVectorFactor()));
+}
+
+@test
+fun testCreate(): void {
+  forEachTestClass(p -> p.doTestCreate());
+}
+@test
+fun testMCreate(): void {
+  forEachTestClass(p -> p.doTestMCreate());
+}
+@test
+fun testMCreateWithNegativeCapacityThrows(): void {
+  forEachTestClass(p -> p.doTestMCreateWithNegativeCapacityThrows());
+}
+@test
+fun testCreateFromItems(): void {
+  forEachTestClass(p -> p.doTestCreateFromItems());
+}
+@test
+fun testCreateFromItemsThrowsForNegativeSizeSequence(): void {
+  forEachTestClass(p -> p.doTestCreateFromItemsThrowsForNegativeSizeSequence());
+}
+@test
+fun testCreateFromItemsThrowsForYieldLessThanSizeItemsSequence(): void {
+  forEachTestClass(p ->
+    p.doTestCreateFromItemsThrowsForYieldLessThanSizeItemsSequence()
+  );
+}
+@test
+fun testMCreateFromItems(): void {
+  forEachTestClass(p -> p.doTestMCreateFromItems());
+}
+@test
+fun testMCreateFromItemsThrowsForNegativeSizeSequence(): void {
+  forEachTestClass(p ->
+    p.doTestMCreateFromItemsThrowsForNegativeSizeSequence()
+  );
+}
+@test
+fun testMCreateFromItemsThrowsForYieldLessThanSizeItemsSequence(): void {
+  forEachTestClass(p ->
+    p.doTestMCreateFromItemsThrowsForYieldLessThanSizeItemsSequence()
+  );
+}
+@test
+fun testIndexOf(): void {
+  forEachTestClass(p -> p.doTestIndexOf());
+}
+@test
+fun testCloneFrozenToMutable(): void {
+  forEachTestClass(p -> p.doTestCloneFrozenToMutable());
+}
+@test
+fun testCloneMutableToMutable(): void {
+  forEachTestClass(p -> p.doTestCloneMutableToMutable());
+}
+@test
+fun testCloneWithReserveCapacity(): void {
+  forEachTestClass(p -> p.doTestCloneWithReserveCapacity());
+}
+@test
+fun testClear(): void {
+  forEachTestClass(p -> p.doTestClear());
+}
+@test
+fun testGet(): void {
+  forEachTestClass(p -> p.doTestGet());
+}
+@test
+fun testSet(): void {
+  forEachTestClass(p -> p.doTestSet());
+}
+@test
+fun testPush(): void {
+  forEachTestClass(p -> p.doTestPush());
+}
+@test
+fun testSizing(): void {
+  forEachTestClass(p -> p.doTestSizing());
+}
+@test
+fun testSlice(): void {
+  forEachTestClass(p -> p.doTestSlice());
+}
+@test
+fun testSpliceWithoutDelete(): void {
+  forEachTestClass(p -> p.doTestSpliceWithoutDelete());
+}
+@test
+fun testSpliceWithoutInsert(): void {
+  forEachTestClass(p -> p.doTestSpliceWithoutInsert());
+}
+@test
+fun testSpliceDeleteCountLessThanInsertCount(): void {
+  forEachTestClass(p -> p.doTestSpliceDeleteCountLessThanInsertCount());
+}
+@test
+fun testSpliceDeleteCountGreaterThanInsertCount(): void {
+  forEachTestClass(p -> p.doTestSpliceDeleteCountGreaterThanInsertCount());
+}
+@test
+fun testSpliceDeleteCountEqualsInsertCount(): void {
+  forEachTestClass(p -> p.doTestSpliceDeleteCountEqualsInsertCount());
+}
+@test
+fun testSpliceInvalid1(): void {
+  forEachTestClass(p -> p.doTestSpliceInvalid1());
+}
+@test
+fun testSpliceInvalid2(): void {
+  forEachTestClass(p -> p.doTestSpliceInvalid2());
+}
+@test
+fun testAppend(): void {
+  forEachTestClass(p -> p.doTestAppend());
+}
+@test
+fun testConcat(): void {
+  forEachTestClass(p -> p.doTestConcat());
+}
+@test
+fun testInsert(): void {
+  forEachTestClass(p -> p.doTestInsert());
+}
+@test
+fun testDelete(): void {
+  forEachTestClass(p -> p.doTestDelete());
+}
+@test
+fun testDiff(): void {
+  forEachTestClass(p -> p.doTestDiff());
+}
+@test
+fun testIntersect(): void {
+  forEachTestClass(p -> p.doTestIntersect());
+}
+@test
+fun testUnique(): void {
+  forEachTestClass(p -> p.doTestUnique());
+}
+@test
+fun testPartition(): void {
+  forEachTestClass(p -> p.doTestPartition());
+}
+@test
+fun testGroupBy(): void {
+  forEachTestClass(p -> p.doTestGroupBy());
+}
+@test
+fun testReverse(): void {
+  forEachTestClass(p -> p.doTestReverse());
+}
+@test
+fun testSort(): void {
+  forEachTestClass(p -> p.doTestSort());
+}
+@test
+fun testSortRandom(): void {
+  forEachTestClass(p -> p.doTestSortRandom());
+}
+@test
+fun testSort1(): void {
+  forEachTestClass(p -> p.doTestSort1());
+}
+@test
+fun testShuffle(): void {
+  forEachTestClass(p -> p.doTestShuffle());
+}
+@test
+fun testSample(): void {
+  forEachTestClass(p -> p.doTestSample());
+}
+@test
+fun testResizeShrink(): void {
+  forEachTestClass(p -> p.doTestResizeShrink());
+}
+@test
+fun testResizeExpandInPlace(): void {
+  forEachTestClass(p -> p.doTestResizeExpandInPlace());
+}
+@test
+fun testResizeExpandGrow(): void {
+  forEachTestClass(p -> p.doTestResizeExpandGrow());
+}
+@test
+fun testResizeNoop(): void {
+  forEachTestClass(p -> p.doTestResizeNoop());
+}
+@test
+fun testKeepWhereKeepingSome(): void {
+  forEachTestClass(p -> p.doTestKeepWhereKeepingSome());
+}
+@test
+fun testKeepWhereKeepingAll(): void {
+  forEachTestClass(p -> p.doTestKeepWhereKeepingAll());
+}
+@test
+fun testKeepWhereKeepingNone(): void {
+  forEachTestClass(p -> p.doTestKeepWhereKeepingNone());
+}
+
+fun assertThrowsContainerChanged(f: () -> void): void {
+  try {
+    f();
+    assertFailure{
+      message => "Expected a ContainerChanged() exception",
+      expected => "container changed",
+      actual => "function did not throw",
+    }
+  } catch {
+  | ContainerChanged() -> void
+  | exn ->
+    assertFailure{
+      message => "Expected a ContainerChanged() exception",
+      expected => "container changed",
+      actual => exn.getMessage(),
+    }
+  }
+}
+
+fun assertSorted<T: Orderable>(seq: readonly IndexedSequence<T>): void {
+  it = seq.values();
+  it.next() match {
+  | None() -> void
+  | Some(prev) ->
+    it.each(v -> {
+      assertTrue(prev <= v);
+      !prev = v;
+    })
+  }
+}
+
+fun assertSeqEqual<T: Equality & Show>(
+  a: readonly Sequence<T>,
+  b: readonly Sequence<T>,
+): void {
+  assertEqual(a.size(), b.size());
+  a.values().zip(b.values()).each(i -> assertEqual(i.i0, i.i1));
+}

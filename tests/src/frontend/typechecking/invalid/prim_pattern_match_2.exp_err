@@ -1,0 +1,7 @@
+File "./typechecking/invalid/prim_pattern_match_2.sk", line 4, characters 7-11:
+Int does not have a constructor and cannot be matched against. You must use _
+2 |   print_raw(
+3 |     5 match {
+4 |     | Int() -> void
+  |       ^^^^^
+5 |     },

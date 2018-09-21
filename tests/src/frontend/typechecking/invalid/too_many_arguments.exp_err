@@ -1,0 +1,7 @@
+File "./typechecking/invalid/too_many_arguments.sk", line 6, characters 3-17:
+Too many arguments, expected 2 but got 4
+4 |
+5 | fun main(): void {
+6 |   f(1, 1.0, 3, 5);
+  |   ^^^^^^^^^^^^^^^
+7 |   void

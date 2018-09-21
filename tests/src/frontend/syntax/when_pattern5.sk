@@ -1,0 +1,21 @@
+base class Bar {
+  children =
+  | Foo(Int)
+  | Baz(Bool)
+}
+
+fun main(): void {
+  print_raw(
+    Foo(1) match {
+    | i @ Foo _ if (
+      i match {
+      | Foo(2) -> false
+      | Foo(1) -> true
+      | _ -> false
+      }
+    ) ->
+      "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

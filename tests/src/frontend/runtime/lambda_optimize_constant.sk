@@ -1,0 +1,10 @@
+const constant_init: String = {
+  lambda = () -> {
+    "Pa" + "ss" + "\n";
+  };
+  lambda();
+};
+
+fun main(): void {
+  print_raw(constant_init)
+}

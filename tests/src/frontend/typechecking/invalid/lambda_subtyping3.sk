@@ -1,0 +1,29 @@
+base class MyBase {
+  children =
+  | Child1(value: Int)
+  | Child2(value: String)
+
+  fun foo(): MyBase
+  | Child1 _ -> Child1(42)
+  | Child2 _ -> Child1(42)
+}
+
+fun apply<T>(f: T -> T, a: T): T {
+  f(a)
+}
+
+class Tester<T: frozen>(x: T) {
+  fun test<T2>[T: T2](f: Tester<T> -> Tester<T2>): this {
+    y: Tester<T> = apply(x -> f(x), this);
+    y
+  }
+}
+
+fun main(): void {
+  t: Tester<Child2> = Tester(Child2("hi"));
+  f: Tester<Child2> -> Tester<MyBase> = (o -> Tester(o.x.foo()));
+  o: Tester<Child2> = t.test(f);
+  print_raw(
+    o.x.value, // boom, it's actually a Child1 now
+  )
+}

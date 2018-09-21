@@ -1,0 +1,6 @@
+File "./syntax/invalid/public_method.sk", line 2, characters 3-8:
+Unexpected 'public'. Methods are public by default. Use 'protected' or 'private' to change the visibility
+1 | class X() {
+2 |   public static fun f(): void { void }
+  |   ^^^^^^
+3 | }

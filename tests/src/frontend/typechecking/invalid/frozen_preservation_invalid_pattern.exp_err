@@ -1,0 +1,20 @@
+File "./typechecking/invalid/frozen_preservation_invalid_pattern.sk", line 7, characters 5-12:
+The following pattern is unused:
+ | Foo(ref)
+5 | fun no(p: P<mutable Ref<Int>>): void {
+6 |   p match {
+7 |   | Foo(ref) ->
+  |     ^^^^^^^^
+8 |     _: Ref<Int> = ref // mutable cast to frozen!
+
+File "./typechecking/invalid/frozen_preservation_invalid_pattern.sk", line 7, characters 5-12:
+In particular, we encountered this sub-pattern
+ | Foo(ref)
+But expected one of
+ | Bar(_)
+In that position.
+5 | fun no(p: P<mutable Ref<Int>>): void {
+6 |   p match {
+7 |   | Foo(ref) ->
+  |     ^^^^^^^^
+8 |     _: Ref<Int> = ref // mutable cast to frozen!

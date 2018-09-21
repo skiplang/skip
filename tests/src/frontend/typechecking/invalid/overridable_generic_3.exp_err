@@ -1,0 +1,23 @@
+File "./typechecking/invalid/overridable_generic_3.sk", line 7, characters 7-7:
+Invalid override for the field 'makeBad' on child 'A' for parent 'TC'
+5 | }
+6 |
+7 | class A<T>(f: T) uses TC<T> {
+  |       ^
+8 |   fun makeBad(): T {
+
+File "./typechecking/invalid/overridable_generic_3.sk", line 8, characters 18-18:
+The type: T
+ 6 |
+ 7 | class A<T>(f: T) uses TC<T> {
+ 8 |   fun makeBad(): T {
+   |                  ^
+ 9 |     this.f
+
+File "./typechecking/invalid/overridable_generic_3.sk", line 4, characters 18-20:
+Is not a subtype of: Bad<T>
+2 |
+3 | trait TC<P> {
+4 |   fun makeBad(): Bad<P>;
+  |                  ^^^
+5 | }

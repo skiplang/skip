@@ -1,0 +1,4 @@
+base class Foo {
+  type T: Test.MixedScalar;
+  fun doit(): Foo::T;
+}

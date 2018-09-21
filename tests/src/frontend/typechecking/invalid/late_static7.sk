@@ -1,0 +1,12 @@
+base class Foo {
+  static fun abs(): void;
+  deferred static fun foo(): void {
+    static::abs()
+  }
+}
+
+base class Bar extends Foo
+
+fun main(): void {
+  print_raw(Bar::foo())
+}

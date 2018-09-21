@@ -1,0 +1,5 @@
+class C{} extends #T {}
+
+fun main(): void {
+  void
+}

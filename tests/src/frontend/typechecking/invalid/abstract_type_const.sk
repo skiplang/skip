@@ -1,0 +1,7 @@
+base class Foo {
+  type T;
+}
+
+base class Bar {
+  type T: Foo::T;
+}

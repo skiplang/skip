@@ -1,0 +1,5 @@
+fun test(): String {
+  true match {
+  | true -> "Fail\n"
+  }
+}

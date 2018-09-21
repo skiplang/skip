@@ -1,0 +1,7 @@
+File "./syntax/invalid/missing_bar_in_match_branch.sk", line 4, characters 12-12:
+Unexpected expression. Pattern branches are separated by '|'
+2 |   i = 42;
+3 |   i match {
+4 |   | 0 -> i j
+  |            ^
+5 |   | 1 -> "Fail"

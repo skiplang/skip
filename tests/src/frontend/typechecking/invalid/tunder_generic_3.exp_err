@@ -1,0 +1,5 @@
+File "./typechecking/invalid/tunder_generic_3.sk", line 2, characters 25-25:
+_ can only be used on function parameters and return types
+1 | base class Foo<T>
+2 | class Bar() extends Foo<_>
+  |                         ^

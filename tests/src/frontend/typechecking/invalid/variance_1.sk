@@ -1,0 +1,29 @@
+base class Parent
+class ChildA() extends Parent {
+  fun getIntA(): Int {
+    42
+  }
+}
+class ChildB() extends Parent {
+  fun getIntB(): Int {
+    43
+  }
+}
+
+base class Foo<T> {
+  fun foo(x: T): Int;
+}
+
+class Bar() extends Foo<ChildA> {
+  fun foo(x: ChildA): Int {
+    x.getIntA()
+  }
+}
+
+fun getFoo(): Foo<Parent> {
+  Bar()
+}
+
+fun main(): void {
+  print_raw(getFoo().foo(ChildB()).toString())
+}

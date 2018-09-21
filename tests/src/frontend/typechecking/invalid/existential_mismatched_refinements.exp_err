@@ -1,0 +1,23 @@
+File "./typechecking/invalid/existential_mismatched_refinements.sk", line 15, characters 20-30:
+Constraint not satisfied
+13 |   e match {
+14 |   | IntExpr(i) -> bool_perform(i)
+15 |   | BoolExpr(b) -> int_perform(b)
+   |                    ^^^^^^^^^^^
+16 |   }
+
+File "./typechecking/invalid/existential_mismatched_refinements.sk", line 3, characters 16-16:
+The type: frozen Unknown
+1 | base class Expr
+2 | class IntExpr<T: Int>(T) extends Expr
+3 | class BoolExpr<T: Bool>(T) extends Expr
+  |                ^
+4 |
+
+File "./typechecking/invalid/existential_mismatched_refinements.sk", line 5, characters 20-22:
+Is not a subtype of: Int
+3 | class BoolExpr<T: Bool>(T) extends Expr
+4 |
+5 | fun int_perform<T: Int>(_: T): void {
+  |                    ^^^
+6 |   void

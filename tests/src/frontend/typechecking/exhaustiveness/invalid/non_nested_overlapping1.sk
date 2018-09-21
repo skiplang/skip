@@ -1,0 +1,10 @@
+base class A {
+  children =
+  | B(Int)
+}
+fun test(): String {
+  B(1) match {
+  | B _ -> "Fail\n"
+  | B(1) -> "Wrong\n"
+  }
+}

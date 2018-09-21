@@ -1,0 +1,5 @@
+base class A(
+  x: String,
+)  // error, defaults noncontiguous
+base class B(y: String = "!\n")
+class C(a: String, b: String = ", ") extends A, B

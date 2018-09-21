@@ -1,0 +1,5 @@
+trait X
+class Y<T: X>(T)
+fun test2<T>(_: Y<T>): void {
+  void
+}

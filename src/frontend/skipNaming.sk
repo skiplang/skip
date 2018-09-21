@@ -1,0 +1,3990 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Pass solving names. In a nutshell, it puts the abstract syntax tree into
+ * a more convenient form to work with.
+ */
+/*****************************************************************************/
+module alias A = SkipAst;
+module alias AU = SkipAstUtils;
+module alias N = SkipNamedAst;
+
+base class Local_usage {
+  children =
+  | Used()
+  | Unused(N.Name)
+}
+
+/*****************************************************************************/
+/* The environment. */
+/*****************************************************************************/
+module SkipNaming;
+
+base class Tabstract_case {
+  children =
+  | Tyd_value(FileRange)
+  | Tyd_constraint(FileRange)
+  | Not_tabstract()
+}
+
+fun isTydValueOrConstraint(ac: Tabstract_case): Bool {
+  ac match {
+  | Not_tabstract() -> false
+  | Tyd_value _
+  | Tyd_constraint _ ->
+    true
+  }
+}
+
+base class Resolved_tyd {
+  children =
+  | Resolved_tnamed(List<A.Name>, N.Type_)
+  | Resolved_tabstract(N.Type_)
+}
+
+// pos is the definition site of the macro
+// name includes the '#'
+base class MacroDefinition{pos: FileRange, name: String} {
+  protected fun kind(): String;
+
+  fun location(): FileRange {
+    this.pos
+  }
+
+  fun reportIncorrectUsage(pos: FileRange, usage: String): _ {
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          `'${
+            this.name
+          }' may not be used as an ${usage}. It may only be used as an ${this.kind()}.`,
+        ),
+      ],
+    )
+  }
+
+  overridable fun toExpression(pos: FileRange): N.Expr_ {
+    this.reportIncorrectUsage(pos, "expression");
+  }
+
+  overridable fun toIdentifier(pos: FileRange): N.Name {
+    this.reportIncorrectUsage(pos, "identifier");
+  }
+
+  overridable fun toTypeName(pos: FileRange): A.Type_name {
+    this.reportIncorrectUsage(pos, "type");
+  }
+}
+
+class IdentifierMacro{value: N.Name} extends MacroDefinition {
+  protected fun kind(): String {
+    "identifier"
+  }
+  fun toExpression(pos: FileRange): N.Expr_ {
+    N.Var(this.toIdentifier(pos))
+  }
+
+  fun toIdentifier(pos: FileRange): N.Name {
+    (pos, this.value.i1)
+  }
+}
+
+class ExpressionMacro{value: N.Expr_} extends MacroDefinition {
+  protected fun kind(): String {
+    "expression"
+  }
+
+  fun toExpression(_pos: FileRange): N.Expr_ {
+    this.value;
+  }
+
+  static fun createStringLiteralMacro(
+    pos: FileRange,
+    name: String,
+    value: String,
+  ): ExpressionMacro {
+    ExpressionMacro{pos, name, value => N.Literal(A.StringLiteral(value))}
+  }
+}
+
+class TypeNameMacro{value: A.Tclass} extends MacroDefinition {
+  protected fun kind(): String {
+    "type"
+  }
+
+  fun toTypeName(_pos: FileRange): A.Type_name {
+    this.value
+  }
+
+  fun toExpression(_pos: FileRange): N.Expr_ {
+    N.Classname(this.value.name, Array[]);
+  }
+}
+
+class Env{
+  /* Overrides 'this' when unrolling const types */
+  const_type_this: ?A.Class_def,
+  /* Set to true when we're in an async function or method */
+  in_async: ?FileRange,
+  in_class_const_expr: Bool,
+  /* Set to true when checking constants */
+  in_consts_type_annot: Bool,
+  /* Set to true when checking type or constraint on a type const */
+  in_tabstract: Tabstract_case,
+  /* What the class 'inst' will be replaced with */
+  inst: ?A.Class_def,
+  /* What the type 'inst' will be replaced with */
+  inst_type: ?N.Type__,
+  is_constraint_position: Bool,
+  /* What the type 'this' will be replaced with */
+  sk_this: ?A.Class_def,
+  /* map from name to id, map from id to info */
+  tparams: (SMap<String>, SMap<A.Type_parameter>),
+  /* Is the class member marked as deferred */
+  in_deferred: Bool,
+  /* In a class member marked as 'macro' */
+  macro_: ?FileRange,
+  /* The set of macros in scope */
+  macros: UMap<MacroDefinition>,
+}
+
+// underscore patterns start with _
+fun is_wildcard_name(n: N.Name): Bool {
+  n.i1.startsWith("_")
+}
+
+fun is_wildcard_name_(s: String): Bool {
+  s.startsWith("_")
+}
+
+// compiler generated temps start with !
+fun is_tmp_var(s: String): Bool {
+  s.contains("!")
+}
+
+// compiler generated temps for unnamed positional parameters start with @
+fun is_tmp_param(s: String): Bool {
+  s.startsWith("@")
+}
+
+/* tparam access */
+fun is_tparam(n: String, p: (SMap<String>, SMap<A.Type_parameter>)): Bool {
+  (tparam_ids, _) = p;
+  tparam_ids.containsKey(n)
+}
+
+fun find_tparam(env: Env, n: String): ?A.Type_parameter {
+  (tparam_ids, tparams) = env.tparams;
+  tparam_ids.maybeGet(n).map(tparams.get)
+}
+
+fun tparam_id<Ta>(
+  n: String,
+  p: (SMap<String>, SMap<A.Type_parameter>),
+): ?String {
+  (tparam_ids, _) = p;
+  tparam_ids.maybeGet(n)
+}
+
+fun tparam_info(
+  id: String,
+  p: (SMap<String>, SMap<A.Type_parameter>),
+): ?A.Type_parameter {
+  (_, tparam_infos) = p;
+  tparam_infos.maybeGet(id)
+}
+
+fun tparam_add(
+  p: (SMap<String>, SMap<A.Type_parameter>),
+  tp: A.Type_parameter,
+): (SMap<String>, SMap<A.Type_parameter>) {
+  (tparam_ids, tparam_infos) = p;
+  (_, id, (_, n), _) = tp;
+  id1 = id;
+  (tparam_ids.set(n, id1), tparam_infos.set(id1, tp))
+}
+
+fun tparams_empty(): (SMap<String>, SMap<A.Type_parameter>) {
+  (SortedMap[], SortedMap[])
+}
+
+fun type_name(env: Env, x: A.Type_name): A.Name {
+  x match {
+  | A.Tmacro(n) -> type_name(env, expandMacroTypeName(env, n))
+  | A.Tclass(c) -> c
+  | A.Tmodule_class(p, (_, n), (_, f)) ->
+    SkipError.error(p, "Internal error: unexpanded module name " + n + "." + f)
+  | A.Tparam((p, n), _) ->
+    SkipError.error(p, "Internal error: type param used as class " + n)
+  }
+}
+
+/*****************************************************************************/
+/* Checks that there are not superfluous returns.
+ * i.e. check that the return isn't the last expression in the sequence for a
+ * function
+ *
+ * TODO add a simple dead code check here for throw/return/break/continue
+ */
+/*****************************************************************************/
+
+fun checkNoReturnBody(body: N.Expr_body): void {
+  body match {
+  | N.Abstract()
+  | N.Native() ->
+    void
+  | N.Implemented(e) -> checkNoReturn(e)
+  }
+}
+
+fun checkNoReturn(posBody: N.Expr): void {
+  (pos, returnedExpr) = posBody;
+  returnedExpr match {
+  | N.Classname _
+  | N.Literal _
+  | N.Var _
+  | N.Object _ ->
+    void
+  | N.Seq(_, right) -> checkNoReturn(right)
+  | N.If(_, t, f) ->
+    checkNoReturn(t);
+    checkNoReturn(f)
+  | N.Call _
+  | N.ArrayGet _ ->
+    void
+  | N.Annotated(e, _) -> checkNoReturn(e)
+  | N.Bind(_, _, cont) -> checkNoReturn(cont)
+  | N.Assign _
+  | N.Dot _
+  | N.StaticDot _
+  | N.Pipe _
+  | N.Binop _
+  | N.Unop _ ->
+    void
+  | N.Try(e, branches) ->
+    checkNoReturn(e);
+    for (branch in branches) {
+      (_, _, action) = branch;
+      checkNoReturn(action)
+    }
+  | N.Is _
+  | N.As _ ->
+    void
+  | N.Match(_, branches) ->
+    for (branch in branches) {
+      (_, _, action) = branch;
+      checkNoReturn(action)
+    }
+  | N.Lambda(_, _, _, body, _) -> checkNoReturn(body)
+  | N.Await _ -> void
+  | N.Return _ ->
+    SkipError.error(
+      pos,
+      "The 'return' keyword is superfluous here, please remove it",
+    )
+  | N.Yield _
+  | N.YieldBreak _ ->
+    void
+  | N.Async(_, body) -> checkNoReturn(body)
+  | N.Throw _ -> void
+  | N.Concurrent(exprs) -> exprs.each(checkNoReturn)
+  | N.Array _
+  | N.With _
+  | N.AssignField _
+  | N.TemplateLiteral _
+  | N.Continue _
+  | N.Break _
+  | N.Loop _ ->
+    void
+  | N.DoWhile(_, _, body2)
+  | N.While(_, _, body2) ->
+    checkNoReturn(body2)
+  }
+}
+
+/*****************************************************************************/
+/* Checks that all the class elements are defined in concrete classes. */
+/*****************************************************************************/
+
+fun check_const_defined(cla: N.Class_def, con: N.Const_def): void {
+  if (N.constantIsAbstract(con)) {
+    SkipError.errorl(
+      List[
+        (cla.name.i0, "Missing implementation for the constant " + con.name.i1),
+        (con.name.i0, "Defined here"),
+      ],
+    )
+  }
+}
+
+fun check_type_defined(cla: N.Class_def, tyd: N.Type_def): void {
+  tyd.body match {
+  | N.TydDefined _ -> void
+  | N.TydAbstract(_, None()) ->
+    SkipError.errorl(
+      List[
+        (cla.name.i0, "Missing implementation for the type " + tyd.name.i1),
+        (tyd.name.i0, "Defined here"),
+      ],
+    )
+  | N.TydAbstract(_, Some((pos, _))) ->
+    SkipError.errorl(
+      List[
+        (cla.name.i0, "Missing implementation for the type " + tyd.name.i1),
+
+        (pos, "default type values are only meaningful in base classes"),
+      ],
+    )
+  }
+}
+
+fun check_method_private_abstract(met: N.Method_def): void {
+  (met.body, met.visibility) match {
+  | (N.Abstract(), (vpos, N.VPrivate())) ->
+    SkipError.errorl(
+      List[
+        (
+          met.name.i0,
+          "Private methods in base classes must be defined for that class since they are only visible for that class",
+        ),
+        (vpos, "Declared private here"),
+      ],
+    )
+  | _ -> void
+  }
+}
+
+fun check_const_private_abstract(con: N.Const_def): void {
+  (con.value, con.visibility) match {
+  | (N.Abstract(), (vpos, N.VPrivate())) ->
+    SkipError.errorl(
+      List[
+        (
+          con.name.i0,
+          "Private constants in base classes must be defined for that class since they are only visible for that class",
+        ),
+        (vpos, "Declared private here"),
+      ],
+    )
+  | _ -> void
+  }
+}
+
+fun check_class_rules(cla: N.Class_def): void {
+  if (cla.value.isSome()) {
+    cla.params match {
+    | N.NoParams()
+    | N.NativeConstruct _ ->
+      void
+    | N.HasParams(params) ->
+      params.params.each(param -> {
+        param.mutable_ match {
+        | Some(pos) ->
+          (_, name) = param.name;
+          msg = `Value classes cannot have mutable parameters 'mutable ${name}: ...' (but they can have parameters that are mutable '${name}: mutable ...')`;
+          SkipError.error(pos, msg)
+        | None() -> void
+        }
+      })
+    }
+  };
+  cla.kind match {
+  | A.KClass() ->
+    for (c in cla.consts) check_const_defined(cla, c); // methods checked in typing
+    for (t in cla.types) check_type_defined(cla, t)
+  | A.KBase() ->
+    for (m in cla.methods) check_method_private_abstract(m);
+    for (c in cla.consts) check_const_private_abstract(c)
+  | A.KTrait() -> void
+  }
+}
+
+fun invalid_from<Ta>(nm: N.Name): Ta {
+  (pos, cname) = nm;
+  SkipError.error(
+    pos,
+    "Invalid conflict resolution. " +
+      cname +
+      " is not an immediate parent or does not have the corresponding field " +
+      "needed for conflict resolution",
+  )
+}
+
+/*****************************************************************************/
+/* Checks patterns have no duplicate variables. */
+/*****************************************************************************/
+fun check_pattern(pat: A.Pattern): void {
+  ignore(pattern_bindings(UMap[], pat))
+}
+
+fun pattern_bindings(acc: UMap<void>, pat: A.Pattern): UMap<void> {
+  (_, pattern_) = pat;
+  pattern_ match {
+  | A.Pat_const _ -> acc
+  | A.Pat_var(name) -> bind_pattern_name(acc, name)
+  | A.Pat_literal _ -> acc
+  | A.Pat_type(_, params, _) -> bind_pattern_params(acc, params)
+  | A.Pat_tuple(names) -> names.foldl(pattern_bindings, acc)
+  | A.Pat_as(pattern, name) ->
+    acc1 = bind_pattern_name(acc, name);
+    pattern_bindings(acc1, pattern)
+  }
+}
+
+// TODO consider !name.i1.startsWith("_")
+fun bind_pattern_name(acc: UMap<void>, name: A.Name): UMap<void> {
+  if (name.i1 != "_") acc.add(name, void) else acc
+}
+
+fun bind_pattern_params(
+  acc: UMap<void>,
+  x: ?Parameters<A.Pattern>,
+): UMap<void> {
+  x match {
+  | None() -> acc
+  | Some(params) -> params.foldl(pattern_bindings, acc)
+  }
+}
+
+/*****************************************************************************/
+/* Naming environment */
+/*****************************************************************************/
+fun make_env(): Env {
+  Env{
+    in_async => None(),
+    in_tabstract => Not_tabstract(),
+    is_constraint_position => false,
+    in_consts_type_annot => false,
+    in_class_const_expr => false,
+    sk_this => None(),
+    inst => None(),
+    inst_type => None(),
+    const_type_this => None(),
+    tparams => tparams_empty(),
+    in_deferred => false,
+    macro_ => None(),
+    macros => UMap::create(),
+  }
+}
+
+/*****************************************************************************/
+/* Remove the Tunder and replaces them with generics.
+ * TODO remove this feature
+ */
+/*****************************************************************************/
+fun tunder_parameter(
+  context: String,
+  acc: mutable ClassAcc,
+  env: Env,
+  tunder_count: () -> Int,
+  params: Array<A.Type_parameter>,
+  par: A.Parameter,
+): (Array<A.Type_parameter>, A.Parameter) {
+  (params1, !par.type) = tunder_type(
+    context,
+    acc,
+    env,
+    tunder_count,
+    params,
+    par.type,
+  );
+  (params1, par)
+}
+
+fun tunder_type(
+  context: String,
+  acc: mutable ClassAcc,
+  env: Env,
+  tunder_count: () -> Int,
+  params: Array<A.Type_parameter>,
+  ty_: A.Type_,
+): (Array<A.Type_parameter>, A.Type_) {
+  (pos, ty) = ty_;
+  (params1, ty1) = tunder_type_(
+    context,
+    acc,
+    env,
+    tunder_count,
+    params,
+    pos,
+    ty,
+  );
+  (params1, (pos, ty1))
+}
+
+fun tunder_type_(
+  context: String,
+  acc: mutable ClassAcc,
+  env: Env,
+  tunder_count: () -> Int,
+  params: Array<A.Type_parameter>,
+  pos: FileRange,
+  ty: A.Type__,
+): (Array<A.Type_parameter>, A.Type__) {
+  inner = (params, ty) ->
+    tunder_type(context, acc, env, tunder_count, params, ty);
+  ty match {
+  | A.Tany()
+  | A.Tfrozen()
+  | A.TnonNullable()
+  | A.Tinst() ->
+    (params, ty)
+  | A.Tthis() ->
+    acc.!seen_this_type = true;
+    (params, ty)
+  | A.Tunder() ->
+    tparam_id = context + acc.next_id().toString();
+    cur_count = tunder_count();
+    tparam_name = (pos, "_[" + cur_count + "]");
+    tparam = (A.Vnone(), tparam_id, tparam_name, None());
+    tunder_type_name = A.Tparam(tparam_name, tparam_id);
+    (Array[tparam].concat(params), A.Tapply(tunder_type_name, Array[]))
+  | A.Tapply(name, tyl) ->
+    (acc1, tyl1) = tyl.mapAcc(inner, params);
+    (acc1, A.Tapply(name, tyl1))
+  | A.Ttuple(tyl) ->
+    (acc1, tyl1) = tyl.mapAcc(inner, params);
+    (acc1, A.Ttuple(tyl1))
+  | A.Tfun(fkind, fparams, ty1) ->
+    (acc1, params1) = fparams.map_foldl(inner, params);
+    (acc2, ty2) = inner(acc1, ty1);
+    (acc2, A.Tfun(fkind, params1, ty2))
+  | A.Tabstract(tn, nl) -> (params, A.Tabstract(tn, nl))
+  | A.Tmutable(ty1) ->
+    (acc1, ty2) = inner(params, ty1);
+    (acc1, A.Tmutable(ty2))
+  | A.Treadonly(ty1) ->
+    (acc1, ty2) = inner(params, ty1);
+    (acc1, A.Treadonly(ty2))
+  | A.Tawaitable(ty1) ->
+    (acc1, ty2) = inner(params, ty1);
+    (acc1, A.Tawaitable(ty2))
+  }
+}
+
+/****************************************************************************/
+/* Checks that locals are used. */
+/****************************************************************************/
+
+value class Bound(m: SMap<FileRange>) {
+  fun bind(n: N.Name): this {
+    (fr, var) = n;
+    if (!is_wildcard_name_(var)) {
+      this.m.maybeGet(var) match {
+      | Some _ ->
+        msg =
+          var +
+          " is already bound in this scope. " +
+          "A name may be bound only once in a given scope. " +
+          "Use '!" +
+          var +
+          " = ...' to assign a new value to an " +
+          "existing name.";
+        SkipError.error(fr, msg)
+      | _ -> void
+      }
+    };
+    !this.m = this.m.set(var, fr);
+    this
+  }
+
+  fun shadows(other: Bound): this {
+    // merge takes the first element
+    !this.m = this.m.merge(other.m);
+    this
+  }
+
+  fun contains(n: N.Name): Bool {
+    this.m.containsKey(n.i1)
+  }
+}
+
+value class Free(m: SMap<FileRange>, errors: List<(FileRange, String)>) {
+  fun isEmpty(): Bool {
+    this.m.isEmpty()
+  }
+
+  fun set(n: N.Name): this {
+    !this.m = this.m.set(n.i1, n.i0);
+    this
+  }
+
+  fun close(n: N.Name, error: Bool): this {
+    (fr, var) = n;
+    this.m.maybeGet(var) match {
+    | None() if (
+      error &&
+      !is_wildcard_name_(var) &&
+      !is_tmp_var(var) &&
+      !is_tmp_param(var)
+    ) ->
+      msg = `Local variable '${var}' was not used. Prefix it with an underscore to silence the error: '_${var}'`;
+      !this.errors = List.Cons((fr, msg), this.errors);
+      this
+    | None() -> this
+    // used
+    | Some _ ->
+      !this.m = this.m.remove(var);
+      this
+    }
+  }
+
+  fun union(other: Free): this {
+    Free(this.m.merge(other.m), this.errors.concat(other.errors))
+  }
+}
+const empty_bound: Bound = Bound(SortedMap[]);
+const empty_free: Free = Free(SortedMap[], List[]);
+
+fun check_locals(bound: Bound, cur: N.Expr): (Free, Bool, N.Expr) {
+  k = (f, c, e) -> (f, c, e);
+  while ({
+    (fr, e) = cur;
+    e match {
+    | N.Bind(n, e1, e2) ->
+      old_bound = bound;
+      old_k = k;
+      !k = (f2, c2, new_e2) -> {
+        (f1, c1, new_e1) = check_locals(old_bound, e1);
+        f = f1.union(f2).close(n, true);
+        changed = c1 || c2;
+        new_ex = if (changed) (fr, N.Bind(n, new_e1, new_e2)) else (fr, e);
+        old_k(f, changed, new_ex)
+      };
+      !bound = bound.bind(n);
+      !cur = e2;
+      true
+    | N.Seq(e1, e2) ->
+      cur_bound = bound;
+      old_k = k;
+      !k = (f2, c2, new_e2) -> {
+        (f1, c1, new_e1) = check_locals(cur_bound, e1);
+        f = f1.union(f2);
+        changed = c1 || c2;
+        new_ex = if (changed) (fr, N.Seq(new_e1, new_e2)) else (fr, e);
+        old_k(f, changed, new_ex)
+      };
+      !cur = e2;
+      true
+    | _ -> false
+    }
+  }) void;
+  (f, changed, efinal) = check_locals_(bound, cur);
+  k(f, changed, efinal)
+}
+
+fun check_locals_(bound: Bound, ex: N.Expr): (Free, Bool, N.Expr) {
+  (fr, e) = ex;
+  e match {
+  | N.Continue()
+  | N.Classname _
+  | N.Literal _ ->
+    (empty_free, false, ex)
+  | N.Var(var) ->
+    is_bound = bound.contains(var);
+    is_wildcard = is_wildcard_name(var);
+    // kick this error to typing for better "did you mean" errors
+    if (!is_bound && is_wildcard) {
+      SkipError.error(fr, "You cannot use a variable that starts with _")
+    } else {
+      (
+        Free(if (is_bound) SortedMap[var.i1 => fr] else SortedMap[], List[]),
+        false,
+        ex,
+      )
+    }
+  | N.Object(mut, n, tyl, args) ->
+    (free, changed, !args) = check_locals_call_args(bound, args);
+    (free, changed, if (changed) (fr, N.Object(mut, n, tyl, args)) else ex)
+  | N.If(e1, e2, e3) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !e2) = check_locals(bound, e2);
+    (f3, c3, !e3) = check_locals(bound, e3);
+    f = f1.union(f2.union(f3));
+    changed = c1 || c2 || c3;
+    (f, changed, if (changed) (fr, N.If(e1, e2, e3)) else ex)
+  | N.Call(mut, e1, tyl, args) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !args) = check_locals_call_args(bound, args);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.Call(mut, e1, tyl, args)) else ex)
+  | N.ArrayGet(e1, args) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !args) = check_locals_call_args(bound, args);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.ArrayGet(e1, args)) else ex)
+  | N.Annotated(e1, ty) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Annotated(e1, ty)) else ex)
+  | N.Seq _
+  | N.Bind _ ->
+    invariant_violation("assert false")
+  | N.Assign(n, e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    f = f1.set(n);
+    (f, c1, if (c1) (fr, N.Assign(n, e1)) else ex)
+  | N.Unop(op, e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Unop(op, e1)) else ex)
+  | N.StaticDot(e1, field) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.StaticDot(e1, field)) else ex)
+  | N.Await(e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Await(e1)) else ex)
+  | N.Return(e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Return(e1)) else ex)
+  | N.Yield(e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Yield(e1)) else ex)
+  | N.YieldBreak() -> (empty_free, false, ex)
+  | N.Async(_, e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    fv = f1.m;
+    changed = c1 || !fv.isEmpty();
+    (f1, changed, if (changed) (fr, N.Async(fv, e1)) else ex)
+  | N.Throw(e1) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Throw(e1)) else ex)
+  | N.Dot(e1, field) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f1, c1, if (c1) (fr, N.Dot(e1, field)) else ex)
+  | N.AssignField(e1, field, e2) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !e2) = check_locals(bound, e2);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.AssignField(e1, field, e2)) else ex)
+  | N.Pipe(e1, e2) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !e2) = check_locals(bound, e2);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.Pipe(e1, e2)) else ex)
+  | N.Binop(op, e1, e2) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !e2) = check_locals(bound, e2);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.Binop(op, e1, e2)) else ex)
+  | N.Try(e1, mbl) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !mbl) = check_locals_match_branches(bound, mbl);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.Try(e1, mbl)) else ex)
+  | N.Is(e1, pat) ->
+    (f1, changed, !e1) = check_locals(bound, e1);
+    (f1, changed, if (changed) (fr, N.Is(e1, pat)) else ex)
+  | N.As(e1, pat) ->
+    (f1, changed, !e1) = check_locals(bound, e1);
+    (f1, changed, if (changed) (fr, N.As(e1, pat)) else ex)
+  | N.Match(e1, mbl) ->
+    (f1, c1, !e1) = check_locals(bound, e1);
+    (f2, c2, !mbl) = check_locals_match_branches(bound, mbl);
+    f = f1.union(f2);
+    changed = c1 || c2;
+    (f, changed, if (changed) (fr, N.Match(e1, mbl)) else ex)
+  | N.Lambda(mods, params, _, e1, yields) ->
+    next_bound = check_locals_name_lambda_parameters(bound, params);
+    (f1, c1, !e1) = check_locals(next_bound, e1);
+    f = close_local_scope_lambda_parameters(f1, params);
+    fv = f.m;
+    changed = c1 || !fv.isEmpty();
+    (
+      f,
+      changed,
+      if (changed) (fr, N.Lambda(mods, params, fv, e1, yields)) else ex,
+    )
+  | N.Array(mut, tyl, el) ->
+    f = empty_free;
+    changed = false;
+    !el = el.map(earg -> {
+      (fa, ca, !earg) = check_locals(bound, earg);
+      !f = f.union(fa);
+      !changed = changed || ca;
+      earg
+    });
+    (f, changed, if (changed) (fr, N.Array(mut, tyl, el)) else ex)
+  | N.Concurrent _ -> invariant_violation("Not supported")
+  | N.With(e1, updates) ->
+    (f, changed, !e1) = check_locals(bound, e1);
+    !updates = updates.map((_, update) -> {
+      (i, eu) = update;
+      (fu, cu, !eu) = check_locals(bound, eu);
+      !f = f.union(fu);
+      !changed = changed || cu;
+      (i, eu)
+    });
+    (f, changed, if (changed) (fr, N.With(e1, updates)) else ex)
+  | N.TemplateLiteral(args) ->
+    (f1, c1, !args) = check_locals_call_args(bound, args);
+    (f1, c1, if (c1) (fr, N.TemplateLiteral(args)) else ex)
+
+  | N.Break(eb) ->
+    (f1, c1, !eb) = check_locals(bound, eb);
+    (f1, c1, if (c1) (fr, N.Break(eb)) else ex)
+  | N.Loop(body) ->
+    (f1, c1, !body) = check_locals(bound, body);
+    (f1, c1, if (c1) (fr, N.Loop(body)) else ex)
+  | N.DoWhile(body, cond, withoutBreak) ->
+    (f1, c1, !body) = check_locals(bound, body);
+    (f2, c2, !cond) = check_locals(bound, cond);
+    (f3, c3, !withoutBreak) = check_locals(bound, withoutBreak);
+    f = f1.union(f2).union(f3);
+    changed = c1 || c2 || c3;
+    (f, changed, if (changed) (fr, N.DoWhile(body, cond, withoutBreak)) else ex)
+  | N.While(cond, body, withoutBreak) ->
+    (f1, c1, !cond) = check_locals(bound, cond);
+    (f2, c2, !body) = check_locals(bound, body);
+    (f3, c3, !withoutBreak) = check_locals(bound, withoutBreak);
+    f = f1.union(f2).union(f3);
+    changed = c1 || c2 || c3;
+    (f, changed, if (changed) (fr, N.While(cond, body, withoutBreak)) else ex)
+  }
+}
+
+fun check_locals_call_args(
+  bound: Bound,
+  args: N.Call_args,
+): (Free, Bool, N.Call_args) {
+  f = empty_free;
+  changed = false;
+  !args = args.map(oarg -> {
+    (o, arg) = oarg;
+    (fa, ca, !arg) = check_locals(bound, arg);
+    !f = f.union(fa);
+    !changed = changed || ca;
+    if (changed) (o, arg) else oarg
+  });
+  (f, changed, args)
+}
+
+fun check_locals_match_branches(
+  bound: Bound,
+  mbl: List<N.Match_branch>,
+): (Free, Bool, List<N.Match_branch>) {
+  f = empty_free;
+  changed = false;
+  !mbl = mbl.map(mb -> {
+    (fa, ca, !mb) = check_locals_match_branch(bound, mb);
+    !f = f.union(fa);
+    !changed = changed || ca;
+    mb
+  });
+  (f, changed, mbl)
+}
+
+fun check_locals_match_branch(
+  bound: Bound,
+  mb: N.Match_branch,
+): (Free, Bool, N.Match_branch) {
+  (pats, maybe_guard, e) = mb;
+  (pathd, pattl) = pats match {
+  | List.Nil() -> invariant_violation("empty match branch")
+  | List.Cons(x, xs) -> (x, xs)
+  };
+  patbound = check_locals_pattern(empty_bound, pathd);
+  !bound = patbound.m.reduce((b, var, fr) -> b.bind((fr, var)), bound);
+  check_local_set = (srcpat, m, v, p) ->
+    if (!m.containsKey(v) && !is_wildcard_name_(v)) {
+      SkipError.errorl(
+        List[
+          (srcpat.i0, "Found non-overlapping variable in or pattern."),
+          (p, "This pattern has non-overlapping variable: " + v),
+        ],
+      )
+    };
+  check_pattern = pat -> {
+    m = check_locals_pattern(empty_bound, pat).m;
+    for (v => p in m) check_local_set(pathd, patbound.m, v, p); // check the local adds no new locals
+    for (v => p in patbound.m) {
+      check_local_set(pat, m, v, p) // check the pattern has all the locals
+    }
+  };
+  pattl.each(check_pattern);
+  (f1, c1, !maybe_guard) = maybe_guard match {
+  | None() -> (empty_free, false, None())
+  | Some(mg) ->
+    (f, c, !mg) = check_locals(bound, mg);
+    (f, c, Some(mg))
+  };
+  (f2, c2, !e) = check_locals(bound, e);
+  f = patbound.m.reduce((f, var, fr) -> f.close((fr, var), true), f1.union(f2));
+  changed = c1 || c2;
+  (f, changed, if (changed) (pats, maybe_guard, e) else mb)
+}
+
+fun check_locals_pattern(bound: Bound, pat: N.Pattern): Bound {
+  pat.i1 match {
+  | N.Pat_const _
+  | N.Pat_literal _ ->
+    bound
+  | N.Pat_var(var_name) -> bound.bind(var_name)
+  | N.Pat_type(_, obj_params, _) ->
+    obj_params match {
+    | None() -> bound
+    | Some(params) -> params.foldl(check_locals_pattern, bound)
+    }
+  | N.Pat_as(p, var_name) ->
+    !bound = bound.bind(var_name);
+    check_locals_pattern(bound, p)
+  }
+}
+
+fun class_parameters(
+  acc: mutable ClassAcc,
+  env: Env,
+  cd: A.Class_def,
+): N.MaybeClassParams {
+  cd.params match {
+  | A.NoParams() -> N.NoParams()
+  | A.NativeConstruct(fr) -> N.NativeConstruct(fr)
+  | A.HasParams(acp) ->
+    check_default_last(acp.params);
+    cp = class_params(acc, env, cd, acp);
+    !cp.params = check_locals_fun_parameters(empty_bound, cp.params).i1;
+    N.HasParams(cp)
+  }
+}
+
+fun check_locals_fun_parameters(
+  bound: Bound,
+  params: Parameters<N.Parameter>,
+): (Bound, Parameters<N.Parameter>) {
+  orig_bound = bound;
+  !params = params.map(p -> {
+    !bound = bound.bind(p.name);
+    value = p.value.map(e -> check_locals(orig_bound, e).i2);
+    p with {value}
+  });
+  (bound, params)
+}
+
+fun check_locals_name_lambda_parameters(
+  bound: Bound,
+  params: Parameters<N.Lam_parameter>,
+): Bound {
+  lam_bound = params.foldl((b, par) -> b.bind(par.i0), empty_bound);
+  lam_bound.shadows(bound)
+}
+
+fun close_local_scope_lambda_parameters(
+  free: Free,
+  params: Parameters<N.Lam_parameter>,
+): Free {
+  error = params match {
+  | Positional _ -> true
+  | Named _ -> false
+  };
+  params.foldl((f, par) -> f.close(par.i0, error), free)
+}
+
+fun close_local_scope_fun_parameters(
+  free: Free,
+  params: Parameters<N.Parameter>,
+): Free {
+  params match {
+  | Named _ -> free
+  | Positional _ ->
+    params.each(par -> {
+      !free = free.close(par.name, true)
+    });
+    free
+  }
+}
+
+/*****************************************************************************/
+/* Core naming */
+/*****************************************************************************/
+
+fun check_type_alias(ta: A.Type_alias_def): void {
+  env = make_env();
+  acc = mutable ClassAcc{};
+  env1 = ta.tparams.foldl(type_alias_parameter, env);
+  _ = type(acc, env1, ta.body)
+}
+
+memoized fun maybeGetConst(constName: String): ?N.Const_def {
+  GlobalEnv.getConst(constName) match {
+  | None() -> None()
+  | Some(astConst) -> Some(const_def(make_env(), astConst))
+  }
+}
+
+fun getConst(constName: A.Name): N.Const_def {
+  maybeGetConst(constName.i1) match {
+  | None() -> SkipError.error(constName.i0, "Unbound constant")
+  | Some(x) -> x
+  }
+}
+
+fun const_def(env: Env, cst: A.Const_def): N.Const_def {
+  const_def_with_acc(mutable ClassAcc{}, env, cst)
+}
+
+fun const_def_with_acc(
+  acc: mutable ClassAcc,
+  env: Env,
+  cst: A.Const_def,
+): N.Const_def {
+  !env.in_deferred = cst.deferred_.isSome();
+  (from_, source, (localsErrors, value)) = const_val(
+    acc,
+    env with {in_class_const_expr => true},
+    cst.value,
+  );
+  checkNoReturnBody(value);
+  from_1 = {
+    from_ match {
+    | Some _ -> from_
+    | None() -> env.sk_this.map(((c: A.Class_def) -> c.name))
+    }
+  };
+  source1 = {
+    source match {
+    | Some _ -> source
+    | None() -> env.sk_this.map(((c: A.Class_def) -> c.name))
+    }
+  };
+  type = type(acc, env with {in_consts_type_annot => true}, cst.type);
+  N.Const_def{
+    value,
+    annotations => cst.annotations,
+    from_ => from_1,
+    source => source1,
+    native_ => cst.native_,
+    deferred_ => cst.deferred_,
+    visibility => visibility(cst.visibility),
+    name => cst.name,
+    type,
+    localsErrors,
+  }
+}
+
+fun const_val(
+  acc: mutable ClassAcc,
+  env: Env,
+  v: A.Inherited_body,
+): (?N.Name, ?N.Name, (List<SkipError.Trace>, N.Expr_body)) {
+  (pos, value) = v;
+  value match {
+  | A.Inherited(inh) ->
+    check_explicity(inh.explicit);
+    (Some(inh.from_), Some(inh.source), const_val_(acc, env, pos, inh.value))
+  | A.Body(value1) -> (None(), None(), const_val_(acc, env, pos, value1))
+  }
+}
+
+fun const_val_(
+  acc: mutable ClassAcc,
+  env: Env,
+  _pos: FileRange,
+  value: A.Expr_body,
+): (List<SkipError.Trace>, N.Expr_body) {
+  value match {
+  | A.BNone() -> (List[], N.Abstract())
+  | A.BNative _ -> (List[], N.Native())
+  | A.BExpr(orig) ->
+    e = expr(mutable Acc{classAcc => acc}, env, orig());
+    (free, _, !e) = check_locals(empty_bound, e);
+    (free.errors, N.Implemented(e))
+  | A.BFrom(A.Tclass(cname)) -> invalid_from(cname)
+  | A.BFrom _
+  | A.BAlgebraic _ ->
+    invariant_violation("assert false")
+  }
+}
+
+fun cla_type_def(
+  acc: mutable ClassAcc,
+  env: Env,
+  td: A.Type_def<A.Cla_tyd>,
+): N.Type_def {
+  type_param_with_acc = (env, tparam) -> type_parameter(acc, env, tparam);
+  (env1, tparams) = td.tparams.mapAcc(type_param_with_acc, env);
+  N.Type_def{
+    annotations => td.annotations,
+    visibility => visibility(td.visibility),
+    name => td.name,
+    tparams => tparams,
+    body => cla_tyd(acc, env1, td.body),
+    source => td.source.fromSome(),
+  }
+}
+
+fun cla_tyd(acc: mutable ClassAcc, env: Env, x: A.Cla_tyd): N.Cla_tyd {
+  x match {
+  | A.TydDefined(ty) ->
+    ty1 = type_tyd(acc, env, (p -> Tyd_value(p)), ty);
+    N.TydDefined(ty1)
+  | A.TydAbstract(tyd_type, def) ->
+    N.TydAbstract(
+      tyd_type.map(ty -> type_tyd(acc, env, p -> Tyd_constraint(p), ty)),
+      def.map(ty -> type_tyd(acc, env, p -> Tyd_constraint(p), ty)),
+    )
+  }
+}
+
+fun type_tyd(
+  acc: mutable ClassAcc,
+  env: Env,
+  case: ((FileRange) -> Tabstract_case),
+  ty: A.Type_,
+): N.Type_ {
+  (pos, _) = ty;
+  env1 = env with {in_tabstract => case(pos)};
+  type(acc, env1, ty)
+}
+
+fun type_alias(tyd: A.Type_alias_def): N.Type_alias_def {
+  env = make_env();
+  acc = mutable ClassAcc{};
+  name = tyd.name;
+  annotations = tyd.annotations;
+  tparams = tyd.tparams.map(tp -> {
+    (_, i, n, _) = tp;
+    (i, n)
+  });
+  env1 = env with {tparams => tyd.tparams.reduce(tparam_add, env.tparams)};
+  body = type(acc, env1, tyd.body);
+  N.Type_alias_def{annotations, name, tparams, body}
+}
+
+memoized fun maybeGetClass(className: String): ?N.Class_def {
+  SkipInherit.maybeGetClass(className) match {
+  | None() -> None()
+  | Some(def) -> Some(class_def(make_env(), def))
+  }
+}
+
+fun getClass(className: A.Name): N.Class_def {
+  maybeGetClass(className.i1) match {
+  | None() -> SkipError.error(className.i0, `Unbound class: '${className.i1}'`)
+  | Some(x) -> x
+  }
+}
+
+// mutable state holds next-id lambda and
+// records observations made during traversal
+mutable class ClassAcc{
+  next_id: () -> Int = sk_create_counter(),
+  mutable seen_this_type: Bool = false,
+}
+
+mutable class Acc{
+  classAcc: mutable ClassAcc,
+  mutable returns: ?FileRange = None(),
+  mutable yields: ?FileRange = None(),
+} {
+  private readonly fun badReturn(
+    returnPos: FileRange,
+    yieldPos: FileRange,
+  ): void {
+    SkipError.errorl(
+      List[
+        (yieldPos, "Cannot both yield and return in the same function."),
+        (returnPos, "To return from a generator use 'yield break'"),
+      ],
+    )
+  }
+
+  // Record that the current function uses "yield" or "yield break".
+  mutable fun setYields(yieldPos: FileRange): void {
+    (this.returns, this.yields) match {
+    | (_, Some _) -> void
+    | (Some(returnPos), _) -> this.badReturn(returnPos, yieldPos)
+    | _ -> this.!yields = Some(yieldPos)
+    }
+  }
+
+  // Record that the current function uses "return".
+  mutable fun setReturns(returnPos: FileRange): void {
+    (this.returns, this.yields) match {
+    | (Some _, _) -> void
+    | (_, Some(yieldPos)) -> this.badReturn(returnPos, yieldPos)
+    | _ -> this.!returns = Some(returnPos)
+    }
+  }
+}
+
+fun class_def(env: Env, cd: A.Class_def): N.Class_def {
+  acc = mutable ClassAcc{};
+  name = cd.name;
+  inst = cd;
+  sk_this = cd;
+  (_class_position, class_name) = name;
+  context = "<class>" + class_name + ":";
+  this1 = Some(sk_this);
+  inst1 = cd.kind match {
+  | A.KTrait() -> Some(inst)
+  | _ -> None()
+  };
+  inst_type = inst1.map(inst -> make_inst_type(name.i0, inst));
+  !env = env with {inst => inst1, inst_type, sk_this => this1};
+  cd.tparams.each(enforce_no_this_in_tparam);
+  type_param_with_acc = (env, tparam) -> type_parameter(acc, env, tparam);
+  (!env, tparams) = cd.tparams.mapAcc(type_param_with_acc, env);
+  extends_ = make_extends(acc, env, cd.extends_);
+  use = make_extends(acc, env, cd.use);
+  consts = cd.consts.map((_, cd) -> const_def_with_acc(acc, env, cd));
+  params = class_parameters(acc, env, cd);
+  methods = cd.methods.map((_, met) ->
+    method_def(context, acc, env, tparams, met)
+  );
+  types = cd.types.map((_, td) -> cla_type_def(acc, env, td));
+  fields = make_fields(consts, params, methods, types);
+  cd.extension match {
+  | None() -> void
+  | Some(pos) ->
+    SkipError.error(pos, "Cannot extend a class that doesn't exist")
+  };
+  tparam_parents = build_tparam_parents(tparams, extends_, use);
+  is_self_parameterized = acc.seen_this_type;
+  cd1 = N.Class_def{
+    depth => cd.depth,
+    native_ => cd.native_,
+    kind => cd.kind,
+    value => cd.value,
+    data => cd.data,
+    mutable_ => cd.mutable_,
+    annotations => cd.annotations,
+    children_ => cd.children__set,
+    concrete_children => cd.concrete_children,
+    tparam_mismatched => SortedMap[],
+    name,
+    tparams,
+    params,
+    extends_,
+    use,
+    consts,
+    types,
+    methods,
+    fields,
+    tparam_parents,
+    is_self_parameterized,
+  };
+  /* Checks that all the methods have valid implementations */
+  check_class_rules(cd1);
+  /* check compatibility of ancestors, post-mutability propagation */
+  !cd1 = SkipCheckVariance.class_def(cd1);
+  cd1
+}
+
+/* Because of duplicate items in extends/use lists, parents are stored in a map
+ * The order being Class => Type Arguments => (Sources, [Conditions])
+ * Note that the keys for type arguments are purely syntactic
+ */
+fun make_extends(
+  acc: mutable ClassAcc,
+  env: Env,
+  extend_list: Array<A.Parent>,
+): N.ParentMap {
+  m = mutable Map<N.NameKey, mutable Map<N.TargKey, mutable N.ParentBuilder>>[];
+  for (par in extend_list) {
+    (n, tyl) = par.parent;
+    parentName = type_name(env, n);
+    parentTargs = tylist(acc, env, tyl);
+    sk_this = env.sk_this.fromSome().name;
+    has_tconst = parentTargs.any(ty ->
+      ty.i1 match {
+      | N.Tnamed(N.NStatic _, _)
+      | N.Tnamed(N.NThis _, _) ->
+        true
+      | N.Tnamed(N.NTydResolved(tydn, _), _)
+      | N.Tnamed(N.NTydAbstract(tydn, _), _) ->
+        tydn.i1 == sk_this.i1
+      | _ -> false
+      }
+    );
+    wcarr = par.conditions.map(wc -> when_clause(acc, env, wc));
+
+    wckey = N.WhenclauseKey(wcarr);
+    effective_source = if (has_tconst) sk_this else par.source;
+    inherited_source = par.source;
+    nkey = N.NameKey(parentName);
+    targkey = N.TargKey(parentTargs);
+    m.maybeGet(nkey) match {
+    | None() ->
+      tmap = mutable Map[
+        targkey => mutable N.ParentBuilder{
+          effective_source,
+          inherited_source,
+          conditions => mutable Set[wckey],
+        },
+      ];
+      m.set(nkey, tmap)
+    | Some(tmap) ->
+      tmap.maybeGet(targkey) match {
+      | None() ->
+        parent = mutable N.ParentBuilder{
+          effective_source,
+          inherited_source,
+          conditions => mutable Set[wckey],
+        };
+        tmap.set(targkey, parent)
+      | Some(parent) ->
+        (!effective_source, !inherited_source) = maxSources(
+          effective_source,
+          inherited_source,
+          parent.effective_source,
+          parent.inherited_source,
+        );
+        parent.!effective_source = effective_source;
+        parent.!inherited_source = inherited_source;
+        parent.conditions.insert(wckey)
+      }
+    }
+  } else {
+    N.ParentMap(m.map((_, tm) -> tm.map((_, pb) -> pb.toParent())))
+  }
+}
+
+fun maxSources(
+  es1: N.Name,
+  is1: N.Name,
+  es2: N.Name,
+  is2: N.Name,
+): (N.Name, N.Name) {
+  if (es1.i1 == es2.i1) {
+    maxDepthCD(is1, is2) match {
+    | LName(isn) -> (es1, isn)
+    | RName(isn) -> (es2, isn)
+    }
+  } else {
+    maxDepthCD(es1, es2) match {
+    | LName(esn) -> (esn, is1)
+    | RName(esn) -> (esn, is2)
+    }
+  }
+}
+
+base class SelectedName(n: N.Name) {
+  children =
+  | LName
+  | RName
+}
+
+// The source for an extend list is the most senior parent
+fun maxDepthCD(n1: N.Name, n2: N.Name): SelectedName {
+  cd1 = SkipInherit.getClass(n1);
+  cd2 = SkipInherit.getClass(n2);
+  cd1.depth.compare(cd2.depth) match {
+  | GT() -> LName(n1)
+  | EQ() -> if (n1.i1 <= n2.i1) LName(n1) else LName(n2)
+  | LT() -> RName(n1)
+  }
+}
+
+fun class_params(
+  classAcc: mutable ClassAcc,
+  env: Env,
+  cd: A.Class_def,
+  cp: A.Class_params,
+): N.Class_params {
+  t__ = cp;
+  pos = t__.pos;
+  final_ = t__.final_;
+  params = t__.params;
+  source = t__.source;
+  N.Class_params{
+    pos,
+    final_,
+    source,
+    visibility => visibility(t__.visibility),
+    params => {
+      acc = mutable Acc{classAcc};
+      params.map(par -> parameter_(acc, Some(cd), env, par))
+    },
+  }
+}
+
+fun make_fields(
+  consts: UMap<N.Const_def>,
+  params: N.MaybeClassParams,
+  methods: UMap<N.Method_def>,
+  types: UMap<N.Type_def>,
+): UMap<N.Field_type> {
+  fields = UMap[];
+  fields1 = make_const_fields(consts, fields);
+  fields2 = make_param_fields(params, fields1);
+  fields3 = make_method_fields(methods, fields2);
+  fields4 = make_type_fields(types, fields3);
+  fields4
+}
+
+fun make_const_fields(
+  consts: UMap<N.Const_def>,
+  fields: UMap<N.Field_type>,
+): UMap<N.Field_type> {
+  consts.reduce(
+    (fields1, _, cst) -> {
+      abstract = {
+        cst.value match {
+        | N.Abstract() -> Some(cst.name.i0)
+        | N.Native()
+        | N.Implemented _ ->
+          None()
+        }
+      };
+      field_type = N.Field_type{
+        abstract,
+        deferred_ => cst.deferred_,
+        visibility => cst.visibility,
+        eltk => N.EConst(),
+        assignable => None(),
+        tparams => Array[],
+        type => cst.type,
+        whenparams => Array[],
+        source => cst.source.fromSome(),
+        kind => N.FKStatic(cst.name.i0),
+      };
+      fields1.add(cst.name, field_type)
+    },
+    fields,
+  )
+}
+
+fun make_param_fields(
+  params: N.MaybeClassParams,
+  fields: UMap<N.Field_type>,
+): UMap<N.Field_type> {
+  params match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    fields
+  | N.HasParams(cp) -> make_param_fields_(cp.params, fields)
+  }
+}
+
+fun make_param_fields_(
+  params: Parameters<N.Parameter>,
+  fields: UMap<N.Field_type>,
+): UMap<N.Field_type> {
+  params match {
+  | Positional(l) ->
+    l.foldl(
+      ((fields, par) -> {
+        field_type = N.Field_type{
+          visibility => par.visibility,
+          eltk => N.EProperty(),
+          assignable => par.mutable_,
+          tparams => Array[],
+          kind => N.FKReadonly(par.name.i0),
+          type => par.type,
+          whenparams => Array[],
+          source => par.source.fromSome(),
+          deferred_ => par.deferred_,
+          abstract => None(),
+        };
+        fields.add(par.name, field_type)
+      }),
+      fields,
+    )
+  | Named(m) ->
+    m.reduce(
+      (fields, _, par) -> {
+        field_type = N.Field_type{
+          visibility => par.visibility,
+          eltk => N.EProperty(),
+          assignable => par.mutable_,
+          tparams => Array[],
+          kind => N.FKReadonly(par.name.i0),
+          type => par.type,
+          whenparams => Array[],
+          source => par.source.fromSome(),
+          deferred_ => par.deferred_,
+          abstract => None(),
+        };
+        fields.add(par.name, field_type)
+      },
+      fields,
+    )
+  }
+}
+
+fun make_method_fields(
+  methods: UMap<N.Method_def>,
+  fields: UMap<N.Field_type>,
+): UMap<N.Field_type> {
+  methods.reduce(
+    (fields, _, met) -> {
+      params = met.params.map((x: N.Parameter) -> {
+        ty = x.type;
+        x.value match {
+        | None() -> ty
+        | Some((pos, _)) -> (pos, N.Tdefault(ty))
+        }
+      });
+      purity = make_met_tfun_purity(met.kind);
+      tracking = make_tfun_tracking(met.untracked_);
+      ml = (purity, tracking);
+      fty = (met.name.i0, N.Tfun(A.Vnone(), ml, Array[], params, met.return_));
+      abstract = met.body match {
+      | N.Abstract() -> Some(met.name.i0)
+      | _ -> None()
+      };
+      field_type = N.Field_type{
+        abstract,
+        deferred_ => met.deferred_,
+        visibility => met.visibility,
+        eltk => N.EMethod(),
+        assignable => None(),
+        tparams => met.tparams,
+        kind => met.kind,
+        type => fty,
+        whenparams => met.whenparams,
+        source => met.source,
+      };
+      fields.add(met.name, field_type)
+    },
+    fields,
+  )
+}
+
+fun make_met_tfun_purity(kind: N.FieldKind): Array<N.Purity_modifier> {
+  kind match {
+  | N.FKStatic _ -> Array[N.Fpure()]
+  // Is fixed in expr_dot in typing
+  | N.FKDynamic _ -> Array[N.Fmutable()]
+  }
+}
+
+fun make_tfun_tracking(untracked_: ?FileRange): Array<N.Tracking_modifier> {
+  untracked_ match {
+  | None() -> Array[N.Ftracked()]
+  | Some _ -> Array[N.Funtracked()]
+  }
+}
+
+fun make_type_fields(
+  types: UMap<N.Type_def>,
+  fields: UMap<N.Field_type>,
+): UMap<N.Field_type> {
+  types.reduce(
+    (fields, _, tyd) -> {
+      type = {
+        tyd.body match {
+        | N.TydAbstract(None(), _) -> (tyd.name.i0, N.Tanything())
+        | N.TydAbstract(Some(ty), _)
+        | N.TydDefined(ty) ->
+          ty
+        }
+      };
+      field_type = N.Field_type{
+        visibility => tyd.visibility,
+        eltk => N.EType(),
+        assignable => None(),
+        tparams => tyd.tparams,
+        kind => N.FKStatic(tyd.name.i0),
+        type,
+        whenparams => Array[],
+        source => tyd.source,
+        deferred_ => None(),
+        abstract => None(),
+      };
+      fields.add(tyd.name, field_type)
+    },
+    fields,
+  )
+}
+
+fun makeMethodMacros(env: Env, macro_: ?FileRange): UMap<MacroDefinition> {
+  result = UMap<MacroDefinition>::create();
+  if (macro_.isSome()) {
+    pos = env.sk_this.fromSome().name.i0;
+    !result = {
+      name = "#thisClassName";
+      result.add(
+        (pos, name),
+        ExpressionMacro::createStringLiteralMacro(
+          pos,
+          name,
+          env.sk_this.fromSome().name.i1,
+        ),
+      )
+    };
+    !result = {
+      name = "#ThisClass";
+      result.add(
+        (pos, name),
+        TypeNameMacro{
+          pos,
+          name,
+          value => A.Tclass(env.sk_this.fromSome().name),
+        },
+      )
+    };
+    result
+  } else {
+    result
+  }
+}
+
+fun method_def(
+  context: String,
+  classAcc: mutable ClassAcc,
+  env: Env,
+  cla_tparams: Array<N.Type_parameter>,
+  met: A.Method_def,
+): N.Method_def {
+  (_position, method_name) = met.name;
+  tparam_context = context + "<method:tparam>" + method_name + ":";
+  !env.in_deferred = met.deferred_.isSome();
+  tunder_count = sk_create_counter();
+  (tparams, params) = met.params.map_foldl(
+    (params, par) ->
+      tunder_parameter(
+        tparam_context,
+        classAcc,
+        env,
+        tunder_count,
+        params,
+        par,
+      ),
+    met.tparams,
+  );
+  return_context = context + "<method:return>" + method_name + ":";
+  (tparams1, return_) = tunder_type(
+    return_context,
+    classAcc,
+    env,
+    tunder_count,
+    tparams,
+    met.return_,
+  );
+  type_param_with_acc = (env, tparam) -> type_parameter(classAcc, env, tparam);
+  (env1, tparams2) = tparams1.mapAcc(type_param_with_acc, env);
+  whenparams = met.whenparams.map(tp -> when_clause(classAcc, env1, tp));
+  cd = env1.sk_this.fromSome();
+  env2 = env1 with {
+    in_async => met.async_,
+    macro_ => met.macro_,
+    macros => makeMethodMacros(env, met.macro_),
+  };
+  acc = mutable Acc{classAcc};
+  params1 = params.map(par -> parameter(acc, env2, par));
+  locals_fr = met.name.i0;
+  bound = empty_bound.bind((locals_fr, "this")).bind((locals_fr, "static"));
+  (!bound, params2) = check_locals_fun_parameters(bound, params1);
+  (algebraic, from_, source, localsErrors, body) = method_body(
+    acc,
+    env2,
+    bound,
+    params2,
+    met,
+  );
+  from_1 = {
+    from_ match {
+    | None() -> cd.name
+    | Some(n) -> n
+    }
+  };
+  source1 = {
+    source match {
+    | None() -> cd.name
+    | Some(n) -> n
+    }
+  };
+  return_1 = type(classAcc, env2, return_);
+  (tparams3, whenparams1) = infer_met_tparams_frozen(
+    met.frozen_,
+    met.async_,
+    met.memoized_,
+    cla_tparams,
+    whenparams,
+    tparams2,
+    params2,
+    return_1,
+  );
+  if (cd.isChilledOnly()) {
+    (met.readonly_, met.mutable_) match {
+    | (Some(rdo_fr), _) ->
+      name = env.sk_this.fromSome().name;
+      SkipError.errorl(
+        List[
+          (rdo_fr, "Invalid 'readonly' modifier. This class is not mutable"),
+          (name.i0, "Try adding a 'mutable' modifier here"),
+        ],
+      )
+    | (_, Some(mut_fr)) ->
+      name = env.sk_this.fromSome().name;
+      SkipError.errorl(
+        List[
+          (mut_fr, "Invalid 'mutable' modifier. This class is not mutable"),
+          (name.i0, "Try adding a 'mutable' modifier here"),
+        ],
+      )
+    | _ -> void
+    }
+  };
+  mods = (met.static_, met.readonly_, met.mutable_, met.frozen_);
+  kind = mods match {
+  | (Some(fr), None(), None(), None()) -> N.FKStatic(fr)
+  | (None(), Some(fr), None(), None()) -> N.FKReadonly(fr)
+  | (None(), None(), Some(fr), None()) -> N.FKMutable(fr)
+  | (None(), None(), None(), Some(fr)) -> N.FKFrozen(fr)
+  | (None(), None(), None(), None()) -> N.FKChilled()
+  | _ ->
+    invariant_violation(
+      "ICE multiple mutually exclusive method modifiers in Naming",
+    )
+  };
+  checkNoReturnBody(body);
+  N.Method_def{
+    visibility => visibility(met.visibility),
+    annotations => met.annotations,
+    overridable_ => met.overridable_,
+    memoized_ => met.memoized_,
+    async_ => met.async_,
+    macro_ => met.macro_,
+    deferred_ => met.deferred_,
+    untracked_ => met.untracked_,
+    name => met.name,
+    native_ => met.native_,
+    kind,
+    algebraic,
+    tparams => tparams3,
+    whenparams => whenparams1,
+    from_ => from_1,
+    source => source1,
+    params => params2,
+    return_ => return_1,
+    yields => acc.yields,
+    body => (acc.yields, body) match {
+    | (None(), b) -> b
+    | (Some _, N.Implemented(e)) -> N.Implemented(appendYieldBreak(e))
+    | _ -> invariant_violation("Unexpected generator")
+    },
+    localsErrors,
+  }
+}
+
+fun when_clause(
+  acc: mutable ClassAcc,
+  env: Env,
+  wc: A.When_type_clause,
+): N.Whenclause {
+  !env.is_constraint_position = true;
+  (type(acc, env, wc.i0), tylist(acc, env, wc.i1))
+}
+
+fun method_body(
+  acc: mutable Acc,
+  env: Env,
+  bound: Bound,
+  params: Parameters<N.Parameter>,
+  met: A.Method_def,
+): (Bool, ?A.Name, ?A.Name, List<SkipError.Trace>, N.Expr_body) {
+  (algebraic, from_, source, (localsErrors, body)) = method_body_(
+    acc,
+    env,
+    bound,
+    params,
+    met.static_.isSome(),
+    met.body,
+  );
+  body1 = {
+    (met.static_, body) match {
+    | (None(), N.Implemented(e @ (pos, _))) ->
+      get_class = (pos, N.Var((pos, "class")));
+      this_var = (pos, N.Var((pos, "this")));
+      get_class_this = (
+        pos,
+        N.Call(None(), get_class, Array[], Positional(Array[(0, this_var)])),
+      );
+      bind_static = (pos, N.Bind((pos, "static"), get_class_this, e));
+      N.Implemented(bind_static)
+    | (_, _) -> body
+    }
+  };
+  (algebraic, from_, source, localsErrors, body1)
+}
+
+fun method_body_(
+  acc: mutable Acc,
+  env: Env,
+  bound: Bound,
+  params: Parameters<N.Parameter>,
+  isStatic: Bool,
+  body: A.Inherited_body,
+): (Bool, ?A.Name, ?A.Name, (List<SkipError.Trace>, N.Expr_body)) {
+  (_pos, mb) = body;
+  mb match {
+  | A.Body(mb1) ->
+    (
+      false,
+      None(),
+      None(),
+      method_body__(false, isStatic, acc, env, bound, params, mb1),
+    )
+  | A.Inherited(im) ->
+    check_explicity(im.explicit);
+    (
+      im.algebraic,
+      if (im.algebraic) None() else Some(im.from_),
+      Some(im.source),
+      method_body__(im.algebraic, isStatic, acc, env, bound, params, im.value),
+    )
+  }
+}
+
+fun macroOnNonExpressionBody(env: Env): List<SkipError.Trace> {
+  env.macro_ match {
+  | Some(macroLocation) ->
+    List[(macroLocation, "'macro' methods must include an expression body.")]
+  | None() -> List[]
+  }
+}
+
+fun method_body__(
+  algebraic: Bool,
+  isStatic: Bool,
+  acc: mutable Acc,
+  env: Env,
+  bound: Bound,
+  params: Parameters<N.Parameter>,
+  mb: A.Expr_body,
+): (List<SkipError.Trace>, N.Expr_body) {
+  mb match {
+  | A.BNone() -> (macroOnNonExpressionBody(env), N.Abstract())
+  | A.BNative _ -> (macroOnNonExpressionBody(env), N.Native())
+  | A.BExpr(orig) ->
+    // Macro instance methods only get expanded on leaf classes.
+    // Macro static methods only get expanded on classes (not traits).
+    if (
+      env.macro_.isSome() &&
+      {
+        classKind = env.sk_this.fromSome().kind;
+        classKind == A.KTrait() || (!isStatic && classKind == A.KBase())
+      }
+    ) {
+      (List[], N.Abstract())
+    } else {
+      e = expr(acc, env, orig());
+      (free, _, !e) = check_locals(bound, e);
+      // Check for unused positional arguments, but silence the warning for
+      //   algebraic branches, since the parameter list cannot be different across
+      //   branches
+      if (!algebraic) {
+        !free = close_local_scope_fun_parameters(free, params)
+      };
+      (free.errors, N.Implemented(e))
+    }
+  | A.BFrom(A.Tclass(cname)) -> invalid_from(cname)
+  // TODO Add a check to see if we are in a base class
+  | A.BAlgebraic _ -> (macroOnNonExpressionBody(env), N.Abstract())
+  | A.BFrom _ -> invariant_violation("assert false")
+  }
+}
+
+fun check_explicity(x: A.Explicity): void {
+  x match {
+  | A.Implicit()
+  | A.Explicit() ->
+    void
+  | A.TempFrom(cname) -> invalid_from(cname)
+  }
+}
+
+fun visibility(v: (FileRange, A.Visibility)): N.Visibility {
+  (pos, vis) = v;
+  (pos, visibility_(vis))
+}
+
+fun visibility_(x: A.Visibility): N.Visibility_ {
+  x match {
+  | A.VPrivate() -> N.VPrivate()
+  | A.VPublic() -> N.VPublic()
+  | A.VProtected() -> N.VProtected()
+  }
+}
+
+fun check_predefined(x: A.Name): void {
+  x match {
+  | (pos, name @ "class")
+  | (pos, name @ "chill")
+  | (pos, name @ "freeze") ->
+    SkipError.error(pos, "The operator '" + name + "' is predefined")
+  | _ -> void
+  }
+}
+
+memoized fun maybeGetFun(funName: String): ?N.Fun_def {
+  GlobalEnv.getFun(funName).map(x -> fun_def(make_env(), x))
+}
+
+fun getFun(funName: A.Name): N.Fun_def {
+  maybeGetFun(funName.i1) match {
+  | None() -> SkipError.error(funName.i0, "Unbound function name")
+  | Some(x) -> x
+  }
+}
+
+fun fun_def(env: Env, fd: A.Fun_def): N.Fun_def {
+  classAcc = mutable ClassAcc{};
+  acc = mutable Acc{classAcc};
+
+  (_position, fname) = fd.name;
+  tparam_context = "<fun:tparam>" + fname + ":";
+  tunder_count = sk_create_counter();
+  (tparams, params) = fd.params.map_foldl(
+    (params, par) ->
+      tunder_parameter(
+        tparam_context,
+        classAcc,
+        env,
+        tunder_count,
+        params,
+        par,
+      ),
+    fd.tparams,
+  );
+  treturn_context = "<fun:return>" + fname + ":";
+  (tparams1, return_) = tunder_type(
+    treturn_context,
+    classAcc,
+    env,
+    tunder_count,
+    tparams,
+    fd.return_,
+  );
+  type_param_with_acc = (env, tparam) -> type_parameter(classAcc, env, tparam);
+  (env1, tparams2) = tparams1.mapAcc(type_param_with_acc, env);
+  env2 = env1 with {in_async => fd.async_};
+  check_predefined(fd.name);
+  if (fd.body.isNone() && fd.native_.isNone()) {
+    SkipError.error(fd.name.i0, "Expected a function body")
+  };
+  check_default_last(params);
+  params1 = params.map(p -> parameter(acc, env2, p));
+  return_1 = type(classAcc, env2, return_);
+  tparams3 = infer_fun_tparams_frozen(
+    fd.async_,
+    fd.memoized_,
+    tparams2,
+    params1,
+    return_1,
+  );
+  (bound, params2) = check_locals_fun_parameters(empty_bound, params1);
+
+  (localsErrors, body) = body(
+    acc,
+    env2,
+    bound,
+    params2,
+    fd.native_,
+    fd.body.map(x -> x()),
+  );
+  checkNoReturnBody(body);
+
+  result = N.Fun_def{
+    native_ => fd.native_,
+    memoized_ => fd.memoized_,
+    async_ => fd.async_,
+    untracked_ => fd.untracked_,
+    visibility => fd.fun_private,
+    annotations => fd.annotations,
+    name => fd.name,
+    tparams => tparams3,
+    params => params2,
+    return_ => return_1,
+    yields => acc.yields,
+    body => (acc.yields, body) match {
+    | (None(), b) -> b
+    | (Some _, N.Implemented(e)) -> N.Implemented(appendYieldBreak(e))
+    | _ -> invariant_violation("Unexpected generator")
+    },
+    localsErrors,
+  };
+  SkipCheckVariance.fun_def(result);
+  result
+}
+
+/* Function checking that default values for parameters appear last in a
+ * function with positional parameters. */
+fun check_default_last(x: Parameters<A.Parameter>): void {
+  x match {
+  | Positional(args) -> check_default_last_array(args)
+  | Named _ -> void
+  }
+}
+
+fun check_default_last_array(params: Array<A.Parameter>): void {
+  seenDefault: ?FileRange = None();
+  for (param in params) {
+    (param.value, seenDefault) match {
+    | (None(), Some(fr)) ->
+      SkipError.error(fr, "Optional parameters must be placed at the end")
+    | (Some((fr, _)), None()) -> !seenDefault = Some(fr)
+    | (None(), None())
+    | (Some _, Some _) ->
+      void
+    }
+  }
+}
+
+fun body(
+  acc: mutable Acc,
+  env: Env,
+  bound: Bound,
+  params: Parameters<N.Parameter>,
+  sk_native: ?FileRange,
+  body: ?A.Expr,
+): (List<SkipError.Trace>, N.Expr_body) {
+  (sk_native, body) match {
+  | (None(), None()) -> (List[], N.Abstract())
+  | (Some _, None()) -> (List[], N.Native())
+  | (None(), Some(orig)) ->
+    e = expr(acc, env, orig);
+    (free, _, !e) = check_locals(bound, e);
+    !free = close_local_scope_fun_parameters(free, params);
+    (free.errors, N.Implemented(e))
+  | (Some(npos), Some((epos, _))) ->
+    SkipError.errorl(
+      List[
+        (epos, "Cannot provide a body for a native function"),
+        (npos, "Function was declared native here"),
+      ],
+    )
+  }
+}
+
+fun enforce_no_this_in_tparam(tp: A.Type_parameter): void {
+  (_, _, _, ty) = tp;
+  ty match {
+  | None() -> void
+  | Some(ty1) -> ty1.each(enforce_no_this)
+  }
+}
+
+// TODO do this check post naming to deal with type constants
+fun enforce_no_this(ty_: A.Type_): void {
+  (pos, ty) = ty_;
+  ty match {
+  | A.Tany()
+  | A.Tfrozen()
+  | A.Tunder() ->
+    void
+  | A.Tthis()
+  | A.Tinst() ->
+    SkipError.error(
+      pos,
+      "Cannot use 'this/inst' as a constraint: it introduces a recursive type",
+    )
+  | A.TnonNullable() -> void
+  | A.Tapply(_, tyl)
+  | A.Ttuple(tyl) ->
+    tyl.each(enforce_no_this)
+  | A.Tfun(_, params, ty1) ->
+    params.each(enforce_no_this);
+    enforce_no_this(ty1)
+  | A.Tabstract _ -> void
+  | A.Tawaitable(ty1)
+  | A.Tmutable(ty1)
+  | A.Treadonly(ty1) ->
+    enforce_no_this(ty1)
+  }
+}
+
+fun type_parameter(
+  acc: mutable ClassAcc,
+  env: Env,
+  tp: A.Type_parameter,
+): (Env, N.Type_parameter) {
+  (var, ident, name, ty) = tp;
+  tya = ty match {
+  | None() -> Array[]
+  | Some(tyl) -> tylist(acc, env with {is_constraint_position => true}, tyl)
+  };
+  !env.tparams = tparam_add(env.tparams, tp);
+  (env, (var, ident, name, tya))
+}
+
+fun type_alias_parameter(env: Env, tp: A.Type_parameter): Env {
+  (_var, _ident, name, ty) = tp;
+  ty match {
+  | None() -> void
+  | Some _ ->
+    SkipError.error(
+      name.i0,
+      "Type alias type parameters cannot have constraints",
+    )
+  };
+  tparams = tparam_add(env.tparams, tp);
+  env with {tparams}
+}
+
+fun parameter(acc: mutable Acc, env: Env, par: A.Parameter): N.Parameter {
+  parameter_(acc, None(), env, par)
+}
+
+fun parameter_(
+  acc: mutable Acc,
+  cdo: ?A.Class_def,
+  env: Env,
+  par: A.Parameter,
+): N.Parameter {
+  deferred_ = cdo match {
+  | None() -> None()
+  | Some(cd) ->
+    cd.kind match {
+    | A.KClass() -> None()
+    | _ -> par.deferred_
+    }
+  };
+  !env.in_deferred = env.in_deferred || deferred_.isSome();
+  type = cdo match {
+  | None() -> fun_param_type(acc.classAcc, env, par.type)
+  | Some _ -> type(acc.classAcc, env, par.type)
+  };
+  (localsErrors, value) = par.value match {
+  | None() -> (List[], None())
+  | Some(ex) ->
+    nex = expr(acc, env, ex);
+    (free, _, !nex) = check_locals(empty_bound, nex);
+    (free.errors, Some(nex))
+  };
+  res = N.Parameter{
+    annotations => par.annotations,
+    type,
+    visibility => visibility(par.visibility),
+    mutable_ => par.mutable_,
+    name => par.name,
+    source => par.source,
+    deferred_,
+    index => par.index,
+    value,
+    localsErrors,
+  };
+  cdo match {
+  | None() -> void
+  | Some(cd) -> check_class_parameter(cd, res)
+  };
+  res
+}
+
+fun check_class_parameter(cd: A.Class_def, par: N.Parameter): void {
+  if (!cd.isChilledOnly()) return void;
+
+  frpar = par.type.i0;
+  frerr = cd.name.i0;
+  par.mutable_ match {
+  | None() -> void
+  | Some(mut_pos) ->
+    SkipError.errorl(
+      List[
+        (
+          mut_pos,
+          "Invalid 'mutable' parameter. Your class must be declared as 'mutable' to take advantage of assignable parameters.",
+        ),
+        (frerr, "Try removing the modifier or add a 'mutable' modifier here"),
+      ],
+    )
+  };
+  check_class_parameter_type(frpar, frerr, par.type)
+}
+
+fun check_class_parameter_type(
+  par_fr: FileRange,
+  error_fr: FileRange,
+  ty: N.Type_,
+): void {
+  ty.i1 match {
+  | N.Tapply(m @ N.MnotFrozen _, _, _) ->
+    SkipError.errorl(
+      List[
+        (par_fr, `Invalid '${m}' typed parameter`),
+        (
+          m.fr,
+          `Your class must be declared as 'mutable' to take advantage of parameters with '${m}' types.`,
+        ),
+        (
+          error_fr,
+          "Try removing the modifier or add a 'mutable' modifier to the class declaration here",
+        ),
+      ],
+    )
+  | N.Tfun(
+    _,
+    (purity, _),
+    _,
+    _,
+    _,
+  ) if (!purity.isEmpty() && purity[0] is N.Fmutable()) ->
+    SkipError.errorl(
+      List[
+        (par_fr, "Invalid '->' typed parameter"),
+        (
+          ty.i0,
+          "Your class must be declared as 'mutable' to take advantage of parameters with '->' types.",
+        ),
+        (
+          error_fr,
+          "Try switching to '~>' or add a 'mutable' modifier to the class declaration here",
+        ),
+      ],
+    )
+  | N.Tawaitable _ ->
+    SkipError.errorl(
+      List[
+        (par_fr, "Invalid '^' typed parameter"),
+        (
+          ty.i0,
+          "Your class must be declared as 'mutable' to take advantage of parameters with awaitable types.",
+        ),
+        (error_fr, "Add a 'mutable' modifier to the class declaration here"),
+      ],
+    )
+  // recurse through wrappers
+  | N.Tnamed(_, inner)
+  | N.Tdefault(inner) ->
+    check_class_parameter_type(par_fr, error_fr, inner)
+  // recurse in tapplys
+  | N.Tapply(N.Mchilled(), _, tyl) ->
+    for (inner in tyl) check_class_parameter_type(par_fr, error_fr, inner)
+
+  // fine in non mutable classes
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything()
+  | N.Tfun _
+  | N.Tparam _ ->
+    void
+
+  | N.Tvar _
+  | N.Tlambda _
+  | N.Tpromoted _
+  | N.Tset _ ->
+    invariant_violation("ICE unexpected type in Naming")
+  }
+}
+
+/*
+Return value is one of:
+  N.Tparam (None, Vnone, ident, n)
+  N.Tnamed (N.NAlias (pos, ty_str), tyd_value)
+  N.Tapply (n, targs)
+*/
+fun bind_named_type{
+  fr: FileRange,
+  acc: mutable ClassAcc,
+  env: Env,
+  tn: A.Type_name,
+  targs: Array<A.Type_>,
+  pattern: Bool,
+  in_expr: Bool,
+}: N.Type__ {
+  tn match {
+  | A.Tmacro(n) ->
+    bind_named_type{
+      fr,
+      acc,
+      env,
+      tn => expandMacroTypeName(env, n),
+      targs,
+      pattern,
+      in_expr,
+    }
+  | A.Tclass(n) ->
+    s = n.i1;
+    find_tparam(env, s) match {
+    | Some _ if (in_expr) ->
+      SkipError.error(fr, "Generics cannot be used as expressions")
+    | Some((_, id, _, _)) -> N.Tparam(None(), A.Vnone(), id, n)
+    | None() if (GlobalEnv.getType(n.i1).isSome()) ->
+      /* resolve type alias refs */
+      tyd = GlobalEnv.getType(n.i1).fromSome();
+      tparams = tyd.tparams.map(AU.tparam_name);
+      arity = tparams.size();
+      given = targs.size();
+      if (arity != given && (given != 0 || (!in_expr))) {
+        arity_mismatch(n.i0, n.i1, arity, given)
+      };
+      subst = AU.make_name_subst(fr, tparams, targs);
+      body = type(acc, env, AU.type_subst(subst, tyd.body));
+      ty_str = SkipTypes.to_string(
+        env.sk_this.map(cd -> cd.name),
+        SortedMap[],
+        (fr, N.Tapply(N.Mchilled(), n, tylist(acc, env, targs))),
+      );
+      N.Tnamed(N.NAlias((fr, ty_str)), body)
+    | _ ->
+      /* resolve class refs */
+      cd = SkipInherit.getClass(n);
+      if ((!env.is_constraint_position) && cd.kind == A.KTrait()) {
+        msg1 = if (pattern) {
+          "Traits cannot be used as patterns"
+        } else if (in_expr) {
+          "Traits do not have a Class<_> object, " +
+            "and their static members cannot be accessed directly"
+        } else {
+          "Invalid usage of trait"
+        };
+        SkipError.error(fr, msg1)
+      };
+      env1 = env with {is_constraint_position => false};
+      arity = cd.tparams.size();
+      given = targs.size();
+      if (arity != given && (given != 0 || (!in_expr))) {
+        arity_mismatch(n.i0, n.i1, arity, given)
+      };
+      N.Tapply(N.Mchilled(), n, tylist(acc, env1, targs))
+    }
+  | A.Tmodule_class(_, (_, x), (_, y)) ->
+    SkipError.error(fr, "Internal error: unexpanded module name " + x + "." + y)
+  | A.Tparam(n, id) ->
+    /* pass preresolved tparams through */
+    make_tparam(env, fr, n, id, targs)
+  }
+}
+
+fun make_tparam(
+  env: Env,
+  pos: FileRange,
+  n: A.Name,
+  ident: String,
+  targs: Array<A.Type_>,
+): N.Type__ {
+  if (!targs.isEmpty()) {
+    SkipError.error(pos, "A type parameter cannot have type arguments")
+  };
+  if (isTydValueOrConstraint(env.in_tabstract)) {
+    SkipError.error(pos, "Type constants cannot use generics")
+  };
+  if (env.in_consts_type_annot || env.in_class_const_expr) {
+    SkipError.error(pos, "Class constants cannot use the class generics")
+  };
+  N.Tparam(None(), A.Vnone(), ident, n)
+}
+
+fun tylist(
+  acc: mutable ClassAcc,
+  env: Env,
+  tyl: Array<A.Type_>,
+): Array<N.Type_> {
+  tyl.map(ty -> type(acc, env, ty))
+}
+
+fun type(acc: mutable ClassAcc, env: Env, ty: A.Type_): N.Type_ {
+  (fr, ty_) = ty;
+  ty_ match {
+  | A.Tany() ->
+    assert(isTydValueOrConstraint(env.in_tabstract));
+    (fr, N.Tanything())
+  | A.Tunder() ->
+    SkipError.error(
+      fr,
+      "_ can only be used on function parameters and return types",
+    )
+  | A.Tfrozen() ->
+    if (env.is_constraint_position) {
+      (fr, N.Tfrozen(A.Vminus()))
+    } else {
+      SkipError.error(fr, "frozen can only be used as a constraint")
+    }
+  | A.TnonNullable() ->
+    if (env.is_constraint_position) {
+      (fr, N.TnonNullable(A.Vminus()))
+    } else {
+      SkipError.error(fr, "nonNullable can only be used as a constraint")
+    }
+  | A.Tinst() -> (fr, get_inst_type(fr, env))
+  | A.Tthis() ->
+    acc.!seen_this_type = true;
+    (fr, reduce_type(fr, acc, env, (fr, "this"), Array[]))
+  | A.Tapply(tn, targs) ->
+    named_type = bind_named_type{
+      fr,
+      acc,
+      env,
+      tn,
+      targs,
+      pattern => false,
+      in_expr => false,
+    };
+    (fr, named_type)
+  | A.Ttuple(tyl) -> (fr, N.tuple_type(fr, tylist(acc, env, tyl)))
+  | A.Tfun(tmodifiers, tparams, tbody) ->
+    (fr, fun_type(acc, env, tmodifiers, tparams, tbody))
+  | A.Tabstract(A.Tclass(sk_this @ (_, "this")), tnl) ->
+    (fr, reduce_type(fr, acc, env, sk_this, tnl))
+  | A.Tabstract(cn, tnl) ->
+    (fr, reduce_type(fr, acc, env, type_name(env, cn), tnl))
+  | A.Tmutable(inner) ->
+    add_mutability_mode(N.Mmutable(fr), type(acc, env, inner))
+  | A.Treadonly(inner) ->
+    add_mutability_mode(N.Mreadonly(fr), type(acc, env, inner))
+  | A.Tawaitable(inner) -> (fr, N.Tawaitable(A.Vnone(), type(acc, env, inner)))
+  }
+}
+
+fun add_mutability_mode(mode: N.MnotFrozen, ty: N.Type_): N.Type_ {
+  ty.i1 match {
+  | N.Tnamed(ni, inner) ->
+    (mode.fr, N.Tnamed(ni, add_mutability_mode(mode, inner)))
+  | N.Tdefault(inner) -> (mode.fr, N.Tdefault(add_mutability_mode(mode, inner)))
+  | N.Tapply(N.Mchilled(), n, tyl) -> (mode.fr, N.Tapply(mode, n, tyl))
+  | N.Tapply(mode2 @ N.MnotFrozen _, _, _) ->
+    SkipError.errorl(
+      List[
+        (mode.fr, "Duplicate mutability modifier of '" + mode + "'"),
+        (mode2.fr, "The type was already modified to be '" + mode2 + "'"),
+      ],
+    )
+  | _ ->
+    SkipError.errorl(
+      List[
+        (mode.fr, "Invalid usage of mutability modifier: '" + mode + "'"),
+        (ty.i0, "Expected an object type"),
+      ],
+    )
+  }
+}
+
+fun arity_mismatch(pos: FileRange, name: String, arity: Int, given: Int): void {
+  args = {
+    if (arity == 1) {
+      "argument"
+    } else {
+      "arguments"
+    }
+  };
+  were = {
+    if (given == 1) {
+      "was"
+    } else {
+      "were"
+    }
+  };
+  msg =
+    name +
+    " expects " +
+    arity +
+    " type " +
+    args +
+    ", but " +
+    given +
+    " " +
+    were +
+    " passed";
+  SkipError.error(pos, msg)
+}
+
+fun fun_type(
+  acc: mutable ClassAcc,
+  env: Env,
+  tmodifiers: A.Lam_modifier,
+  tparams: Parameters<A.Type_>,
+  tbody: A.Type_,
+): N.Type__ {
+  fpurity = if (tmodifiers.is_mutable) N.Fmutable() else N.Fpure();
+  ftracked = if (tmodifiers.is_untracked) N.Funtracked() else N.Ftracked();
+  tparams1 = fun_tparams(acc, env, tparams);
+  tbody1 = type(acc, env, tbody);
+  N.Tfun(
+    A.Vnone(),
+    (Array[fpurity], Array[ftracked]),
+    Array[],
+    tparams1,
+    tbody1,
+  )
+}
+
+fun fun_tparams(
+  acc: mutable ClassAcc,
+  env: Env,
+  x: Parameters<A.Type_>,
+): Parameters<N.Type_> {
+  x match {
+  | Positional(tyl) -> Positional(tyl.map(ty -> fun_param_type(acc, env, ty)))
+  | Named(tym) -> Named(tym.map((_, ty) -> fun_param_type(acc, env, ty)))
+  }
+}
+
+fun fun_param_type(acc: mutable ClassAcc, env: Env, ty: A.Type_): N.Type_ {
+  (fr, ty_) = ty;
+  ty_ match {
+  | A.Tfun(tmodifiers, tparams, tbody) ->
+    (fr, fun_type(acc, env, tmodifiers, tparams, tbody))
+  | _ -> type(acc, env, ty)
+  }
+}
+
+fun reduce_type(
+  pos: FileRange,
+  acc: mutable ClassAcc,
+  env: Env,
+  cn: A.Name,
+  tnl: Array<N.Name>,
+): N.Type__ {
+  if (tnl.isEmpty()) {
+    assert(cn.i1 == "this");
+    sk_this = get_this_class(pos, env);
+    name = (pos, sk_this.name.i1);
+    targs = make_this_targs(sk_this);
+    ty_inner = (pos, N.Tapply(N.Mchilled(), name, targs));
+    N.Tnamed(N.NThis(name), ty_inner)
+  } else {
+    new_ty = reduce_type_(pos, acc, env, cn, tnl);
+    N.unfold_tnamed((pos, new_ty)) match {
+    | _ if (isTydValueOrConstraint(env.in_tabstract)) -> void
+    | (frany, N.Tanything()) if (!env.in_deferred) ->
+      SkipError.errorl(
+        List[
+          (
+            pos,
+            "Invalid usage of unconstrained type constant.\nUnconstrained type constants must be used only with 'deferred' class members",
+          ),
+          (frany, "No constraint here"),
+        ],
+      )
+    | _ -> void
+    };
+    new_ty
+  }
+}
+
+/* Iterates through the array to resolve a type constant
+ * For example, A::T1::T2 resolves to Tnamed(A::T1::T2, X) where X is the
+ * fully resolved type
+ * see 'get_typedef_type' for more
+ */
+fun reduce_type_(
+  tpos: FileRange,
+  acc: mutable ClassAcc,
+  env: Env,
+  cn: A.Name,
+  tnl: Array<N.Name>,
+): N.Type__ {
+  (from_self_abstract, cn1) = {
+    cn match {
+    | (pos, "this") ->
+      sk_this = get_this_class(pos, env);
+      ((sk_this.kind != A.KClass()), sk_this.name)
+    | _ -> (false, cn)
+    }
+  };
+  tyo = reduce_type_array(from_self_abstract, tpos, acc, env, cn1, tnl);
+  (n_info, ty) = tyo match {
+  | Resolved_tabstract(ty) -> (N.NTydAbstract(cn1, tnl), ty)
+  | Resolved_tnamed(_, ty) -> (N.NTydResolved(cn1, tnl), ty)
+  };
+  N.Tnamed(n_info, ty)
+}
+
+fun reduce_type_array(
+  from_self_abstract: Bool,
+  _tpos: FileRange,
+  acc: mutable ClassAcc,
+  env: Env,
+  cn: A.Name,
+  x: Array<N.Name>,
+): Resolved_tyd {
+  iter = x.values();
+  curName = cn;
+  curResolving = iter.next();
+  nextResolving = iter.next();
+  loop {
+    (curResolving, nextResolving) match {
+    | (None(), _) -> invariant_violation("assert false")
+    | (Some(resolving), None()) ->
+      break get_typedef_type(from_self_abstract, acc, env, curName, resolving)
+    | (Some(resolving), Some _) ->
+      ty = get_typedef_type(from_self_abstract, acc, env, curName, resolving);
+
+      !from_self_abstract = from_self_abstract && ty is Resolved_tabstract _;
+      !curName = get_name(resolving.i0, ty);
+      !curResolving = nextResolving;
+      !nextResolving = iter.next()
+    }
+  }
+}
+
+fun get_name(pos: FileRange, x: Resolved_tyd): A.Name {
+  x match {
+  | Resolved_tabstract(ty)
+  | Resolved_tnamed(_, ty) ->
+    get_name_(pos, ty)
+  }
+}
+
+fun get_name_(pos: FileRange, x: N.Type_): A.Name {
+  x match {
+  | (_, N.Tapply(_, n, _)) -> n
+  | (_, N.Tnamed(_, ty)) -> get_name_(pos, ty)
+  | _ -> SkipError.error(pos, "Invalid type, expected a class")
+  }
+}
+
+/* Checks if the current resolving of a type constant is valid
+ *
+ * A fully defined type constant, type T = X; can always be accessed
+ *
+ * A constrianed type constant, type T: X, or type T: X default Y, can only
+ * be accessed within that class, or on a type constant chain from another
+ * abstract/constrained type constant
+ */
+fun get_typedef_type(
+  from_self_abstract: Bool,
+  acc: mutable ClassAcc,
+  env: Env,
+  cn: A.Name,
+  name: N.Name,
+): Resolved_tyd {
+  (pos, tyd_str) = name;
+  cd = SkipInherit.getClass(cn);
+  if (!cd.types.containsKey(name)) {
+    SkipError.error(pos, "Field " + tyd_str + " could not be found in " + cn.i1)
+  };
+  type_def = cd.types[name];
+  tn = type_def.name;
+  env1 = env with {const_type_this => Some(cd)};
+  (type_def.body, env1.in_tabstract, from_self_abstract) match {
+  | (A.TydAbstract _, Tyd_constraint(tpos), false) ->
+    SkipError.errorl(
+      List[
+        (tpos, "Only `this` can use abstract type constants in constraints"),
+
+        (tn.i0, "This type is, or contains, an uninistantiated type constant"),
+      ],
+    )
+  | (A.TydAbstract _, Tyd_value(tpos), _) ->
+    SkipError.errorl(
+      List[
+        (tpos, "Type constant values cannot use abstract type constants"),
+
+        (tn.i0, "This type is, or contains, an uninistantiated type constant"),
+      ],
+    )
+  | (A.TydAbstract _, Not_tabstract(), false) ->
+    (_, tstr) = N.tyd_def_name(cn, tn);
+    SkipError.error(
+      pos,
+      tstr +
+        " is not yet defined and cannot be used other than with `this` inside it's defining class",
+    )
+  | (A.TydAbstract(tyd_type, _), _, true) ->
+    cstr = tyd_type.map((t -> type(acc, env1, t)));
+    ty = {
+      cstr match {
+      | None() -> (pos, N.Tanything())
+      | Some(ty) -> ty
+      }
+    };
+    Resolved_tabstract(ty)
+  | (A.TydDefined(ty), _, _) ->
+    ty1 = type(acc, env1 with {const_type_this => Some(cd)}, ty);
+    Resolved_tnamed(List[cn, tn], ty1)
+  }
+}
+
+fun check_this_type(pos: FileRange, env: Env): void {
+  env.in_tabstract match {
+  | Tyd_value _ ->
+    SkipError.error(
+      pos,
+      "Type constant values cannot use `this` in base or type " +
+        "classes, since the type is not yet fully resolved",
+    )
+  | Tyd_constraint _
+  | Not_tabstract() ->
+    void
+  }
+}
+
+fun get_this_class(pos: FileRange, env: Env): A.Class_def {
+  (env.sk_this, env.const_type_this) match {
+  | (None(), None()) ->
+    SkipError.error(pos, "The type 'this' can only be used from within a class")
+  | (_, Some(sk_this))
+  | (Some(sk_this), _) ->
+    sk_this
+  }
+}
+
+fun get_inst_type(pos: FileRange, env: Env): N.Type__ {
+  env.inst_type match {
+  | None() ->
+    SkipError.error(pos, "The type 'inst' can only be used from within a trait")
+  | Some(N.Tnamed(N.NInst(n), (_, N.Tapply(mode, _, targs)))) ->
+    N.Tnamed(N.NInst(n), (pos, N.Tapply(mode, (pos, n.i1), targs)))
+  | Some _ -> SkipError.error(pos, "Internal error: unexpected inst type")
+  }
+}
+
+fun make_inst_type(pos: FileRange, inst: A.Class_def): N.Type__ {
+  tparams = make_this_targs(inst);
+  N.Tnamed(
+    N.NInst(inst.name),
+    (pos, N.Tapply(N.Mchilled(), (pos, inst.name.i1), tparams)),
+  )
+}
+
+fun make_this_targs(sk_this: A.Class_def): Array<N.Type_> {
+  tparams = sk_this.tparams;
+  tparams.map(p -> {
+    (_, ident, name, _) = p;
+    (name.i0, N.Tparam(None(), A.Vnone(), ident, name))
+  })
+}
+
+/*****************************************************************************/
+/* Infering mutability */
+/*****************************************************************************/
+
+/* We add ': frozen' constraints to tparams when the compiler would error
+ * if the constraint wasn't there.
+ * This sort of propogation of constraints is only for simple cases
+ * and does not consider the constraints of another class
+ * For example
+ *
+ * async fun doit<T>(T): ^ void ;
+ * class Foo<R: frozen>(...)
+ * fun no<V>(Foo<V>): void;
+ *
+ * T will get the constraint 'frozen' since its required for async contexts
+ * V will NOT get 'frozen' even though its required for 'Foo'
+ *
+ * Function level tparams will have their constraint list modified
+ * Class level tparams will have a conditional constraint added
+ *
+ * base class Foo<V> {
+ *  async fun doit<T>(T, V): ^void ;
+ * }
+ *
+ * becomes
+ *
+ * base class Foo<V> {
+ *  async fun doit<T: frozen>[V: frozen](T, V): ^void ;
+ * }
+ */
+fun infer_fun_tparams_frozen(
+  sk_async: ?FileRange,
+  sk_memoized: ?FileRange,
+  tparams: Array<N.Type_parameter>,
+  params: Parameters<N.Parameter>,
+  return_ty: N.Type_,
+): Array<N.Type_parameter> {
+  if (sk_async.isNone() && sk_memoized.isNone()) return tparams;
+
+  final_map = infer_param_ret_frozen(sk_async, sk_memoized, params, return_ty);
+  add_frozen_constraints(final_map, tparams)
+}
+
+fun infer_met_tparams_frozen(
+  frozen_: ?FileRange,
+  sk_async: ?FileRange,
+  sk_memoized: ?FileRange,
+  cla_tparams: Array<N.Type_parameter>,
+  whenparams: Array<N.Whenclause>,
+  tparams: Array<N.Type_parameter>,
+  params: Parameters<N.Parameter>,
+  return_ty: N.Type_,
+): (Array<N.Type_parameter>, Array<N.Whenclause>) {
+  if (frozen_.isNone() && sk_async.isNone() && sk_memoized.isNone()) {
+    return (tparams, whenparams)
+  };
+
+  after_fun = infer_param_ret_frozen(sk_async, sk_memoized, params, return_ty);
+  final_map = frozen_ match {
+  | None() -> after_fun
+  | Some _ ->
+    cla_tparams.foldl(
+      (m, tp) -> update_frozen_opt(m, tp.i1, frozen_),
+      after_fun,
+    )
+  };
+
+  new_tparams = add_frozen_constraints(final_map, tparams);
+  new_whenparams = build_whenparams_for_frozen_cla_tparams(
+    final_map,
+    cla_tparams,
+    whenparams,
+  );
+  (new_tparams, new_whenparams)
+}
+
+fun infer_param_ret_frozen(
+  sk_async: ?FileRange,
+  sk_memoized: ?FileRange,
+  params: Parameters<N.Parameter>,
+  return_ty: N.Type_,
+): SMap<FileRange> {
+  frozen_map = SortedMap[];
+
+  if (sk_async.isNone() && sk_memoized.isNone()) return frozen_map;
+
+  after_params = params.foldl(infer_tparams_frozen_parameter, frozen_map);
+  if (sk_memoized.isSome()) {
+    infer_frozen_type(after_params, return_ty)
+  } else {
+    after_params
+  }
+}
+
+fun infer_tparams_frozen_type_parameter(
+  frozen_map: SMap<FileRange>,
+  tp: N.Type_parameter,
+): SMap<FileRange> {
+  (_, _, _, tyl) = tp;
+  tyl.foldl(infer_frozen_type, frozen_map)
+}
+
+fun infer_tparams_frozen_parameter(
+  frozen_map: SMap<FileRange>,
+  p: N.Parameter,
+): SMap<FileRange> {
+  infer_frozen_type(frozen_map, p.type)
+}
+
+fun infer_frozen_type(
+  frozen_map: SMap<FileRange>,
+  x: N.Type_,
+): SMap<FileRange> {
+  infer_frozen_type_(Some(x.i0), frozen_map, x)
+}
+
+fun infer_frozen_type_(
+  frozen_status: ?FileRange,
+  frozen_map: SMap<FileRange>,
+  x: N.Type_,
+): SMap<FileRange> {
+  (pos, _) = x;
+  N.unfold_tnamed(x).i1 match {
+  | N.Tnamed _ -> invariant_violation("ICE imposible since unfolded")
+  | N.Tlambda _
+  | N.Tvar _ ->
+    invariant_violation("ICE imposible user written type")
+
+  // Arrises from type constants
+  | N.Tanything()
+  | N.TnonNullable _
+  | N.Tfrozen _
+  | N.Tfun _ ->
+    frozen_map
+
+  | N.Tpromoted _
+  | N.Tset _ ->
+    SkipError.error(pos, "ICE infer_frozen_type should not have been promoted")
+  | N.Tapply(mode, _, tyl) ->
+    new_frozen = mode match {
+    // the inner tparams dont need to be frozen for async/memoized
+    // but this type is going error later so dont add the frozen constraint
+    // to avoid other confusion
+    | N.MnotFrozen _ -> None()
+    | N.Mchilled() -> Some(pos)
+    };
+    infer_frozen_type_list(new_frozen, frozen_map, tyl)
+
+  | N.Tawaitable(_, ty) ->
+    // needs to be frozen inside it
+    infer_frozen_type_(Some(pos), frozen_map, ty)
+  | N.Tparam(_, _, i, _) -> update_frozen_opt(frozen_map, i, frozen_status)
+  | N.Tdefault(ty) -> infer_frozen_type_(frozen_status, frozen_map, ty)
+  }
+}
+
+fun infer_frozen_type_params(
+  frozen_status: ?FileRange,
+  frozen_map: SMap<FileRange>,
+  params: Parameters<N.Type_>,
+): SMap<FileRange> {
+  params.foldl(
+    (acc, ty) -> infer_frozen_type_(frozen_status, acc, ty),
+    frozen_map,
+  )
+}
+
+fun infer_frozen_type_list(
+  frozen_status: ?FileRange,
+  frozen_map: SMap<FileRange>,
+  tyl: Array<N.Type_>,
+): SMap<FileRange> {
+  tyl.reduce(
+    (acc, ty) -> infer_frozen_type_(frozen_status, acc, ty),
+    frozen_map,
+  )
+}
+
+fun update_frozen_opt(
+  m: SMap<FileRange>,
+  i: String,
+  opt: ?FileRange,
+): SMap<FileRange> {
+  frozen_ = m.maybeGet(i) match {
+  | None() -> opt
+  | old @ Some _ -> old
+  };
+  frozen_ match {
+  | None() -> m
+  | Some(pos) -> m.set(i, pos)
+  }
+}
+
+fun add_frozen_constraints(
+  frozen_map: SMap<FileRange>,
+  tparams: Array<N.Type_parameter>,
+): Array<N.Type_parameter> {
+  tparams.map(old -> {
+    (var, id, n, tyl) = old;
+    frozen_map.maybeGet(id) match {
+    | None() -> old
+    | Some(pos) -> (var, id, n, tyl.concat(Array[(pos, N.Tfrozen(A.Vminus()))]))
+    }
+  })
+}
+
+fun build_whenparams_for_frozen_cla_tparams(
+  frozen_map: SMap<FileRange>,
+  tparams: Array<N.Type_parameter>,
+  whenparams: Array<N.Whenclause>,
+): Array<N.Whenclause> {
+  result = Vector::mcreateFromItems(whenparams);
+  for (cla_tparam in tparams) {
+    (_, id, n, _) = cla_tparam;
+    frozen_map.maybeGet(id) match {
+    | None() -> void
+    | Some(pos) ->
+      tparam = (n.i0, N.Tparam(None(), A.Vnone(), id, n));
+      frozen_ = Array[(pos, N.Tfrozen(A.Vminus()))];
+      result.push((tparam, frozen_))
+    }
+  } else {
+    result.toArray()
+  }
+}
+
+/*****************************************************************************/
+/* Desugaring lvalues. */
+/*****************************************************************************/
+
+// TODO support irrefutable patterns
+fun desugar_bind(
+  acc: mutable Acc,
+  env: Env,
+  lv: A.Lvalue,
+  rvalue: A.Expr,
+  scope_of_bind: N.Expr,
+): N.Expr_ {
+  (pos, lvalue_) = lv;
+  rvalue1 = {
+    rvalue match {
+    | (pos1, A.Annotated(rv, (fpos, A.Tfun(tmodifiers, tparams, tbody)))) ->
+      rv1 = expr(acc, env, rv);
+      (
+        pos1,
+        N.Annotated(
+          rv1,
+          (fpos, fun_type(acc.classAcc, env, tmodifiers, tparams, tbody)),
+        ),
+      )
+    | _ -> expr(acc, env, rvalue)
+    }
+  };
+  lvalue_ match {
+  /*
+    (a, !b) = rv;
+    $t = rv;
+    a = fst $t;
+    !b = snd $t;
+  */
+  | A.Lvalue_tuple(lvalues) ->
+    action = scope_of_bind;
+    pat_vars = lvalues.map(lv -> {
+      lv_pos = lv.i0;
+      tmp = sk_new_var_name(acc.classAcc.next_id, lv_pos);
+      var = (lv_pos, A.Var(tmp));
+      !action = (lv_pos, desugar_bind(acc, env, lv, var, action));
+      (lv_pos, N.Pat_var(tmp))
+    });
+    N.Match(
+      rvalue1,
+      List[(List[(pos, N.tuple_pattern(pos, pat_vars))], None(), action)],
+    )
+  /*
+    name = rv
+  */
+  | A.Lvalue_bind_local(name) -> N.Bind(name, rvalue1, scope_of_bind)
+  /*
+    e.![args] = rv;
+    e.set(args, rv);
+  */
+  | A.Lvalue_array_set(arr, args) ->
+    method_name = (pos, "set");
+    set_method = (pos, N.Dot(expr(acc, env, arr), method_name));
+    args1 = appendPositionalArg(call_args(acc, env, args), rvalue1);
+    rvalue2 = (pos, N.Call(None(), set_method, Array[], args1));
+    N.Seq(rvalue2, scope_of_bind)
+  | A.Lvalue_assign(assign) ->
+    desugar_lvalue_assign(acc, env, pos, assign, rvalue1, scope_of_bind)
+  }
+}
+
+fun appendPositionalArg<T>(
+  args: Parameters<(Int, T)>,
+  arg: T,
+): Parameters<(Int, T)> {
+  args match {
+  | Positional(pargs) -> Positional(pargs.concat(Array[(pargs.size(), arg)]))
+  | Named _ -> invariant_violation("Unexpected Named args")
+  };
+}
+
+fun desugar_lvalue_assign(
+  acc: mutable Acc,
+  env: Env,
+  pos: FileRange,
+  assign: A.Lvalue_assign_value,
+  rvalue: N.Expr,
+  scope_of_bind: N.Expr,
+): N.Expr_ {
+  (bindings, assign1) = remove_side_effects_lvalue(acc, env, pos, assign);
+  lvalue = desugar_lvalue_assign_no_side_effects(
+    acc,
+    pos,
+    env,
+    assign1,
+    rvalue,
+    scope_of_bind,
+  );
+  add_binding = (acc, v) -> {
+    (name, value) = v;
+    N.Bind(name, value, (pos, acc))
+  };
+  bindings.foldl(add_binding, lvalue)
+}
+
+/*
+  Dotted
+  e.!b.c = rv
+  $t.b = $t.b with { c => rv };
+
+  a.!b = rv;
+  a.b = rv;
+
+  !Var
+  !a = rv
+  a = rv
+
+  !a.b = rv;
+  a = a with { b = rv };
+
+  Collection Index
+  !a[i] = rv;
+  a = a.set(i, rv)
+
+  e.!b[i] = rv;
+  $t.b = $t.b.set(i, rv);
+
+  !a.b[i] = rv;
+  a = a with {b => a.b.set(i, rv) }
+
+  !a.b[i][j] = rv;
+  a = a with {b => a.b.set(i, a.b.get(i).set(j, rv) }
+*/
+fun desugar_lvalue_assign_no_side_effects(
+  acc: mutable Acc,
+  pos: FileRange,
+  env: Env,
+  assign: A.Lvalue_assign_value,
+  rvalue: N.Expr,
+  scope_of_bind: N.Expr,
+): N.Expr_ {
+  assign match {
+  | A.Lvalue_assign_local(name) ->
+    /* name = rvalue; scope_of_bind */
+    N.Seq((pos, N.Assign(name, rvalue)), scope_of_bind)
+  | A.Lvalue_assign_field(obj, field) ->
+    /* $obj.field = rvalue; scope_of_bind */
+    N.Seq(
+      (pos, N.AssignField(expr(acc, env, obj), field, rvalue)),
+      scope_of_bind,
+    )
+  | A.Lvalue_assign_with(value, field) ->
+    obj = rhs_lvalue_assign_obj(acc, env, pos, value);
+    /* obj.set(index) */
+    rvalue1 = make_with(pos, obj, field, rvalue);
+    desugar_lvalue_assign_no_side_effects(
+      acc,
+      pos,
+      env,
+      value,
+      rvalue1,
+      scope_of_bind,
+    )
+  | A.Lvalue_assign_array_set(value, args) ->
+    obj = rhs_lvalue_assign_obj(acc, env, pos, value);
+    /* obj.set(args, rvalue) */
+    method_name = (pos, "set");
+    set_method = (pos, N.Dot(obj, method_name));
+    args1 = appendPositionalArg(call_args(acc, env, args), rvalue);
+    rvalue1 = (pos, N.Call(None(), set_method, Array[], args1));
+    desugar_lvalue_assign_no_side_effects(
+      acc,
+      pos,
+      env,
+      value,
+      rvalue1,
+      scope_of_bind,
+    )
+  }
+}
+
+fun rhs_lvalue_assign_obj(
+  acc: mutable Acc,
+  env: Env,
+  pos: FileRange,
+  assign: A.Lvalue_assign_value,
+): N.Expr {
+  assign match {
+  | A.Lvalue_assign_local(name) -> (name.i0, N.Var(name))
+  | A.Lvalue_assign_field(obj, field) ->
+    (obj.i0, N.Dot(expr(acc, env, obj), field))
+  | A.Lvalue_assign_with(value, field) ->
+    obj = rhs_lvalue_assign_obj(acc, env, pos, value);
+    (obj.i0, N.Dot(obj, field))
+  | A.Lvalue_assign_array_set(value, args) ->
+    /* obj.get(args) */
+    obj = rhs_lvalue_assign_obj(acc, env, pos, value);
+    get = (obj.i0, N.Dot(obj, (pos, "get")));
+    args1 = call_args(acc, env, args);
+    (pos, N.Call(None(), get, Array[], args1))
+  }
+}
+
+fun remove_side_effects_lvalue(
+  acc: mutable Acc,
+  env: Env,
+  pos: FileRange,
+  assign: A.Lvalue_assign_value,
+): (Array<(A.Name, N.Expr)>, A.Lvalue_assign_value) {
+  assign match {
+  | A.Lvalue_assign_local _ -> (Array[], assign)
+  | A.Lvalue_assign_field(obj, field) ->
+    pos1 = obj.i0;
+    tmp = sk_new_var_name(acc.classAcc.next_id, pos1);
+    var = (pos1, A.Var(tmp));
+    obj1 = expr(acc, env, obj);
+    (Array[(tmp, obj1)], A.Lvalue_assign_field(var, field))
+  | A.Lvalue_assign_with(value, name) ->
+    remove_side_effects_lvalue(acc, env, pos, value) match {
+    | (bindings, value1) -> (bindings, A.Lvalue_assign_with(value1, name))
+    }
+  | A.Lvalue_assign_array_set(value, args) ->
+    (bindings, value1) = remove_side_effects_lvalue(acc, env, pos, value);
+    name_args: Array<(A.Name, N.Expr)> = args.toArray().map(arg ->
+      (sk_new_var_name(acc.classAcc.next_id, pos), expr(acc, env, arg.i1))
+    );
+    (
+      bindings.concat(name_args),
+      A.Lvalue_assign_array_set(
+        value1,
+        Positional(
+          name_args.mapWithIndex((index: Int, na: (A.Name, N.Expr)) ->
+            (index, (na.i1.i0, (A.Var(na.i0))))
+          ),
+        ),
+      ),
+    )
+  }
+}
+
+fun make_with(
+  pos: FileRange,
+  obj: N.Expr,
+  name: A.Name,
+  rvalue: N.Expr,
+): N.Expr {
+  (pos, N.With(obj, UMap[].add(name, (0, rvalue))))
+}
+
+fun build_tparam_parents(
+  tparams: Array<N.Type_parameter>,
+  extends_: N.ParentMap,
+  use: N.ParentMap,
+): Array<SSet> {
+  empty = SSet[];
+  tparamMap = mutable Map[];
+  tparams.each(tp -> tparamMap.add(tp.i1, empty));
+  bctp = (n, tya, p) -> build_cla_tparam_parent(tparamMap, n, tya, p);
+  extends_.each(bctp);
+  use.each(bctp);
+  tparams.map(tp -> tparamMap[tp.i1])
+}
+
+fun build_cla_tparam_parent(
+  m: mutable Map<String, SSet>,
+  name: N.Name,
+  tya: Array<N.Type_>,
+  _: N.Parent,
+): void {
+  (_, n) = name;
+  tya.each(ty -> build_cla_tparam_type(m, n, ty));
+}
+
+fun build_cla_tparam_type(
+  m: mutable Map<String, SSet>,
+  parent_str: String,
+  ty: N.Type_,
+): void {
+  N.type_iter(
+    ty ->
+      ty match {
+      | (_, N.Tparam(_, _, id, _)) ->
+        s = m[id];
+        m.set(id, s.set(parent_str))
+      | _ -> void
+      },
+    ty,
+  )
+}
+
+/*****************************************************************************/
+/* Expressions. */
+/*****************************************************************************/
+
+private base class ExprState {
+  children =
+  | AExpr(A.Expr)
+  | BindState(FileRange, A.Lvalue, A.Expr)
+  | SeqState(FileRange, N.Expr)
+}
+
+fun expr(acc: mutable Acc, env: Env, ex: A.Expr): N.Expr {
+  initial: ExprState = AExpr(ex);
+  stack = mutable Vector[initial];
+  res: ?N.Expr = None();
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | AExpr(x) ->
+      x match {
+      | (pos, A.Bind(lv, rv, cont)) ->
+        stack.push(BindState(pos, lv, rv));
+        stack.push(AExpr(cont))
+      | (pos, A.Seq(lf, rt)) ->
+        stack.push(SeqState(pos, expr(acc, env, lf)));
+        stack.push(AExpr(rt))
+      | (pos, e) -> !res = Some((pos, expr_(acc, env, pos, e)))
+      }
+    | BindState(pos, lv, rv) ->
+      !res = Some((pos, desugar_bind(acc, env, lv, rv, res.fromSome())))
+    | SeqState(pos, e1) -> !res = Some((pos, N.Seq(e1, res.fromSome())))
+    }
+  };
+  res.fromSome()
+}
+
+fun getMacro(env: Env, n: A.Name): MacroDefinition {
+  pos = n.i0;
+  id = n.i1;
+  env.macros.maybeGet(n) match {
+  | None() -> SkipError.errorl(List[(pos, `No macro '${id}' in scope.`)])
+  | Some(macro_) -> macro_
+  }
+}
+
+fun expandExpressionMacro(env: Env, n: A.Name): N.Expr_ {
+  pos = n.i0;
+  getMacro(env, n).toExpression(pos)
+}
+
+fun expandMacroTypeName(env: Env, n: A.Name): A.Type_name {
+  pos = n.i0;
+  getMacro(env, n).toTypeName(pos)
+}
+
+fun expandMacroDot(env: Env, object: N.Expr, n: A.Name): N.Expr_ {
+  pos = n.i0;
+  N.Dot(object, getMacro(env, n).toIdentifier(pos))
+}
+
+fun expandMacroStaticDot(env: Env, object: N.Expr, n: A.Name): N.Expr_ {
+  pos = n.i0;
+  N.StaticDot(object, getMacro(env, n).toIdentifier(pos))
+}
+
+fun expandForEachMacro(
+  acc: mutable Acc,
+  env: Env,
+  binding: A.ForEachBinding,
+  acollection: A.Expr,
+  abody: A.Expr,
+  awoBreak: A.Expr,
+): N.Expr_ {
+  collection = expr(acc, env, acollection);
+  body = expr(acc, env, abody);
+  woBreak = expr(acc, env, awoBreak);
+
+  binFr = binding.fr;
+  noargs = Positional(Array[]);
+  call = (fr, obj, field) ->
+    (fr, N.Call(None(), (fr, N.Dot(obj, (fr, field))), Array[], noargs));
+
+  iteratorn = sk_new_var_name(acc.classAcc.next_id, collection.i0);
+  iterator = (collection.i0, N.Var(iteratorn));
+  iteratorMet = binding match {
+  | A.FEKeyed _ -> N.FOR_ITEMS
+  | A.FEIdent _
+  | A.FETuple _ ->
+    N.FOR_VALUES
+  };
+  getIterator = call(collection.i0, collection, iteratorMet);
+  callNext = call(collection.i0, iterator, N.FOR_NEXT);
+
+  pat_type = (fr: FileRange, s: String, pats: ?Parameters<N.Pattern>) ->
+    (fr, N.Pat_type(N.Tid_object((fr, s)), pats, A.Complete()));
+  nfr = woBreak.i0;
+  // On None, flip the flag, take the else branch
+  nonePat = pat_type(binFr, N.FOR_NONE, None());
+  flagn = sk_new_var_name(acc.classAcc.next_id, binFr);
+  nfalse = (nfr, N.Literal(A.BoolLiteral(false)));
+  assignFlag = (nfr, N.Assign(flagn, nfalse));
+  noneAction = (nfr, N.Seq(assignFlag, (nfr, N.Continue())));
+  noneBranch = (List[nonePat], None(), noneAction);
+  fspats = binding match {
+  | A.FEKeyed(k, v, _) ->
+    lk = (k.i0, N.Pat_var(k));
+    lv = (v.i0, N.Pat_var(v));
+    (binFr, N.tuple_pattern(binFr, Array[lk, lv]))
+  | A.FEIdent(n, _) -> (n.i0, N.Pat_var(n))
+  | A.FETuple(ns, _) ->
+    pats = ns.map(n -> (n.i0, N.Pat_var(n)));
+    (binFr, N.tuple_pattern(binFr, pats))
+  };
+  // On Some keep looping
+  somePat = pat_type(binFr, N.FOR_SOME, Some(Positional(Array[fspats])));
+  someBranch = (List[somePat], None(), body);
+  matchedBody = (body.i0, N.Match(callNext, List[noneBranch, someBranch]));
+
+  // main loop body
+  bodyfr = body.i0;
+  doloop = (bodyfr, N.DoWhile(matchedBody, (binFr, N.Var(flagn)), woBreak));
+  ntrue = (bodyfr, N.Literal(A.BoolLiteral(true)));
+  flagged = (bodyfr, N.Bind(flagn, ntrue, doloop));
+  // bind the iterator
+  N.Bind(iteratorn, getIterator, flagged)
+}
+
+fun reportDuplicateMacro(
+  pos: FileRange,
+  id: String,
+  relatedPos: FileRange,
+): void {
+  SkipError.errorl(
+    List[
+      (pos, `Duplicate macro '${id}'.`),
+      (relatedPos, `Conflicting declaration.`),
+    ],
+  )
+}
+
+fun maybeReportDuplicateMacro(
+  macros: UMap<MacroDefinition>,
+  macroDefinition: N.Name,
+): void {
+  id = macroDefinition.i1;
+  pos = macroDefinition.i0;
+  macros.maybeGet(macroDefinition) match {
+  | None() -> void
+  | Some(duplicateFieldMacro) ->
+    reportDuplicateMacro(pos, id, duplicateFieldMacro.location())
+  }
+}
+
+fun expandForEachFieldMacro(
+  acc: mutable Acc,
+  env: Env,
+  _pos: FileRange,
+  field: N.Name,
+  fieldName: ?N.Name,
+  body: A.Expr,
+): N.Expr_ {
+  id = field.i1;
+
+  // Always report errors, even when the class contains no fields.
+  maybeReportDuplicateMacro(env.macros, field);
+  fieldName match {
+  | Some(fn) ->
+    maybeReportDuplicateMacro(env.macros, fn);
+    if (fn.i1 == id) {
+      reportDuplicateMacro(fn.i0, fn.i1, field.i0)
+    }
+  | None() -> void
+  };
+
+  convertField = param -> {
+    macros = env.macros;
+    !macros = env.macros.add(
+      field,
+      IdentifierMacro{pos => field.i0, name => id, value => param.name},
+    );
+    fieldName match {
+    | Some(fn) ->
+      !macros = macros.add(
+        fn,
+        ExpressionMacro::createStringLiteralMacro(fn.i0, fn.i1, param.name.i1),
+      )
+    | None() -> void
+    };
+    expr(acc, env with {macros}, body)
+  };
+  env.sk_this
+    .fromSome()
+    .params.transformClassParams(
+      params -> {
+        // This yields fields in the following order:
+        //    - Leaf class
+        //    - Direct traits
+        //    - Base classes
+        // All lists are L to R
+        params.params
+          .toList()
+          .sortedBy(param ~> param.index, compare)
+          .reversed() match {
+        | List.Nil() -> N.Literal(SkipAst.VoidLiteral())
+        | List.Cons(hd, tl) ->
+          tl.foldl(
+            (result, param) ->
+              (param.name.i0, N.Seq(convertField(param), result)),
+            convertField(hd),
+          ).i1
+        }
+      },
+      (N.Literal(SkipAst.VoidLiteral()) : N.Expr_),
+    )
+}
+
+fun expr_(acc: mutable Acc, env: Env, pos: FileRange, x: A.Expr_): N.Expr_ {
+  x match {
+  | A.Literal(l) -> N.Literal(l)
+  | A.Var(n) -> N.Var(n)
+  | A.MacroVar(n) -> expandExpressionMacro(env, n)
+  | A.Seq _ -> invariant_violation("assert false")
+  | A.If(e1, e2, e3) ->
+    N.If(expr(acc, env, e1), expr(acc, env, e2), expr(acc, env, e3))
+  | A.Cstr(n, tyl) -> classname(pos, acc, env, n, tyl)
+  | A.Call((p, A.Cstr(n, tyl1)), tyl2, args) ->
+    tyl = if (tyl1.isEmpty()) {
+      tyl2
+    } else {
+      assert(tyl2.isEmpty());
+      tyl1
+    };
+    bind_object(acc, p, env, n, tyl, args)
+  | A.Call(e, tyl, ep) ->
+    N.Call(
+      None(),
+      expr(acc, env, e),
+      tylist(acc.classAcc, env, tyl),
+      call_args(acc, env, ep),
+    )
+  | A.Mutable(
+    (_, A.CallArray((_, A.Cstr((_, "Array"), tyl)), _, Positional(el))),
+  )
+  | A.CallArray((_, A.Cstr((_, "Array"), tyl)), _, Positional(el)) ->
+    tyl1 = tylist(acc.classAcc, env, tyl);
+    el1 = el.map(ex -> {
+      (_, e) = ex;
+      expr(acc, env, e)
+    });
+    x match {
+    | A.Mutable((mp, _)) -> N.Array(Some(mp), tyl1, el1)
+    | _ -> N.Array(None(), tyl1, el1)
+    }
+  | A.Mutable((_, A.CallArray((p, A.Cstr(n, ctargs)), tyl, Positional(args))))
+  | A.CallArray((p, A.Cstr(n, ctargs)), tyl, Positional(args)) ->
+    assert(tyl.isEmpty());
+    cn = (p, classname(p, acc, env, n, ctargs));
+    args1 = args.map(ex -> {
+      (_, e) = ex;
+      expr(acc, env, e)
+    });
+    is_mutable = x match {
+    | A.Mutable((mp, _)) -> Some(mp)
+    | _ -> None()
+    };
+    call_from_items(pos, cn, is_mutable, args1)
+  | A.Mutable((_, A.CallArray((p, A.Cstr(n, ctargs)), tyl, Named(args))))
+  | A.CallArray((p, A.Cstr(n, ctargs)), tyl, Named(args)) ->
+    // TODO is this reachable? collection-literal-expression allows [ ] only
+    assert(tyl.isEmpty());
+    cn = (p, classname(p, acc, env, n, ctargs));
+    kvalues = args
+      .items()
+      .map(kordered -> {
+        (key, oe) = kordered;
+        ordered = ordered_expr(acc, env, oe);
+        (i, value) = ordered;
+        (i, key, value)
+      })
+      .collect(Array);
+    !kvalues = kvalues.sortedBy(
+      p ~> {
+        (i, _, _) = p;
+        (i : Int)
+      },
+      compare,
+    );
+    pairs = kvalues.map(ordered_named_arg_to_pair);
+    is_mutable = x match {
+    | A.Mutable((mp, _)) -> Some(mp)
+    | _ -> None()
+    };
+    call_from_items(pos, cn, is_mutable, pairs)
+  | A.CallArray(e, tyl, args) ->
+    if (!tyl.isEmpty()) {
+      SkipError.error(pos, "Unexpected explicit type arguments")
+    };
+    N.ArrayGet(expr(acc, env, e), call_args(acc, env, args))
+  | A.Mutable((_, A.CallMap((p, A.Cstr((_, "Array"), tyl)), _, args)))
+  | A.CallMap((p, A.Cstr((_, "Array"), tyl)), _, args) ->
+    tyl1 = tylist(acc.classAcc, env, tyl);
+    args1 = args.map(ex -> {
+      (e1, e2) = ex;
+      pair = Array[expr(acc, env, e1), expr(acc, env, e2)];
+      (p, N.tuple_expr(p, pair))
+    });
+    mut = x match {
+    | A.Mutable((mp, _)) -> Some(mp)
+    | _ -> None()
+    };
+    N.Array(mut, tyl1, args1)
+  | A.Mutable((_, A.CallMap((p, A.Cstr(n, ctargs)), tyl, args)))
+  | A.CallMap((p, A.Cstr(n, ctargs)), tyl, args) ->
+    assert(tyl.isEmpty());
+    cn = (p, classname(p, acc, env, n, ctargs));
+    args1 = args.map(ex -> {
+      (e1, e2) = ex;
+      pair = Array[expr(acc, env, e1), expr(acc, env, e2)];
+      (p, N.tuple_expr(p, pair))
+    });
+    is_mutable = x match {
+    | A.Mutable((mp, _)) -> Some(mp)
+    | _ -> None()
+    };
+    call_from_items(pos, cn, is_mutable, args1)
+  | A.CallMap(e, _, _) -> SkipError.error(e.i0, "Expected a classname")
+  | A.Annotated(e, ty) ->
+    N.Annotated(expr(acc, env, e), type(acc.classAcc, env, ty))
+  | A.Bind _ -> invariant_violation("assert false")
+  | A.Dot(e, n) -> N.Dot(expr(acc, env, e), n)
+  | A.StaticDot(e, n) -> N.StaticDot(expr(acc, env, e), n)
+  | A.MacroDot(e, n) -> expandMacroDot(env, expr(acc, env, e), n)
+  | A.MacroStaticDot(e, n) -> expandMacroStaticDot(env, expr(acc, env, e), n)
+  | A.Pipe(e1, e2) -> N.Pipe(expr(acc, env, e1), expr(acc, env, e2))
+  | A.Binop(bop, e1, e2) ->
+    N.Binop(binop(bop), expr(acc, env, e1), expr(acc, env, e2))
+  | A.Unop(uop, e) -> N.Unop(unop(uop), expr(acc, env, e))
+  | A.Is(e1, pat) -> N.Is(expr(acc, env, e1), pattern(acc, env, pat))
+  | A.As(e1, pat) -> N.As(expr(acc, env, e1), pattern(acc, env, pat))
+  | A.Match(e, mbl) ->
+    N.Match(expr(acc, env, e), mbl.map(mb -> match_branch(acc, env, mb)))
+  | A.Lambda(mods, nparams, e) -> lambda(acc, env, pos, mods, nparams, e)
+  | A.Tuple(el) -> N.tuple_expr(pos, el.map(ex -> expr(acc, env, ex)))
+  | A.TemplateLiteral(ep) -> N.TemplateLiteral(call_args(acc, env, ep))
+  | A.Try(e, mbl) ->
+    N.Try(expr(acc, env, e), mbl.map(mb -> match_branch(acc, env, mb)))
+  | A.Await(e) -> sk_await(acc, env, pos, e)
+  | A.Return(e) ->
+    acc.setReturns(pos);
+    N.Return(expr(acc, env, e))
+  | A.Yield(e) ->
+    acc.setYields(pos);
+    N.Yield(expr(acc, env, e))
+  | A.YieldBreak() ->
+    acc.setYields(pos);
+    N.YieldBreak()
+  | A.Async(e) -> sk_async(acc, env, pos, e)
+  | A.Throw(e) -> N.Throw(expr(acc, env, e))
+  | A.With(e, updates) ->
+    N.With(
+      expr(acc, env, e),
+      updates.map((_, oe) -> ordered_expr(acc, env, oe)),
+    )
+  | A.Mutable(e) -> make_mutable_expr(pos, expr(acc, env, e))
+
+  | A.Continue() -> N.Continue()
+  | A.Break(eb) -> N.Break(expr(acc, env, eb))
+  | A.DoWhile(body, cond, woBreak) ->
+    N.DoWhile(
+      expr(acc, env, body),
+      expr(acc, env, cond),
+      expr(acc, env, woBreak),
+    )
+  | A.While((pos2, A.Literal(A.BoolLiteral(true))), _, _) ->
+    SkipError.error(
+      pos,
+      "Unnecessary usage of 'while' since the 'else' branch is never taken.\nReplace 'while (true)' with 'loop' to make the non-terminating loop explicit.\nUnlike 'while', 'loop' has the type of the value in 'break', or any type needed when there is no 'break'.",
+      Some(
+        SkipError.Fix{
+          oldRange => TextRange::create(pos.range.start, pos2.range.end),
+          newText => "loop",
+        },
+      ),
+    )
+  | A.Loop(body) -> N.Loop(expr(acc, env, body))
+  | A.While(cond, body, woBreak) ->
+    N.While(expr(acc, env, cond), expr(acc, env, body), expr(acc, env, woBreak))
+  | A.ForEach(binding, acollection, abody, awoBreak) ->
+    expandForEachMacro(acc, env, binding, acollection, abody, awoBreak)
+  | A.ForEachFieldMacro(field, fieldName, body) ->
+    expandForEachFieldMacro(acc, env, pos, field, fieldName, body)
+  }
+}
+
+fun make_mutable_expr(fr: FileRange, e: N.Expr): N.Expr_ {
+  e match {
+  | (_, N.Call(None(), inner, tyl, args)) -> N.Call(Some(fr), inner, tyl, args)
+  | (_, N.Array(None(), tyl, args)) -> N.Array(Some(fr), tyl, args)
+  | (_, N.Object(None(), n, tyl, args)) -> N.Object(Some(fr), n, tyl, args)
+  | _ -> SkipError.error(fr, "Invalid mutable expression")
+  }
+}
+
+fun call_args(acc: mutable Acc, env: Env, params: A.Call_args): N.Call_args {
+  params.map(oe -> ordered_expr(acc, env, oe))
+}
+
+fun ordered_expr(
+  acc: mutable Acc,
+  env: Env,
+  ex: A.Ordered_expr,
+): N.Ordered_expr {
+  (i, e) = ex;
+  (i, expr(acc, env, e))
+}
+
+fun lambda_modifiers(mods: A.Lam_modifier): N.Tfun_modifiers {
+  purity = if (mods.is_mutable) N.Fmutable() else N.Fpure();
+  tracking = if (mods.is_untracked) N.Funtracked() else N.Ftracked();
+  (Array[purity], Array[tracking])
+}
+
+// Every generator ends with an implicit "yield break"; this appends one.
+private fun appendYieldBreak(e: N.Expr): N.Expr {
+  (pos, _) = e;
+  (pos, N.Seq(e, (pos, N.YieldBreak())))
+}
+
+fun lambda(
+  containingAcc: mutable Acc,
+  env: Env,
+  _pos: FileRange,
+  mods: A.Lam_modifier,
+  nparams: Parameters<A.Lam_parameter>,
+  e: A.Expr,
+): N.Expr_ {
+  acc = mutable Acc{classAcc => containingAcc.classAcc};
+  mods1 = lambda_modifiers(mods);
+  nparams1 = lambda_parameters(acc, env, nparams);
+  env1 = env with {in_async => None()};
+  e1 = expr(acc, env1, e);
+  e2 = if (acc.yields.isSome()) appendYieldBreak(e1) else e1;
+  N.Lambda(mods1, nparams1, SortedMap[], e2, acc.yields);
+}
+
+fun sk_async(acc: mutable Acc, env: Env, pos: FileRange, e: A.Expr): N.Expr_ {
+  env1 = env with {in_async => Some(pos)};
+  N.Async(SortedMap[], expr(acc, env1, e))
+}
+
+fun sk_await(acc: mutable Acc, env: Env, pos: FileRange, e: A.Expr): N.Expr_ {
+  if (env.in_async.isSome()) {
+    N.Await(expr(acc, env, e))
+  } else {
+    SkipError.error(pos, "Cannot await outside an async context")
+  }
+}
+
+fun call_from_items(
+  pos: FileRange,
+  cn: N.Expr,
+  mut: ?FileRange,
+  args: Array<N.Expr>,
+): N.Expr_ {
+  from_items = (
+    pos,
+    N.StaticDot(
+      cn,
+      (pos, if (mut.isSome()) "mcreateFromItems" else "createFromItems"),
+    ),
+  );
+  vec = (pos, N.Array(None(), Array[], args));
+  N.Call(None(), from_items, Array[], Positional(Array[(0, vec)]))
+}
+
+fun ordered_named_arg_to_pair(p: (Int, N.Name, N.Expr)): N.Expr {
+  (_, (kpos, s), v) = p;
+  pair = Array[(kpos, N.Literal(A.StringLiteral(s))), v];
+  (kpos, N.tuple_expr(kpos, pair))
+}
+
+/*****************************************************************************/
+/* Static expressions. */
+/*****************************************************************************/
+fun bind_object(
+  acc: mutable Acc,
+  pos: FileRange,
+  env: Env,
+  n: A.Name,
+  targs: Array<A.Type_>,
+  args: A.Call_args,
+): N.Expr_ {
+  classname(pos, acc, env, n, targs) match {
+  | N.Classname(n1, targs1) ->
+    check_object(n1);
+    N.Object(None(), n1, targs1, call_args(acc, env, args))
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+fun check_object(object_name: N.Name): void {
+  (pos, _) = object_name;
+  cd = SkipInherit.getClass(object_name);
+  cd.kind match {
+  | A.KClass() -> void
+  | A.KTrait() -> SkipError.error(pos, "Cannot instantiate a trait")
+  | A.KBase() -> SkipError.error(pos, "Cannot instantiate a base class")
+  }
+}
+
+// Standalone class identifiers become Class<_> objects
+fun classname(
+  fr: FileRange,
+  acc: mutable Acc,
+  env: Env,
+  name: A.Name,
+  targs: Array<A.Type_>,
+): N.Expr_ {
+  tn = A.Tclass(name);
+  named_type = bind_named_type{
+    fr,
+    acc => acc.classAcc,
+    env,
+    tn,
+    targs,
+    pattern => false,
+    in_expr => true,
+  };
+  named_type match {
+  | N.Tparam(None(), A.Vnone(), _, n) ->
+    SkipError.error(n.i0, "Generics cannot be used as Class<_> objects")
+  | N.Tnamed(N.NAlias((nfr, _)), tyd_value) ->
+    tyd_value match {
+    | (_, N.Tapply(_, n, tyl)) -> N.Classname(n, tyl)
+    | _ ->
+      SkipError.error(
+        nfr,
+        "Type alias to non-class type may not be used as an expression",
+      )
+    }
+  | N.Tapply(_, n, tyl) -> N.Classname(n, tyl)
+  | _ -> invariant_violation("unexpected result from bind_named_type")
+  }
+}
+
+fun match_branch(
+  acc: mutable Acc,
+  env: Env,
+  mb: A.Match_branch,
+): N.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (
+    patterns(acc, env, pats),
+    maybe_guard.map(ex -> expr(acc, env, ex)),
+    expr(acc, env, e),
+  )
+}
+
+fun lambda_parameters(
+  acc: mutable Acc,
+  env: Env,
+  params: Parameters<A.Lam_parameter>,
+): Parameters<N.Lam_parameter> {
+  params.map(lp -> lambda_parameter(acc, env, lp))
+}
+
+fun lambda_parameter(
+  acc: mutable Acc,
+  env: Env,
+  lp: A.Lam_parameter,
+): N.Lam_parameter {
+  (n, ty) = lp;
+  (n, ty.map(ty -> type(acc.classAcc, env, ty)))
+}
+
+fun patterns(
+  acc: mutable Acc,
+  env: Env,
+  pats: List<A.Pattern>,
+): List<N.Pattern> {
+  pats.map(pat -> pattern(acc, env, pat))
+}
+
+fun pattern(acc: mutable Acc, env: Env, pat: A.Pattern): N.Pattern {
+  check_pattern(pat);
+  translate_pattern(acc, env, pat)
+}
+
+fun translate_pattern(acc: mutable Acc, env: Env, x: A.Pattern): N.Pattern {
+  x match {
+  | (pos, A.Pat_const(ex)) -> (pos, N.Pat_const(expr(acc, env, ex)))
+  | (pos, A.Pat_var(n)) -> (pos, N.Pat_var(n))
+  | (pos, A.Pat_literal(l)) -> (pos, N.Pat_literal(l))
+  | (pos, A.Pat_type(tid, nparams, complete)) ->
+    tid1 = pattern_type_identifier(acc.classAcc, env, pos, tid);
+    params = nparams.map(parms -> pattern_parameters(acc, env, parms));
+    (pos, N.Pat_type(tid1, params, complete))
+  | (pos, A.Pat_tuple(pats)) ->
+    npats = pats.map(translate_pat -> pattern(acc, env, translate_pat));
+    (pos, N.tuple_pattern(pos, npats))
+  | (pos, A.Pat_as(p, n)) -> (pos, N.Pat_as(translate_pattern(acc, env, p), n))
+  }
+}
+
+fun cla_tyd_object_name(pos: FileRange, tpos: FileRange, x: N.Type__): N.Name {
+  x match {
+  | N.Tapply(_, obj_name, _) -> obj_name
+  | N.Tnamed(_, (_, ty)) -> cla_tyd_object_name(pos, tpos, ty)
+  | _ ->
+    SkipError.errorl(
+      List[
+        (pos, "Invalid pattern-match"),
+        (tpos, "This type is not an object"),
+      ],
+    )
+  }
+}
+
+fun pattern_classname(
+  fr: FileRange,
+  acc: mutable ClassAcc,
+  env: Env,
+  tn: A.Type_name,
+  targs: Array<A.Type_>,
+): (N.Name, Array<N.Type_>) {
+  named_type = bind_named_type{
+    fr,
+    acc,
+    env,
+    tn,
+    targs,
+    pattern => true,
+    in_expr => true,
+  };
+  named_type match {
+  | N.Tparam(None(), A.Vnone(), _, n) ->
+    SkipError.error(n.i0, "Cannot match on type parameters")
+  | N.Tnamed(N.NAlias((nfr, _)), tyd_value) ->
+    tyd_value match {
+    | (_, N.Tapply(_, n, tyl)) -> (n, tyl)
+    | _ ->
+      SkipError.error(
+        nfr,
+        "Type alias to non-class type may not be used in pattern",
+      )
+    }
+  | N.Tapply(_, n, tyl) -> (n, tyl)
+  | _ -> invariant_violation("unexpected result from bind_named_type")
+  }
+}
+
+fun pattern_type_identifier(
+  acc: mutable ClassAcc,
+  env: Env,
+  pos: FileRange,
+  tid: A.TypeIdentifier,
+): N.Type_identifier {
+  tid match {
+  | A.Tid_object(n) -> N.Tid_object(pattern_object_name(acc, env, pos, n))
+  | A.Tid_static(n1, n2) ->
+    (class_name, class_def) = {
+      (n1.i1, env.sk_this) match {
+      | ("this", Some(x)) ->
+        acc.!seen_this_type = true;
+        (n1, x)
+      | ("this", None()) -> SkipError.error(n1.i0, "Unbound name")
+      | _ -> (n1, SkipInherit.getClass(n1))
+      }
+    };
+    if (!class_def.types.containsKey(n2)) {
+      SkipError.error(pos, "Field " + n2.i1 + " could not be found in " + n1.i1)
+    };
+    tyd = class_def.types[n2];
+    (tpos, _) = tyd.name;
+    ty = reduce_type(pos, acc, env, class_name, Array[n2]);
+    obj_name = cla_tyd_object_name(pos, tpos, ty);
+    n = pattern_object_name(acc, env, pos, A.Tclass(obj_name));
+    N.Tid_static((n1, n2), n)
+  }
+}
+
+fun pattern_object_name(
+  acc: mutable ClassAcc,
+  env: Env,
+  pos: FileRange,
+  n: A.Type_name,
+): N.Name {
+  (n1, _) = pattern_classname(pos, acc, env, n, Array[]);
+  /* TODO: Targs could be non-empty. Should allow specifying targs when matching on classes. */
+  cd = SkipInherit.getClass(n1);
+  cd match {
+  | A.Class_def{kind => A.KTrait()} ->
+    SkipError.error(pos, "Cannot pattern-match on a type-class")
+  | _ -> void
+  };
+  n1
+}
+
+fun pattern_parameters(
+  acc: mutable Acc,
+  env: Env,
+  nparams: Parameters<A.Pattern>,
+): Parameters<N.Pattern> {
+  nparams.map(pat -> translate_pattern(acc, env, pat))
+}
+
+fun unop(op: A.Unoperator): N.PosUnop {
+  (pos, uop) = op;
+  (pos, unop_(uop))
+}
+
+fun unop_(x: A.Unop_): N.Unop_ {
+  x match {
+  | A.Not() -> N.Not()
+  | A.Uminus() -> N.Uminus()
+  }
+}
+
+fun binop(op: A.Binoperator): N.PosBinop {
+  (pos, bop) = op;
+  (pos, binop_(bop))
+}
+
+fun binop_(x: A.Binop_): N.Binop_ {
+  x match {
+  | A.Barbar() -> N.Barbar()
+  | A.Ampamp() -> N.Ampamp()
+  | A.Eqeq() -> N.Eqeq()
+  | A.Diff() -> N.Diff()
+  | A.Lt() -> N.Lt()
+  | A.Lte() -> N.Lte()
+  | A.Gt() -> N.Gt()
+  | A.Gte() -> N.Gte()
+  | A.Plus() -> N.Plus()
+  | A.Minus() -> N.Minus()
+  | A.Star() -> N.Star()
+  | A.Slash() -> N.Slash()
+  | A.Percent() -> N.Percent()
+  }
+}

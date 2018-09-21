@@ -1,0 +1,90 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Validates the structure of the outerIst.
+
+module alias O = OuterIst;
+module alias OU = SkipOuterIstUtils;
+
+module SkipValidateOuterIst;
+
+// Type switch branches must not have any duplicate types
+fun validateTypeSwitchBranches(
+  _program: O.Program,
+  branches: List<O.TypeSwitchBranch>,
+): void {
+  _ = branches.foldl(
+    (
+      cases: SMap<(FileRange, O.TypeIdentifier)>,
+      branch: O.TypeSwitchBranch,
+    ) -> {
+      branch.cases.foldl(
+        (cases, pos_tid) -> {
+          (pos, tid) = pos_tid;
+          tid_string = tid.name.id;
+          cases.maybeGet(tid_string) match {
+          | None() -> cases.set(tid_string, pos_tid)
+          | Some((conflict_pos, _conflict_tid)) ->
+            SkipError.internal_error2(
+              pos,
+              "Duplicate case in TypeSwitch",
+              conflict_pos,
+              "conflict",
+            )
+          }
+        },
+        cases,
+      );
+    },
+    SortedMap[],
+  );
+}
+
+fun validateTypeSwitchStatement(program: O.Program, s: O.Stmt): void {
+  s match {
+  | O.TypeSwitch(_, branches, _) ->
+    validateTypeSwitchBranches(program, branches)
+  // TODO: Types of all branches must be sub types of the branch expression
+  // TODO: Default only allowed if branches are non-exhaustive
+  // TODO: Are non-leaf classes allowed here?
+  | _ -> invariant_violation("Expected TypeSwitch")
+  }
+}
+
+fun validateStatement(program: O.Program, s: O.Stmt): void {
+  s match {
+  | O.TypeSwitch _ -> validateTypeSwitchStatement(program, s)
+  // TODO: Validate remaining statements
+  | _ -> void
+  }
+}
+
+fun validateExpression(_program: O.Program, _e: O.Expr): void {
+  // TODO: Validate Expressions
+  void
+}
+
+// Reuses the mapping/finding framework for iteration ...
+fun validateProgram(program: O.Program): void {
+  validateMapper = s -> {
+    _ = OU.iterate_stmt(
+      e -> {
+        validateExpression(program, e);
+        OU.Continue()
+      },
+      s -> {
+        validateStatement(program, s);
+        OU.Continue()
+      },
+      s,
+    );
+    s;
+  };
+  _ = OU.map_program_stmts(validateMapper, program);
+}
+
+module end;

@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/when_pattern_usefulness.sk", line 4, characters 5-5:
+The following pattern is unused:
+ | x
+2 |   2 match {
+3 |   | _ -> void
+4 |   | x if (x == 2) -> void
+  |     ^
+5 |   }

@@ -1,0 +1,69 @@
+base class BB {
+  children =
+  | C(x: Char)
+  | F(x: Float)
+  | S(s: String)
+  | B(b: Bool)
+  | I(i: Int)
+  | N{n: BB}
+  | T(t: (BB, BB))
+}
+
+fun main(): void {
+  print_raw(
+    (((C('C') : BB) match {
+    | F _
+    | C('B') ->
+      false
+    | C('C') -> true
+    | _ -> false
+    }) &&
+      ((F(42.0) : BB) match {
+      | C _
+      | F(42.1) ->
+        false
+      | F(42.0) -> true
+      | _ -> false
+      }) &&
+      ((S("S") : BB) match {
+      | C _
+      | S("") ->
+        false
+      | S("S") -> true
+      | _ -> false
+      }) &&
+      ((B(true) : BB) match {
+      | C _
+      | B(false) ->
+        false
+      | B(true) -> true
+      | _ -> false
+      }) &&
+      ((I(42) : BB) match {
+      | C _
+      | I(41) ->
+        false
+      | I(42) -> true
+      | _ -> false
+      }) &&
+      ((N{n => S("S")} : BB) match {
+      | C _
+      | N{n => C _} ->
+        false
+      | N{n => S(_)} -> true
+      | _ -> false
+      }) &&
+      ((T((I(42), B(false))) : BB) match {
+      | C _
+      | T((I(42), B(true))) ->
+        false
+      | T((I(42), I _)) -> false
+      | T((S _, B(false))) -> false
+      | T((I _, B _)) -> true
+      | _ -> false
+      })) match {
+    | true -> "Pass\n"
+    | false -> "Fail"
+    },
+  )
+}

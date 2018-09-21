@@ -1,0 +1,15 @@
+{
+  "skipVersion": "1.0",
+  "variables": {
+    "var": {
+      "values": [ "val1" ],
+      "default": "val1"
+    }
+  },
+  "programUnits": {
+    "lib": {
+      "sources": [],
+      "kind": "Library"
+    }
+  }
+}

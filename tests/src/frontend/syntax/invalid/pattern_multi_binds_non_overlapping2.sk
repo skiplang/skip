@@ -1,0 +1,15 @@
+base class Foo {
+  children =
+  | Bar(Int, Int)
+  | Baz(Int, Int, Int)
+}
+
+fun shouldFail(): String {
+  f: Foo = Bar(1, 2);
+
+  f match {
+  | Baz(x, y, z)
+  | Bar(x, y) ->
+    "Fail\n"
+  }
+}

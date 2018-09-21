@@ -1,0 +1,7 @@
+@test
+fun testCycle(): void {
+  i = cycle(0, i -> {
+    if (i < 100) Cycle.Next(i + 1) else Cycle.Done(i)
+  });
+  assertEqual(i, 100);
+}

@@ -1,0 +1,14 @@
+Base<BaseClass>()
+Concrete<FinalClass>()
+Lambda{
+  source => "./runtime/debug_native.sk(9, 19)-(9, 45)",
+  captured => Captured{lambdaCapturedNumber => 10},
+}
+Lambda{
+  source => "./runtime/debug_native.sk(13, 20)-(13, 70)",
+  captured => Captured{lambdaCapturedNumber => 10, lambdaCapturedNumber2 => 20},
+}
+Lambda{
+  source => "./runtime/debug_native.sk(13, 20)-(13, 70)",
+  captured => Captured{lambdaCapturedNumber => 10, lambdaCapturedNumber2 => 21},
+}

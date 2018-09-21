@@ -1,0 +1,13 @@
+class MyException() extends Exception
+
+@test
+fun testExceptionDefaultMessage(): void {
+  assertEqual(
+    try {
+      throw MyException()
+    } catch {
+    | e -> e.getMessage()
+    },
+    "Exception MyException",
+  )
+}

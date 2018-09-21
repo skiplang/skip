@@ -1,0 +1,7 @@
+File "./syntax/invalid/foreachfield_arg2.sk", line 4, characters 31-32:
+Too many arguments to '#forEachField'. Expected 1 or 2, found 3
+2 | base class B {
+3 |   macro fun m(): void {
+4 |     #forEachField(#field, #a, #b) a
+  |                               ^^
+5 |   }

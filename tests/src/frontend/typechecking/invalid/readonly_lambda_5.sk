@@ -1,0 +1,4 @@
+mutable class Foo(v: () -> Int)
+fun no(foo: readonly Foo): void {
+  _ = foo.v()
+}

@@ -1,0 +1,7 @@
+File "./syntax/invalid/if_instead_of_when1.sk", line 3, characters 7-10:
+Expected 'if' or '->' but encountered 'when'. Perhaps you meant to use 'if'
+1 | fun test(): void {
+2 |   1 match {
+3 |   | x when (x == 1) -> "Nope\n"
+  |       ^^^^
+4 |   | x -> "Boom\n"

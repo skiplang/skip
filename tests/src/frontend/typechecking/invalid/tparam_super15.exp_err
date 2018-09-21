@@ -1,0 +1,22 @@
+File "./typechecking/invalid/tparam_super15.sk", line 11, characters 24-24:
+Invalid argument
+ 9 |
+10 |   fun compareit<V, V2: MyOrderable>[T: V & V2](x: V): Order {
+11 |     this.get().compare(x)
+   |                        ^
+12 |   }
+
+File "./typechecking/invalid/tparam_super15.sk", line 10, characters 51-51:
+The type: V
+ 8 |   }
+ 9 |
+10 |   fun compareit<V, V2: MyOrderable>[T: V & V2](x: V): Order {
+   |                                                   ^
+11 |     this.get().compare(x)
+
+File "./typechecking/invalid/tparam_super15.sk", line 2, characters 24-27:
+Is not a subtype of: V2
+1 | trait MyOrderable {
+2 |   readonly fun compare(inst): Order;
+  |                        ^^^^
+3 | }

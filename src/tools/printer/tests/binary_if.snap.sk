@@ -1,0 +1,23 @@
+fun main(): void {
+  if (
+    this.end().line() == this.tokens[this.tokenIndex + 1].range.start.line()
+  ) {
+    void
+  } else if (
+    endIndex < this.comments.size() &&
+    this.comments[endIndex].range.start.line() < endLine
+  ) {
+    void
+  };
+
+  if (
+    this.hasPlugin("dynamicImports") &&
+    this.lookahead().types == tt.parenLeft
+  ) {
+    void
+  };
+
+  if (!flag) {
+    this.die(msg)
+  }
+}

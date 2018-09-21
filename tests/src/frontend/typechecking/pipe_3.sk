@@ -1,0 +1,16 @@
+class Foo<T>(x: T) {
+  static fun combine(x: Array<Char>): String {
+    String::fromChars(x)
+  }
+}
+
+fun main(): void {
+  print_raw(
+    42 |>
+      x ->
+        (x + x).toString() |>
+          s ->
+            Foo(s) |>
+              f -> class(f) |> c -> c::combine(Array['P', 'a', 's', 's', '\n']),
+  )
+}

@@ -1,0 +1,16 @@
+base class MyBase {
+  static fun val(): Int {
+    1
+  }
+}
+
+class Child() extends MyBase {
+  static fun val2(): Int {
+    3
+  }
+}
+
+fun main(): void {
+  result = MyBase::val() + Child::val() + Child::val2();
+  print_raw(if (result == 5) "OK\n" else "FAILED")
+}

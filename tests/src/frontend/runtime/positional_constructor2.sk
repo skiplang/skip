@@ -1,0 +1,10 @@
+base class MyGrandParent final (x: String, y: String) {}
+base class MyParent extends MyGrandParent
+base class MyParent2 extends MyGrandParent
+
+class Child extends MyParent, MyParent2
+
+fun main(): void {
+  x = Child("Hello", "\n");
+  print_raw(x.x + x.y)
+}

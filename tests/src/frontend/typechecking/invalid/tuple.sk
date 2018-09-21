@@ -1,0 +1,8 @@
+fun main(): void {
+  void
+}
+
+fun test(): Bool {
+  (x, _y) = (23, 22);
+  x
+}

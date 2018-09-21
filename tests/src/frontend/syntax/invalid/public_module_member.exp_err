@@ -1,0 +1,7 @@
+File "./syntax/invalid/public_module_member.sk", line 5, characters 1-6:
+Expected 'module end;' or end of file
+3 |
+4 | fun f1(): void { void }
+5 | public
+  | ^^^^^^
+6 | fun f2(): void { void }

@@ -1,0 +1,6 @@
+File "./syntax/invalid/fun_typo_class_member.sk", line 2, characters 10-11:
+'fn' is not a valid keyword, did you mean 'fun' instead?
+1 | class X() {
+2 |   static fn f(): void {}
+  |          ^^
+3 | }

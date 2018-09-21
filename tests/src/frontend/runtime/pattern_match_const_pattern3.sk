@@ -1,0 +1,19 @@
+class X(Int, Y) {}
+class Y(String, Z) {}
+class Z(Bool) {}
+
+const Con1: X = X(20, Y("HEY", Z(true)));
+const Con2: X = X(20, Y("HEY", Z(false)));
+
+fun testCon1(p: X): String {
+  p match {
+  | Con1 -> "Fail\n"
+  | Con2 -> "Pass\n"
+  | _ -> "Fail\n"
+  }
+}
+
+fun main(): void {
+  x = X(20, Y("HEY", Z(false)));
+  print_raw(testCon1(x))
+}

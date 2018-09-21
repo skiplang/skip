@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable2.sk", line 8, characters 7-9:
+Cannot override a final method. Class Bar attempted to override method foo from parent Foo
+ 6 |
+ 7 | class Bar() extends Foo {
+ 8 |   fun foo(): void {
+   |       ^^^
+ 9 |     void
+
+File "./typechecking/invalid/overridable2.sk", line 2, characters 7-9:
+To override the method, Foo::foo must have the modifier 'overridable'
+1 | base class Foo {
+2 |   fun foo(): void {
+  |       ^^^
+3 |     void

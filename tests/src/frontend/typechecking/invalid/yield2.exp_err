@@ -1,0 +1,19 @@
+File "./typechecking/invalid/yield2.sk", line 2, characters 3-14:
+Invalid yield type
+1 | fun bad(): mutable Iterator<Int> {
+2 |   yield "oops"
+  |   ^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/yield2.sk", line 2, characters 9-14:
+The type: String
+1 | fun bad(): mutable Iterator<Int> {
+2 |   yield "oops"
+  |         ^^^^^^
+3 | }
+
+File "./typechecking/invalid/yield2.sk", line 1, characters 29-31:
+Is not a subtype of: Int
+1 | fun bad(): mutable Iterator<Int> {
+  |                             ^^^
+2 |   yield "oops"

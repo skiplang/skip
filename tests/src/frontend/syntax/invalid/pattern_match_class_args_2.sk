@@ -1,0 +1,6 @@
+class Foo(x : Int)
+
+
+fun main(): String {
+  Foo(5) match { Foo x -> "No" }
+}

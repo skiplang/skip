@@ -1,0 +1,39 @@
+base class Baz_ final {} {
+  deferred static fun getCheck(): this ~> Bool;
+
+  fun isValid(): Bool {
+    f = static::getCheck();
+    f(this)
+  }
+  deferred static fun empty(): this {
+    new = static{};
+    invariant(new.isValid(), "didn't validate");
+    new
+  }
+}
+
+base class BazFoo_ extends Baz_ {
+  deferred overridable static fun getCheck(): this ~> Bool {
+    e ~> !e.isDisabled()
+  }
+
+  fun isDisabled(): Bool {
+    true
+  }
+}
+
+class BazBar_ extends BazFoo_ {
+  static fun getCheck(): this ~> Bool {
+    e ~> !e.isDisabled2()
+  }
+  fun isDisabled2(): Bool {
+    false
+  }
+  fun get(): String {
+    "Pass\n"
+  }
+}
+
+fun main(): void {
+  print_raw(BazBar_::empty().get())
+}

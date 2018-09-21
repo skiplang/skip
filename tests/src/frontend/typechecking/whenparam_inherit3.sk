@@ -1,0 +1,21 @@
+base class P final () {
+  children =
+  | C1
+  | C2
+}
+
+base class Foo<T> {
+  fun foo[T: C1](T): void;
+}
+
+class Bar<T>() extends Foo<T> {
+  fun foo[T: P](T): void {
+    void
+  }
+}
+
+fun main(): void {
+  Bar().foo(C1());
+  Bar().foo(C2());
+  print_string("Pass")
+}

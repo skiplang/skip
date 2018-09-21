@@ -1,0 +1,23 @@
+File "./typechecking/invalid/const_pattern1.sk", line 5, characters 5-11:
+Invalid literal pattern
+3 | fun shouldFail(x: Int): String {
+4 |   x match {
+5 |   | My_bool -> "I should fail"
+  |     ^^^^^^^
+6 |   | 1 -> "You shouldn't be seeing this"
+
+File "./typechecking/invalid/const_pattern1.sk", line 3, characters 19-21:
+The type: Int
+1 | const My_bool: Bool = true;
+2 |
+3 | fun shouldFail(x: Int): String {
+  |                   ^^^
+4 |   x match {
+
+File "./typechecking/invalid/const_pattern1.sk", line 5, characters 5-11:
+Does not share a common super type with: Bool
+3 | fun shouldFail(x: Int): String {
+4 |   x match {
+5 |   | My_bool -> "I should fail"
+  |     ^^^^^^^
+6 |   | 1 -> "You shouldn't be seeing this"

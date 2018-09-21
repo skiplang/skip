@@ -1,0 +1,31 @@
+mutable class Foo(mutable x: Int)
+
+fun no(): () ~> void {
+  x = mutable Foo(5);
+  f = (
+    () ~> {
+      _ = x
+    }
+  );
+  f
+}
+
+fun no2(): () ~> void {
+  x = mutable Foo(5);
+  f = (
+    () ~> {
+      x.!x = x.x + 1
+    }
+  );
+  f
+}
+
+fun no3(): () ~> void {
+  x = mutable Foo(5);
+  f = (
+    () ~> {
+      !x.x = x.x + 1
+    }
+  );
+  f
+}

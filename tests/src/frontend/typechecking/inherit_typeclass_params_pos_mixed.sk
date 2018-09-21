@@ -1,0 +1,21 @@
+// positional constructor inheritance from traits and base class.
+// trait fields are considered owned by the implmenting class, so bind
+// more tightly than inherited fields.
+// param order:
+//  leaf class params
+//  traits in decl order
+//  base class
+trait X(x: String)
+trait Y(y: String)
+
+base class B(b: String)
+
+class C(c: String) extends B uses X, Y {
+  fun get(): String {
+    this.c + this.x + this.y + this.b
+  }
+}
+
+fun main(): void {
+  print_raw(C("O", "K", "!", "\n").get())
+}

@@ -1,0 +1,5 @@
+fun main(): void {
+  g: Int ~> Int = (_ ~> 112);
+  _f: () -> Int = (() -> g(42));
+  print_string("Pass")
+}

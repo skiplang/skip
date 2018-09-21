@@ -1,0 +1,26 @@
+File "./typechecking/invalid/constraint_extends2.sk", line 9, characters 12-15:
+For the child: 'Foo2', invalid extend of the parent: 'Foo'
+ 7 | }
+ 8 |
+ 9 | base class Foo2 extends Foo<Int, Int>
+   |            ^^^^
+
+File "./typechecking/invalid/constraint_extends2.sk", line 9, characters 25-27:
+Constraint not satisfied
+ 7 | }
+ 8 |
+ 9 | base class Foo2 extends Foo<Int, Int>
+   |                         ^^^
+
+File "./typechecking/invalid/constraint_extends2.sk", line 9, characters 34-36:
+The type: Int
+ 7 | }
+ 8 |
+ 9 | base class Foo2 extends Foo<Int, Int>
+   |                                  ^^^
+
+File "./typechecking/invalid/constraint_extends2.sk", line 1, characters 24-27:
+Is not a subtype of: Some<Int>
+1 | base class Foo<T1, T2: Some<T1>> {
+  |                        ^^^^
+2 |   // the error should be on the constraint for T2, not when accessing fromSome

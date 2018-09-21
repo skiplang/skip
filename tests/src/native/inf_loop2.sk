@@ -1,0 +1,21 @@
+@no_inline
+fun maybeThrow(n: Int): void {
+  if (n >= 10) {
+    throw OutOfBounds()
+  }
+}
+
+@no_inline
+fun loopThenThrow(n: Int): void {
+  print_string(n.toString());
+  maybeThrow(n);
+  loopThenThrow(n + 1)
+}
+
+fun main(): void {
+  try {
+    loopThenThrow(0)
+  } catch {
+  | OutOfBounds _ -> print_string("done")
+  }
+}

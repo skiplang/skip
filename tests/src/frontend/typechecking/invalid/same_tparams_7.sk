@@ -1,0 +1,4 @@
+mutable class Foo<T>(mutable v: T)
+fun no<T>(x: mutable Foo<T>): mutable Foo<T> {
+  mutable Foo(freeze(x).v)
+}

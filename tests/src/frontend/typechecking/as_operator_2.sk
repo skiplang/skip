@@ -1,0 +1,15 @@
+base class P
+base class Q extends P
+base class R extends P
+class S() extends Q, R
+class T() extends Q, R
+
+fun main(): void {
+  x: P = S();
+  if (x is S _) {
+    _y = x as S _;
+    print_string("Pass")
+  } else {
+    print_string("Fail")
+  }
+}

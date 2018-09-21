@@ -1,0 +1,11 @@
+File "./syntax/invalid/duplicate_positional_parameter.sk", line 1, characters 15-15:
+Name already bound: p
+1 | fun f(p: Int, p: String): void {
+  |               ^
+2 |   p
+
+File "./syntax/invalid/duplicate_positional_parameter.sk", line 1, characters 7-7:
+Previously here
+1 | fun f(p: Int, p: String): void {
+  |       ^
+2 |   p

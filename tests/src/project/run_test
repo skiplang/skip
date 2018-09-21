@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+# Usage: run_test BACKEND_GEN <test>
+# test: is the directory whose skip.project.json file to test.
+# if the test directory contains an 'options' file then those are appended.
+#
+# Environment Variables:
+# VERBOSE - show diff in baseline or error output
+# UPDATE_BASELINE - update the baseline to the current output and pass the test
+
+from __future__ import print_function
+
+import argparse
+import imp
+import logging
+import os
+import shutil
+import subprocess
+import sys
+
+common = imp.load_source(
+    'common',
+    os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py'))
+
+logger = logging.getLogger(__name__)
+
+
+def runtest(args, test):
+    test = common.computeRelativePath(test)
+    cmd = [os.path.join(os.path.dirname(sys.argv[0]), '../../../build/bin/skip_depends'), test] + args.options
+
+    env = os.environ.copy()
+
+    expectError = '/invalid/' in test
+    result = common.RunCommand(test, cmd, env=env, expectError=expectError, )
+
+    if not result.checkReturnCode():
+        return False
+
+    if result.report_diff():
+        return False
+
+    result.success()
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Run skip_project test',
+        parents=[common.commonArguments(needsBackend=False)])
+    parser.add_argument('test', help='is the directory containing the skip.project.json to test')
+    parser.add_argument('--options', nargs=argparse.REMAINDER, default=[], help='additional options for skip_depends')
+    args = common.parse_args(parser)
+
+    if args.relative:
+        os.chdir(args.relative)
+
+    result = runtest(args, args.test)
+    return 2 * (not result)
+
+
+if __name__ == '__main__':
+    rc = main()
+    sys.exit(rc)

@@ -1,0 +1,14 @@
+mutable class Foo(mutable f: Int) {
+  @no_inline
+  readonly fun field(): Int {
+    this.f
+  }
+}
+
+fun main(): void {
+  f = mutable Foo(37);
+  a = f.field();
+  f.!f = 38;
+  b = f.field();
+  print_raw((a < b).toString() + "\n");
+}

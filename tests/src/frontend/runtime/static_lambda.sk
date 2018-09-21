@@ -1,0 +1,10 @@
+class X() {
+  static fun gogo(): String {
+    "Pass\n"
+  }
+}
+
+fun main(): void {
+  y = X::gogo;
+  print_raw(y())
+}

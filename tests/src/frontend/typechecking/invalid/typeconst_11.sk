@@ -1,0 +1,35 @@
+base class Fields {
+  children =
+  | Type1()
+  | Type2()
+}
+
+base class MyBase {
+  type T: Fields;
+  deferred fun set(x: this::T): void;
+  fun get(): this::T;
+}
+
+class C1() extends MyBase {
+  type T = Type1;
+  fun set(_: Type1): void {
+    void
+  }
+  fun get(): Type1 {
+    Type1()
+  }
+}
+
+class C2() extends MyBase {
+  type T = Type2;
+  fun set(_: Type2): void {
+    void
+  }
+  fun get(): Type2 {
+    Type2()
+  }
+}
+
+fun wrong(x: MyBase, y: MyBase): void {
+  x.set(y.get())
+}

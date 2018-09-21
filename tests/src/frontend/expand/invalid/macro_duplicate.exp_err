@@ -1,0 +1,13 @@
+File "./expand/invalid/macro_duplicate.sk", line 3, characters 20-33:
+Duplicate macro '#thisClassName'.
+1 | class C() {
+2 |   macro fun m(): void {
+3 |     #forEachField (#thisClassName) #thisClassName
+  |                    ^^^^^^^^^^^^^^
+4 |   }
+
+File "./expand/invalid/macro_duplicate.sk", line 1, characters 7-7:
+Conflicting declaration.
+1 | class C() {
+  |       ^
+2 |   macro fun m(): void {

@@ -1,0 +1,22 @@
+File "./typechecking/invalid/assign_dot4.sk", line 3, characters 3-12:
+Invalid assignment
+1 | fun main(): void {
+2 |   ref = mutable Ref(42);
+3 |   ref.!value = "hello";
+  |   ^^^^^^^^^^
+4 |   print_raw(ref.value)
+
+File "./typechecking/invalid/assign_dot4.sk", line 3, characters 16-22:
+The type: String
+1 | fun main(): void {
+2 |   ref = mutable Ref(42);
+3 |   ref.!value = "hello";
+  |                ^^^^^^^
+4 |   print_raw(ref.value)
+
+File "./typechecking/invalid/assign_dot4.sk", line 2, characters 21-22:
+Is not a subtype of: Int
+1 | fun main(): void {
+2 |   ref = mutable Ref(42);
+  |                     ^^
+3 |   ref.!value = "hello";

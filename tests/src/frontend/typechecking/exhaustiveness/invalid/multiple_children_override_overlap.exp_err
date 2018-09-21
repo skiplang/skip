@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/multiple_children_override_overlap.sk", line 9, characters 5-21:
+The following pattern is unused:
+ | C(1, true, false)
+ 7 |   | A(false) -> "0"
+ 8 |   | B(true) -> "1"
+ 9 |   | C(1, true, false) -> "2"
+   |     ^^^^^^^^^^^^^^^^^
+10 |   }

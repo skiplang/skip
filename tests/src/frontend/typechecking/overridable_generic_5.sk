@@ -1,0 +1,13 @@
+base class MyParent<P> {
+  fun eat<P2: P>(P2): void;
+}
+
+class C() extends MyParent<Int> {
+  fun eat(Int): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

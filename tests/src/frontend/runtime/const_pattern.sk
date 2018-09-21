@@ -1,0 +1,13 @@
+class X(Int) {}
+const Con1: X = X(20);
+
+fun testCon1(p: X): String {
+  p match {
+  | Con1 -> "Pass\n"
+  | _ -> "Fail\n"
+  }
+}
+
+fun main(): void {
+  print_raw(testCon1(X(20)))
+}

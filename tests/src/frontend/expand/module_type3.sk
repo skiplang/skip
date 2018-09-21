@@ -1,0 +1,20 @@
+module M;
+
+type T = String;
+class .M() {
+  type T2 = String;
+}
+
+module end;
+
+fun pass(): M::T2 {
+  "Pass\n"
+}
+
+fun f(): M.T {
+  pass()
+}
+
+fun main(): void {
+  print_raw(f())
+}

@@ -1,0 +1,5 @@
+File "./syntax/invalid/class_modifiers.sk", line 1, characters 1-5:
+Invalid modifier 'async' on class
+1 | async class C {}
+  | ^^^^^
+2 |

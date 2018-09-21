@@ -1,0 +1,17 @@
+base class Foo
+base class Bar extends Foo
+class Zaz() extends Foo
+class Baz() extends Bar
+
+fun getBazAsFoo(): Foo {
+  Baz()
+}
+
+fun main(): void {
+  print_raw(
+    getBazAsFoo() match {
+    | Bar _ -> "Pass\n"
+    | _ -> "Fail"
+    },
+  )
+}

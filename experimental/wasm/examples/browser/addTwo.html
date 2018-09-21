@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h1>Hello, WebAssembly!</h1>
+    <p>
+    <h2>AddTwo Browser Example</h2>
+    <p>
+    Open DevTools Console to see output...
+    </p>
+    <script>
+      window.module = {};
+    </script>
+    <script src="../../runtime/common/utils.js"></script>
+    <script>
+      console.log('utils: ', module.exports);
+      window.wasmUtils = module.exports;
+    </script>
+    <script src="../../runtime/browserRuntime.js"></script>
+    <script src="addTwo.js"></script>
+  </body>
+</html>

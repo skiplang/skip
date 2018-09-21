@@ -1,0 +1,9 @@
+fun main(): void {
+  void
+}
+
+base class X {
+  const c: Bool;
+}
+
+class Y() extends X {}

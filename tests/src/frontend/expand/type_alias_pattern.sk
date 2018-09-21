@@ -1,0 +1,11 @@
+class C()
+
+type X = C;
+
+fun main(): void {
+  print_raw(
+    C() match {
+    | X() -> "Pass\n"
+    },
+  )
+}

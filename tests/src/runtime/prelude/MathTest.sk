@@ -1,0 +1,98 @@
+@test
+fun testSin(): void {
+  assertEqual(Math.sin(0.0), 0.0);
+  assertEqual(Math.sin(Math.PI / 2.0), 1.0);
+  void
+}
+
+@test
+fun testCos(): void {
+  assertEqual(Math.cos(0.0), 1.0);
+  void
+}
+
+@test
+fun testAsin(): void {
+  assertEqual(Math.asin(0.0), 0.0);
+  assertEqual(Math.asin(1.0), Math.PI / 2.0);
+  void
+}
+
+@test
+fun testAcos(): void {
+  assertEqual(Math.acos(-1.0), Math.PI);
+  void
+}
+
+@test
+fun testFloor(): void {
+  assertEqual(Math.floor(-1.6), -2.0);
+  assertEqual(Math.floor(0.1), 0.0);
+  assertEqual(Math.floor(0.7), 0.0);
+  void
+}
+
+@test
+fun testCeil(): void {
+  assertEqual(Math.ceil(-1.6), -1.0);
+  assertEqual(Math.ceil(0.1), 1.0);
+  assertEqual(Math.ceil(0.7), 1.0);
+  void
+}
+
+@test
+fun testRound(): void {
+  assertEqual(Math.round(0.0), 0.0);
+  assertEqual(Math.round(0.5), 1.0);
+  assertEqual(Math.round(1.5), 2.0);
+  assertEqual(Math.round(2.5), 3.0);
+  assertEqual(Math.round(3.5), 4.0);
+
+  assertEqual(Math.round(0.1), 0.0);
+  assertEqual(Math.round(0.4), 0.0);
+  assertEqual(Math.round(0.6), 1.0);
+  assertEqual(Math.round(0.9), 1.0);
+
+  assertEqual(Math.round(1.2), 1.0);
+  assertEqual(Math.round(1.8), 2.0);
+
+  assertEqual(Math.round(-0.1), 0.0);
+  assertEqual(Math.round(-0.4), 0.0);
+  assertEqual(Math.round(-0.6), -1.0);
+  assertEqual(Math.round(-0.9), -1.0);
+
+  assertEqual(Math.round(-1.2), -1.0);
+  assertEqual(Math.round(-1.8), -2.0);
+
+  // Note: JavaScript is rounding it up instead of down
+  // for negative numbers that end with 0.5
+  assertEqual(Math.round(-0.5), -1.0);
+  assertEqual(Math.round(-1.5), -2.0);
+  assertEqual(Math.round(-2.5), -3.0);
+
+  void
+}
+
+@test
+fun testSqrt(): void {
+  assertEqual(Math.sqrt(4.0), 2.0);
+  assertEqual(Math.floor(Math.sqrt(10.0)), 3.0);
+  void
+}
+
+@test
+fun testAbs(): void {
+  assertEqual(Math.abs(-1), 1);
+  assertEqual(Math.abs(-1.0), 1.0);
+  assertEqual(Math.abs(1), 1);
+  assertEqual(Math.abs(1.0), 1.0);
+  assertEqual(Math.abs(-0.0), 0.0);
+  assertEqual(Math.abs(0.0), 0.0);
+  assertEqual(Math.abs(0), 0);
+}
+
+@test
+fun testPow(): void {
+  assertEqual(Math.pow(2.0, 10.0), 1024.0);
+  assertEqual(Math.pow(1.5, 2.0), 2.25);
+}

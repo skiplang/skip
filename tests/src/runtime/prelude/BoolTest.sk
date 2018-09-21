@@ -1,0 +1,60 @@
+@test
+fun testNot(): void {
+  assertEqual(!true, false);
+  assertEqual(!false, true);
+  void
+}
+
+@test
+fun testEQ(): void {
+  assertEqual(false == false, true);
+  assertEqual(false == true, false);
+  assertEqual(true == false, false);
+  assertEqual(true == true, true);
+  void
+}
+
+@test
+fun testNE(): void {
+  assertEqual(false != false, false);
+  assertEqual(false != true, true);
+  assertEqual(true != false, true);
+  assertEqual(true != true, false);
+  void
+}
+
+@test
+fun testLT(): void {
+  assertEqual(false < false, false);
+  assertEqual(false < true, true);
+  assertEqual(true < false, false);
+  assertEqual(true < true, false);
+  void
+}
+
+@test
+fun testLE(): void {
+  assertEqual(false <= false, true);
+  assertEqual(false <= true, true);
+  assertEqual(true <= false, false);
+  assertEqual(true <= true, true);
+  void
+}
+
+@test
+fun testGT(): void {
+  assertEqual(false > false, false);
+  assertEqual(false > true, false);
+  assertEqual(true > false, true);
+  assertEqual(true > true, false);
+  void
+}
+
+@test
+fun testGE(): void {
+  assertEqual(false >= false, true);
+  assertEqual(false >= true, false);
+  assertEqual(true >= false, true);
+  assertEqual(true >= true, true);
+  void
+}

@@ -1,0 +1,463 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Unfortunately, comments are discarded in later passes of the compiler, so
+// we first extract comments via just the AST and put them in a map of the form
+//   "String.trim" -> "Some comment"
+fun extractComments(codeFiles: List<String>): Map<String, String> {
+  comments = mutable Map[];
+  for (filename in codeFiles) {
+    file_content = FileSystem.readTextFile(filename);
+    parseResults = SkipParser.parseSource(file_content, false);
+    ast = SkipParse.parseToAst(filename, parseResults);
+    moduleName: ?String = None();
+    for (node in ast) {
+      node match {
+      | SkipAst.DModule(_, (_, name)) -> !moduleName = Some(name)
+      | SkipAst.DModuleEnd(_) -> !moduleName = None()
+      | SkipAst.DClass(cla @ SkipAst.Class_def _) ->
+        className = getCanonicalClassName(moduleName, cla);
+        if (cla.extension is None _) {
+          classComment = getCommentOfPosition(
+            parseResults,
+            cla.range.start().position,
+          ).trim();
+          comments![className] = classComment;
+        };
+        for (field in cla.fields) {
+          field match {
+          | SkipAst.Class_method(met @ SkipAst.Method_def _) ->
+            methodComment = getCommentOfPosition(
+              parseResults,
+              met.range.start().position,
+            ).trim();
+            methodKey = getCanonicalMethodName(className, met);
+            comments![methodKey] = methodComment
+          | _ -> void
+          }
+        }
+      | _ -> void
+      }
+    };
+  };
+  comments.chill()
+}
+
+fun commentToString(comment: Token.Comment): String {
+  comment.kind match {
+  | Token.LineComment() -> removeLeadingSpace(comment.contents()) + "\n"
+  | Token.DelimitedComment() -> cleanupMultilineComment(comment.contents())
+  }
+}
+
+fun getCommentOfPosition(
+  parseResults: Parser.ParseResults,
+  position: Position,
+): String {
+  iter = Lexer.TokenIterator::create(
+    parseResults.tokens,
+    parseResults.comments,
+  );
+  iter.advanceTo(position);
+  comments = iter.leadingComments();
+  comments.map(commentToString).join("");
+}
+
+class Arguments{
+  bindings: Map<String, String> = Map[],
+  targets: List<String> = List[],
+}
+
+fun error(message: String): _ {
+  print_error(message);
+  SkipError.fail();
+}
+
+fun parseArguments(): Arguments {
+  (result, targets, _) = .Arguments.parse(
+    Arguments{},
+    List[
+      (
+        "--binding",
+        Arguments.SetString((args, binding) ~> {
+          (variable, value) = binding.splitLast("=");
+          if (variable == "") {
+            error(
+              `Missing variable in '--binding'. Use '--binding <variable>=<value>'.`,
+            );
+          };
+          if (args.bindings.containsKey(variable)) {
+            error(`Duplicate variable '${variable}' in '--binding'.`);
+          };
+          args with {
+            bindings => {
+              bindings = args.bindings.clone();
+              bindings.add(variable, value);
+              freeze(bindings);
+            },
+          };
+        }),
+      ),
+    ],
+    "Usage: skip_docgen [--binding <variable>=<value>] [project-dir:]program-unit",
+  );
+
+  result with {targets};
+}
+
+untracked fun main(): void {
+  args = parseArguments();
+  // TODO: Should add a project entrypoint which gets file lists
+  // without including referenced projects.
+  codeFiles = List::createFromItems(
+    SkipProject.getFilesForTargets(args.bindings, args.targets.collect(Vector)),
+  );
+
+  comments = extractComments(codeFiles);
+
+  // Extract all the classes after inheritance
+  prog = SkipMain.expand_program(codeFiles);
+  ast_classes = prog.class_defs;
+
+  classes = mutable Map[];
+
+  for (cla in ast_classes) {
+    (classPos, className) = cla.name;
+    classFile = classPos match {
+    | FileRange{filename} -> filename
+    };
+
+    methods = mutable Vector[];
+    for (met in cla.methods) {
+      (methodPos, methodName) = met.name;
+      (file, line) = methodPos match {
+      | FileRange{filename, range} -> (filename, range.start.line() + 1)
+      };
+      is_public = met.visibility match {
+      | (_, SkipAst.VPublic()) -> true
+      | _ -> false
+      };
+      if (is_public) {
+        methodKey = getCanonicalMethodName(className, met);
+        methodComment = comments.maybeGet(methodKey).default("");
+        methods.push(
+          JSON.Object[
+            "name" => JSON.String(methodName),
+            "comments" => JSON.String(methodComment),
+            "sourceFile" => JSON.String(getRelativePathToPrelude(file)),
+            "sourceLine" => JSON.IntNumber(line),
+            "returnType" => typeToJSON(met.return_),
+            "params" => parametersParameterToJSON(met.params),
+            "tparams" => JSON.Array::createFromIterator(
+              met.tparams.values().map(tparam -> tparamToJSON(tparam)),
+            ),
+            "isMutable" => JSON.Bool(met.mutable_ is Some _),
+            "isReadonly" => JSON.Bool(met.readonly_ is Some _),
+            "isFrozen" => JSON.Bool(met.frozen_ is Some _),
+            "isStatic" => JSON.Bool(met.static_ is Some _),
+            "isUntracked" => JSON.Bool(met.untracked_ is Some _),
+            "definedLocally" => JSON.Bool(
+              getRelativePathToPrelude(classFile) ==
+                getRelativePathToPrelude(file),
+            ),
+          ],
+        );
+      }
+    };
+
+    // Sort methods based on:
+    // - Locally defined methods first, inherited/extension methods later
+    // - Then statics first, methods later
+    // - Then by line number
+    methods.sortBy(x ~>
+      Orderable.create(x, (l, r) ~> {
+        left = l.expectMap();
+        leftLine = left.get("sourceLine").expectInt();
+        leftLocal = left.get("definedLocally").expectBool();
+        leftStatic = left.get("isStatic").expectBool();
+        right = r.expectMap();
+        rightLine = right.get("sourceLine").expectInt();
+        rightLocal = right.get("definedLocally").expectBool();
+        rightStatic = right.get("isStatic").expectBool();
+
+        rightLocal.compare(leftLocal) match {
+        | EQ() ->
+          rightStatic.compare(leftStatic) match {
+          | EQ() -> leftLine.compare(rightLine)
+          | c -> c
+          }
+        | c -> c
+        }
+      })
+    );
+
+    classComment = comments.maybeGet(className).default("");
+    classKind = cla.kind match {
+    | SkipAst.KClass() -> "class"
+    | SkipAst.KBase() -> "base class"
+    | SkipAst.KTrait() -> "trait"
+    };
+    classes![className] = JSON.Object[
+      "name" => JSON.String(className),
+      "kind" => JSON.String(classKind),
+      "methods" => JSON.Array(freeze(methods)),
+      "tparams" => JSON.Array::createFromIterator(
+        cla.tparams.values().map(tparam -> tparamToJSON(tparam)),
+      ),
+      "comments" => JSON.String(classComment),
+    ];
+  };
+
+  modules = mutable Map[];
+  for (met in prog.fun_defs) {
+    (methodPos, methodName) = met.name;
+    if (!methodName.contains(".")) {
+      continue;
+    };
+    (file, line) = methodPos match {
+    | FileRange{filename, range} -> (filename, range.start.line() + 1)
+    };
+    if (met.fun_private is None _) {
+      (moduleName, localName) = methodName.splitLast(".");
+      methodComment = comments.maybeGet(methodName).default("");
+      methods = modules.getOrAdd(moduleName, () -> mutable Vector[]);
+      methods.push(
+        JSON.Object[
+          "name" => JSON.String(localName),
+          "comments" => JSON.String(methodComment),
+          "sourceFile" => JSON.String(getRelativePathToPrelude(file)),
+          "sourceLine" => JSON.IntNumber(line),
+          "returnType" => typeToJSON(met.return_),
+          "params" => parametersParameterToJSON(met.params),
+          "tparams" => JSON.Array::createFromIterator(
+            met.tparams.values().map(tparam -> tparamToJSON(tparam)),
+          ),
+          "isMutable" => JSON.Bool(false),
+          "isReadonly" => JSON.Bool(false),
+          "isFrozen" => JSON.Bool(false),
+          "isStatic" => JSON.Bool(false),
+          "isUntracked" => JSON.Bool(met.untracked_ is Some _),
+          "definedLocally" => JSON.Bool(true),
+        ],
+      );
+    }
+  };
+
+  for (moduleName => methods in modules) {
+    if (classes.containsKey(moduleName)) {
+      // TODO: merge class/module of same name
+      continue
+    };
+    classes![moduleName] = JSON.Object[
+      "name" => JSON.String(moduleName),
+      "kind" => JSON.String("module"),
+      "methods" => JSON.Array(methods.chill()),
+      "tparams" => JSON.Array[],
+      "comments" => JSON.String(""),
+    ];
+  };
+
+  res = JSON.Object["classes" => JSON.Object(freeze(classes))];
+
+  res.print(2);
+  _ = res;
+
+  print_string("")
+}
+
+fun getCanonicalClassName(moduleName: ?String, cla: SkipAst.Class_def): String {
+  rawName = cla.name.i1;
+  className = rawName.replace(".", "");
+  moduleName match {
+  | Some(moduleName_) if (!rawName.startsWith(".")) ->
+    `${moduleName_}.${className}`
+  | _ -> className
+  }
+}
+
+fun getCanonicalMethodName(className: String, met: SkipAst.Method_def): String {
+  className + "::" + met.name.i1
+}
+
+fun tparamToJSON(tparam: SkipAst.Type_parameter): JSON.Value {
+  (variance, _, (_, name), t) = tparam;
+  JSON.Object[
+    "type" => JSON.String("tparameter"),
+    "name" => JSON.String(name),
+    "variance" => JSON.String(
+      variance match {
+      | SkipAst.Vnone() -> ""
+      | SkipAst.Vplus() -> "+"
+      | SkipAst.Vminus() -> "-"
+      },
+    ),
+    "types" => t match {
+    | None() -> JSON.Array[]
+    | Some(types) ->
+      JSON.Array::createFromIterator(types.values().map(ty -> typeToJSON(ty)))
+    },
+  ]
+}
+
+fun paramToJSON(param: SkipAst.Parameter): JSON.Value {
+  JSON.Object[
+    "type" => JSON.String("parameter"),
+    "name" => JSON.String(param.name.i1),
+    "ty" => typeToJSON(param.type),
+  ]
+}
+
+fun parametersParameterToJSON(p: Parameters<SkipAst.Parameter>): JSON.Value {
+  p match {
+  | Positional(params) ->
+    JSON.Object[
+      "type" => JSON.String("positional"),
+      "parameters" => JSON.Array::createFromIterator(
+        params.values().map(paramToJSON),
+      ),
+    ]
+  | Named(params) ->
+    JSON.Object[
+      "type" => JSON.String("named"),
+      "parameters" => JSON.Array::createFromIterator(
+        params.values().map(paramToJSON),
+      ),
+    ]
+  }
+}
+
+fun parametersTypeToJSON(p: Parameters<SkipAst.Type_>): JSON.Value {
+  p match {
+  | Positional(params) ->
+    JSON.Object[
+      "type" => JSON.String("positional"),
+      "parameters" => JSON.Array::createFromIterator(
+        params.values().map(param ->
+          JSON.Object[
+            "type" => JSON.String("parameter"),
+            "name" => JSON.String("@param"),
+            "ty" => typeToJSON(param),
+          ]
+        ),
+      ),
+    ]
+  | Named(params) ->
+    JSON.Object[
+      "type" => JSON.String("named"),
+      "parameters" => JSON.Array::createFromIterator(
+        params.items().map(item -> {
+          ((_, name), param) = item;
+          JSON.Object[
+            "type" => JSON.String("parameter"),
+            "name" => JSON.String(name),
+            "ty" => typeToJSON(param),
+          ]
+        }),
+      ),
+    ]
+  }
+}
+
+fun typeNameToJSON(ty: SkipAst.Type_name): JSON.Value {
+  ty match {
+  | SkipAst.Tclass((_, name)) ->
+    JSON.Object["type" => JSON.String("class"), "name" => JSON.String(name)]
+  | SkipAst.Tmacro((_, name)) ->
+    JSON.Object["type" => JSON.String("class"), "name" => JSON.String(name)]
+  | SkipAst.Tmodule_class(_, (_, moduleName), (_, className)) ->
+    JSON.Object[
+      "type" => JSON.String("moduleClass"),
+      "moduleName" => JSON.String(moduleName),
+      "className" => JSON.String(className),
+    ]
+  | SkipAst.Tparam((_, name), _) ->
+    JSON.Object["type" => JSON.String("param"), "name" => JSON.String(name)]
+  }
+}
+
+fun typeToJSON(ty: SkipAst.Type_): JSON.Value {
+  ty match {
+  | (_, SkipAst.Tany()) -> JSON.String("any")
+  | (_, SkipAst.Tunder()) -> JSON.String("under")
+  | (_, SkipAst.Tinst()) -> JSON.String("inst")
+  | (_, SkipAst.Tthis()) -> JSON.String("this")
+  | (_, SkipAst.Tfrozen()) -> JSON.String("frozen")
+  | (_, SkipAst.TnonNullable()) -> JSON.String("nonNullable")
+  | (_, SkipAst.Tapply(typeName, types)) ->
+    JSON.Object[
+      "type" => JSON.String("apply"),
+      "typeName" => typeNameToJSON(typeName),
+      "types" => JSON.Array::createFromIterator(
+        types.values().map(ty -> typeToJSON(ty)),
+      ),
+    ]
+  | (_, SkipAst.Ttuple(types)) ->
+    JSON.Object[
+      "type" => JSON.String("tuple"),
+      "types" => JSON.Array::createFromIterator(
+        types.values().map(ty -> typeToJSON(ty)),
+      ),
+    ]
+  | (_, SkipAst.Tfun(modifiers, params, returnType)) ->
+    JSON.Object[
+      "type" => JSON.String("fun"),
+      "isMutable" => JSON.Bool(modifiers.is_mutable),
+      "isUntracked" => JSON.Bool(modifiers.is_untracked),
+      "params" => parametersTypeToJSON(params),
+      "returnType" => typeToJSON(returnType),
+    ]
+  | (_, SkipAst.Tabstract(_, _)) -> JSON.String("abstract")
+  | (_, SkipAst.Tmutable(t)) ->
+    JSON.Object["type" => JSON.String("mutable"), "ty" => typeToJSON(t)]
+  | (_, SkipAst.Treadonly(t)) ->
+    JSON.Object["type" => JSON.String("readonly"), "ty" => typeToJSON(t)]
+  | (_, SkipAst.Tawaitable(t)) ->
+    JSON.Object["type" => JSON.String("^"), "ty" => typeToJSON(t)]
+  }
+}
+
+fun getRelativePathToPrelude(path: String): String {
+  (_start, end) = path.splitLast("/prelude");
+  "prelude" + end
+}
+
+fun cleanupMultilineComment(comment: String): String {
+  comment
+    .split("\n")
+    .map(comment_line -> removeLeadingStar(comment_line))
+    .join("\n")
+}
+
+fun removeLeadingSpace(line: String): String {
+  line.stripPrefix(" ")
+}
+
+// If we had regex: line.replace(/^[ ]*\* ?/, "")
+fun removeLeadingStar(line: String): String {
+  trimmedLine = line.trimLeft();
+  if (trimmedLine.startsWith("* ")) {
+    trimmedLine.stripPrefix("* ")
+  } else if (trimmedLine.startsWith("*")) {
+    trimmedLine.stripPrefix("*")
+  } else {
+    line
+  }
+}
+
+fun lowercaseFirst(str: String): String {
+  if (str == "") {
+    ""
+  } else {
+    first = str[0];
+    firstLowerCase = if (first >= 'A' || first <= 'Z') {
+      Char::fromCode(first.code() + 32)
+    } else {
+      first
+    };
+    firstLowerCase.toString() + str.substring(1)
+  }
+}

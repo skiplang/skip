@@ -1,0 +1,16 @@
+fun main(): void {
+  void
+}
+module A;
+
+fun test(): void {
+  void
+}
+
+module end;
+
+module B;
+
+fun test2(): void {
+  void
+}

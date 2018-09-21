@@ -1,0 +1,5 @@
+File "./syntax/invalid/duplicate_modifiers_definition.sk", line 1, characters 6-9:
+Duplicate modifier 'base'
+1 | base base class C() {}
+  |      ^^^^
+2 |

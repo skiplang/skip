@@ -1,0 +1,21 @@
+mutable class MyRef<+T>(mutable value: ?T = None()) uses Show[T: Show] {
+  readonly fun toString[T: Show](): String {
+    "MyRef(" + this.value.fromSome() + ")"
+  }
+}
+
+fun print_show<T: readonly Show>(x: T): void {
+  print_string(x.toString())
+}
+
+fun main(): void {
+  ref = mutable MyRef();
+  e = () -> print_show(ref);
+  f = () -> {
+    ref.!value = Some(42)
+  };
+  g = () -> print_show(ref);
+  f();
+  e();
+  g();
+}

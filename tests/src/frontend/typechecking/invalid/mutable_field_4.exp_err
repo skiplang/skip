@@ -1,0 +1,15 @@
+File "./typechecking/invalid/mutable_field_4.sk", line 18, characters 11-14:
+Field `cell` is not assignable. Assignable fields must be prefixed with 'mutable'
+16 |
+17 |   mutable fun set(v: String): void {
+18 |     this.!cell = mutable Cell(v); // error, this.cell is immutable
+   |           ^^^^
+19 |     void
+
+File "./typechecking/invalid/mutable_field_4.sk", line 12, characters 23-26:
+It is defined here
+10 | }
+11 |
+12 | mutable class Wrapper(cell: mutable Cell) {
+   |                       ^^^^
+13 |   readonly fun get(): String {

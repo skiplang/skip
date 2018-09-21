@@ -1,0 +1,7 @@
+File "./typechecking/invalid/unbound_module.sk", line 4, characters 13-13:
+Unbound module: M
+2 |
+3 | fun main(): void {
+4 |   print_raw(M.a)
+  |             ^
+5 | }

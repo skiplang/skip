@@ -1,0 +1,4 @@
+
+class X {
+  mymodifier fun foo(): void {}
+}

@@ -1,0 +1,7 @@
+File "./typechecking/invalid/superfluous_return5.sk", line 7, characters 5-15:
+The 'return' keyword is superfluous here, please remove it
+5 |     void
+6 |   } else {
+7 |     return void
+  |     ^^^^^^^^^^^
+8 |   }

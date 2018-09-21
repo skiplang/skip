@@ -1,0 +1,11 @@
+base class BPub()
+base class BProt protected ()
+base class BPriv private ()
+
+class CPub() extends BPub, BProt, BPriv
+class CProt protected () extends BProt, BPriv
+class CPriv private () extends BPriv
+
+fun main(): void {
+  print_string("Pass")
+}

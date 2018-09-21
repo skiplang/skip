@@ -1,0 +1,638 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Sequence;
+
+// A type that represents a concrete sequence of items with a finite size (that
+// may change over time) that can be accessed by contiguous integer indices in
+// the range 0 (inclusive) to `size()` (exclusive).
+mutable base class .IndexedSequence<+T> extends Sequence<T> {
+  // # Creating Sequences
+
+  // Return a chilled (shallowly frozen) copy of this sequence.
+  readonly fun chill(): this;
+
+  // # Accessing Items
+
+  // Get the item at the given index, throws if the index is out of bounds.
+  readonly fun get(index: Int): T;
+
+  overridable readonly fun values(): mutable Iterator<T> {
+    mutable IndexedSequenceIterator<T>(this, 0, this.size(), 1)
+  }
+
+  // Get the item at the given index as Some() or return None() if the index
+  // is out of bounds.
+  overridable readonly fun maybeGet(index: Int): ?T {
+    if (index.uge(this.size())) {
+      None()
+    } else {
+      Some(this.get(index))
+    }
+  }
+
+  // Get the first item in the container, throws if the container is empty.
+  overridable readonly fun first(): T {
+    this.get(0)
+  }
+
+  // Get the first item in the container as Some() if non-empty, or None() if
+  // empty.
+  overridable readonly fun maybeFirst(): ?T {
+    this.maybeGet(0)
+  }
+
+  // Get the last item in the container, throws if the container is empty.
+  overridable readonly fun last(): T {
+    this.get(this.size() - 1)
+  }
+
+  // Get the last item in the container as Some() if non-empty, or None() if
+  // empty.
+  overridable readonly fun maybeLast(): ?T {
+    this.maybeGet(this.size() - 1)
+  }
+
+  // Returns Some() with the index of the first item that equals the predicate
+  // value, otherwise returns None().
+  overridable readonly fun indexOf<S: Equality>[T: S](predicate: S): ?Int {
+    index = -1;
+    this.find(x -> {
+      !index = index + 1;
+      x == predicate
+    }).map(_ -> index)
+  }
+
+  // Returns true if the sequence contains a value that equals the second value,
+  // otherwise returns false.
+  overridable readonly fun contains<S: Equality>[T: S](second: S): Bool {
+    this.find(x -> x == second).isSome()
+  }
+
+  // # Composition/Transformation
+
+  // Returns a new sequence representing the items of this sequence followed by
+  // the items of the second sequence.
+  overridable readonly fun concat<U, S: readonly Sequence<U>>[T: U](
+    second: S,
+  ): IndexedSequence<U> {
+    result = Vector<U>::mcreateFromItems(this);
+    result.extend(second);
+    unsafe_chill_trust_me(result)
+  }
+
+  // # Selecting Portions of a Sequence
+
+  // Returns the items of this container from the start index (inclusive) up to
+  // the end index (exclusive). The start/end values may be negative, in which
+  // case they refer to the nth index before the end of the container.
+  // For example, `x.slice(0, -2)` is equivalent to `x.slice(0, x.size() - 2)`.
+  overridable readonly fun slice(
+    start: Int,
+    end: Int = Int::max,
+  ): IndexedSequence<T> {
+    sz = this.size();
+    if (start < 0) {
+      !start = max(0, sz + start);
+    };
+    if (end < 0) {
+      !end = max(0, sz + end);
+    };
+    !start = min(sz, start);
+    !end = min(sz, end);
+    if (end <= start) {
+      Vector[]
+    } else {
+      capacity = end - start;
+      Vector::fillBy(capacity, i -> this.get(i + start))
+    }
+  }
+
+  // Returns the items of this container that do not appear in the second
+  // sequence.
+  overridable readonly fun difference<S: readonly Sequence<T>>[
+    T: Hashable & Equality,
+  ](
+    second: S,
+  ): IndexedSequence<T> {
+    result = Vector::mcreate(0);
+    set = UnorderedSet::mcreate(second.size());
+    second.each(set.add);
+    this.each(value -> {
+      if (!set.contains(value)) {
+        result.push(value)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Return the items of this container that appear in the second sequence.
+  overridable readonly fun intersection<S: readonly Sequence<T>>[
+    T: Hashable & Equality,
+  ](
+    second: S,
+  ): IndexedSequence<T> {
+    result = Vector::mcreate(0);
+    set = UnorderedSet::mcreate(second.size());
+    second.each(set.add);
+    this.each(value -> {
+      if (set.contains(value)) {
+        result.push(value)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Return the unique items of this container.
+  overridable readonly fun unique[T: Hashable & Equality](): IndexedSequence<
+    T,
+  > {
+    // TODO: use a heuristic to avoid reallocation in avg case
+    set = Map<T, void>::mcreate(0);
+    this.each(value -> {
+      set.set(value, void);
+    });
+    result = Vector::mcreate(set.size());
+    set.each((value, _) -> {
+      result.push(value);
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns up to N items randomly sampled from this container using a
+  // pseudo-random generator initialized with the given seed. Returns all items
+  // if N is greater than or equal to the size of the container. For a
+  // collection of Hashable values, a deterministic random value can be
+  // initialized with:
+  //
+  // ```
+  // rng = Random::create(container.hash());
+  // ```
+  overridable readonly fun sample(
+    rng: mutable Random,
+    count: Int,
+  ): IndexedSequence<T> {
+    sz = this.size();
+    if (count == 0) {
+      Vector[]
+    } else if (sz <= count) {
+      this.chill()
+    } else {
+      invariant(
+        count >= 0,
+        "Vector.sample(): Expected count to be nonnegative.",
+      );
+
+      // Algorithm R: copy the first K items to the output, then iterate over
+      // the subsequent elements and randomly swap them into the output vector.
+      sample = Vector::mcreateFromItems(this.slice(0, count));
+      for (index in Range(count, sz)) {
+        swap = rng.random(0, index + 1); // [0, index] - inclusive
+        if (swap < count) {
+          sample![swap] = this.get(index);
+        }
+      };
+      unsafe_chill_trust_me(sample)
+    }
+  }
+
+  // # Transforming To Different Sequence Types
+
+  // Returns a tuple of (pass, fail) sequences: the pass sequence contains items
+  // from this container for which the predicate returns true, the fail
+  // sequence contains items for which the predicate returns false.
+  overridable readonly fun partition(p: T -> Bool): (Sequence<T>, Sequence<T>) {
+    pass = Vector::mcreate(0);
+    fail = Vector::mcreate(0);
+    this.each(value -> if (p(value)) pass.push(value) else fail.push(value));
+    (unsafe_chill_trust_me(pass), unsafe_chill_trust_me(fail))
+  }
+
+  // Assigns each item to a key via the selection function, and then returns
+  // a Map of key to items that mapped to that key.
+  overridable readonly fun groupBy<K: Hashable & Equality>(
+    s: T -> K,
+  ): Map<K, Sequence<T>> {
+    result = mutable Map[];
+    this.each(value -> {
+      key = s(value);
+      items = result.getOrAdd(key, () -> Vector::mcreate(0));
+      items.push(value);
+    });
+    unsafe_chill_trust_me(
+      result.map((_, items) -> unsafe_chill_trust_me(items)),
+    )
+  }
+
+  // # Async
+
+  // When this sequence contains awaitables, asynchronously resolves this sequence
+  // to a sequence of the their awaited values.
+  //
+  // # Visual Example
+  //
+  // Before:
+  //   [ ^1, ^2, ^3, ^5]
+  // After:
+  //   ^[ 1, 2, 3, 5]
+  // async frozen fun gen<U>[T: ^U](): ^IndexedSequence<U>;
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element of this sequence and awaiting all the results.
+  // Analogous to map().gen().
+  overridable async frozen fun genMap<U: frozen>(
+    s: T ~> ^U,
+  ): ^IndexedSequence<U> {
+    sz = this.size();
+    nextInner = await ASIO.genFillBy(sz, index ~>
+      async {
+        awaitable_x = s(this[index]);
+        await awaitable_x;
+      }
+    );
+    Vector<U>::createFromItems(nextInner)
+  }
+
+  // Returns a new sequence representing all the elements of this sequence
+  // for which the async predicate returns true.
+  overridable async frozen fun genFilter(p: T ~> ^Bool): ^IndexedSequence<T> {
+    // Asynchronously map each item to whether it passes the predicate or not
+    sz = this.size();
+    predicates = await ASIO.genFillBy(sz, index ~> p(this[index]));
+    // Count the number of matching items to allocate a single exactly sized Array
+    nextSz = predicates.reduce(
+      (sum, predicate) -> if (predicate) sum + 1 else sum,
+      0,
+    );
+    // Insert items into a return Array for which the predicate returned true
+    next = mutable Vector<T>[];
+    fromIndex = 0;
+    toIndex = 0;
+    // NOTE: The check for `fromIndex.ult(sz)` is skipped here because there
+    // are guaranteed to be `nextSz` items in `inner` for which the predicate
+    // passes and that cause `toIndex` to be incremented.
+    while (toIndex.ult(nextSz)) {
+      if (predicates[fromIndex]) {
+        next![toIndex] = this[fromIndex];
+        !toIndex = toIndex + 1;
+      };
+      !fromIndex = fromIndex + 1;
+    };
+    unsafe_chill_trust_me(next)
+  }
+
+  // Returns Some(x) for the first item in this sequence that matches
+  // the async predicate, or None() if no items match.
+  overridable async frozen fun genFind(p: T ~> ^Bool): ^?T {
+    await this.genFindTailLoop(p, 0);
+  }
+
+  private async frozen fun genFindTailLoop<U>[T: U](
+    p: U ~> ^Bool,
+    index: Int,
+  ): ^?U {
+    if (index == this.size()) {
+      None();
+    } else {
+      item = this[index];
+      if (await p(item)) {
+        Some<U>(item);
+      } else {
+        await this.genFindTailLoop(p, index + 1);
+      };
+    };
+  }
+
+  // Returns true if the async predicate returns true for all elements of this
+  // sequence.
+  overridable async frozen fun genAny(p: T ~> ^Bool): ^Bool {
+    (await this.genFind(p)).isSome()
+  }
+
+  // Returns true if the async predicate returns true for at least one element
+  // of this sequence.
+  overridable async frozen fun genAll(p: T ~> ^Bool): ^Bool {
+    (await this.genFind(x ~>
+      async {
+        !(await p(x))
+      }
+    )).isNone()
+  }
+}
+
+mutable base class .MutableIndexedSequence<+T> extends IndexedSequence<T> {
+  // Create a mutable container with the given capacity.
+  static fun mcreate(capacity: Int = 0): mutable this;
+
+  // Create a frozen container from a sequence of items.
+  overridable static deferred fun createFromItems<I: readonly Sequence<T>>(
+    items: I,
+  ): this {
+    unsafe_chill_trust_me(static::mcreateFromItems(items))
+  }
+
+  // Create a mutable container from a sequence of items.
+  overridable static deferred fun mcreateFromItems<I: readonly Sequence<T>>(
+    items: I,
+  ): mutable this {
+    size = items.size();
+    result = static::mcreate(size);
+    items.each(result.push);
+    invariant(
+      size == result.size(),
+      "Sequence yielded incorrect number of items.",
+    );
+    result
+  }
+
+  // Create a mutable, shallow copy of the contents of this container.
+  // The capacity of the returned container is only guaranteed to be
+  // greater than or equal to this' size. To ensure space for more items,
+  // pass a non-zero reserveCapacity.
+  overridable readonly fun clone(_reserveCapacity: Int = 0): mutable this {
+    static::mcreateFromItems(this)
+  }
+
+  // # Sizing
+  // Methods to query or change the size or capacity of a container.
+
+  // Returns the total number of items this container can hold given the
+  // current size of its internal storage.
+  // NOTE: Making capacity observable on frozen values prevents optimizations such
+  // as shrinking to fit on freeze. By making it mutable we preserve option value
+  // to add such optimizations in the future.
+  overridable mutable fun capacity(): Int {
+    this.size()
+  }
+
+  // Grows the container's internal storage as necessary to ensure that the
+  // container has capacity for at least the specified number of items: the
+  // container may grow more than requested.
+  overridable mutable fun ensureCapacity(_capacity: Int): void {
+    void
+  }
+
+  // Remove all items, setting the container's size to 0 without changing its
+  // capacity.
+  overridable mutable fun clear(): void {
+    for (_ in Range(0, this.size())) _ = this.pop();
+  }
+
+  // Update the collection's size to the new size as follows:
+  // - When the new size is greater than the current size, the collection's
+  //   internal storage is expanded as necessary and slots between the
+  //   previous/new size are filled with the given value.
+  // - When the new size is less than the current size the collection is
+  //   truncated.
+  // - Has no effect when the new size equals the current size.
+  overridable mutable fun resize(newSize: Int, value: T): void {
+    size = this.size();
+    if (size < newSize) {
+      for (_ in Range(size, newSize)) this.push(value);
+    } else if (size > newSize) {
+      for (_ in Range(newSize, size)) _ = this.pop();
+    }
+  }
+
+  // # Adding/Changing/Removing Items
+
+  // Set the value at the given index. Throws if the index is out of bounds.
+  // NOTE: To add items to the end of a container use push().
+  mutable fun set(index: Int, value: T): void;
+
+  // Add the value to the end of the container, growing the container's
+  // internal storage if necessary to make space for the item.
+  mutable fun push(value: T): void;
+
+  // Remove the last item of the container and return it. Throws if the
+  // container is empty.
+  overridable mutable fun pop(): T {
+    this.maybePop() match {
+    | Some(v) -> v
+    | None _ -> throwOutOfBounds()
+    }
+  }
+
+  // Remove the last item of the container and return it as Some() if
+  // non-empty, otherwise returns None().
+  mutable fun maybePop(): ?T;
+
+  // Append all of items from the given sequence to the end of this container.
+  overridable mutable fun extend<I: readonly Sequence<T>>(second: I): void {
+    second.each(this.push);
+  }
+
+  // Inserts the value at the given index, shifting over existing elements to
+  // make room for the new element. Grows internal storage if necessary: throws
+  // if the index is out of bounds.
+  // NOTE: unlike set(), insert() allows inserting at index == size
+  overridable mutable fun insert(index: Int, value: T): void {
+    size = this.size();
+    if (index.ugt(size)) {
+      throwOutOfBounds()
+    } else if (index == size) {
+      this.push(value);
+    } else {
+      this.push(this[index]);
+      this.move(index, index + 1, size - index);
+      this![index] = value;
+    }
+  }
+
+  // Deletes the value at the given index, shifting over elements after that
+  // index to fill the gap. Throws if the index is out of bounds.
+  @synonym("erase")
+  @synonym("remove")
+  overridable mutable fun delete(index: Int): void {
+    size = this.size();
+    if (index.uge(size)) {
+      throwOutOfBounds()
+    };
+
+    this.move(index + 1, index, size - index - 1);
+    _ = this.pop();
+  }
+
+  // Deletes the items in the range of start (inclusive) to end (exclusive)
+  // and inserts the items from the second sequence at the start index. If
+  // second is smaller than the length of the slice denoted by start/end, then
+  // subsequent items will be shifted left to fill any gaps. If second is larger
+  // than the start-end slice, then subsequent items will be shifted right to
+  // make room.
+  //
+  // # Visual Example
+  //
+  // Before:
+  //   [ ...prefix, ...start-end, ...suffix ]
+  // After:
+  //   [ ...prefix, ...second, ...suffix ]
+  overridable mutable fun splice<I: readonly Sequence<T>>(
+    start: Int,
+    end: Int,
+    second: I,
+  ): void {
+    size = this.size();
+
+    // Start/count must be positive but are allowed to exceed bounds
+    invariant(
+      start >= 0,
+      "Vector.splice(): Expected start index to be nonnegative.",
+    );
+    invariant(
+      end >= start,
+      "Vector.splice(): Expected end to be greater than or equal to start.",
+    );
+    // Clamp such that start is in the range [0, sz], start + count <= sz
+    !start = min(start, size);
+    !end = min(end, size);
+
+    removeSize = end - start;
+    // Special case replacing the whole thing (or an empty sequence to start)
+    if (removeSize == size) {
+      this.clear();
+      this.extend(second);
+      return void;
+    };
+
+    addSize = second.size();
+    oldSize = size;
+    newSize = size - removeSize + addSize;
+
+    if (addSize > removeSize) {
+      !size = newSize;
+      this.resize(size, this.get(0));
+    };
+
+    // move the stuff after to the end
+    this.move(end, start + addSize, oldSize - end);
+
+    // fill in the gap
+    second.eachWithIndex((i, v) -> {
+      this![start + i] = v;
+    });
+
+    if (size != newSize) {
+      this.resize(newSize, this.get(0));
+    }
+  }
+
+  private mutable fun move(src: Int, dst: Int, count: Int): void {
+    size = this.size();
+    invariant(src.ule(size), "invalid start");
+    invariant(dst.ule(size), "invalid start2");
+    invariant(count >= 0, "invalid count");
+    invariant((src + count) <= size, "invalid count");
+    invariant((dst + count) <= size, "invalid count");
+
+    if (src > dst) {
+      for (i in Range(0, count)) this![dst + i] = this[src + i];
+    } else if (src < dst) {
+      for (i in Range(0, count)) {
+        idx = count - 1 - i;
+        this![dst + idx] = this[src + idx];
+      };
+    }
+  }
+
+  // Remove all items from this sequence for which the predicate returns
+  // false, keeping only those items for which the predicate returns true.
+  @synonym("retain")
+  overridable mutable fun keepWhere(p: T -> Bool): void {
+    size = this.size();
+    out = 0;
+    for (i in Range(0, size)) {
+      src = this[i];
+      if (p(src)) {
+        if (out != i) {
+          this![out] = src;
+        };
+        !out = out + 1;
+      }
+    };
+    if (out == 0) {
+      this.clear();
+    } else {
+      this.resize(out, this[0]);
+    }
+  }
+  // # Reordering Items
+
+  private mutable fun swap(i: Int, j: Int): void {
+    tmp = this[i];
+    this![i] = this[j];
+    this![j] = tmp;
+  }
+
+  // Reverses the order of the items in the container.
+  overridable mutable fun reverse(): void {
+    size = this.size();
+    for (i in Range(0, size / 2)) this.swap(i, size - 1 - i);
+  }
+
+  // Randomize the order of items in the container using a pseudo-random
+  // generator initialized with the given seed. For a collection of Hashable
+  // values, a deterministic random value can be initialized with:
+  //
+  // ```
+  // rng = Random::create(container.hash());
+  // ```
+  overridable mutable fun shuffle(rng: mutable Random): void {
+    // Deterministic shuffle using the Fisher–Yates algorithm.
+    size = this.size();
+    for (i in Range(0, size - 1)) {
+      swap = rng.random(i, size);
+      this.swap(i, swap);
+    }
+  }
+
+  // Sorts the items in place using their default ordering.
+  // To sort a collection of non-Orderable items, use sortBy().
+  overridable mutable fun sort[T: readonly Orderable](
+    compare: (T, T) ~> Order = (x, y) ~> x.compare(y),
+  ): void {
+    this.sortBy(id, compare);
+  }
+
+  // Sorts the items in place, using the given predicate to determine ordering.
+  // To sort a collection of non-Orderable items, use Orderable.create():
+  //
+  //    a: IndexedSequence<NonOrderable> = ...;
+  //    compareFn = (a: NonOrderable, b: NonOrderable): Order ~> { ... };
+  //    b = a.sortBy(x ~> Orderable.create(x, compareFn));
+  overridable mutable fun sortBy<K: readonly Orderable>(
+    selector: T ~> K,
+    compare: (K, K) ~> Order = (x, y) ~> x.compare(y),
+  ): void {
+    tmp = Array::mcreateFromItems(this);
+    tmp.sortBy(selector, compare);
+    this.splice(0, this.size(), tmp);
+  }
+}
+
+private mutable class IndexedSequenceIterator<T>(
+  container: readonly IndexedSequence<T>,
+  mutable start: Int,
+  mutable size: Int,
+  stride: Int,
+) extends Iterator<T> {
+  readonly fun sizeHint(): ?Int {
+    Some(this.size)
+  }
+
+  mutable fun next(): ?T {
+    if (this.size > 0) {
+      cur = this.start;
+      this.!start = cur + this.stride;
+      this.!size = this.size - 1;
+      Some(this.container[cur])
+    } else {
+      None()
+    }
+  }
+}
+
+module end;

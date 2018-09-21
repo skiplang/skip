@@ -1,0 +1,3610 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias I = OuterIst;
+
+module OuterIstToIR;
+
+// Keys for specializing generic types/functions into specialized ones.
+private type GFunKey = (LazyGFun, FunSuperpositionID);
+
+private const kSimpleCaller: Array<FunSuperpositionID> = Array[
+  FunSuperpositionID::empty,
+];
+
+// Singletons just to cut down on allocation. TODO: Someday the compiler
+// should be able to construct images of these at compile time.
+private const kEmptyTypeMap: UnorderedMap<GTparam, Tclass> = UnorderedMap[];
+private const kEmptyGTypeMap: UnorderedMap<GTparam, GType> = UnorderedMap[];
+private const kEmptySClassSet: UnorderedSet<SClassID> = UnorderedSet[];
+
+// This is a "halfway specialized" class -- we've specialized the type
+// parameters already, but not the whole type.
+value class HalfClass(
+  generic: LazyGClass,
+  targs: Array<Tclass>,
+  mutability: Mutability,
+
+  // If this is true (rare) it means we are asking for a type that appeared
+  // as a value expression in source code. This matters because in Skip
+  // you cannot create an instance of a base class. For Base<Foo>, sometimes
+  // we want treat that metatype itself as a base class, and sometimes
+  // as a concrete class.
+  //
+  // It must exist as a base class (e.g. in Concrete<Foo>'s "extends" list).
+  //
+  // We need it as a concrete class when we need an instance of it, e.g.
+  // for making a static method call (it becomes the "static" parameter):
+  //
+  //    Foo::someStaticMethod()
+  //
+  // desugars to:
+  //
+  //    Foo::BaseMetaImpl().someStaticMethod()
+  //
+  // In other words, a static method call becomes a normal method call on an
+  // instance of the metaclass. But to be able to create an instance of the
+  // metaclass, Base<Foo> needs to be concrete.
+  literalType: Bool = false,
+) uses Hashable, Equality, Show {
+  fun toString(): String {
+    name = `${this.mutability} ${this.generic.nameStr()}`;
+    if (this.targs.isEmpty()) {
+      name
+    } else {
+      name + "<" + this.targs.join(", ") + ">"
+    }
+  }
+}
+
+// Hash key for recording SClasses we have already specialized.
+value class HalfSClass(
+  generic: LazyGClass,
+  targs: Array<Tclass>,
+) uses Hashable, Equality
+
+// This indicates the presence or absence of a value; unlike Option,
+// if the value is missing it explains why it is missing.
+//
+// We use this to represent values that might not be able to exist at
+// runtime, such as the return value from a no-return function or instances
+// of types that cannot be instantiated. The most important of these is
+// tAny (_), because the front end will generate nonsensical operations
+// on them like accessing nonexistent fields or calling nonexistent methods.
+// Because instances of this type cannot exist at runtime, such operations
+// are unreachable code and the front end requires us to discard them.
+base class MaybeExists<+T: frozen> {
+  children =
+  | NotExists(why: String)
+  | Exists(value: T)
+
+  fun fromExists(): T
+  | NotExists(why) ->
+    invariant_violation(
+      "Assumption that MaybeExists " + "exists is untrue: " + why,
+    )
+  | Exists(value) -> value
+}
+
+// A tree of values where each inner node names its children with a String,
+// and you can walk the tree producing the name of each leaf as a dot-separated
+// path from the root.
+//
+// This is used to represent compound values such as values classes containing
+// value classes during the de-scalarizing pass where we flatten them all
+// out to just scalars.
+private base class NamedTree<T: Show> uses Show {
+  // Calls the designated function with each leaf value as well as a string
+  // showing its path from the root. The root has a name of "", its
+  // immediate children have names like "x", and further levels are
+  // separated with ".", e.g. "x.y.z".
+  fun map<U: Show>(f: (String, T) -> U, name: String = ""): NamedTree<U>;
+
+  fun toString(): String;
+
+  // Produces all of the flattened-out leaf values, with each one named
+  // using its path from the root separated by dots.
+  fun flattened(rootName: String = ""): Array<(String, T)> {
+    buf = mutable Vector[];
+    _ = this.map(
+      (name, val) -> {
+        buf.push((name, val));
+        val
+      },
+      rootName,
+    );
+    buf.toArray()
+  }
+
+  fun asLeaf(pos: Pos): NamedLeaf<T>
+  | NamedLeaf _ -> this
+  | NamedInner _ -> pos.die("Expected scalar value")
+
+  fun asInner(pos: Pos): NamedInner<T>
+  | NamedLeaf _ -> pos.die("Expected aggregate value")
+  | NamedInner _ -> this
+}
+
+class NamedLeaf<T: Show>(value: T) extends NamedTree<T> {
+  fun toString(): String {
+    this.value.toString()
+  }
+
+  fun map<U: Show>(f: (String, T) -> U, name: String = ""): NamedLeaf<U> {
+    NamedLeaf(f(name, this.value))
+  }
+}
+
+fun dotJoin(a: String, b: String): String {
+  if (a == "") {
+    b
+  } else if (b == "") {
+    a
+  } else {
+    `${a}.${b}`
+  }
+}
+
+// An aggregation of other values, which is not allowed to exist in the IR --
+// it only deals with the atomic "leaves". So this value only exists
+// conceptually during conversion.
+//
+// NOTE: This can be empty.
+class NamedInner<T: Show>(
+  children_: Array<(String, NamedTree<T>)>,
+) extends NamedTree<T> {
+  fun map<U: Show>(f: (String, T) -> U, name: String = ""): NamedInner<U> {
+    NamedInner(
+      this.children_.map(k -> {
+        (fname, fval) = k;
+        (fname, fval.map(f, dotJoin(name, fname)))
+      }),
+    )
+  }
+
+  fun toString(): String {
+    this.prettyToString("")
+  }
+
+  private fun prettyToString(indent: String): String {
+    s = "{\n";
+    subindent = indent + "  ";
+    this.children_.eachWithIndex((i, sv) -> {
+      (name, val) = sv;
+      !s =
+        s +
+        subindent +
+        name +
+        " => " +
+        (val match {
+        | n @ NamedLeaf _ -> n.toString()
+        | n @ NamedInner _ -> n.prettyToString(subindent)
+        });
+      if (i + 1 < this.children_.size()) {
+        !s = s + ","
+      };
+      !s = s + "\n"
+    });
+    s + indent + "}"
+  }
+
+  fun getField(name: String, pos: Pos): NamedTree<T> {
+    ret: ?NamedTree<T> = None();
+    if (
+      !this.children_.any(f -> {
+        if (name == f.i0) {
+          !ret = Some(f.i1);
+          true
+        } else {
+          false
+        }
+      })
+    ) {
+      pos.die("Cannot find field " + name)
+    };
+    ret.fromSome()
+  }
+}
+
+private type TypeTree = NamedTree<Type>;
+private type TypeInner = NamedInner<Type>;
+type InstrTree = NamedTree<InstrID>;
+type InstrLeaf = NamedLeaf<InstrID>;
+private type InstrInner = NamedInner<InstrID>;
+
+const kVoidInstrTree: InstrTree = NamedInner<InstrID>(Array[]);
+private const kExistsVoidInstrTree: MaybeExists<InstrTree> = Exists(
+  kVoidInstrTree,
+);
+
+mutable private class SClassInfo{
+  mutable sclass: SClass,
+  gclass: GClass,
+  lazyGClass: LazyGClass,
+
+  // TODO: Make sclass mutable and just use mutable fields in it directly?
+  supertypes: mutable UnorderedSet<SClassID>,
+  subtypes: mutable UnorderedSet<SClassID>,
+
+  // If a non-final class, keys are all methods called on something
+  // whose compile-time type was this class, but not necessarily methods
+  // called on super- or subclasses.
+  //
+  // If a final class, keys are all methods called on this class or
+  // any base class, i.e. the ones that might be invoked at runtime.
+  //
+  // Values in either case are sclasses on which the methods are defined.
+  methods: mutable UnorderedMap<MethodKey, SClassID> = mutable UnorderedMap[],
+  // Once computed, the fields for this class. These are not "scalarized"
+  // like the eventual SClass SFields are, so that e.g. a 3-tuple will still
+  // just be one field instead of 3.
+  mutable unscalarizedFields: Array<SField> = Array[],
+
+  // If this is an Option-related type, what OptionStyle does it use?
+  mutable optionStyle: ?OptionStyle = None(),
+
+  // parallel to GClass::extends_
+  extends_: mutable Map<LazyGClass, SClassID> = mutable Map[],
+} {
+  readonly fun getUnscalarizedField(name: String, pos: Pos): SField {
+    field = (None() : ?SField);
+    _ = this.unscalarizedFields.any(f ->
+      f.name == name &&
+        {
+          !field = Some(f);
+          true
+        }
+    );
+    field match {
+    | Some(f) -> f
+    | None() ->
+      pos.die("Could not find field '" + name + "' on class " + this.sclass)
+    }
+  }
+}
+
+// TODO: Want to delete this, and then applyTparams if possible
+private fun makeGTypeMap(
+  in_: Array<GTparam>,
+  out: Array<GType>,
+  pos: Pos,
+): UnorderedMap<GTparam, GType> {
+  pos.invariant(in_.size() == out.size(), "tparam count mismatch");
+
+  if (in_.isEmpty()) {
+    // As an optimization, just return the standard empty one when we can.
+    kEmptyGTypeMap
+  } else {
+    typeMap = UnorderedMap::mcreate(in_.size());
+    in_.eachWithIndex((i, p) -> typeMap.add(p, out[i]));
+    freeze(typeMap)
+  }
+}
+
+private fun makeTypeMap(
+  in_: Array<GTparam>,
+  out: Array<Tclass>,
+  pos: Pos,
+): UnorderedMap<GTparam, Tclass> {
+  pos.invariant(in_.size() == out.size(), "tparam count mismatch");
+
+  if (in_.isEmpty()) {
+    // As an optimization, just return the standard empty one when we can.
+    kEmptyTypeMap
+  } else {
+    typeMap = UnorderedMap::mcreate(in_.size());
+    in_.eachWithIndex((i, p) -> typeMap.add(p, out[i]));
+    freeze(typeMap)
+  }
+}
+
+private fun typeMapGet(
+  tparamEnv: UnorderedMap<GTparam, Tclass>,
+  name: GTparam,
+  pos: Pos,
+): Tclass {
+  tparamEnv.maybeGet(name) match {
+  | Some(tc) -> tc
+  | None() -> pos.die(`Found unknown Tparam ${name}`)
+  }
+}
+
+// Describes the strategy to use to compile the front end's Option
+// type to a value class.
+private base class OptionStyle uses Equality, Show {
+  children =
+  // See FlagOption.
+  | FlagOptionStyle()
+
+  // See SentinelOption.
+  // path: The chain of fields to read to find the field to be tested as
+  //       a sentinel, ala NamedTree::map.
+  // pointer: The special pointer value that indicates None() (usually 0,
+  //          but can be -1, -2, ... for nested Option<Option<...>> types.
+  | SentinelOptionStyle(path: String, pointer: Int)
+
+  fun fastClass(): FrontEndLazyGClass
+  | FlagOptionStyle _ -> FrontEndLazyGClass("FastOption.FlagOption")
+  | SentinelOptionStyle _ -> FrontEndLazyGClass("FastOption.SentinelOption")
+
+  fun toString(): String
+  | FlagOptionStyle() -> "FlagOptionStyle"
+  | SentinelOptionStyle _ -> "SentinelOptionStyle"
+}
+
+mutable class Specializer{
+  // For each FrontEndLazyGClass, what are all its SClass instances?
+  gclassMap: mutable UnorderedMap<
+    GClassName,
+    mutable Vector<SClassID>,
+  > = mutable UnorderedMap[],
+
+  // Maps (FrontEndLazyGClass, GTargs) to SClassID.
+  sclassMap: mutable UnorderedMap<
+    HalfSClass,
+    SClassID,
+  > = mutable UnorderedMap[],
+
+  // Maps SClassID.id to information about that class.
+  sclasses: mutable Map<SClassID, mutable SClassInfo> = mutable Map[],
+
+  // Specialized functions we already know we're going to need.
+  // Everything in here was pushed on funStack at some point.
+  funsNeeded: mutable UnorderedSet<GFunKey> = mutable UnorderedSet[],
+
+  // Functions we still need to analyze with a new set of Targs.
+  funStack: mutable Vector<(GFunction, Array<Tclass>)> = mutable Vector[],
+
+  converter: Converter,
+
+  consts: Array<ConstLazyGFun>,
+
+  // Once it's too late to make new SClasses we turn this off.
+  mutable canCreateNewSClasses: Bool = true,
+
+  hhvmTypeTable: HhvmTypeTable = HhvmTypeTable.empty(),
+
+  // Updated as we go to point to something related to what we are specializing.
+  mutable pos: Pos,
+} extends ClassLookupEnv {
+  static fun make(
+    converter: Converter,
+    consts: Array<ConstLazyGFun>,
+  ): mutable Specializer {
+    mutable Specializer{converter, consts, pos => FileRange.builtin}
+  }
+
+  readonly fun getSClass(sid: SClassID): SClass {
+    this.sclasses[sid].sclass
+  }
+
+  readonly fun createNewSClassesMap(): Map<SClassID, SClass> {
+    this.sclasses.map((_, info) -> info.sclass)
+  }
+
+  // If t is Awaitable<T>, returns Some(T), else None().
+  readonly fun awaitableType(t: Tclass): ?Tclass {
+    // Get the SClassInfo for the "Awaitable" type (maybe a base class).
+    info = this.sclasses[t.sclassID];
+    baseInfo = if (info.sclass.gclassName == GClassName("Awaitable")) {
+      info
+    } else {
+      // NOTE: Awaitable and its machine-generated subclasses (via
+      // createAwaitableClass)
+      // TODO: Warn against user created ones
+      info.extends_.maybeGet(FrontEndLazyGClass("Awaitable")) match {
+      | Some(id) -> this.sclasses[id]
+      | _ -> return None()
+      }
+    };
+
+    // Return the type of awaitable.value.value.
+    rawType = baseInfo.getUnscalarizedField("value", info.sclass.pos).typ;
+    rawInfo = this.sclasses[rawType.sclassID];
+    Some(rawInfo.getUnscalarizedField("value", rawInfo.sclass.pos).typ)
+  }
+
+  readonly fun getTargs(tc: Tclass): Array<Tclass> {
+    this.sclasses[tc.sclassID].sclass.superposition.id
+  }
+
+  // Determine the actual targs to be passed to a method call.
+  // Usually they are just the ones from the front end, after substituting
+  // in tparams, but occasionally it gets much harder.
+  //
+  // We may be specializing generic code that, say, calls a trait method,
+  // where the trait method takes zero tparams but the specialized class
+  // implementing the method actually takes one. In such a case we need to
+  // use the tparamInherit field to determine the targ values based on
+  // information from the class which the method call was compiled against.
+  mutable fun computeMethodTargs(
+    call: GCallMethodBase,
+    tparamEnv: UnorderedMap<GTparam, Tclass>,
+  ): Array<Tclass> {
+    pos = call.pos;
+
+    obj = call.args[0];
+    objType = this.getTclass3(obj.getType(), tparamEnv);
+    objTypeInfo = this.sclasses[objType.sclassID];
+    objTypeGClass = objTypeInfo.gclass;
+
+    gtargs = call.targs;
+    realGTargs = objTypeGClass.methods.maybeGet(call.method) match {
+    | Some(gmethod) ->
+      gmethod.tparamInherit.maybeGet(call.source) match {
+      | Some(replacement) ->
+        // We've got a tricky case like a call on a Trait that
+        // takes zero tparams, but specializing on a class that
+        // needs one. So we use this table to figure out what
+        // the actual targs are.
+
+        env2 = makeTypeMap(objTypeGClass.tparams, this.getTargs(objType), pos);
+
+        !tparamEnv = if (gtargs.isEmpty()) {
+          env2
+        } else {
+          // Look up the source method so we can add its tparams
+          // to the environment.
+          sourceGClass = this.converter.getGClass(call.source, pos);
+          sm = sourceGClass.methods.maybeGet(call.method) match {
+          | Some(cm) -> cm
+          | None() ->
+            pos.die(
+              `Could not find method ${call.source.name().id}::${call.method}`,
+            )
+          };
+
+          pos.invariant(
+            sm.tparams.size() == gtargs.size(),
+            "Wrong number of source tparams",
+          );
+          env3 = env2.clone();
+          env3.extend(
+            makeTypeMap(
+              sm.tparams,
+              gtargs.map(t -> this.getTclass3(t, tparamEnv)),
+              pos,
+            ),
+          );
+          freeze(env3)
+        };
+
+        replacement
+      | None() -> gtargs
+      }
+    | None() -> gtargs
+    };
+
+    realGTargs.map(t -> this.getTclass3(t, tparamEnv))
+  }
+
+  // Find the transitive closure of functions and classes
+  // reachable from our original root set so we can compile them all.
+  mutable fun findAllFunctionsAndSClasses(
+    typesToSpecialize: readonly Vector<FrontEndLazyGClass>,
+  ): void {
+    // Make sure our builtin types exist so we can spontaneously create
+    // instances later, e.g. during lowering.
+    builtinTypes = Array[
+      (tAny, gtAny.generic),
+      (tBool, gtBool.generic),
+      (tChar, gtChar.generic),
+      (tConstSingleton, gtConstSingleton.generic),
+      (tException, gtException.generic),
+      (tFloat, gtFloat.generic),
+      (tGCPointer, gtGCPointer.generic),
+      (tHhvmHandle, gtHhvmHandle.generic),
+      (tHhvmShapeHandle, gtHhvmShapeHandle.generic),
+      (tInt, gtInt.generic),
+      (tInt16, FrontEndLazyGClass(tInt16.toString())),
+      (tInt32, FrontEndLazyGClass(tInt32.toString())),
+      (tInt8, FrontEndLazyGClass(tInt8.toString())),
+      (tMixed, FrontEndLazyGClass(tMixed.toString())),
+      (tNonGCPointer, gtNonGCPointer.generic),
+      (tString, gtString.generic),
+      (tVoid, gtVoid.generic),
+    ];
+
+    for (tt in builtinTypes) {
+      (t, lazyGClass) = tt;
+      sc = this.getSClass2(HalfClass(lazyGClass, Array[], DeepFrozen())).sclass;
+      if (sc.id != t.sclassID) {
+        sc.pos.die(`sclass ID mismatch: ${sc.id} != ${t.sclassID}`)
+      }
+    };
+
+    // Note - process the types first so that types that we explicitly request
+    // are processed before functions that might use them.  This is necessary
+    // for @hhvm_copy where we need to find what types inherit from a base-class
+    // during HhvmInterop.copyFromHhvm().
+    for (lazyGClass in typesToSpecialize) {
+      _ = this.getSClass2(HalfClass(lazyGClass, Array[], DeepFrozen()))
+    };
+
+    // Keep specializing functions and types until we hit a fixed point.
+    while (this.specializePendingFuns()) void;
+
+    if (false) {
+      // Debug support for dumping out the back end's understanding of
+      // the inheritance graph.
+      sortedClasses = Array::mcreateFromIterator(this.sclasses.values());
+      sortedClasses.sortBy(a ~> a.sclass.id);
+
+      for (info in sortedClasses) {
+        print_error(`${info.sclass}:\n`);
+
+        print_error("    supertypes:\n");
+        v1 = info.supertypes
+          .toArray()
+          .map(x -> this.sclasses[x].sclass.toString())
+          .sorted();
+        for (x in v1) print_error_ln(`        ${x}`);
+
+        print_error("    subtypes:\n");
+        v2 = info.subtypes
+          .toArray()
+          .map(x -> this.sclasses[x].sclass.toString())
+          .sorted();
+        for (x in v2) print_error_ln(`        ${x}`);
+      }
+    };
+
+    // TODO: Set "canInstantiate" to false for KBase with no KClass.
+
+    // ??? visit all interesting const types in converter
+
+    // We had better not see any new ones we missed during this phase!
+    this.!canCreateNewSClasses = false
+  }
+
+  // Specializes pending functions. Returns true if anything changed.
+  private mutable fun specializePendingFuns(): Bool {
+    changed = false;
+
+    while (!this.funStack.isEmpty()) {
+      !changed = true;
+      oldPos = this.pos;
+
+      (f, targs) = this.funStack.pop();
+
+      tparamEnv = makeTypeMap(f.funInfo.tparams, targs, f.funInfo.pos);
+      seenTypes = mutable UnorderedSet[];
+      noteType = (t, literalType) -> {
+        // For speed look up the parametric version of the type in the cache,
+        // and only if that fails run applyTparams and look up the real type.
+        key = (t, literalType);
+        if (seenTypes.maybeInsert(key)) {
+          _ = this.getTclass3(t, tparamEnv, this.pos, literalType)
+        }
+      };
+
+      // Ensure the stub for a generator's "next" method exists,
+      // so we can find it when we provide a body for it later.
+      returnType = this.getTclass3(f.funInfo.funType.returnType, tparamEnv);
+      if (f.funInfo.isGenerator) {
+        this.requestMethod("next", returnType, Array[])
+      };
+
+      // Process parameters.
+      for (instr in f.params) {
+        this.!pos = instr.pos;
+        noteType(instr.getType(), false);
+      };
+
+      // Process the body of the function.
+      for (b in f.blocks) {
+        for (instr in b.instrs) {
+          this.!pos = instr.pos;
+
+          noteType(instr.getType(), false);
+
+          instr match {
+          | chf @ GCallHhvmFunction _ ->
+            EmitCallHhvmFunction::requestFunctions(
+              this,
+              chf,
+              tparamEnv,
+              this.pos,
+            )
+          | chf @ GCallHhvmWrappedFunction _ ->
+            EmitCallHhvmWrappedFunction::requestFunctions(
+              this,
+              chf,
+              targs,
+              tparamEnv,
+              this.pos,
+            )
+          | GCallFunctionBase{name, targs => innerTargs} ->
+            _ = this.requestFunction(
+              name,
+              innerTargs.map(t -> this.getTclass3(t, tparamEnv)),
+            )
+          | call @ GCallMethodBase{method} ->
+            objType = this.getTclass3(call.args[0].getType(), tparamEnv);
+            innerTargs = this.computeMethodTargs(call, tparamEnv);
+            this.requestMethod(method, objType, innerTargs)
+
+          | GTypeSwitch{value} ->
+            // TypeSwitch on an Option type will generate an "isSome()"
+            // call, so we need to force that method to get compiled.
+            valType = this.getTclass3(value.getType(), tparamEnv);
+
+            if (this.sclasses[valType.sclassID].optionStyle.isSome()) {
+              this.requestMethod("isSome", valType, Array[])
+            }
+
+          | GCustomInstr{request} ->
+            request match {
+            | Some(lambda) -> lambda(this, targs, tparamEnv)
+            | None _ -> void
+            }
+
+          | obj @ GObject _ -> noteType(obj.getType(), true)
+
+          // These do not cause any additional types or code to be needed.
+          | GAsyncReturn _
+          | GCast _
+          | GEArray _
+          | GFreeze _
+          | GGetConst _
+          | GGetCurrentAwaitable _
+          | GGetField _
+          | GIf _
+          | GIntSwitch _
+          | GJump _
+          | GLandingPad _
+          | GReturn _
+          | GSetField _
+          | GStringSwitch _
+          | GSuspend _
+          | GThrow _
+          | GUnreachable _
+          | GWith _
+          | GYield _
+          | GYieldBreak _
+          | GZeroExtend _ ->
+            void
+          }
+        }
+      };
+
+      this.!pos = oldPos
+    };
+
+    changed
+  }
+
+  readonly fun exampleSClass(t: Type): SClass {
+    this.exampleSClassInfo(t).sclass
+  }
+
+  readonly fun exampleSClassInfo(t: Type): readonly SClassInfo {
+    t match {
+    | Tclass(sclassID, _) -> this.sclasses[sclassID]
+    | Tsuperposition(unique, _) -> this.sclasses[unique[0].sclassID]
+    }
+  }
+
+  readonly fun getScalarType(t: Type): ScalarType {
+    this.exampleSClass(t).getScalarType()
+  }
+
+  readonly fun maybeGetScalarType(t: Type): ?ScalarType {
+    this.exampleSClass(t).maybeGetScalarType()
+  }
+
+  // TODO: Detect type loops causing infinite recursion here.
+  readonly fun scalarize(
+    typ: Type,
+    callers: Array<FunSuperpositionID>,
+    pos: Pos,
+  ): TypeTree {
+    example = this.exampleSClass(typ);
+
+    if (example.maybeGetScalarType().isSome()) {
+      NamedLeaf(typ)
+    } else {
+      // A compound parameter gets flattened into 0 or more scalars.
+      // See what the compound value is in each superposition, and
+      // add a parameter for each field.
+      //
+      // We assume that all types in superposition must have the same fields.
+
+      // Minor optimization: reuse this table each time through the loop.
+      smap = mutable UnorderedMap[];
+
+      info = this.sclasses[example.id];
+
+      NamedInner(
+        info.unscalarizedFields.map(exampleField -> {
+          fname = exampleField.name;
+          (
+            fname,
+            {
+              smap.clear();
+
+              for (caller in callers) {
+                tc = typ.typeInSuperposition(caller);
+                subinfo = this.sclasses[tc.sclassID];
+                field = subinfo.getUnscalarizedField(fname, pos);
+
+                fieldType = if (
+                  tc.isDeepFrozen() &&
+                  (field.typ != tHhvmHandle)
+                ) {
+                  // If we have a frozen value class containing a field of
+                  // mutable type, the field type needs ot be promoted to frozen.
+                  field.typ.mapMutability(_ -> DeepFrozen())
+                } else {
+                  field.typ
+                };
+
+                smap.set(caller, fieldType)
+              };
+
+              fieldType = Type::make(freeze(smap));
+
+              this.scalarize(fieldType, callers, pos)
+            },
+          )
+        }),
+      )
+    }
+  }
+
+  // Compute the ArraySlotInfo for Array<T>.
+  private readonly fun computeArraySlotInfo(sclass: SClass): ArraySlotInfo {
+    pos = sclass.pos;
+
+    targs = sclass.superposition.id;
+    pos.invariant(targs.size() == 1, "Vector takes one type arg");
+
+    shape = this.scalarize(targs[0], kSimpleCaller, pos);
+
+    vectorSlotTypes = shape.flattened().map(t -> t.i1.asTclass(pos));
+
+    // Pack the slot by putting higher alignments first.
+    // We always put pointers first as that may be helpful for GC
+    // at some point (array type map only needs to know how many
+    // pointers are in each slot, since they are all at the beginning).
+    scalarTypes = vectorSlotTypes
+      .mapWithIndex((tupleIndex, t) -> (tupleIndex, this.getScalarType(t)))
+      .sortedBy(a ~> a.i1);
+
+    // Hand out bit offsets to the tuple members in each Vector slot.
+    tupleBitAlignment = 1;
+    bitOffsets = Array::mfill(scalarTypes.size(), Int::min);
+    bitOffset = 0;
+    for (pt in scalarTypes) {
+      (tupleIndex, scalarType) = pt;
+
+      !tupleBitAlignment = max(tupleBitAlignment, scalarType.bitAlignment);
+
+      !bitOffset = roundUp(bitOffset, scalarType.bitAlignment);
+
+      pos.invariant(bitOffsets[tupleIndex] == Int::min, "Oops");
+      bitOffsets.set(tupleIndex, bitOffset);
+
+      !bitOffset = bitOffset + scalarType.bitSize
+    };
+
+    // For now all of our sizes are byte-aligned.
+    bitSize = roundUp(bitOffset, max(tupleBitAlignment, 8));
+
+    ArraySlotInfo(vectorSlotTypes, freeze(bitOffsets), bitSize)
+  }
+
+  // Flatten each SClass's fields into scalars.
+  mutable fun scalarizeAllFields(): void {
+    // Reuse this repeatedly.
+    buf = mutable Vector[];
+
+    for (info in this.sclasses) {
+      buf.clear();
+      sclass = info.sclass;
+      pos = sclass.pos;
+      for (topLevelField in info.unscalarizedFields) {
+        oneScalarizedField = this.scalarize(
+          topLevelField.typ,
+          kSimpleCaller,
+          pos,
+        );
+        for (nsf in oneScalarizedField.flattened(topLevelField.name)) {
+          (name, typ) = nsf;
+          buf.push(
+            SField{
+              name,
+              typ => typ.asTclass(topLevelField.pos),
+              isAssignable => topLevelField.isAssignable,
+              pos => topLevelField.pos,
+              index => topLevelField.index,
+            },
+          )
+        }
+      };
+
+      arraySlot = if (sclass.isNative && sclass.gclassName.id == "Array") {
+        Some(this.computeArraySlotInfo(sclass))
+      } else {
+        None()
+      };
+
+      info.!sclass = sclass with {fields => buf.toArray(), arraySlot};
+    }
+  }
+
+  // Add the given SClass to its GClass's list of instances.
+  //
+  // TODO: We could literally use an intrusive linked list, would that be bad?
+  private mutable fun noteGClassInstance(instance: mutable SClassInfo): void {
+    // Note that another instance of this GClass exists.
+    buf = this.gclassMap.getOrAdd(instance.sclass.gclassName, () ->
+      mutable Vector[]
+    );
+    buf.push(instance.sclass.id)
+  }
+
+  // Indicate that 'sub' is a subtype of 'super'. This could mean direct or
+  // indirect inheritance through "extends", or subtyping through co- or
+  // contravariance in generic types. Basically if it is ever legal to cast
+  // 'sub' to 'super'
+  private mutable fun inherit(
+    super: mutable SClassInfo,
+    sub: mutable SClassInfo,
+  ): void {
+    if (super.subtypes.maybeInsert(sub.sclass.id)) {
+      sub.supertypes.add(super.sclass.id);
+
+      for (t in super.supertypes) this.inherit(this.sclasses[t], sub);
+      for (t in sub.subtypes) this.inherit(super, this.sclasses[t]);
+
+      // Track all methods callable on concrete classes (by casting to some
+      // supertype) so we know what to compile for them. We don't need to do
+      // this for base classes or value classes.
+      if (sub.sclass.kind.isKClass()) {
+        for (m => _ in super.methods) this.noteCalledMethod(sub, m)
+      }
+    }
+  }
+
+  mutable fun specializeType2(
+    generic: LazyGClass,
+    mutability: Mutability,
+    targs: Array<Type>,
+  ): Type {
+    targs.find(t -> t is Tsuperposition _) match {
+    | Some(exampleTsuperposition @ Tsuperposition _) ->
+      smap = exampleTsuperposition.smap.smap
+        .keys()
+        .map(sid -> {
+          tclassArgs = targs.map(arg -> arg.typeInSuperposition(sid));
+          (sid, this.getTclass2(generic, tclassArgs, mutability));
+        })
+        .collect(UnorderedMap);
+      Type::make(smap)
+    | _ ->
+      // easy case - no superpositions at all.
+      this.getTclass2(generic, targs.map(t -> t.asTclass(this.pos)), mutability)
+    }
+  }
+
+  // Converts a non-parametric type to a Tclass.
+  mutable fun getTclass2(
+    generic: LazyGClass,
+    targs: Array<Tclass>,
+    mutability: Mutability,
+    literalType: Bool = false,
+  ): Tclass {
+    // Correct the lie that the type is frozen even though its
+    // tparams are not (meaning it is merely "chilled").
+    //
+    // TODO: Use a different mutability AST w/"chilled" (T29988983).
+    if (
+      mutability == DeepFrozen() &&
+      targs.any(ta -> ta.mutability != DeepFrozen())
+    ) {
+      !mutability = Readonly()
+    };
+
+    info = this.getSClass2(HalfClass(generic, targs, mutability, literalType));
+
+    Tclass(info.sclass.id, mutability)
+  }
+
+  mutable fun getTclass3(
+    gt: GType,
+    tparamEnv: UnorderedMap<GTparam, Tclass>,
+    pos: Pos = this.pos,
+    literalType: Bool = false,
+  ): Tclass {
+    gt match {
+    | tp @ GTparam _ -> typeMapGet(tparamEnv, tp, pos)
+    | GTapply(lazyGClass, mutability, gtargs) ->
+      this.getTclass2(
+        lazyGClass,
+        gtargs.map(gt -> this.getTclass3(gt, tparamEnv, pos)),
+        mutability,
+        literalType,
+      )
+    }
+  }
+
+  // This deserves some explanation since the type substitutability rules
+  // do not match what we use in the front end.
+  //
+  // As in the front end, readonly is a supertype of both mutable and frozen.
+  //
+  // But no-op freezes add some additional wrinkles. You could create
+  // an object like this:
+  //
+  //    Some<mutable X>
+  //
+  // and record it in some hierarchy of objects whose root gets no-op frozen.
+  // So without the object created above being modified or even visited
+  // *at all* at runtime, it can now be used in a context that expects:
+  //
+  //    Some<X>
+  //
+  // Neither of these is a subtype of the other in the front end, but due
+  // to this freeze optimization the back end has to guarantee that these
+  // two types are laid out in a compatible way, since no-op freeze acts
+  // as a funny "cast" from the former to the latter.
+  //
+  // What this means is that both mutable and readonly can be converted to
+  // frozen.
+  //
+  // Because frozen is by definition castable to readonly, this yields cycles
+  // in the subtype/supertype graph. An object originally created as
+  // Some<readonly Foo> is substitutable in contexts
+  // expecting a Some<Foo> and vice versa.
+  private readonly fun isRuntimeSubType(t1: Tclass, t2: Tclass): Bool {
+    (t1.mutability, t2.mutability) match {
+    | (_, Readonly())
+    | (Mutable(), _)
+    | (Readonly(), DeepFrozen())
+    | (DeepFrozen(), DeepFrozen()) ->
+      this.sclasses[t1.sclassID].supertypes.contains(t2.sclassID)
+    | _ -> false
+    }
+  }
+
+  mutable fun specializeType(
+    t: GType,
+    mapCache: mutable UnorderedMap<(GType, Bool), Type>,
+    callers: Array<FunSuperpositionID>,
+    typemaps: Array<UnorderedMap<GTparam, Tclass>>,
+    literalType: Bool = false,
+  ): Type {
+    mapCache.getOrAdd((t, literalType), () -> {
+      if (!t.isParametric()) {
+        this.getTclass3(t, kEmptyTypeMap, this.pos, literalType)
+      } else {
+        // This might need a Tsuperposition, so work out what the Tclass
+        // will be for every possible superposition.
+        smap = mutable UnorderedMap[];
+        callers.eachWithIndex((i, c) -> {
+          tc = this.getTclass3(t, typemaps[i], this.pos, literalType);
+          smap.set(c, tc)
+        });
+        Type::make(freeze(smap))
+      }
+    })
+  }
+
+  readonly fun canInstantiate(t: Type): Bool {
+    // TODO: If an SClass in a KBase with no concrete subclasses, we can
+    // say it's not instantiable.
+    !t.forEachTclass(tc -> !this.sclasses[tc.sclassID].sclass.canInstantiate)
+  }
+
+  // Create a type for Call Instrs that return multiple values. To regularize
+  // later stages of the compiler we make their return types always be
+  // scalarized out to an instance of this if they have more than one argument.
+  mutable fun getReturnTuple(types: Array<Tclass>): Tclass {
+    invariant(types.size() > 1, "No need for 0- or 1-return tuples.");
+
+    this.getTclass2(
+      ReturnTupleLazyGClass(types.size()),
+      types,
+      Mutability::fromFlag(!types.all(t -> t.isDeepFrozen())),
+    )
+  }
+
+  // Canonicalize a type. Void and scalars remain the same, but any
+  // compound type becomes a flat tuple of its scalars, with field
+  // names "v0", "v1", "v2", etc.
+  //
+  // We need this because the IR does not support value classes in most
+  // contexts, but Call Instrs need some kind of type, so we give them
+  // this tuple type as the most honest and canonical representation we
+  // can of what's happening without introducing a lot of complexity
+  // related to nested value classes etc.
+  mutable fun getReturnType(
+    typ: Type,
+    callers: Array<FunSuperpositionID>,
+    pos: Pos,
+  ): Type {
+    shape = this.scalarize(typ, callers, pos);
+    types = shape.flattened().map(p -> p.i1);
+
+    if (types.isEmpty()) {
+      tVoid
+    } else if (types.size() == 1) {
+      // Simple scalar.
+      types[0]
+    } else {
+      // Create a superposition of tuples of scalar types.
+      smap = mutable UnorderedMap[];
+      for (caller in callers) {
+        tv = types.map(t -> t.typeInSuperposition(caller));
+        smap.set(caller, this.getReturnTuple(tv))
+      };
+      Type::make(freeze(smap))
+    }
+  }
+
+  readonly fun isOption(lazyGClass: LazyGClass): Bool {
+    lazyGClass match {
+    | FrontEndLazyGClass("Option")
+    | FrontEndLazyGClass("Some")
+    | FrontEndLazyGClass("None") ->
+      true
+    | _ -> false
+    }
+  }
+
+  // Helper for getOptionStyle2(): takes the T in Option<T>, which must
+  // not be parametric, and returns the style to use.
+  private readonly fun getOptionStyleHelper2(
+    tc: Tclass,
+    pos: Pos,
+  ): OptionStyle {
+    info = this.sclasses[tc.sclassID];
+    info.optionStyle match {
+    | Some(FlagOptionStyle _) ->
+      // Option<Option<T>> etc. where the inner Option already needed
+      // FlagOptionStyle. Use that for the outer Option as well.
+      FlagOptionStyle()
+    | Some(SentinelOptionStyle(path, ptr)) ->
+      // Option<Option<T>> etc. where the inner Option used a sentinel.
+      // Use that same sentinel minus one to indicate a None() wrapping
+      // that value.
+      SentinelOptionStyle(dotJoin("valueIfSome.value", path), ptr - 1)
+    | None() ->
+      // Option<T> where T is not itself an Option.
+      sc = info.sclass;
+      if (!sc.kind.isValueClass() || Hhvm.isHhvmHandle(tc)) {
+        // All KClass and KBase can just use a null pointer sentinel.
+        SentinelOptionStyle("", 0)
+      } else {
+        // Default to giving up and using FlagOptionStyle.
+        result = (FlagOptionStyle() : OptionStyle);
+
+        if (!sc.isNative) {
+          // A null sentinel can yield slightly tighter machine code,
+          // so prefer a sentinel field where we can use 0 rather
+          // than -1 or -2 etc. by keeping the max.
+          bestPtr = Int::min;
+
+          _ = info.unscalarizedFields.any(field -> {
+            this.getOptionStyleHelper2(field.typ, pos) match {
+            | SentinelOptionStyle(path, ptr) if (ptr > bestPtr) ->
+              // We found a value class field that itself has a legal
+              // sentinel, so just use that sub-field to hold a
+              // sentinel value. For example, with
+              // Option<(Int, Int, String)>, we can just check for a
+              // null String to tell us if the Option is None().
+              nestedPath = dotJoin(field.name, path);
+              !result = SentinelOptionStyle(nestedPath, ptr);
+              !bestPtr = ptr;
+
+              // A null sentinel is perfect so we can stop looping.
+              ptr == 0
+            | _ -> false
+            }
+          });
+        };
+
+        result
+      }
+    }
+  }
+
+  // If gt is not Option/Some/None, returns None(). Otherwise, returns Some
+  // of The OptionStyle to use to implement this option type.
+  readonly fun getOptionStyle2(hc: HalfClass, pos: Pos): ?OptionStyle {
+    if (this.isOption(hc.generic)) {
+      Some(this.getOptionStyleHelper2(hc.targs[0], pos))
+    } else {
+      None()
+    }
+  }
+
+  // Apply the rules documented on createMetaClass() to convert
+  // Base<T>, Concrete<T> and Class<T> to the corresponding metaclass,
+  // or return 'hc' if no such conversion is possible.
+  private mutable fun maybeConvertMetaClass(hc: HalfClass): HalfClass {
+    (gid, targ) = hc.generic match {
+    | FrontEndLazyGClass("Base") ->
+      tArgInfo = this.sclasses[hc.targs[0].sclassID];
+      g = tArgInfo.lazyGClass;
+
+      lg = if (hc.literalType) {
+        BaseMetaImplLazyGClass(g)
+      } else {
+        BaseMetaLazyGClass(g)
+      };
+      (lg, tArgInfo)
+
+    | FrontEndLazyGClass("Class")
+    | FrontEndLazyGClass("Concrete") ->
+      tArgInfo = this.sclasses[hc.targs[0].sclassID];
+      g = tArgInfo.lazyGClass;
+
+      lg = tArgInfo.sclass.kind match {
+      | KBase() ->
+        if (hc.generic == FrontEndLazyGClass("Concrete")) {
+          ConcreteMetaLazyGClass(g)
+        } else {
+          ClassMetaLazyGClass(g)
+        }
+      | KClass()
+      | KValue() ->
+        ConcreteMetaImplLazyGClass(g)
+      };
+      (lg, tArgInfo)
+
+    | _ -> return hc
+    };
+
+    opthc = hc with {
+      generic => gid,
+      targs => targ.sclass.superposition.id,
+      mutability => DeepFrozen(),
+    };
+
+    // Magically special case Base<Option<Int>> to
+    // Concrete<FlagOption<Int, FastOption.OptionTag>> etc.
+    //
+    // Since the FastOption types are value classes, we always
+    // use Concrete here.
+    this.getOptionStyle2(hc, this.pos) match {
+    | Some(x) ->
+      tag = this.getOptionTagType(hc.generic);
+      opthc with {
+        generic => ConcreteMetaImplLazyGClass(x.fastClass()),
+        targs => hc.targs.concat(Array[tag]),
+        mutability => DeepFrozen(),
+      }
+    | None() ->
+      // Normal metaclass case.
+      opthc
+    }
+  }
+
+  private mutable fun getOptionTagType(optionGClass: LazyGClass): Tclass {
+    lazyGClass = optionGClass match {
+    | FrontEndLazyGClass("Option") -> FrontEndLazyGClass("FastOption.OptionTag")
+    | FrontEndLazyGClass("Some") -> FrontEndLazyGClass("FastOption.SomeTag")
+    | FrontEndLazyGClass("None") -> FrontEndLazyGClass("FastOption.NoneTag")
+    | _ -> this.pos.die(`Bad option type ${optionGClass.nameStr()}`)
+    };
+    this.getTclass2(lazyGClass, Array[], DeepFrozen())
+  }
+
+  mutable fun getSClass2(hc: HalfClass): mutable SClassInfo {
+    // Canonicalize a Concrete<T>, etc. to the right metaclass.
+    origHC = hc;
+    !hc = this.maybeConvertMetaClass(hc);
+    targs = hc.targs;
+
+    // We only care about some of the fields.
+    hsc = HalfSClass(hc.generic, targs);
+
+    this.sclassMap.maybeGet(hsc) match {
+    | Some(sc) -> this.sclasses[sc]
+    | None() ->
+      this.getOptionStyle2(hc, this.pos) match {
+      | None() -> void
+      | Some(style) ->
+        // Create the underlying implementation type. See comments
+        // in FastOption.sk.
+        tag = this.getOptionTagType(hc.generic);
+
+        implInfo = this.getSClass2(
+          HalfClass(style.fastClass(), Array[targs[0], tag], hc.mutability),
+        );
+
+        // Redirect Option<T> etc. to the implementation type.
+        this.sclassMap.set(hsc, implInfo.sclass.id);
+
+        return implInfo
+      };
+
+      gclass = this.converter.getGClass(hc.generic, this.pos);
+
+      kind = gclass.kind match {
+      | ck @ ClassKind _ -> ck
+      | KTrait _ -> gclass.pos.die(`Cannot specialize trait ${hc} into IR`)
+      };
+
+      name = if (targs.isEmpty()) {
+        // already interned
+        gclass.name.id
+      } else {
+        intern(gclass.name.id + "<" + targs.join(", ") + ">")
+      };
+
+      if (!this.canCreateNewSClasses && !gclass.isReturnTuple) {
+        this.pos.die(
+          "Creating new SClass " +
+            name +
+            " that was not found during initial type scan; " +
+            "now it's too late.",
+        )
+      };
+
+      // Make the new SClass.
+      sid = SClassID(name);
+      newClass = SClass{
+        id => sid,
+        gclassName => gclass.name,
+        superposition => ClassSuperpositionID(targs),
+        isMutable => gclass.isMutable,
+        isNative => gclass.isNative,
+        isLambda => gclass.isLambda,
+        isMemoizeThunk => gclass.isMemoizeThunk,
+        kind,
+        subtypes => kEmptySClassSet, // Computed later from SClassInfo
+        supertypes => kEmptySClassSet, // Computed later from SClassInfo
+        methods => kEmptyMethods, // Computed later from SClassInfo
+        annotations => gclass.annotations,
+        fields => Array[], // Computed later after being scalarized
+        canInstantiate => gclass.canInstantiate,
+        scalarType => gclass.scalarType match {
+        | some @ Some _ -> some
+        | None() ->
+          kind match {
+          | KBase()
+          | KClass() ->
+            Some(ScalarType::gcPointer)
+          | KValue() -> None()
+          }
+        },
+        pos => gclass.pos,
+      };
+
+      optionStyle = hc.generic match {
+      | FrontEndLazyGClass("FastOption.FlagOption") -> Some(FlagOptionStyle())
+      | FrontEndLazyGClass("FastOption.SentinelOption") ->
+        Some(this.getOptionStyleHelper2(targs[0], this.pos))
+      | _ -> None()
+      };
+
+      // Create SClassInfo, starting out as a sub- and supertype of itself
+      // (because any type is substitutable for itself).
+      info = mutable SClassInfo{
+        sclass => newClass,
+        gclass,
+        lazyGClass => hc.generic,
+        optionStyle,
+        supertypes => mutable UnorderedSet[sid],
+        subtypes => mutable UnorderedSet[sid],
+      };
+
+      // Record this class.
+      this.sclasses.set(sid, info);
+      this.sclassMap.set(hsc, sid);
+      this.noteGClassInstance(info);
+
+      // Now that the type is registered we can do things that may go
+      // reentrant.
+
+      // Create the fields. We will flatten them to scalars later.
+      tparamEnv = makeTypeMap(gclass.tparams, targs, this.pos);
+      info.!unscalarizedFields = gclass.fields.map(f ->
+        SField{
+          name => f.name,
+          typ => this.getTclass3(f.typ, tparamEnv, f.pos),
+          isAssignable => f.isAssignable,
+          pos => f.pos,
+          index => f.index,
+        }
+      );
+
+      // populate sclass extends_ after registration, but before inherits pass
+      for (gta in gclass.extends_) {
+        super = this.getTclass3(gta, tparamEnv);
+        info.extends_.set(gta.generic, super.sclassID);
+      };
+
+      // This class can be instantiated only if all fields can.
+      canInstantiate = (
+        (info.sclass.canInstantiate &&
+          info.unscalarizedFields.all(field ->
+            this.canInstantiate(field.typ)
+          )) ||
+        gclass.name.idValue() == "Unsafe.RawStorage"
+      );
+
+      info.!sclass = info.sclass with {
+        canInstantiate,
+        fields => if (gclass.isReturnTuple) {
+          // We need to record these right away since the scalarizing
+          // phase is over.
+          info.unscalarizedFields
+        } else {
+          info.sclass.fields
+        },
+      };
+
+      // Connect super- and subtypes in the "extends" hierarchy.
+      for (ta in gclass.extends_) {
+        super = this.getTclass3(ta, tparamEnv);
+        this.inherit(this.sclasses[super.sclassID], info);
+      };
+
+      // Now look for super- and subtypes based on co- and contravariance.
+      //
+      // We need to do this because if someone calls a method on an object
+      // cast to some other type via covariance, the rest of the compiler
+      // would like to know that this method can be called on instances of
+      // the original type.
+      //
+      // As an optimization, if none of the GTparams have variance we don't
+      // need to do anything, the "extends" check already found all
+      // super- and subtypes.
+      hasAnyVariance = gclass.variances.any(v ->
+        v match {
+        | I.Vnone _ -> false
+        | I.Vplus _
+        | I.Vminus _ ->
+          true
+        }
+      );
+
+      if (hasAnyVariance) {
+        for (otherID in this.gclassMap[hc.generic.name()]) {
+          if (otherID != sid) {
+            other = this.sclasses[otherID];
+
+            // Is 'newClass' a supertype of 'other'?
+            isSuperType = true;
+
+            // Is 'newClass' a subtype of 'other'?
+            isSubType = true;
+
+            otherTargs = other.sclass.superposition.id;
+            this.pos.invariant(
+              targs.size() == otherTargs.size(),
+              "targs size mismatch",
+            );
+
+            i = -1;
+            if (
+              gclass.variances.all(v -> {
+                !i = i + 1;
+                t1 = targs[i];
+                t2 = otherTargs[i];
+                s1 = this.isRuntimeSubType(t1, t2);
+                s2 = this.isRuntimeSubType(t2, t1);
+
+                if (!(s1 && s2)) {
+                  v match {
+                  | I.Vnone _ ->
+                    !isSubType = false;
+                    !isSuperType = false
+                  | I.Vplus _ ->
+                    if (!s1) {
+                      !isSubType = false
+                    };
+                    if (!s2) {
+                      !isSuperType = false
+                    }
+                  | I.Vminus _ ->
+                    if (!s2) {
+                      !isSubType = false
+                    };
+                    if (!s1) {
+                      !isSuperType = false
+                    }
+                  }
+                };
+
+                // Stop as soon as neither is a supertype of the other.
+                isSubType || isSuperType
+              })
+            ) {
+              if (isSubType) {
+                this.inherit(other, info)
+              };
+
+              if (isSuperType) {
+                this.inherit(info, other)
+              }
+            }
+          }
+        }
+      };
+
+      // Go ahead and create the frozen variant of this type now,
+      // since it could be sneakily created at runtime via the freeze()
+      // operation, and we need to know about every type that might exist
+      // at runtime.
+      _ = this.getSClass2(
+        origHC with {
+          targs => origHC.targs.map(t -> t.mapMutability(_ -> DeepFrozen())),
+          mutability => DeepFrozen(),
+        },
+      );
+
+      info
+    }
+  }
+
+  // method lookup:
+  // 1. if a method is defined on the receiver class itself, use that
+  // definition uncoditionally
+  // 2. otherwise, we expect the method to have an entry in the source
+  // table - use the definition found in the source class
+  //
+  // This breaks ties in favor of receiver-hosted implementations, which
+  // is what we want - the front end will sometimes tell us a method is
+  // hosted nonlocally when it's actually local (e,g, algebraics, traits),
+  // and the local definition if present is always correct.
+  //
+  private readonly fun findMethod(
+    info: readonly SClassInfo,
+    name: String,
+  ): ?(SClassID, GMethodDef) {
+    sc = info.sclass;
+    info.gclass.methods.maybeGet(name) match {
+    | Some(gmethod) -> Some((sc.id, gmethod))
+    | None() ->
+      source = info.gclass.methodSources.maybeGet(name) match {
+      | Some(src) -> src
+      | None() -> sc.pos.die(`No source entry for method ${name} on ${sc}`)
+      };
+      info.extends_.maybeGet(source).map(superID -> {
+        scinfo = this.sclasses[superID];
+        (scinfo.sclass.id, scinfo.gclass.methods[name])
+      })
+    }
+  }
+
+  // add entry to info's method map, and optionally request
+  // implementation function
+  private mutable fun addMethod(
+    info: mutable SClassInfo,
+    m: MethodKey,
+    requestImpl: Bool,
+  ): void {
+    receiver = info.sclass;
+    (hostID, gmethod) = this.findMethod(info, m.name) match {
+    | Some((hostID, gmethod)) -> (hostID, gmethod)
+    | _ ->
+      receiver.pos.die(
+        `Method ${m.name} not found on ${receiver} or its ancestors`,
+      )
+    };
+    // add mapping from method name to host sclass id
+    info.methods.set(m, hostID);
+    // optionally request implementation
+    if (requestImpl) {
+      gmethod.function match {
+      | Some(getLazyGFun) ->
+        hostInfo = this.sclasses[hostID];
+        host = hostInfo.sclass;
+        this.requestFunction(
+          getLazyGFun(hostInfo.lazyGClass),
+          m.targs.id,
+          host.superposition.id,
+        )
+      | None() -> void
+      }
+    }
+  }
+
+  private mutable fun noteCalledMethod(
+    receiver: mutable SClassInfo,
+    m: MethodKey,
+  ): void {
+    if (receiver.sclass.id == tAny.sclassID) {
+      // NOTE: We don't create methods for tAny, since we will later turn such
+      // calls into "unreachable". This is important because tAny is a "bottom"
+      // type that claims to implement all methods, but this is a lie.
+      void
+    } else if (!receiver.methods.containsKey(m)) {
+      // Tell all concrete subtypes, including itself if appropriate, about
+      // the method.
+      // Whenever we notice a method being callable on a final class, we
+      // force whatever implementation it inherits to be compiled, since
+      // we might need it at runtime.
+      // But as an exception to this rule, if receiver is
+      // a final class, we know the call will be devirtualized during
+      // specialization, so we don't need to compile any other versions
+      // to make sure there's a vtable entry at runtime. For example,
+      // if we have a call to MyFinalClass<Animal>::someMethod, we do not
+      // need compile MyFinalClass<Cow>::someMethod, even though it's
+      // technically a subtype. If someone casts MyFinalClass<Cow> to
+      // MyFinalClass<Animal> and calls this method, it will just invoke
+      // the devirtualized implementation directly.
+      if (receiver.sclass.kind.isFinal()) {
+        this.addMethod(receiver, m, true)
+      } else {
+        for (subID in receiver.subtypes) {
+          info = this.sclasses[subID];
+          if (!info.methods.containsKey(m)) {
+            this.addMethod(info, m, info.sclass.kind.isFinal())
+          }
+        }
+      }
+    }
+  }
+
+  mutable fun requestMethod(
+    method: String,
+    objType: Tclass,
+    targs: Array<Tclass>,
+  ): void {
+    info = this.sclasses[objType.sclassID];
+    sposn = MethodSuperpositionID(targs);
+    this.noteCalledMethod(info, MethodKey(method, sposn))
+  }
+
+  // Ask that the requested function be compiled to machine code compatible
+  // with the given targs.
+  mutable fun requestFunction(
+    name: LazyGFun,
+    methodTargs: Array<Tclass>,
+    classTargs: Array<Tclass> = Array[],
+  ): void {
+    superposition = FunSuperpositionID(
+      ClassSuperpositionID(classTargs),
+      MethodSuperpositionID(methodTargs),
+    );
+    key = GFunKey(name, superposition);
+
+    if (this.funsNeeded.maybeInsert(key)) {
+      converter = this.converter;
+
+      function = converter.getGFunction(name);
+
+      newTargs = classTargs.concat(methodTargs);
+      if (function.funInfo.tparams.size() != newTargs.size()) {
+        this.pos.die(
+          `tparam count mismatch in requestFunction for ${function}; ` +
+            `expected ${function.funInfo.tparams}, but got ${newTargs}`,
+        )
+      };
+      this.funStack.push((function, newTargs));
+    }
+  }
+
+  // Set up coroutine compilation order dependencies; we can't compile
+  // any "next" methods until the rampUp function has been compiled and
+  // determined the information they need.
+  //
+  // We do this by scanning the code for any coroutines and hooking up
+  // the dependencies.
+  //
+  // See comments at the top of coroutine.sk for more info.
+  private readonly fun insertCoroutineCompilationOrderDependencies(
+    msfuns: mutable FunctionIDToFunction,
+  ): void {
+    for (f in msfuns) {
+      f.coroutineInfo match {
+      | Some(UnfinishedCoroutine _) ->
+        f.pos.invariant(
+          f.funType.returnType.size() == 1,
+          "Expected coroutine return",
+        );
+
+        // The return type of an unfinished coroutine is the
+        // coroutine state object, that has the "next" method that
+        // we need to update to be an "UnfinishedNext".
+        _ = f.funType.returnType[0].forEachTclass(tc -> {
+          nextMethodID = this.sclasses[tc.sclassID].sclass.getMethod(
+            "next",
+            MethodSuperpositionID::empty,
+            f.pos,
+          );
+          nextMethod = msfuns[nextMethodID];
+          nextMethod.coroutineInfo match {
+          | None() ->
+            msfuns.insert(
+              nextMethod with {
+                coroutineInfo => Some(UnfinishedNext{rampUpID => f.id}),
+              },
+            )
+          | Some(UnfinishedNext{rampUpID}) if (rampUpID == f.id) -> void
+          | _ -> nextMethod.pos.die("Bad coroutine dependencies")
+          };
+          true
+        })
+      | _ -> void
+      }
+    }
+  }
+
+  // TODO: Right now we use the stupidest possible algorithm and maximally
+  // partition every function. The real algorithm needs to examine the GInstrs
+  // and other referenced functions to decide what needs to be partitioned.
+  mutable fun partitionFunctions(
+    runtimeFunctionsVec: readonly Vector<FrontEndLazyGFun>,
+    env: GlobalEnv,
+  ): GlobalEnv {
+    converter = this.converter;
+
+    reportMemoryStatistics("native/partitionFunctions start");
+
+    // Map each GFunction to all its instantiations.
+    funToInstsMap = mutable UnorderedMap[];
+    for (key in this.funsNeeded) {
+      gf = converter.getGFunction(key.i0);
+      funToInstsMap.getOrAdd(gf, () -> mutable Vector[]).push(key)
+    };
+    reportMemoryStatistics("native/partitionFunctions after instantiation");
+
+    // Put them in a more stable order for reproducibility.
+    funToInsts = mutable Vector[];
+    for (gf => insts in funToInstsMap) {
+      insts.sortBy(z ~> (z.i0.gname(), z.i1.cls.id, z.i1.method.id));
+      funToInsts.push((gf, insts));
+    };
+    funToInsts.sortBy(a ~> a.i0.funInfo.gfunction
+    // (a, b) ~> compare(a.i0.funInfo.gfunction, b.i0.funInfo.gfunction)
+    );
+
+    msfuns = FunctionIDToFunction::mcreate();
+
+    // Partition functions into superpositions and give them SFunctionIDs.
+    // We need to assign SFunctionIDs now so that when we specialize them
+    // below, Call Instrs know the SFunctionIDs to use to refer to other funs.
+    msids = UnorderedMap<GFunKey, SFunctionID>::mcreate(this.funsNeeded.size());
+    for (gfAndInsts in funToInsts) {
+      (_, insts) = gfAndInsts;
+      // For now, stupidly give every unique set of parameters its own
+      // Function, even though we could sometimes superimpose them.
+      for (key in insts) msids.add(key, msfuns.allocID())
+    };
+    sids = freeze(msids);
+    reportMemoryStatistics("native/partitionFunctions after sids");
+
+    // Create a table of all runtime functions so we can look them up
+    // by name in later stages of the compiler.
+    runtimeFunctions = UnorderedMap::mcreate(runtimeFunctionsVec.size());
+    for (name in runtimeFunctionsVec) {
+      sids.maybeGet(GFunKey(name, FunSuperpositionID::empty)) match {
+      | Some(sid) -> runtimeFunctions.set(name.gname().id, sid)
+      | None() -> invariant_violation(`Could not find runtime function ${name}`)
+      }
+    };
+
+    // Specialize all functions.
+    for (gfAndInsts in funToInsts) {
+      (gf, insts) = gfAndInsts;
+      // Stupidly give every unique set of parameters its own instantiation.
+      for (s in insts) {
+        sid = sids[s];
+        f = FunSpecializer::run(this, gf, Array[s.i1], sid, sids, msfuns);
+        if (!gf.hasImplementation()) {
+          // Kill off junk "Unreachable" block.
+          !f = f with {blocks => Array[]}
+        };
+        msfuns.insert(f)
+      }
+    };
+    reportMemoryStatistics("native/partitionFunctions after sfuns");
+
+    // Populate each SClass.methods with the SFunctionIDs for its code.
+    for (info in this.sclasses) {
+      if (!info.methods.isEmpty()) {
+        newMethods = UnorderedMap::mcreate(info.methods.size());
+        for (mkey => hostID in info.methods) {
+          host = this.sclasses[hostID].sclass;
+          methodFunName = FrontEndLazyGFun{
+            frontEndName => host.gclassName.id + "::" + mkey.name,
+          };
+          funKey = GFunKey(
+            methodFunName,
+            FunSuperpositionID(host.superposition, mkey.targs),
+          );
+
+          code = sids.maybeGet(funKey).default(SFunctionID::none);
+          if (code == SFunctionID::none && info.sclass.kind.isFinal()) {
+            // Final classes cannot have any abstract method implementations.
+            info.sclass.die("Did not find compiled code for method " + funKey)
+          };
+
+          newMethods.set(mkey, code)
+        };
+
+        // Record the methods.
+        info.!sclass.methods = freeze(newMethods)
+      }
+    };
+    reportMemoryStatistics("native/partitionFunctions after populate methods");
+
+    // Figure out which Function handles each const.
+    consts = UnorderedMap::mcreate(this.consts.size());
+    for (lazy in this.consts) {
+      consts.set(lazy.constName, sids[GFunKey(lazy, FunSuperpositionID::empty)])
+    };
+    reportMemoryStatistics("native/partitionFunctions after consts");
+
+    this.insertCoroutineCompilationOrderDependencies(msfuns);
+
+    !env = env with {
+      runtimeFunctions => freeze(runtimeFunctions),
+      consts => freeze(consts),
+      sfuns => freeze(msfuns),
+    };
+    reportMemoryStatistics("native/partitionFunctions end");
+
+    env
+  }
+}
+
+// Converts a GFunction to a Function. This involves:
+//
+// - Converting all GTypes to Types (i.e. specializing generics).
+// - Converting GInstr to Instr.
+// - Removing value classes, essentially shattering each one into
+//   its component scalars. So a 3-tuple function parameter becomes
+//   three parameters, etc.
+mutable class FunSpecializer{
+  gfunction: GFunction,
+  specializer: mutable Specializer,
+  converter: Converter,
+  values: mutable UnorderedMap<
+    GInstrID,
+    MaybeExists<InstrTree>,
+  > = mutable UnorderedMap[],
+  mapCache: mutable UnorderedMap<(GType, Bool), Type>,
+  callers: Array<FunSuperpositionID>,
+  typemaps: Array<UnorderedMap<GTparam, Tclass>>,
+  mutable whyCurrentInstrUnreachable: ?String = None(),
+  //  returnType: NamedInner<SuperpositionField>,
+  specializedFunctionMap: UnorderedMap<GFunKey, SFunctionID>,
+  invokeExtracts: mutable UnorderedMap<
+    GBlockID,
+    mutable Vector<TupleExtract>,
+  > = mutable UnorderedMap[],
+  mutable coroutineInfo: ?UnfinishedCoroutine = None(),
+  msfuns: mutable FunctionIDToFunction,
+} extends RewriteBase, ClassLookupEnv {
+  mutable fun makePos(pos: FileRange, fpos: FileRange): Pos {
+    if (pos.filename == fpos.filename) {
+      pos
+    } else {
+      // Somehow these ended up with a different file - this can happen if code
+      // gets 'injected' into a foreign function - for example initializing a
+      // base class's fields in a derived class.  In this case we want to create
+      // a Pos where the position is the original code but the 'inlinedAt'
+      // points at the final resting place.
+      externalPos = FunPos{
+        name => this.optinfo.f.name,
+        id => SFunctionID::none,
+        pos,
+      };
+      InlinedPos::inlineAt(fpos, pos, externalPos)
+    }
+  }
+
+  static fun run(
+    specializer: mutable Specializer,
+    gfunction: GFunction,
+    callers: Array<FunSuperpositionID>,
+    fid: SFunctionID,
+    specializedFunctionMap: UnorderedMap<GFunKey, SFunctionID>,
+    msfuns: mutable FunctionIDToFunction,
+  ): Function {
+    gfi = gfunction.funInfo;
+
+    typemaps = callers.map(fs -> {
+      targs = fs.cls.id.concat(fs.method.id);
+      makeTypeMap(gfi.tparams, targs, gfi.pos);
+    });
+
+    name = gfi.gfunction.id;
+
+    // Remove some confusing internal naming stuff.
+    !name = name.replace(concreteMetaImplSuffix, "");
+    !name = name.replace(baseMetaImplSuffix, "");
+
+    if (callers.size() == 1 && callers[0] != FunSuperpositionID::empty) {
+      ctargs = callers[0].cls.id;
+      mtargs = callers[0].method.id;
+
+      // Splice in the class args right before the last "::", if any.
+      // We use "last" to handle quasi-nested classes like Closure types.
+      if (!ctargs.isEmpty()) {
+        (before, after) = name.splitLast("::");
+
+        if (!before.isEmpty() && !after.isEmpty()) {
+          !name = before + "<" + ctargs.join(", ") + ">::" + after
+        } else {
+          // Strange, did not find "::", so just show with the mtargs.
+          !mtargs = ctargs.concat(mtargs)
+        }
+      };
+
+      if (!mtargs.isEmpty()) {
+        !name = name + "<" + mtargs.join(", ") + ">"
+      }
+    };
+
+    presetMappings = Array[
+      (gtAny, tAny),
+      (gtBool, tBool),
+      (gtChar, tChar),
+      (gtException, tException),
+      (gtFloat, tFloat),
+      (gtInt, tInt),
+      (gtString, tString),
+      (gtVoid, tVoid),
+    ];
+
+    mapCache = UnorderedMap<(GType, Bool), Type>::mcreate(
+      presetMappings.size() * 2,
+    );
+    for (kv in presetMappings) {
+      (key, value) = kv;
+      mapCache.set((key, false), value);
+      mapCache.set((key, true), value)
+    };
+
+    cannotInstantiateParam = (None() : ?(String, Type));
+
+    // Leverage CompoundType to scalarize both parameters and return values.
+    params = NamedInner(
+      gfunction.params.map(p -> {
+        t = specializer.specializeType(p.typ, mapCache, callers, typemaps);
+        if (!specializer.canInstantiate(t)) {
+          !cannotInstantiateParam = Some((p.prettyName, t))
+        };
+        (p.prettyName, specializer.scalarize(t, callers, p.pos))
+      }),
+    );
+    flatParams = params.flattened();
+
+    specReturnType = specializer.specializeType(
+      gfi.funType.returnType,
+      mapCache,
+      callers,
+      typemaps,
+    );
+    returnType = NamedInner(
+      Array[("", specializer.scalarize(specReturnType, callers, gfi.pos))],
+    );
+
+    funInfo = FunInfo{
+      id => fid,
+      gfunction => gfi.gfunction,
+      name,
+      isNative => gfi.isNative,
+      isMemoized => gfi.isMemoized,
+      exportStyle => gfi.exportStyle,
+      annotations => gfi.annotations,
+      pos => gfi.pos,
+      funType => Tfun{
+        isMutable => gfi.funType.isMutable,
+        isTracked => gfi.funType.isTracked,
+        params => flatParams.map(p -> p.i1),
+        returnType => returnType.flattened().map(p -> p.i1),
+        aggregateReturnType => specializer.getReturnType(
+          specReturnType,
+          callers,
+          gfi.pos,
+        ),
+      },
+    };
+
+    // Memoized functions can only return frozen values, but an a special
+    // exception ^T is allowed if T is frozen.
+    if (
+      funInfo.isMemoized &&
+      !specReturnType.forEachTclass(tc ->
+        tc.isDeepFrozen() ||
+          specializer.awaitableType(tc).maybe(false, x -> x.isDeepFrozen())
+      )
+    ) {
+      gfi.pos.die(
+        "memoized functions can only return frozen values, but " +
+          `${name} is returning a value of type ${specReturnType}`,
+      )
+    };
+
+    optinfo = Emitter::emptyOptInfo(
+      funInfo,
+      flatParams.map(p -> p.i0),
+      callers.collect(UnorderedSet),
+    );
+    entryBlock = optinfo.getBlock(BlockID(0));
+
+    fs = mutable FunSpecializer{
+      gfunction,
+      specializer,
+      converter => specializer.converter,
+      optinfo,
+      mapCache,
+      callers,
+      typemaps,
+      specializedFunctionMap,
+      pos => gfi.pos,
+      msfuns,
+      funParams => optinfo.f.params,
+      funType => optinfo.f.funType,
+      nextBlockID => entryBlock.id,
+      prettyBlockName => entryBlock.prettyName,
+      coroutineInfo => if (gfi.isAsync) {
+        Some(UnfinishedCoroutine{none => Array[], isGenerator => false})
+      } else {
+        None()
+      },
+    };
+
+    cannotInstantiateParam match {
+    | Some((badName, badType)) ->
+      // Some parameter cannot ever be instantiated, e.g. Tany. That
+      // means there is no way anyone can call this so we don't need a body.
+      _ = fs.emitUnreachable{
+        pos => funInfo.pos,
+        why => `Function ${name} should be uncallable because its ` +
+          `parameter ${badName} is of type ${badType}, which cannot be ` +
+          `instantiated at runtime`,
+      };
+
+      fs.finish()
+    | None() ->
+      // Pre-reserve all the block IDs used by the GIR, so if we create
+      // any new ones for unreachable blocks they won't conflict.
+      m = gfunction.blocks.foldl((acc, b) -> max(acc, b.id), GBlockID(-1)).id;
+      while (fs.newBlockID().id < m) void;
+
+      // Map GFunction parameters to aggregations of Function parameters.
+      count = -1;
+      paramValues = params.map((_, _) -> {
+        !count = count + 1;
+        optinfo.f.params[count].id
+      });
+      gfi.pos.invariant(
+        paramValues.children_.size() == gfunction.params.size(),
+        "Param count mismatch",
+      );
+      paramValues.children_.eachWithIndex((i, f) -> {
+        fs.values.add(gfunction.params[i].id, Exists(f.i1))
+      });
+
+      fs.go()
+    }
+  }
+
+  readonly fun getSClass(sid: SClassID): SClass {
+    this.specializer.sclasses[sid].sclass
+  }
+
+  readonly fun scalarize(typ: Type): TypeTree {
+    this.specializer.scalarize(typ, this.callers, this.pos)
+  }
+
+  readonly fun getScalarType(t: Type): ScalarType {
+    this.specializer.getScalarType(t)
+  }
+
+  readonly fun maybeGetScalarType(t: Type): ?ScalarType {
+    this.specializer.maybeGetScalarType(t)
+  }
+
+  // Given a set of outgoing Targs for a function call, returns the
+  // SuperpositionMap for it.
+  mutable fun getFunSMap(
+    targs: Array<GType>,
+  ): SuperpositionMap<FunSuperpositionID> {
+    if (targs.isEmpty()) {
+      kNonParametricFunSmap
+    } else {
+      stargs = targs.map(t -> this.specializeType(t));
+      this.getSpecializedFunSMap(stargs);
+    }
+  }
+
+  mutable fun getSpecializedFunSMap(
+    targs: Array<Type>,
+  ): SuperpositionMap<FunSuperpositionID> {
+    if (targs.isEmpty()) {
+      kNonParametricFunSmap
+    } else {
+      buf = mutable Vector[];
+      for (c in this.callers) {
+        m = MethodSuperpositionID(targs.map(s -> s.typeInSuperposition(c)));
+        buf.push((c, FunSuperpositionID(ClassSuperpositionID::empty, m)))
+      };
+      SuperpositionMap<FunSuperpositionID>::make(buf)
+    }
+  }
+
+  // Given a set of outgoing Targs for a method call, returns the
+  // SuperpositionMap for it.
+  mutable fun getMethodSMap(
+    targs: Array<Type>,
+  ): SuperpositionMap<MethodSuperpositionID> {
+    if (targs.isEmpty()) {
+      kNonParametricMethodSmap
+    } else {
+      buf = mutable Vector[];
+      for (c in this.callers) {
+        m = MethodSuperpositionID(targs.map(s -> s.typeInSuperposition(c)));
+        buf.push((c, m))
+      };
+      SuperpositionMap<MethodSuperpositionID>::make(buf)
+    }
+  }
+
+  private readonly fun canInstantiate(typ: Type): Bool {
+    this.specializer.canInstantiate(typ)
+  }
+
+  mutable fun specializeType(t: GType, literalType: Bool = false): Type {
+    this.specializer.specializeType(
+      t,
+      this.mapCache,
+      this.callers,
+      this.typemaps,
+      literalType,
+    )
+  }
+
+  mutable fun specializeType2(
+    lazyGClass: LazyGClass,
+    targs: Array<Type>,
+    mutability: Mutability,
+    literalType: Bool = false,
+  ): Type {
+    // This might need a Tsuperposition, so work out what the Tclass
+    // will be for every possible superposition.
+    smap = mutable UnorderedMap[];
+    for (c in this.callers) {
+      tc = this.specializer.getTclass2(
+        lazyGClass,
+        targs.map(t -> t.typeInSuperposition(c)),
+        mutability,
+        literalType,
+      );
+      smap.set(c, tc)
+    };
+    Type::make(freeze(smap))
+  }
+
+  mutable fun getOptionStyle(gt: GType): ?OptionStyle {
+    // If we are in a superposition of Option<Foo> and Option<Bar>,
+    // make sure that both possibilities yield the exact same style and
+    // return it.
+    s = this.specializer;
+    result = (None() : ?OptionStyle);
+    this.typemaps.eachWithIndex((i, tm) -> {
+      optionStyle = s.sclasses[s.getTclass3(gt, tm).sclassID].optionStyle;
+      if (i == 0) {
+        !result = optionStyle
+      } else if (optionStyle != result) {
+        this.pos.die("Superposition disagrees about OptionStyle")
+      }
+    });
+    result
+  }
+
+  // Looks up the value computed by a GInstr that's already been emitted.
+  //
+  // If this returns None(), it means the value is a special "unreachable"
+  // ("bottom") value, as for the return value of a function that doesn't
+  // return or the result of running unreachable code.
+  //
+  // TODO: Delete forceSomeUndef flag once T25379806 is fixed.
+  mutable fun getValue(
+    val: GInstr,
+    forceSomeUndef: Bool = false,
+  ): MaybeExists<InstrTree> {
+    result = if (val.getType() == gtVoid) {
+      kExistsVoidInstrTree
+    } else {
+      val match {
+      | x @ GNonConstantInstr{id} ->
+        this.values.maybeGet(id) match {
+        | Some(v) -> v
+        | None() -> x.die("Could not find value for " + x)
+        }
+      | GConstantBool{value} -> Exists(InstrLeaf(this.constantBool(value).id))
+      | GConstantChar{value} -> Exists(InstrLeaf(this.constantChar(value).id))
+      | GConstantDefaultArg _
+      | GConstantZero _ ->
+        typ = this.specializeType(val.getType());
+        if (!this.canInstantiate(typ) && !forceSomeUndef) {
+          NotExists(
+            `Attempt to create zero constant of non-instantiatable type ${typ}`,
+          )
+        } else {
+          Exists(
+            this.scalarize(typ).map((_, ftype) -> this.constantZero(ftype).id),
+          )
+        }
+      | GConstantFloat{value} -> Exists(InstrLeaf(this.constantFloat(value).id))
+      | GConstantInt{value} -> Exists(InstrLeaf(this.constantInt(value).id))
+      | GConstantPointer{value} ->
+        Exists(InstrLeaf(this.constantPointer(tNonGCPointer, value).id))
+      | GConstantString{value} ->
+        Exists(InstrLeaf(this.constantUTF8String(value).id))
+      | GConstantVoid{} -> kExistsVoidInstrTree
+      }
+    };
+
+    result
+  }
+
+  mutable fun setValueFromID(id: GInstrID, val: MaybeExists<InstrTree>): void {
+    this.values.add(id, val)
+  }
+
+  mutable fun setValue(
+    instr: GNonConstantInstr,
+    val: MaybeExists<InstrTree>,
+  ): void {
+    this.setValueFromID(instr.id, val)
+  }
+
+  mutable fun unreachable(pos: Pos, why: String): MaybeExists<InstrTree> {
+    this.whyCurrentInstrUnreachable match {
+    | Some(why2) ->
+      // We already can't even get to this code at all, so explain why.
+      NotExists(why2)
+    | None() ->
+      _ = this.emitUnreachable{pos, why};
+      this.startNewBlock();
+
+      this.!whyCurrentInstrUnreachable = Some(why);
+
+      NotExists(why)
+    }
+  }
+
+  mutable fun flattenArgs(
+    args: Array<MaybeExists<InstrTree>>,
+  ): MaybeExists<Array<InstrID>> {
+    notExistsExplanation = (None() : ?MaybeExists<Array<InstrID>>);
+    if (
+      args.any(arg ->
+        arg match {
+        | NotExists(why) ->
+          !notExistsExplanation = Some(NotExists(why));
+          true
+        | Exists _ -> false
+        }
+      )
+    ) {
+      notExistsExplanation.fromSome()
+    } else {
+      cv = InstrInner(
+        args.mapWithIndex((i, arg) -> ("arg" + i, arg.fromExists())),
+      );
+      Exists(cv.flattened().map(x -> x.i1))
+    }
+  }
+
+  private mutable fun emitGSuspend(a: GSuspend, pos: Pos): void {
+    this.flattenArgs(Array[this.getValue(a.awaitable)]) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(values) ->
+      pos.invariant(values.size() == 1, "Expected one awaitable");
+
+      _ = this.emitSuspend{pos, value => values[0], prettyName => a.prettyName}
+    }
+  }
+
+  // Given the raw InstrID for a call instruction, produce a NamedTree
+  // value for its result by using a separate TupleExtract to get each piece.
+  mutable fun reassembleCall(
+    typ: Type,
+    call: InstrID,
+    pos: Pos,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): InstrTree {
+    shape = this.scalarize(typ);
+    scalar = shape.flattened().size() == 1;
+
+    shape match {
+    | NamedLeaf _ -> InstrLeaf(call)
+    | c @ NamedInner _ ->
+      index = -1;
+
+      c.map((_, ftype) -> {
+        !index = index + 1;
+
+        if (scalar) {
+          // A value class containing a single Int, etc. should be
+          // treated just like Int here (no TupleExtract).
+          call
+        } else {
+          extract = TupleExtract{
+            id => this.iid(),
+            typ => ftype,
+            pos,
+            obj => call,
+            index,
+          };
+
+          invokeSuccessors match {
+          | Some(successors) ->
+            // The Invoke terminates the block so we can't put
+            // TupleExtracts here, they must go at the start of
+            // the "try_no_throw" block. So remember them for later.
+            this.invokeExtracts.getOrAdd(successors[0], () ->
+              mutable Vector[]
+            ).push(extract)
+          | None() ->
+            // Normal call.
+            _ = this.emitInstr(extract)
+          };
+
+          extract.id
+        }
+      })
+    }
+  }
+
+  private mutable fun emitGCallFunction(
+    call: GCallFunctionBase,
+    typ: Type,
+    pos: Pos,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): void {
+    smap = this.getFunSMap(call.targs);
+    this.emitGCallFunctionWithSmap(
+      call.id,
+      call.args,
+      call.name,
+      typ,
+      smap,
+      pos,
+      call.prettyName,
+      invokeSuccessors,
+    )
+  }
+
+  mutable fun computeSFunctionID(
+    name: LazyGFun,
+    smap: SuperpositionMap<FunSuperpositionID>,
+    pos: Pos,
+  ): SFunctionID {
+    sid = SFunctionID::none;
+    for (c in this.callers) {
+      fsposn = smap[c];
+      fkey = GFunKey(name, fsposn);
+      this.specializedFunctionMap.maybeGet(fkey) match {
+      | Some(sid2) ->
+        if (sid == SFunctionID::none) {
+          !sid = sid2
+        } else {
+          // Make sure every member of the superposition is actually trying
+          // to go to the same place (if not, we have a big problem!)
+          pos.invariant(sid == sid2, "Superposition function mismatch.")
+        }
+      | None() ->
+        pos.die(
+          `Function ${name.gname().id} with ${fsposn} not found; ` +
+            `was it not requested?`,
+        )
+      }
+    };
+
+    pos.invariant(sid != SFunctionID::none, "Could not find code");
+    sid
+  }
+
+  private mutable fun emitGCallFunctionWithSmap(
+    callID: GInstrID,
+    callArgs: Array<GInstr>,
+    name: LazyGFun,
+    typ: Type,
+    smap: SuperpositionMap<FunSuperpositionID>,
+    pos: Pos,
+    prettyName: String,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): void {
+    callVal = this.flattenArgs(callArgs.map(v -> this.getValue(v))) match {
+    | NotExists(why) -> this.unreachable(pos, why)
+    | Exists(args) ->
+      name.gname().id match {
+      | "FastOption.SentinelOption::isSome" ->
+        // HACK: We need to intercept this here, because only during
+        // specialization do we know the SentinelOptionStyle that tells
+        // us how to generate this method.
+        this.emitGCallToIsSome(callID, callArgs, pos, invokeSuccessors);
+        return void
+      | "Awaitable.boxMemoValue" ->
+        this.emitGCallToBoxMemoValue(callArgs, pos);
+        return void
+      | "Awaitable.unboxMemoValue" ->
+        this.emitGCallToUnboxMemoValue(callID, callArgs, typ, pos);
+        return void
+      | _ -> void
+      };
+
+      sid = this.computeSFunctionID(name, smap, pos);
+
+      id = this.iid();
+
+      ttype = this.specializer.getReturnType(typ, this.callers, pos);
+      returns = this.canInstantiate(typ);
+
+      // Since an Invoke already terminates a block, if it doesn't return
+      // we can't just put an Unreachable right after it. So instead,
+      // we create a separate block containing that Unreachable, and make
+      // the Invoke "fall through" to that block rather than its original
+      // one.
+      unreachableBlock = BlockID::none;
+
+      instr = invokeSuccessors match {
+      | None() ->
+        CallFunction{
+          id,
+          typ => ttype,
+          pos,
+          prettyName,
+          name => sid,
+          args,
+          smap,
+          returns,
+        }
+      | Some(successors) ->
+        newSuccessors = if (returns) {
+          this.mapSuccessors(successors)
+        } else {
+          !unreachableBlock = this.newBlockID();
+
+          Array[
+            BlockSuccessor(unreachableBlock),
+            BlockSuccessor(BlockID(successors[1].id)),
+          ]
+        };
+
+        InvokeFunction{
+          id,
+          typ => ttype,
+          pos,
+          prettyName,
+          name => sid,
+          args,
+          smap,
+          returns,
+          successors => newSuccessors,
+        }
+      };
+
+      _ = this.emitInstr(instr);
+
+      if (returns) {
+        Exists(this.reassembleCall(typ, id, pos, invokeSuccessors))
+      } else {
+        if (unreachableBlock != BlockID::none) {
+          this.startNewBlock(unreachableBlock);
+          this.!whyCurrentInstrUnreachable = None()
+        };
+        this.unreachable(
+          pos,
+          `${name} returns a value of non-instantiatable type ${typ} ` +
+            `which means this call must not be able to return, but ` +
+            `somehow it did`,
+        )
+      }
+    };
+
+    this.setValueFromID(callID, callVal)
+  }
+
+  // Call a method on a KValue or KClass.
+  private mutable fun emitGCallFinalMethod(
+    callID: GInstrID,
+    objType: Type,
+    method: String,
+    targs: Array<Type>,
+    args: Array<GInstr>,
+    typ: Type,
+    pos: Pos,
+    prettyName: String,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): void {
+    // We are calling a value class method like "Int::toString" or
+    // "MyValueClass<Int, Float>::someMethod<String>", or a method on
+    // a final class of reference type.
+    //
+    // We need to turn value class method calls into direct function calls
+    // -- value classes have no vtable and anyway we can't leave it as a method
+    // call because when we descalarize 'this', the first argument to the
+    // CallMethod would no longer be the object on which the method is
+    // being called, which is illegal.
+    //
+    // For other final types, we might as well devirtualize here. That turns
+    // out to be important for certain intrinsics like Array::size that
+    // are required to be devirtualized.
+    //
+    // So we need to create a FunSuperpositionID map for this method call,
+    // by combining the SuperpositionIDs for the class and the method.
+
+    hostName = (None() : ?GClassName);
+    buf = mutable Vector[];
+    msmap = this.getMethodSMap(targs);
+    for (c in this.callers) {
+      tc = objType.typeInSuperposition(c);
+      info = this.specializer.sclasses[tc.sclassID];
+      msposn = msmap[c];
+      methodKey = MethodKey(method, msposn);
+      sclassID = info.methods[methodKey];
+      hostInfo = this.specializer.sclasses[sclassID];
+      hostName match {
+      | Some(name) ->
+        if (hostInfo.sclass.gclassName != name) {
+          pos.die(
+            `different method hosts ${name.id} ${
+              hostInfo.sclass.gclassName.id
+            }`,
+          )
+        }
+
+      | None() -> !hostName = Some(hostInfo.sclass.gclassName)
+      };
+      csposn = hostInfo.sclass.superposition; // type args for host class
+      fsposn = FunSuperpositionID(csposn, msposn);
+      buf.push((c, fsposn))
+    };
+    smap = SuperpositionMap<FunSuperpositionID>::make(buf);
+
+    name = FrontEndLazyGFun{
+      frontEndName => hostName.fromSome().id + "::" + method,
+    };
+
+    this.emitGCallFunctionWithSmap(
+      callID,
+      args,
+      name,
+      typ,
+      smap,
+      pos,
+      prettyName,
+      invokeSuccessors,
+    )
+  }
+
+  // Call a method on a KBase.
+  private mutable fun emitGCallVirtualMethod(
+    callID: GInstrID,
+    method: String,
+    targs: Array<Type>,
+    callArgs: Array<GInstr>,
+    typ: Type,
+    pos: Pos,
+    prettyName: String,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): void {
+    callVal = this.flattenArgs(callArgs.map(v -> this.getValue(v))) match {
+    | NotExists(why) -> this.unreachable(pos, why)
+    | Exists(args) ->
+      id = this.iid();
+
+      smap = this.getMethodSMap(targs);
+
+      ttype = this.specializer.getReturnType(typ, this.callers, pos);
+      returns = this.canInstantiate(typ);
+
+      // Since an Invoke already terminates a block, if it doesn't return
+      // we can't just put an Unreachable right after it. So instead,
+      // we create a separate block containing that Unreachable, and make
+      // the Invoke "fall through" to that block rather than its original
+      // one.
+      unreachableBlock = BlockID::none;
+
+      instr = invokeSuccessors match {
+      | None() ->
+        CallMethod{
+          id,
+          typ => ttype,
+          pos,
+          prettyName,
+          method,
+          args,
+          smap,
+          returns,
+        }
+      | Some(successors) ->
+        newSuccessors = if (returns) {
+          this.mapSuccessors(successors)
+        } else {
+          !unreachableBlock = this.newBlockID();
+
+          Array[
+            BlockSuccessor(unreachableBlock),
+            BlockSuccessor(BlockID(successors[1].id)),
+          ]
+        };
+
+        InvokeMethod{
+          id,
+          typ => ttype,
+          pos,
+          prettyName => prettyName,
+          method => method,
+          args,
+          smap,
+          returns,
+          successors => newSuccessors,
+        }
+      };
+
+      _ = this.emitInstr(instr);
+
+      if (returns) {
+        Exists(this.reassembleCall(typ, id, pos, invokeSuccessors))
+      } else {
+        if (unreachableBlock != BlockID::none) {
+          this.startNewBlock(unreachableBlock);
+          this.!whyCurrentInstrUnreachable = None()
+        };
+        this.unreachable(
+          pos,
+          `${typ}::${method} returns a value of non-instantiatable ` +
+            `type ${typ} which means this call must not be able to return, ` +
+            `but somehow it did`,
+        )
+      }
+    };
+
+    this.setValueFromID(callID, callVal)
+  }
+
+  // Implement SentinelOption::isSome by comparing the appropriate
+  // field against the chosen sentinel constant.
+  private mutable fun emitGCallToIsSome(
+    callID: GInstrID,
+    args: Array<GInstr>,
+    pos: Pos,
+    invokeSuccessors: ?Array<GBlockID>,
+  ): void {
+    thisType = this.specializeType(args[0].getType());
+    sc = this.specializer.exampleSClass(thisType);
+    style = this.specializer.sclasses[sc.id].optionStyle match {
+    | Some(s @ SentinelOptionStyle _) -> s
+    | _ -> pos.die(`Expected SentinelOptionStyle for ${thisType}`)
+    };
+
+    // "Load" the sentinel field from the SentinelOption value class.
+    sentinelField = this.getValue(args[0]).fromExists();
+    for (field in dotJoin("valueIfSome.value", style.path).split(".")) {
+      !sentinelField = sentinelField.asInner(pos).getField(field, pos)
+    };
+    bits = this.emitReinterpret{
+      typ => tIntPtr,
+      pos,
+      value => sentinelField.asLeaf(pos).value,
+    };
+
+    // Compare the sentinel field to the designated sentinel value.
+    // If they are equal, then isSome() is false.
+    this.setValueFromID(
+      callID,
+      Exists(
+        InstrLeaf(
+          this.emitIntCmpNe{
+            rhs => this.constantTypedInt(tIntPtr, style.pointer).id,
+            pos,
+            lhs => bits.id,
+          }.id,
+        ),
+      ),
+    );
+
+    invokeSuccessors match {
+    | Some(successors) ->
+      // This cannot throw, and the Invoke was previously terminating
+      // the block, so emit a Jump to the "no exception" block instead.
+      _ = this.emitJump{target => this.mapSuccessor(successors[0]), pos}
+    | None() -> void
+    }
+  }
+
+  private mutable fun emitGCallToBoxMemoValue(
+    args: Array<GInstr>,
+    pos: Pos,
+  ): void {
+    this.flattenArgs(Array[this.getValue(args[1])]) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(values) ->
+      if (values.isEmpty()) {
+        // The memoizer runtime can't memoize "void" per se, so if for
+        // some odd reason we are memoizing a void value (or, equivalently,
+        // an empty value class or whatever), just pretend that we are
+        // memoizing an Int 0.
+        !values = Array[this.constantInt(0).id]
+      };
+
+      v0 = values[0];
+      typ0 = this.getInstr(v0).typ;
+
+      (valueToBox, boxFunc) = (
+        values.size(),
+        this.getScalarType(typ0).kind,
+      ) match {
+      | (1, FloatScalarKind()) -> (v0, "Awaitable.memoValueBoxFloat")
+      | (1, GCPointerScalarKind()) ->
+        str = typ0.forEachTclass(tc -> tc.sclassID == tString.sclassID);
+        if (str) {
+          (v0, "Awaitable.memoValueBoxString")
+        } else {
+          rawPointer = this.emitCast{typ => tGCPointer, pos, value => v0};
+          (rawPointer.id, "Awaitable.memoValueBoxObject")
+        }
+      | (_, NonGCPointerScalarKind())
+      | (_, HhvmHandleScalarKind()) ->
+        pos.die(`Unable to box ${typ0}`)
+      | _ ->
+        if ({
+          totalBitfieldSize = 0;
+          values.all(v ->
+            this.getScalarType(this.getInstr(v).typ) match {
+            | ScalarType(bitSize, _, _, IntegerScalarKind()) ->
+              !totalBitfieldSize = totalBitfieldSize + bitSize;
+              totalBitfieldSize <= 64
+            | _ -> false
+            }
+          )
+        }) {
+          // Bitwise-OR together 1 or more integers that fit in a word.
+          bits = this.constantInt(0).id;
+          shift = 0;
+          for (v in values) {
+            ext = this.emitZeroExtend{typ => tInt, pos, value => v}.id;
+            !bits = if (shift == 0) {
+              ext
+            } else {
+              shifted = this.emitIntSll{
+                lhs => ext,
+                rhs => this.constantInt(shift).id,
+                pos,
+              }.id;
+              this.emitIntOr{lhs => bits, rhs => shifted, pos}.id
+            };
+            !shift = shift + this.getScalarType(this.getInstr(v).typ).bitSize
+          };
+
+          (bits, "Awaitable.memoValueBoxInt")
+        } else {
+          // The C++ runtime doesn't handle caching multivalue returns per se
+          // (MemoValue only has room for one scalar). So we box the
+          // memoized return value into a LocalVariable before handing it to the
+          // runtime, and unbox as needed.
+          boxed = this.emitObject{
+            args => values,
+            typ => this.specializeType(
+              GTapply(
+                FrontEndLazyGClass("Runtime.LocalVariable"),
+                DeepFrozen(),
+                Array[args[1].getType()],
+              ),
+            ),
+            pos,
+          };
+
+          rawPointer = this.emitCast{typ => tGCPointer, pos, value => boxed.id};
+          (rawPointer.id, "Awaitable.memoValueBoxObject")
+        }
+      };
+
+      // Look up the runtime support function to call.
+      key = GFunKey(
+        FrontEndLazyGFun{frontEndName => boxFunc},
+        FunSuperpositionID::empty,
+      );
+      name = this.specializedFunctionMap[key];
+
+      // The address of the MemoValue to which we are storing.
+      addr = this.getValue(args[0]).fromExists().flattened()[0].i1;
+
+      _ = this.emitCallFunction{
+        name,
+        args => Array[addr, valueToBox],
+        typ => tVoid,
+        pos,
+        smap => kNonParametricFunSmap,
+      }
+    }
+  }
+
+  // Emit code to load a Skip value from the C++ MemoValue::m_value field.
+  //
+  // In many cases, e.g. holding an Int or reference type, this is just a
+  // simple load. More complex types may need to be boxed into a
+  // LocalVariable<T>, and this undoes that boxing.
+  //
+  // This must match the logic in emitGCallToBoxMemoValue(), since it
+  // reverses the boxing operation.
+  private mutable fun emitGCallToUnboxMemoValue(
+    callID: GInstrID,
+    args: Array<GInstr>,
+    typ: Type,
+    pos: Pos,
+  ): void {
+    if (!this.canInstantiate(typ)) {
+      this.setValueFromID(
+        callID,
+        this.unreachable(
+          pos,
+          `Attempt to load non-instantiatable ${typ} from MemoValue`,
+        ),
+      );
+      return void
+    };
+
+    shape = this.scalarize(typ);
+    types = shape.flattened().map(p -> p.i1);
+
+    if (types.isEmpty()) {
+      // Nothing to load (e.g. we memoized a void value).
+      this.setValueFromID(callID, kExistsVoidInstrTree);
+      return void
+    };
+
+    // The address of the MemoValue from which we are loading.
+    addr = this.getValue(args[0]).fromExists().flattened()[0].i1;
+
+    load = (t: Type) ->
+      this.emitLoad{
+        addr,
+        bitOffset => 0,
+        addrByteAlignment => ptrByteSize,
+        canCSE => false,
+        typ => t,
+        pos,
+      }.id;
+
+    result = (types.size(), this.getScalarType(types[0]).kind) match {
+    | (1, FloatScalarKind())
+    | (1, GCPointerScalarKind())
+    | (1, HhvmHandleScalarKind())
+    | (1, NonGCPointerScalarKind()) ->
+      InstrLeaf(load(types[0]))
+    | _ ->
+      if ({
+        totalBitfieldSize = 0;
+        types.all(t ->
+          this.getScalarType(t) match {
+          | ScalarType(bitSize, _, _, IntegerScalarKind()) ->
+            !totalBitfieldSize = totalBitfieldSize + bitSize;
+            totalBitfieldSize <= 64
+          | _ -> false
+          }
+        )
+      }) {
+        // We found integers that can be packed into one Int as bitfields
+        // (including the single Int, single Bool, etc. cases).
+        bits = load(tInt);
+        shift = 0;
+        shape.map((_, ftype) -> {
+          shifted = this.emitIntSrl{
+            lhs => bits,
+            rhs => this.constantInt(shift).id,
+            pos,
+          }.id;
+          !shift = shift + this.getScalarType(ftype).bitSize;
+          this.emitTruncate{value => shifted, pos, typ => ftype}.id;
+        })
+      } else {
+        // Need to unbox from a LocalVariable<T>.
+        ref = load(
+          this.specializeType2(
+            FrontEndLazyGClass("Runtime.LocalVariable"),
+            Array[typ],
+            DeepFrozen(),
+          ),
+        );
+
+        shape.map(
+          (name, ftype) ->
+            this.emitGetField{
+              typ => ftype,
+              pos,
+              field => name,
+              obj => ref,
+              prettyName => "memoized_" + name,
+            }.id,
+          "value",
+        )
+      }
+    };
+
+    this.setValueFromID(callID, Exists(result))
+  }
+
+  private mutable fun emitGCallMethod(
+    call: GCallMethodBase,
+    typ: Type,
+    pos: Pos,
+  ): void {
+    objType = this.specializeType(call.args[0].getType());
+
+    // TODO: This is too aggressive once we start creating real
+    // superpositions, as we may choose to superimpose a bunch of final
+    // classes with different methods and need to use a virtual dispatch.
+    // But for now this is expedient to guarantee Array::size gets
+    // divirtualized etc.
+    isFinal = objType.forEachTclass(t ->
+      this.getSClass(t.sclassID).kind.isFinal()
+    );
+
+    // Figure out what the targs are. See comments for
+    // computeMethodTargs for why we need to do this.
+    allTargs = this.typemaps.map(typemap ->
+      this.specializer.computeMethodTargs(call, typemap)
+    );
+
+    targs = allTargs[0];
+
+    newTargs = if (allTargs.all(ta -> targs == ta)) {
+      targs
+    } else {
+      // TODO: Write this!
+      pos.die("Superposition not handled properly yet")
+    };
+
+    if (isFinal) {
+      this.emitGCallFinalMethod(
+        call.id,
+        objType,
+        call.method,
+        newTargs,
+        call.args,
+        typ,
+        pos,
+        call.prettyName,
+        call.getSuccessors(),
+      )
+    } else {
+      this.emitGCallVirtualMethod(
+        call.id,
+        call.method,
+        newTargs,
+        call.args,
+        typ,
+        pos,
+        call.prettyName,
+        call.getSuccessors(),
+      )
+    }
+  }
+
+  private mutable fun emitGFreeze(frz: GFreeze, pos: Pos): void {
+    // When freezing a value class, we freeze each piece separately.
+    val = this.getValue(frz.obj) match {
+    | NotExists(why) -> this.unreachable(pos, why)
+    | Exists(obj) ->
+      Exists(
+        obj.map((_, v) -> {
+          instr = this.getInstr(v);
+
+          if (instr.typ.isDeepFrozen()) {
+            instr.id
+          } else {
+            sc = this.specializer.exampleSClass(instr.typ);
+            sc.maybeGetScalarType() match {
+            | Some(st) ->
+              frozenType = instr.typ.mapMutability(_ -> DeepFrozen());
+
+              if (st.isGCPointer()) {
+                this.emitFreeze{
+                  typ => frozenType,
+                  pos,
+                  value => v,
+                  prettyName => frz.prettyName,
+                }.id
+              } else {
+                // freezing a readonly Int, etc. is a runtime no-op.
+                this.emitCast{
+                  typ => frozenType,
+                  pos,
+                  value => v,
+                  prettyName => frz.prettyName,
+                }.id
+              }
+            | None() -> pos.die("Unable to freeze object of type " + instr.typ)
+            }
+          }
+        }),
+      )
+    };
+
+    this.setValue(frz, val)
+  }
+
+  private mutable fun emitGCastOrReinterpret(
+    c: GTypedStmt,
+    resultInstrType: Concrete<SimpleUnaryStmt>,
+    castValue: GInstr,
+    resultType: Type,
+    pos: Pos,
+  ): void {
+    val = (this.canInstantiate(resultType), this.getValue(castValue)) match {
+    | (_, NotExists(why)) -> this.unreachable(pos, why)
+    | (false, _) ->
+      this.unreachable(
+        pos,
+        `Attempt to cast value to non-instantiatable type ${resultType}`,
+      )
+    | (true, Exists(value)) ->
+      // Figure out the types of all the scalars we are casting to.
+      // We will walk through this in parallel with generating the Casts
+      // so we know what we are casting to.
+      flatValues = value.flattened();
+      resultTree = this.scalarize(resultType);
+
+      index = -1;
+
+      Exists(
+        resultTree.map((_, t) -> {
+          !index = index + 1;
+
+          this.emitInstr(
+            resultInstrType{
+              id => this.iid(),
+              typ => t,
+              pos,
+              value => flatValues[index].i1,
+              prettyName => c.prettyName,
+            },
+          ).id
+        }),
+      )
+    };
+
+    this.setValue(c, val)
+  }
+
+  private mutable fun emitGEArray(ev: GEArray, typ: Type, pos: Pos): void {
+    val = this.flattenArgs(ev.args.map(v -> this.getValue(v))) match {
+    | NotExists(why) -> this.unreachable(pos, why)
+    | Exists(args) ->
+      Exists(
+        InstrLeaf(
+          this.emitArrayNew{
+            args,
+            typ,
+            pos,
+            prettyName => ev.prettyName,
+            size => ev.args.size(),
+          }.id,
+        ),
+      )
+    };
+
+    this.setValue(ev, val)
+  }
+
+  private mutable fun emitGGetConst(g: GGetConst, typ: Type, pos: Pos): void {
+    val = if (!this.canInstantiate(typ)) {
+      this.unreachable(
+        pos,
+        `Attempt to read the value of const ${g.name} with ` +
+          `non-instantiatable type ${typ}`,
+      )
+    } else {
+      shape = this.scalarize(typ);
+      simple = (shape.flattened().size() == 1);
+
+      index = -1;
+      Exists(
+        shape.map((_name, ftype) -> {
+          !index = index + 1;
+          this.emitGetConst{
+            typ => ftype,
+            pos,
+            tupleIndex => if (simple) -1 else index,
+            prettyName => g.prettyName,
+            name => g.name,
+          }.id
+        }),
+      )
+    };
+
+    this.setValue(g, val)
+  }
+
+  private mutable fun emitGGetField(gf: GGetField, typ: Type, pos: Pos): void {
+    val = (this.canInstantiate(typ), this.getValue(gf.obj)) match {
+    | (_, NotExists(why)) -> this.unreachable(pos, why)
+    | (false, _) ->
+      this.unreachable(
+        pos,
+        `Attempt to read field ${gf.obj.getType()}.${gf.field} of ` +
+          `type ${typ} that cannot be instantiated`,
+      )
+    | (true, Exists(obj @ NamedLeaf _)) ->
+      // Loading from a normal reference class.
+      shape = this.scalarize(typ);
+      Exists(
+        shape.map(
+          (name, ftype) -> {
+            this.emitGetField{
+              typ => ftype,
+              pos,
+              field => name,
+              obj => obj.value,
+              prettyName => gf.prettyName,
+            }.id
+          },
+          gf.field,
+        ),
+      )
+    | (true, Exists(cv @ NamedInner _)) ->
+      if (
+        gf.field == "value" &&
+        this.getOptionStyle(gf.obj.getType()).isSome()
+      ) {
+        // Redirect Some.value to Some.valueIfSome.value, to adjust for
+        // the Option implementation substitutions.
+        !cv = cv.getField("valueIfSome", pos).asInner(pos)
+      };
+
+      // Loading from a value class generates no code, just bookkeeping.
+      Exists(cv.getField(gf.field, pos))
+    };
+
+    this.setValue(gf, val)
+  }
+
+  // Converts Some(x) or None() to the corresponding code to construct
+  // the analogous FlagOption or SentinelOption.
+  private mutable fun optionGObjectValue(
+    o: GObject,
+    style: OptionStyle,
+  ): InstrTree {
+    o.args.size() match {
+    | 1 ->
+      // This must be a "Some"
+      arg = this.getValue(o.args[0], true).fromExists();
+
+      // This is the value of the FastOptionTrait::value field, which
+      // is an Unsafe.RawStorage which itself has a value field.
+      valueField = InstrInner(Array[("value", arg)]);
+
+      style match {
+      | SentinelOptionStyle _ ->
+        // Manually construct SentinelOption(Unsafe.RawStorage::make(arg))
+        InstrInner(Array[("valueIfSome", valueField)])
+      | FlagOptionStyle _ ->
+        // Manually construct FlagOption(true, Unsafe.RawStorage::make(arg))
+        InstrInner(
+          Array[
+            ("isSomeFlag", InstrLeaf(this.constantBool(true).id)),
+            ("valueIfSome", valueField),
+          ],
+        )
+      }
+    | 0 ->
+      // This must be a "None"
+      typ = this.specializeType(o.getType());
+      tree = this.scalarize(typ);
+
+      style match {
+      | SentinelOptionStyle(path, ptr) if (ptr != 0) ->
+        // This is the tricky case where we have a sentinel, but it's
+        // non-null. We need to create a value class that's entirely
+        // zero bits (so interning works consistently) except for the
+        // sentinel, which must be the desired "ptr" value.
+        sentinelField = dotJoin("valueIfSome.value", path);
+        found = false;
+
+        result = tree.map((fname, ftype) -> {
+          if (fname == sentinelField) {
+            this.pos.invariant(!found, "Duplicate sentinel fields");
+            !found = true;
+            this.constantPointer(ftype, ptr).id
+          } else {
+            this.constantZero(ftype).id
+          }
+        });
+
+        if (!found) {
+          this.pos.die(
+            `Failed to find expected sentinel field ` +
+              `${sentinelField} in ${typ}`,
+          )
+        };
+
+        result
+      | _ -> tree.map((_, ftype) -> this.constantZero(ftype).id)
+      }
+    | _ -> this.pos.die(`Unhandled option type ${o.getType()}`)
+    }
+  }
+
+  private mutable fun emitGObject(o: GObject, typ: Type, pos: Pos): void {
+    val = (
+      o.forceCanInstantiate || this.canInstantiate(typ),
+      this.flattenArgs(
+        o.args.map(z -> this.getValue(z, o.forceCanInstantiate)),
+      ),
+    ) match {
+    | (_, NotExists(why)) -> this.unreachable(pos, why)
+    | (true, Exists(args)) ->
+      Exists(
+        this.getOptionStyle(o.getType()) match {
+        | None() ->
+          sc = this.specializer.exampleSClass(typ);
+
+          if (!sc.kind.isValueClass()) {
+            InstrLeaf(
+              this.emitObject{args, typ, pos, prettyName => o.prettyName}.id,
+            )
+          } else {
+            fields = this.specializer.sclasses[sc.id].unscalarizedFields;
+            if (fields.size() != o.args.size()) {
+              o.die(
+                "Arg count mismatch for " +
+                  sc +
+                  ": " +
+                  fields.map(f -> f.name) +
+                  " vs. " +
+                  o.args,
+              )
+            };
+            InstrInner(
+              fields.mapWithIndex((i, f) ->
+                (f.name, this.getValue(o.args[i], true).fromExists())
+              ),
+            )
+          }
+        | Some(style) -> this.optionGObjectValue(o, style)
+        },
+      )
+    | _ ->
+      this.unreachable(
+        pos,
+        `Attempt to create object of ` + `non-instantiatable type ${typ}`,
+      )
+    };
+
+    this.setValue(o, val)
+  }
+
+  private mutable fun emitGGetCurrentAwaitable(
+    r: GGetCurrentAwaitable,
+    typ: Type,
+    pos: Pos,
+  ): void {
+    awaitable = this.emitGetCurrentAwaitable{
+      pos,
+      typ,
+      prettyName => r.prettyName,
+    };
+    this.setValue(r, Exists(InstrLeaf(awaitable.id)))
+  }
+
+  private mutable fun emitGReturn(r: GReturn, pos: Pos): void {
+    this.flattenArgs(Array[this.getValue(r.value)]) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(values) ->
+      _ = this.emitReturn{values, pos, prettyName => r.prettyName}
+    }
+  }
+
+  private mutable fun emitGSetField(s: GSetField, pos: Pos): void {
+    (this.getValue(s.obj), this.getValue(s.value)) match {
+    | (NotExists(why), _)
+    | (_, NotExists(why)) ->
+      _ = this.unreachable(pos, why)
+    | (Exists(obj @ NamedLeaf _), Exists(assignedValue)) ->
+      // Setting a field on a reference type.
+      for (f in assignedValue.flattened(s.field)) {
+        (field, value) = f;
+        _ = this.emitSetField{
+          pos,
+          value,
+          field,
+          obj => obj.value,
+          prettyName => s.prettyName,
+        }
+      }
+    | (Exists(NamedInner _), _) ->
+      pos.die("Attempt to set field " + s.field + " on a value class")
+    }
+  }
+
+  // This compiles a TypeSwitch on Option.
+  //
+  // As an optimization we remapped Option to a value class
+  // (FlagOption or SentinelOption), so we can't use the TypeSwitch Instr
+  // on it (it only works on reference types). Instead we need to call
+  // "isSome()" and use that to dispatch.
+  //
+  // So this:
+  //
+  //    someOption match {
+  //    | Some _ -> aaa()
+  //    | None() -> bbb()
+  //    }
+  //
+  // effectively becomes:
+  //
+  //    if (someOption.isSome()) {
+  //      aaa()
+  //    } else {
+  //      bbb()
+  //    }
+  private mutable fun emitOptionGTypeSwitch(
+    ts: GTypeSwitch,
+    style: OptionStyle,
+    pos: Pos,
+  ): void {
+    this.getValue(ts.value) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(NamedLeaf _) ->
+      // There should have been some nesting depth here.
+      pos.die("Optimized options should be value classes")
+    | Exists(NamedInner _) ->
+      // Walk through cases and see where "Some" and "None" would jump to.
+      someOpt = (None() : ?GBlockID);
+      noneOpt = (None() : ?GBlockID);
+      ts.cases.eachWithIndex((i, case) -> {
+        if ((case.id == "Some" || case.id == "Option") && someOpt.isNone()) {
+          !someOpt = Some(ts.successors[i + 1])
+        };
+
+        if ((case.id == "None" || case.id == "Option") && noneOpt.isNone()) {
+          !noneOpt = Some(ts.successors[i + 1])
+        }
+      });
+
+      // Use the "default" block if there was no case match.
+      someBlock = someOpt.default(ts.successors[0]);
+      noneBlock = noneOpt.default(ts.successors[0]);
+
+      // As a hack, we will steal the TypeSwitch ID for the synthetic
+      // method call we are about to construct -- no one else should be
+      // using the TypeSwitch ID (it's a void GInstr) so this is safe.
+      pos.invariant(ts.id != GInstrID::none, "Expected ID");
+
+      callToIsSome = GCallMethod{
+        id => ts.id,
+        typ => gtBool,
+        pos => ts.pos,
+        args => Array[ts.value],
+        targs => Array[],
+        method => "isSome",
+        source => style.fastClass(),
+      };
+      this.emitGCallMethod(callToIsSome, tBool, pos);
+
+      this.getValue(callToIsSome) match {
+      | NotExists(why) -> _ = this.unreachable(pos, why)
+      | Exists(predicate @ InstrLeaf _) ->
+        _ = this.emitIf{
+          ifTrue => this.mapSuccessor(someBlock),
+          ifFalse => this.mapSuccessor(noneBlock),
+          predicate => predicate.value,
+          pos,
+        }
+      | _ -> pos.die("Expected Bool")
+      }
+    }
+  }
+
+  private mutable fun emitGTypeSwitch(ts: GTypeSwitch, pos: Pos): void {
+    this.getValue(ts.value) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(obj @ NamedLeaf _) ->
+      _ = this.emitTypeSwitch{
+        pos,
+        value => obj.value,
+        cases => ts.cases,
+        successors => ts.successors.map(s -> BlockSuccessor(BlockID(s.id))),
+        prettyName => ts.prettyName,
+      }
+    | Exists(NamedInner _) ->
+      // Type switch on a value class. We can't resolve types at runtime
+      // since there is no vtable, so to simplify the definition of
+      // TypeSwitch we just resolve this to a Jump right now.
+      typ = this.specializeType(ts.value.getType());
+      sc = this.specializer.exampleSClass(typ);
+
+      succ = Control.findTypeSwitchSuccessor(sc, ts.cases, this);
+
+      _ = this.emitJump{
+        target => this.mapSuccessor(ts.successors[succ]),
+        pos,
+        prettyName => ts.prettyName,
+      }
+    }
+  }
+
+  private mutable fun emitGWith(w: GWith, resultType: Type, pos: Pos): void {
+    val = (
+      this.canInstantiate(resultType),
+      this.flattenArgs(w.fieldAssignments.map(kv -> this.getValue(kv.i1))),
+      this.getValue(w.obj),
+    ) match {
+    | (_, _, NotExists(why))
+    | (_, NotExists(why), _) ->
+      this.unreachable(pos, why)
+    | (false, _, _) ->
+      this.unreachable(
+        pos,
+        `Attempt to do 'with' producing instance of non-instantiatable ` +
+          `type ${resultType}`,
+      )
+    | (true, _, Exists(obj @ NamedLeaf _)) ->
+      // "with" on a reference type.
+
+      a = mutable Vector[];
+
+      // Build up all the scalar field assignments.
+      for (kv in w.fieldAssignments) {
+        (fieldName, valueInstr) = kv;
+        fieldVal = this.getValue(valueInstr).fromExists();
+        fieldVal.flattened(fieldName).each(a.push)
+      };
+
+      Exists(
+        InstrLeaf(
+          this.emitWith{
+            typ => resultType,
+            pos,
+            obj => obj.value,
+            fieldAssignments => a.toArray(),
+            prettyName => w.prettyName,
+          }.id,
+        ),
+      )
+    | (true, _, Exists(cv @ NamedInner _)) ->
+      // "with" on a value type. This just produces a new value type
+      // with some fields replaced, but does not generate any code.
+      a = mutable UnorderedMap[];
+      for (kv in w.fieldAssignments) {
+        a.set(kv.i0, this.getValue(kv.i1).fromExists())
+      };
+      Exists(
+        InstrInner(
+          cv.children_.map(old -> {
+            (name, val) = old;
+            (name, a.maybeGet(name).default(val))
+          }),
+        ),
+      )
+    };
+
+    this.setValue(w, val)
+  }
+
+  private mutable fun initializeGeneratorInfo(none: GInstr, pos: Pos): void {
+    if (this.coroutineInfo.isNone()) {
+      // Record the value to be used for None() for the next() return.
+      this.flattenArgs(Array[this.getValue(none)]) match {
+      | NotExists(why) ->
+        _ = {
+          pos.die(`Unexpectedly unable to create a coroutine None(): ${why}`)
+        }
+      | Exists(values) ->
+        this.!coroutineInfo = Some(
+          UnfinishedCoroutine{
+            none => values.map(v ->
+              this.getInstr(v) match {
+              | c @ Constant _ -> c
+              | _ -> pos.die("Expected None() to only consist of Constants")
+              }
+            ),
+            isGenerator => true,
+          },
+        )
+      }
+    }
+  }
+
+  private mutable fun emitGYield(r: GYield, pos: Pos): void {
+    this.initializeGeneratorInfo(r.none, pos);
+
+    this.flattenArgs(Array[this.getValue(r.value)]) match {
+    | NotExists(why) -> _ = this.unreachable(pos, why)
+    | Exists(values) ->
+      _ = this.emitYield{values, pos, prettyName => r.prettyName}
+    }
+  }
+
+  private mutable fun emitGYieldBreak(r: GYieldBreak, pos: Pos): void {
+    this.initializeGeneratorInfo(r.none, pos);
+
+    _ = this.emitYieldBreak{pos, prettyName => r.prettyName}
+  }
+
+  private readonly fun mapSuccessor(succ: GBlockID): BlockSuccessor {
+    BlockSuccessor(BlockID(succ.id))
+  }
+
+  private readonly fun mapSuccessors(
+    succ: Array<GBlockID>,
+  ): Array<BlockSuccessor> {
+    succ.map(s -> this.mapSuccessor(s))
+  }
+
+  mutable fun finish(): Function {
+    this.startNewBlock();
+
+    f = this.optinfo.f;
+    f with {
+      params => this.funParams,
+      funType => this.funType,
+      exportStyle => this.exportStyleReplacement.default(f.exportStyle),
+      blocks => this.blockBuf.toArray(),
+      constants => freeze(this.optinfo.getConstants()),
+      coroutineInfo => this.coroutineInfo,
+    }
+  }
+
+  private mutable fun go(): Function {
+    fpos = this.optinfo.f.pos;
+
+    for (block in this.gfunction.blocks) {
+      this.!pos = block.pos;
+      this.!whyCurrentInstrUnreachable = None();
+
+      // Set up for the block we are about to emit.
+      this.!pos = this.makePos(block.pos, fpos);
+      this.!nextBlockID = BlockID(block.id.id);
+      this.!prettyBlockName = block.prettyName;
+      this.!blockChanged = true;
+
+      // Dump out any leftover TupleExtracts from Invoke.
+      // NOTE: Can't use maybeGet due to mutability compiler error.
+      if (this.invokeExtracts.containsKey(block.id)) {
+        for (i in this.invokeExtracts[block.id]) _ = this.emitInstr(i)
+      };
+      for (instr in block.instrs) {
+        this.whyCurrentInstrUnreachable match {
+        | Some(why) -> this.setValue(instr, NotExists(why))
+        | _ ->
+          pos = this.makePos(instr.pos, fpos);
+          this.!pos = pos;
+
+          typ = this.specializeType(instr.getType());
+
+          instr match {
+          | r @ GAsyncReturn _ ->
+            _ = this.emitAsyncReturn{pos, prettyName => r.prettyName}
+          | hc @ GCallHhvmWrappedFunction _ ->
+            this.setValue(
+              hc,
+              EmitCallHhvmWrappedFunction::emitIR(this, hc, pos),
+            )
+          | hc @ GCallHhvmFunction _ ->
+            this.setValue(hc, EmitCallHhvmFunction::emitIR(this, hc, pos))
+          | call @ GInvokeFunction _ ->
+            _ = this.emitGCallFunction(call, typ, pos, Some(call.successors))
+          | call @ GCallFunctionBase _ ->
+            _ = this.emitGCallFunction(call, typ, pos, None())
+          | call @ GCallMethodBase _ -> this.emitGCallMethod(call, typ, pos)
+          | c @ GCast _ ->
+            this.emitGCastOrReinterpret(c, Cast, c.value, typ, pos)
+          | c @ GCustomInstr _ -> c.emit(c, this)
+          | ev @ GEArray _ -> this.emitGEArray(ev, typ, pos)
+          | frz @ GFreeze _ -> this.emitGFreeze(frz, pos)
+          | r @ GGetCurrentAwaitable _ ->
+            this.emitGGetCurrentAwaitable(r, typ, pos)
+          | g @ GGetConst _ -> this.emitGGetConst(g, typ, pos)
+          | gf @ GGetField _ -> this.emitGGetField(gf, typ, pos)
+          | GIf{predicate, successors, prettyName} ->
+            this.getValue(predicate) match {
+            | NotExists(why) -> _ = this.unreachable(pos, why)
+            | Exists(predval @ InstrLeaf _) ->
+              _ = this.emitIf{
+                pos,
+                prettyName,
+                predicate => predval.value,
+                ifTrue => this.mapSuccessor(successors[0]),
+                ifFalse => this.mapSuccessor(successors[1]),
+              }
+            | _ -> pos.die("Expected Bool")
+            }
+          | GIntSwitch{value, cases, successors, prettyName} ->
+            this.getValue(value) match {
+            | NotExists(why) -> _ = this.unreachable(pos, why)
+            | Exists(switchValue @ InstrLeaf _) ->
+              _ = this.emitIntSwitch{
+                pos,
+                prettyName,
+                value => switchValue.value,
+                cases,
+                successors => this.mapSuccessors(successors),
+              }
+            | _ -> pos.die("Expected Int")
+            }
+          | GJump{prettyName, successors} ->
+            _ = this.emitJump{
+              pos,
+              prettyName,
+              target => this.mapSuccessor(successors[0]),
+            }
+          | lp @ GLandingPad{prettyName, successors} ->
+            this.setValue(
+              lp,
+              Exists(
+                InstrLeaf(
+                  this.emitLandingPad{
+                    target => this.mapSuccessor(successors[0]),
+                    pos,
+                    prettyName,
+                  }.id,
+                ),
+              ),
+            )
+          | o @ GObject _ ->
+            typeToCreate = this.specializeType(instr.getType(), true);
+            this.emitGObject(o, typeToCreate, pos)
+          | r @ GReturn _ -> this.emitGReturn(r, pos)
+          | s @ GSetField _ -> this.emitGSetField(s, pos)
+          | GStringSwitch{value, cases, prettyName, successors} ->
+            this.getValue(value) match {
+            | NotExists(why) -> _ = this.unreachable(pos, why)
+            | Exists(switchValue @ InstrLeaf _) ->
+              _ = this.emitStringSwitch{
+                pos,
+                prettyName,
+                value => switchValue.value,
+                cases => cases.map(case ->
+                  this.getValue(case) match {
+                  | Exists(leaf @ InstrLeaf _) -> leaf.value
+                  | _ -> pos.die("Invalid StringSwitch case value.")
+                  }
+                ),
+                successors => this.mapSuccessors(successors),
+              }
+            | _ -> pos.die("Expected String")
+            }
+          | s @ GSuspend _ -> this.emitGSuspend(s, pos)
+          | GThrow{prettyName, exception} ->
+            this.getValue(exception) match {
+            | NotExists(why) -> _ = this.unreachable(pos, why)
+            | Exists(exc @ InstrLeaf _) ->
+              _ = this.emitThrow{pos, prettyName, exception => exc.value}
+            | _ -> pos.die("Expected Exception")
+            }
+          | ts @ GTypeSwitch _ ->
+            this.getOptionStyle(ts.value.getType()) match {
+            | Some(style) -> this.emitOptionGTypeSwitch(ts, style, pos)
+            | None() -> this.emitGTypeSwitch(ts, pos)
+            }
+          | GUnreachable{why} -> _ = this.unreachable(pos, why)
+          | w @ GWith _ -> this.emitGWith(w, typ, pos)
+          | w @ GYield _ -> this.emitGYield(w, pos)
+          | w @ GYieldBreak _ -> this.emitGYieldBreak(w, pos)
+          | ze @ GZeroExtend{prettyName, value} ->
+            x = this.getValue(value) match {
+            | NotExists(why) -> this.unreachable(pos, why)
+            | Exists(ival @ InstrLeaf _) ->
+              Exists(
+                InstrLeaf(
+                  this.emitZeroExtend{typ, pos, value => ival.value, prettyName}
+                    .id,
+                ),
+              )
+            | _ -> pos.die("Expected Int")
+            };
+
+            this.setValue(ze, x)
+          }
+        }
+      };
+
+      this.startNewBlock()
+    };
+
+    this.finish()
+  }
+}

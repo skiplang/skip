@@ -1,0 +1,14 @@
+fun main(): void {
+  Positional(List[
+    I.Parameter{
+      par_annotations => SSet[],
+      par_frozen => noopBinding,
+      par_index => 0,
+      par_mutable => None(),
+      par_name => (pos, "value"),
+      par_type => in_.par_type,
+      par_value => None(),
+      par_visibility => (pos, I.VPublic()),
+    },
+  ])
+}

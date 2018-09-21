@@ -1,0 +1,2 @@
+File "invalid/invalid_excludes/skip.project.json"
+Regular expression '[' in excludes of program unit 'lib' is invalid. Invariant violation: missing terminating ] for character class

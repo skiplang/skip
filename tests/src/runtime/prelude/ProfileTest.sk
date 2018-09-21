@@ -1,0 +1,9 @@
+@test
+untracked fun testProfile(): void {
+  // We can't really test that the profiling works - but we can at least make
+  // sure we can call the functions.
+  profile_start();
+  _ = profile_stop();
+  profile_report();
+  void
+}

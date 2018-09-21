@@ -1,0 +1,12 @@
+mutable class Foo(mutable x: Int)
+fun mfoo(mutable Foo): void {
+  void
+}
+fun rfoo(readonly Foo): void {
+  void
+}
+
+fun main(): void {
+  _ = if (true) mfoo else rfoo;
+  print_raw("FAIL")
+}

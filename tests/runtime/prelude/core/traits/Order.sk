@@ -1,0 +1,66 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+base class Order uses Orderable, Hashable, Show {
+  children =
+  | LT()
+  | EQ()
+  | GT()
+
+  // Do not use the default implementation from Orderable as that causes
+  // a stack overflow.
+  fun ==(x: Order): Bool
+  | LT() ->
+    x match {
+    | LT() -> true
+    | _ -> false
+    }
+  | EQ() ->
+    x match {
+    | EQ() -> true
+    | _ -> false
+    }
+  | GT() ->
+    x match {
+    | GT() -> true
+    | _ -> false
+    }
+
+  fun isLT(): Bool
+  | LT() -> true
+  | _ -> false
+
+  fun isLTE(): Bool
+  | GT() -> false
+  | _ -> true
+
+  fun isEQ(): Bool
+  | EQ() -> true
+  | _ -> false
+
+  fun isGT(): Bool
+  | GT() -> true
+  | _ -> false
+
+  fun isGTE(): Bool
+  | LT() -> false
+  | _ -> true
+
+  fun toString(): String
+  | LT() -> "less than"
+  | EQ() -> "equal to"
+  | GT() -> "greater than"
+
+  protected fun typeOrder(): Int
+  | LT() -> 0
+  | EQ() -> 1
+  | GT() -> 2
+
+  fun compare(other: Order): Order {
+    compare(this.typeOrder(), other.typeOrder())
+  }
+}

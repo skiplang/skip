@@ -1,0 +1,13 @@
+async fun asyncMain(): ^void {
+  nl = "\n";
+  print_raw(
+    await (async {
+      x = "Pa";
+      x + "ss" + nl
+    }),
+  );
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

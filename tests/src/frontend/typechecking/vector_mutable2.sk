@@ -1,0 +1,15 @@
+mutable class MyObj(mutable x: String)
+
+fun main(): void {
+  a = mutable MyObj("x");
+  v = Array<mutable MyObj>::fillBy(1, _ -> a);
+  b = v[0];
+
+  print_string("a is " + a.x + ", b is " + b.x);
+  a.!x = "A";
+  b.!x = "B";
+  // prove it's the same instance!
+  print_string("a is " + a.x + ", b is " + b.x);
+
+  void
+}

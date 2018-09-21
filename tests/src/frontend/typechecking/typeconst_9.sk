@@ -1,0 +1,13 @@
+base class Foo<T: Test.MixedScalar>
+
+base class Baz {
+  type T: Test.MixedScalar;
+}
+
+base class Bar extends Foo<this::T::T> {
+  type T: Baz;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

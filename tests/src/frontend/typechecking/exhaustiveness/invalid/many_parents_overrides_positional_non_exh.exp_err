@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/many_parents_overrides_positional_non_exh.sk", line 15, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | Join(String _, true, _, String _, Int _, Int _, Int _, Char _, Int _)
+13 |
+14 | fun myMatch(x: Top): String {
+15 |   x match {
+   |   ^^^^^^^^^
+16 |   | Join(_, true, _, "b", _, 3, _, 'c', _) -> "P"
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,521 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module LowerConst;
+
+// This file actually materializes global "const" values as fields of
+// a global singleton object. Reads from those "consts" become GetField of
+// this object.
+//
+// In the general case, initializers for consts can run any code they
+// like, including code that looks at other consts. To avoid the infamous
+// C++ SIOF, we protect each const with a global Bool indicating whether
+// it's been initialized already, and initialize as needed.
+//
+// That can of course be slow, so we do a few optimizations:
+//
+// - We have already inlined GetConst Instrs known to be compile-time
+//   constants into all users. Being constants, they will not check any
+//   runtime flag (indeed no such flag and no global storage for the value
+//   will even be allocated).
+//
+// - Even though const initializers are lazy, we forcibly run them all
+//   on startup (before main()), and then set a global variable saying that
+//   ALL consts are initalized. We do this for two reasons:
+//
+//   - This guarantees that no side effects, such as exceptions, will happen
+//     lazily at a surprising time.
+//
+//   - Although each const has its own flag saying whether it was initialized,
+//     we inline the check for ALL flags being initialized into each caller,
+//     as that is the common case. Checking the "ALL" flag, instead of the
+//     flag for that specific variable, will have better cache locality
+//     and possibly allow for CSE of the flag check.
+//
+// TODO: Once we are a little smarter we can recurse through the initializers
+// for consts and identify which other consts their value transitively depends
+// on. Those whose initializers provably do not "escape" (and can therefore
+// look at unknown consts) can be initialized in topological order during
+// startup, and we never need to check any initialization flags at runtime
+// for those consts.
+
+// Name of the global that indicates all consts have been initialized.
+private const kAllInitializedField: ConstID = ConstID("..all_initialized");
+
+// String appended to the names of functions that unconditionally compute
+// global const values.
+const kComputeConstSuffix: String = "..computeConst";
+
+// String appended to the names of functions that conditionally compute
+// global const values only the first time they are called and record the
+// result in a global variable.
+private const kInitializeConstSuffix: String = "..initializeConst";
+
+mutable private class LowerConstPass{
+  initConstFuns: mutable UnorderedMap<ConstID, SFunctionID>,
+} extends Rewrite {
+  // Inlines some calls.
+  static fun run(
+    f: Function,
+    env: GlobalEnv,
+    initConstFuns: mutable UnorderedMap<ConstID, SFunctionID>,
+  ): (Function, PassResult) {
+    d = mutable static{
+      optinfo => OptimizerInfo::make(f),
+      env,
+      initConstFuns,
+      pos => f.pos,
+    };
+    d.go("const", false)
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    instr match {
+    | getConst @ GetConst{name} ->
+      // Load the const from a global variable, but only after making
+      // sure it's initialized.
+      //
+      //   x = GetConst("my_const");
+      //
+      // turns into this pseudo-code:
+      //
+      //  if (!globals..all_initialized) {
+      //    my_const..initializeConst()
+      //  };
+      //  x = globals.my_const;
+      //
+      // NOTE: We can optimize this more later, see top-of-file comments.
+      optinfo = this.optinfo;
+      pos = instr.pos;
+
+      // TODO: We could lie and cast globals to
+      // a frozen type for the purposes of checking this
+      // kAllInitializedField, to allow CSE. It will never change within
+      // a function except at the end of initializeAllConsts(), which is
+      // special and does not read the value anyway.
+      globals = this.constantGlobalSingleton().id;
+
+      predicate = this.emitGetField{
+        typ => tBool,
+        pos,
+        field => kAllInitializedField.idValue(),
+        obj => globals,
+      };
+
+      callBlockID = optinfo.idToBlock.allocID();
+      afterBlockID = optinfo.idToBlock.allocID();
+
+      _ = this.emitIf{
+        ifTrue => BlockSuccessor(afterBlockID),
+        ifFalse => BlockSuccessor(callBlockID),
+        predicate => predicate.id,
+        pos,
+      };
+
+      this.startNewBlock();
+      this.!nextBlockID = callBlockID;
+
+      // NOTE: This function is guaranteed to never throw (failure to
+      // initialize a const will kill the process instead), so we can
+      // always use "Call" rather than "Invoke".
+      _ = this.emitCallFunction{
+        args => Array[],
+        typ => tVoid,
+        pos,
+        smap => kNonParametricFunSmap,
+        name => this.initConstFuns[name],
+      };
+
+      _ = this.emitJump{target => BlockSuccessor(afterBlockID), pos};
+
+      this.startNewBlock();
+      this.!nextBlockID = afterBlockID;
+
+      // Load the value from the global variable object.
+      _ = this.emitInstr(
+        GetField{
+          id => instr.id,
+          typ => instr.typ,
+          pos,
+          obj => globals,
+          field => getConst.globalFieldName(),
+        },
+      );
+
+      true
+    | _ -> false
+    }
+  }
+}
+
+// Scan a function for GetConst values and record what it finds
+// in 'initConstFuns'. Returns true if any were found.
+private fun identifyGetConsts(
+  f: Function,
+  sfuns: mutable FunctionIDToFunction,
+  initConstFuns: mutable UnorderedMap<ConstID, SFunctionID>,
+): Bool {
+  found = false;
+
+  for (b in f.blocks) {
+    for (instr in b.instrs) {
+      instr match {
+      | GetConst{name} ->
+        !found = true;
+        _ = initConstFuns.getOrAdd(name, sfuns.allocID)
+      | _ -> void
+      }
+    }
+  };
+
+  found
+}
+
+// Create a lazy initialization function that looks like this for "my_const":
+//
+// fun my_const.initializeConst(): void {
+//   if (!globals..my_const..initialized) {
+//     try {
+//       v = my_const..computeConst();
+//       globals.!my_const = SKIP_intern(v);
+//       globals.!.my_const..initialized = true
+//     } catch {
+//     | e -> print_last_exception_stack_trace_and_exit(e)
+//     };
+//   }
+// }
+//
+// It does not need to be thread-safe because it is forcibly run at
+// startup in single-threaded mode.
+private fun createInitializeConstFun(
+  computeConst: Function,
+  sid: SFunctionID,
+  constName: String,
+  initFlagName: String,
+  initAnnotations: SSet,
+  env: GlobalEnv,
+): Function {
+  pos = computeConst.pos;
+  name = constName + kInitializeConstSuffix;
+
+  funInfo = FunInfo{
+    name,
+    gfunction => GFunctionName(name),
+    id => sid,
+    funType => kVoidVoidFunType,
+    annotations => initAnnotations,
+    pos,
+  };
+
+  s = Emitter::make(
+    funInfo,
+    Array[],
+    env,
+    UnorderedSet[FunSuperpositionID::empty],
+  );
+
+  globals = s.constantGlobalSingleton().id;
+
+  callBlockID = s.newBlockID();
+  doneBlockID = s.newBlockID();
+  catchBlockID = s.newBlockID();
+  dieBlockID = s.newBlockID();
+  recordBlockID = s.newBlockID();
+
+  // See if this const has already been initialized.
+  flag = s.emitGetField{
+    typ => tBool,
+    pos,
+    field => initFlagName,
+    obj => globals,
+  };
+
+  _ = s.emitIf{
+    ifTrue => BlockSuccessor(doneBlockID),
+    ifFalse => BlockSuccessor(callBlockID),
+    predicate => flag.id,
+    pos,
+  };
+
+  s.startNewBlock(doneBlockID);
+
+  _ = s.emitReturn{values => Array[], pos};
+
+  s.startNewBlock(callBlockID);
+
+  val = s.emitInvokeFunction{
+    args => Array[],
+    typ => computeConst.funType.aggregateReturnType,
+    pos,
+    ifNoCatch => BlockSuccessor(recordBlockID),
+    ifCatch => BlockSuccessor(catchBlockID),
+    smap => kNonParametricFunSmap,
+    name => computeConst.id,
+  };
+
+  s.startNewBlock(catchBlockID);
+
+  landingPad = s.emitLandingPad{target => BlockSuccessor(dieBlockID), pos};
+
+  s.startNewBlock(dieBlockID);
+
+  _ = s.emitCallFunction{
+    name => s.env.runtimeFunctions["print_last_exception_stack_trace_and_exit"],
+    args => Array[landingPad.id],
+    typ => tVoid,
+    pos,
+    smap => kNonParametricFunSmap,
+  };
+
+  _ = s.emitUnreachable{
+    pos,
+    why => "print_last_exception_stack_trace_and_exit unexpectedly returned",
+  };
+
+  s.startNewBlock(recordBlockID);
+
+  simple = (computeConst.funType.returnType.size() == 1);
+  computeConst.funType.returnType.eachWithIndex((i, rt) -> {
+    scalarVal = if (simple) {
+      val
+    } else {
+      s.emitTupleExtract{index => i, typ => rt, pos, obj => val.id}
+    };
+
+    // Make sure the value being stored is not on the Obstack, since
+    // consts are shared across threads.
+    nonObstackVal = if (scalarVal.isConstant()) {
+      scalarVal
+    } else {
+      s.emitIntern{
+        value => scalarVal.id,
+        typ => scalarVal.typ.mapMutability(_ -> DeepFrozen()),
+        pos,
+      }
+    };
+
+    _ = s.emitSetField{
+      pos,
+      value => nonObstackVal.id,
+      field => if (simple) {
+        constName
+      } else {
+        constName + ".v" + i
+      },
+      obj => globals,
+    }
+  });
+
+  _ = s.emitSetField{
+    pos,
+    value => s.constantBool(true).id,
+    field => initFlagName,
+    obj => globals,
+  };
+
+  _ = s.emitReturn{values => Array[], pos};
+
+  s.finish("const-init", false)
+}
+
+// Lower all GetConst instrs to read global variables.
+fun lowerAllConsts(env: GlobalEnv): GlobalEnv {
+  initConstFuns = mutable UnorderedMap[];
+
+  newFuns = env.sfuns.clone();
+  for (f in env.sfuns) {
+    if (identifyGetConsts(f, newFuns, initConstFuns)) {
+      (f2, passResult) = LowerConstPass::run(f, env, initConstFuns);
+      passResult match {
+      | PassUnchanged _ -> f2.pos.die("GetConst not removed")
+      | PassChanged() -> void
+      };
+      newFuns.insert(f2);
+    }
+  };
+  !env.sfuns = freeze(newFuns);
+
+  // Find all "computeConst" functions and put them in a canonical order
+  // (which we don't guarantee, but might as well be deterministic, and
+  // certainly ordering initializers within each file seems reasonable).
+  allConsts = mutable Vector[];
+  for (f in env.sfuns) {
+    if (f.gfunction.id.endsWith(kComputeConstSuffix)) {
+      allConsts.push(f)
+    }
+  };
+  allConsts.sortBy(x ~>
+    Orderable.create(x, (a, b) ~> (a.pos, a.id).compare((b.pos, b.id)))
+  );
+
+  // Build up fields for our global storage.
+  fieldsBuf = mutable Vector[];
+  flagsBuf = mutable Vector[];
+
+  // Const init functions will never be called after startup so don't inline
+  // them, and don't discard calls as dead code either.
+  initAnnotations = SSet[].add("@no_inline").add("@debug");
+
+  initAllName = ".initializeAllConsts";
+  fid = newFuns.allocID();
+  initAllPos = FileRange.builtin;
+  initAllFunInfo = FunInfo{
+    name => initAllName,
+    gfunction => GFunctionName(initAllName),
+    id => fid,
+    funType => kVoidVoidFunType,
+    annotations => initAnnotations,
+    pos => initAllPos,
+  };
+
+  // Make a function that initializes all consts on startup.
+  s = Emitter::make(
+    initAllFunInfo,
+    Array[],
+    env,
+    UnorderedSet[FunSuperpositionID::empty],
+  );
+
+  for (f in allConsts) {
+    pos = f.pos;
+
+    fname = f.gfunction.id;
+    name = fname.stripSuffix(kComputeConstSuffix);
+
+    funPos = FunPos{name, id => f.id, pos => f.pos};
+
+    oldPositionRewriter = s.positionRewriter;
+    s.!positionRewriter = Some(pos ~>
+      InlinedPos::inlineAt(initAllPos, pos, funPos)
+    );
+
+    // Figure out which initialization function to call.
+    init = initConstFuns.maybeGet(ConstID(name)) match {
+    | Some(sid) ->
+      // Allocate storage for this global const, both its value and a flag
+      // saying it was initialized (to handle tricky startup ordering cases).
+      f.funType.returnType.eachWithIndex((i, scalarType) -> {
+        fieldname = if (f.funType.returnType.size() == 1) {
+          name
+        } else {
+          // Flatten out compound types into multiple scalar fields.
+          name + ".v" + i
+        };
+        fieldsBuf.push(
+          SField{
+            name => fieldname,
+            typ => scalarType.asTclass(pos),
+            pos,
+            isAssignable => true,
+            index => -1,
+          },
+        )
+      });
+      flagFieldName = name + ".initialized";
+      flagsBuf.push(
+        SField{
+          name => flagFieldName,
+          typ => tBool,
+          pos,
+          isAssignable => true,
+          index => -1,
+        },
+      );
+
+      // Create the "initializeConst" function.
+      initFun = createInitializeConstFun(
+        f,
+        sid,
+        name,
+        flagFieldName,
+        initAnnotations,
+        env,
+      );
+
+      // Record it.
+      newFuns.add(initFun.id, initFun);
+
+      initFun
+    | None() ->
+      // No one wants the value (they may have inlined it away, or no one uses
+      // it), but we'll still call the "computeConst" function, just in case
+      // it has any side effects like throwing an exception.
+      f
+    };
+
+    // Call either initializeConst or computeConst as needed.
+    _ = s.emitCallFunction{
+      args => Array[],
+      typ => init.funType.aggregateReturnType,
+      pos,
+      smap => kNonParametricFunSmap,
+      name => init.id,
+    };
+
+    s.!positionRewriter = oldPositionRewriter
+  };
+
+  pos = initAllPos;
+
+  if (!initConstFuns.isEmpty()) {
+    // We have a function other than initAllFun, which means someone cares about
+    // kAllInitializedField, so create it.
+
+    // Create a field saying whether ever const has been initialized
+    // (the common case).
+    //
+    // TODO: This one may be accessed so frequently that we would rather not
+    // bit-pack it for faster testing. So we would rather store it in a byte,
+    // but we don't currently have a type for that.
+    fieldsBuf.push(
+      SField{
+        name => kAllInitializedField.id,
+        typ => tBool,
+        pos,
+        isAssignable => true,
+        index => -1,
+      },
+    );
+
+    // Set kAllInitializedField to true to indicate startup is done.
+    _ = s.emitSetField{
+      pos,
+      value => s.constantBool(true).id,
+      field => kAllInitializedField.idValue(),
+      obj => s.constantGlobalSingleton().id,
+    }
+  };
+
+  _ = s.emitReturn{values => Array[], pos};
+
+  initAllFun = s.finish("const-lower", false);
+
+  // Fill in the init all function.
+  newFuns.add(initAllFun.id, initAllFun);
+
+  // The .initialized flags are only used during startup, so for cache
+  // locality of the remaining fields, encourage the flags to be packed
+  // together, near the end of the singleton object.
+  flagsBuf.each(fieldsBuf.push);
+
+  // Choose bit offsets for all the fields.
+  fields = fieldsBuf.toArray();
+  layout = Some(OuterIstToIR.layoutOneStandaloneClass(fields, env));
+
+  // Udpate our global singleton class to know about its new fields.
+  globals = tConstSingleton.sclass(env) with {fields, layout};
+
+  env with {
+    sclasses => {
+      s2 = env.sclasses.clone(1);
+      s2.set(globals.id, globals);
+      freeze(s2)
+    },
+    sfuns => freeze(newFuns),
+    initializeAllConstsID => initAllFun.id,
+  }
+}

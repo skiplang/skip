@@ -1,0 +1,4 @@
+File "./typechecking/invalid/early_return3.sk", line 1, characters 16-23:
+The 'return' keyword is superfluous here, please remove it
+1 | const X: Int = return 0;
+  |                ^^^^^^^^

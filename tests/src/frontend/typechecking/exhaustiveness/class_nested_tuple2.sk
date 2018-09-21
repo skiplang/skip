@@ -1,0 +1,18 @@
+base class Foo {
+  children =
+  | MyPair(Int, (Bool, (String, (Char, Int))))
+}
+fun main(): void {
+  x = MyPair(1, (true, ("a", ('c', 1))));
+  print_raw(
+    x match {
+    | MyPair(Int _, (true, ("a", ('d', 1)))) -> "Fail\n"
+    | MyPair(Int _, (true, (String _, ('b', 1)))) -> "Fail\n"
+    | MyPair(1, (true, ("a", ('c', 1)))) -> "Pass\n"
+    | MyPair(Int _, (Bool _, ("a", ('c', 1)))) -> "Fail\n"
+    | MyPair(Int _, (Bool _, (String _, ('b', 1)))) -> "Fail\n"
+    | MyPair(Int _, (Bool _, (String _, (Char _, 1)))) -> "Fail\n"
+    | MyPair(Int _, (Bool _, (String _, (Char _, Int _)))) -> "Fail\n"
+    },
+  )
+}

@@ -1,0 +1,4 @@
+fun main(): void {
+  l = {p, p} ~> p;
+  print_raw(l{p => "Fail"})
+}

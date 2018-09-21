@@ -1,0 +1,6 @@
+File "./typechecking/invalid/const_with_generic.sk", line 2, characters 18-18:
+Class constants cannot use the class generics
+1 | class A<T>() {
+2 |   const v: Array<T> = Array[];
+  |                  ^
+3 | }

@@ -1,0 +1,40 @@
+File "./typechecking/invalid/join_into_readonly_3.sk", line 9, characters 7-52:
+Incompatible branches
+ 7 |
+ 8 | fun no(): void {
+ 9 |   _ = if (true) mutable Co(X()) else mutable Co(Y());
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |   void
+
+File "./typechecking/invalid/join_into_readonly_3.sk", line 9, characters 28-30:
+The invariant type: X
+ 7 |
+ 8 | fun no(): void {
+ 9 |   _ = if (true) mutable Co(X()) else mutable Co(Y());
+   |                            ^^^
+10 |   void
+
+File "./typechecking/invalid/join_into_readonly_3.sk", line 9, characters 49-51:
+Is incompatible with the invariant type: Y
+ 7 |
+ 8 | fun no(): void {
+ 9 |   _ = if (true) mutable Co(X()) else mutable Co(Y());
+   |                                                 ^^^
+10 |   void
+
+File "./typechecking/invalid/join_into_readonly_3.sk", line 9, characters 28-30:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+ 7 |
+ 8 | fun no(): void {
+ 9 |   _ = if (true) mutable Co(X()) else mutable Co(Y());
+   |                            ^^^
+10 |   void
+
+File "./typechecking/invalid/join_into_readonly_3.sk", line 9, characters 49-51:
+Also annotate here as this type: P
+ 7 |
+ 8 | fun no(): void {
+ 9 |   _ = if (true) mutable Co(X()) else mutable Co(Y());
+   |                                                 ^^^
+10 |   void

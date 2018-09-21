@@ -1,0 +1,16 @@
+// in non-php backends, this compiles as-is.
+// in php and hhas, class def is stripped.
+
+@php_native
+@php_trait
+base class Foo {
+  children =
+  | @php_native
+  Bar
+  | Baz
+}
+
+fun main(): void {
+  _b = Bar();
+  void
+}

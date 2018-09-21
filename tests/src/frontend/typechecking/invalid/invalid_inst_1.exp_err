@@ -1,0 +1,4 @@
+File "./typechecking/invalid/invalid_inst_1.sk", line 1, characters 14-17:
+The type 'inst' can only be used from within a trait
+1 | class Foo(x: inst)
+  |              ^^^^

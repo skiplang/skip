@@ -1,0 +1,51 @@
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 3, characters 5-21:
+Invalid mutable instantiation
+1 | class Foo<T: frozen>(T) {
+2 |   fun test(x: Array<T>): mutable this {
+3 |     mutable Foo(x[0])
+  |     ^^^^^^^^^^^^^^^^^
+4 |   }
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 3, characters 5-21:
+Foo has no mutable fields, field values, or methods
+1 | class Foo<T: frozen>(T) {
+2 |   fun test(x: Array<T>): mutable this {
+3 |     mutable Foo(x[0])
+  |     ^^^^^^^^^^^^^^^^^
+4 |   }
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 1, characters 7-9:
+It is defined here
+1 | class Foo<T: frozen>(T) {
+  |       ^^^
+2 |   fun test(x: Array<T>): mutable this {
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 8, characters 3-23:
+Constraint not satisfied
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo(mutable Array[0]).test(Array[])
+   |   ^^^^^^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 8, characters 7-22:
+The mutable type 'mutable Array<Int>' appeared inside an immutable type.
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo(mutable Array[0]).test(Array[])
+   |       ^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 1, characters 14-19:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | class Foo<T: frozen>(T) {
+  |              ^^^^^^
+2 |   fun test(x: Array<T>): mutable this {
+
+File "./typechecking/invalid/infer_frozen_cla_5.sk", line 8, characters 15-22:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo(mutable Array[0]).test(Array[])
+   |               ^^^^^^^^
+ 9 | }

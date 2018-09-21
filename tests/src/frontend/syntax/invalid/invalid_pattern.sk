@@ -1,0 +1,4 @@
+
+fun test(): void {
+   x match { 0 @ E -> 0 }
+}

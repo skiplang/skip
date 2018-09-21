@@ -1,0 +1,23 @@
+File "./typechecking/invalid/memo_mut_5.sk", line 1, characters 21-36:
+Invalid return type. The return type to a 'memoized' function must be frozen
+1 | memoized fun foo(): mutable Ref<Int> {
+  |                     ^^^^^^^^^^^^^^^^
+2 |   mutable Ref(0)
+
+File "./typechecking/invalid/memo_mut_5.sk", line 1, characters 1-8:
+The function was declared 'memoized' here
+1 | memoized fun foo(): mutable Ref<Int> {
+  | ^^^^^^^^
+2 |   mutable Ref(0)
+
+File "./typechecking/invalid/memo_mut_5.sk", line 1, characters 21-36:
+The following type is not frozen: mutable Ref<Int>
+1 | memoized fun foo(): mutable Ref<Int> {
+  |                     ^^^^^^^^^^^^^^^^
+2 |   mutable Ref(0)
+
+File "./typechecking/invalid/memo_mut_5.sk", line 1, characters 21-36:
+Try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+1 | memoized fun foo(): mutable Ref<Int> {
+  |                     ^^^^^^^^^^^^^^^^
+2 |   mutable Ref(0)

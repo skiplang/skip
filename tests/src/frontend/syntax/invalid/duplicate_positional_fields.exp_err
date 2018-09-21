@@ -1,0 +1,11 @@
+File "./syntax/invalid/duplicate_positional_fields.sk", line 1, characters 17-17:
+Name already bound: p
+1 | class C(p: Int, p: String) {}
+  |                 ^
+2 |
+
+File "./syntax/invalid/duplicate_positional_fields.sk", line 1, characters 9-9:
+Previously here
+1 | class C(p: Int, p: String) {}
+  |         ^
+2 |

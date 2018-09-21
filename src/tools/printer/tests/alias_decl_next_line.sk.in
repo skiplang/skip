@@ -1,0 +1,2 @@
+module alias T = U;
+fun main(): void { void }

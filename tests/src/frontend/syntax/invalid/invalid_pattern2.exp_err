@@ -1,0 +1,7 @@
+File "./syntax/invalid/invalid_pattern2.sk", line 3, characters 15-15:
+Expected '->'. Found '+'.
+1 |
+2 | fun test(): void {
+3 |    x match { 2+3 -> 0 }
+  |               ^
+4 | }

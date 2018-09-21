@@ -1,0 +1,7 @@
+File "./typechecking/invalid/inherit_untracked.sk", line 7, characters 15-20:
+Unexpected 'public'. Methods are public by default. Use 'protected' or 'private' to change the visibility
+5 |
+6 | base class X {
+7 |   overridable public untracked fun foo(): String {
+  |               ^^^^^^
+8 |     "I'm X"

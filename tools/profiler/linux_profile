@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import argparse
+import imp
+import logging
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import re
+import common
+
+root_dir = common.root_dir
+runtime_tools_dir = common.runtime_tools_dir
+build_dir = common.build_dir
+tmp_dir = common.tmp_dir
+
+logger = logging.getLogger(os.path.basename(__file__))
+
+# Run "perf list" command to get all of the software events that
+# the user's OS supports profiling for
+def get_perf_list():
+    perf_list_output = str(subprocess.check_output(['perf', 'list'])).strip()
+    # matches the pattern of output software event list, for example:
+    # cpu-clock         [Software event]
+    # major-fault       [Software event]
+    # minor-fault       [Software event]
+    pattern = re.compile(r'.*?((\w|-)*)\s*\[Software event\]', re.M|re.I)
+    perf_list = list(map(lambda x: x[0], re.findall(pattern, perf_list_output)))
+    # the dummy event is used to force an event into perf for sampling without
+    # requiring an actual counting event, but we are aiming to look at counting
+    # events so it is not needed here
+    perf_list.remove('dummy')
+    return perf_list
+
+
+# run perf record on all the events in perf_list for out executable at filepath
+def record(filepath, output, flag_string, perf_list, cwd=None):
+    flags = tuple(flag_string.split(' '))
+    cmd = (
+        'perf',
+        'record',
+        '-o', output,
+        '-e',
+        ','.join(perf_list),
+         filepath) + flags
+    logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
+    common.callHelper(cmd, cwd=cwd)
+
+
+# perf report displays the data from the most recent perf record
+def report(perf_data):
+    cmd = (
+        'perf',
+        'report',
+        '-i', perf_data,
+        '-q')
+    logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
+    common.callHelper(cmd)
+
+
+def main(stack):
+    remainder = common.separateBinaryArgs()
+
+    parser = argparse.ArgumentParser(
+        description='Profile a Skip program',
+        parents=[common.commonArguments()])
+    parser.add_argument('--tool', '-t', nargs='*', type=lambda x: x.lower(),
+        default=['cpu-clock'], choices=get_perf_list(),
+        help='Software event(s) to record')
+    args = common.parse_args(parser)
+
+    programDir, programUnit = args.program
+    program = '/:'.join(args.program)
+
+    output = stack.enter_context(common.tmpfile(name=programUnit))
+    output.close()
+    perf_data = stack.enter_context(common.tmpfile())
+    perf_data.close()
+
+    target = os.path.abspath(program)
+    flags = ' '.join(remainder)
+
+    if not args.exists:
+        # compile the skip program
+        print_skip_to_llvm = ('--print-skip-to-llvm',) if args.compiler else ()
+        cmd = (
+            os.path.join(runtime_tools_dir, 'compile'),
+            '--output', output.name,
+            program) + print_skip_to_llvm
+
+        logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
+
+        if args.compiler:
+            # strip off leading/trailing white space and get the last two
+            # lines of output from the compilation script
+            target, flags = subprocess.check_output(cmd).strip().split('\n')[-2:]
+
+        else:
+            print('Compiling...')
+            common.callHelper(cmd)
+            target = os.path.abspath(output.name)
+    record(target, perf_data.name, flags, args.tool, cwd=programDir)
+    report(perf_data.name)
+
+if __name__ == '__main__':
+    with common.ExitStack() as stack:
+        main(stack)

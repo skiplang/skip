@@ -1,0 +1,6 @@
+class A()
+
+fun foo(): void {
+  a = A();
+  _v = Array[a, void]
+}

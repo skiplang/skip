@@ -1,0 +1,472 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module TextOutputStream;
+
+private fun maxDigit(n: Int, d: Int): Int {
+  if (d * 10 > n) {
+    d
+  } else {
+    maxDigit(n, d * 10)
+  }
+}
+
+mutable base class .TextOutputStream {
+  // Subclasses only need to provide this.
+  mutable fun writeChar(c: Char): void;
+
+  overridable mutable fun flush(): void {
+    void
+  }
+
+  private mutable fun writeDigits(n: Int, digit: Int): void {
+    next = n / digit;
+    this.writeChar(Char::fromCode(48 /* '0' */ + next));
+    if (digit >= 10) {
+      this.writeDigits(n - next * digit, digit / 10)
+    }
+  }
+
+  overridable mutable fun writeInt(n: Int): void {
+    if (n == -9223372036854775808) {
+      // Negating Int::min is still negative so special-case it.
+      this.write("-9223372036854775808")
+    } else {
+      if (n < 0) {
+        this.writeChar('-');
+        !n = -n
+      };
+
+      biggestDigit = 1000000000000000000;
+      d = if (n >= biggestDigit) {
+        biggestDigit
+      } else {
+        maxDigit(n, 1)
+      };
+      this.writeDigits(n, d)
+    }
+  }
+
+  overridable mutable fun writeHex(n: Int, numDigits: Int): void {
+    for (i in Range(0, numDigits)) {
+      nibble = n.shr((numDigits - i - 1) * 4).and(0xF);
+      this.writeChar("0123456789abcdef"[nibble])
+    }
+  }
+
+  overridable mutable fun writeFloat(f: Float): void {
+    this.write(f.toString())
+  }
+
+  overridable mutable fun writeString(s: String): void {
+    this.writeIterator(s.getIter())
+  }
+
+  mutable fun write<T: Show>(a: T): void {
+    this.writeString(a.toString())
+  }
+
+  mutable fun writeIterator<T: mutable Iterator<Char>>(it: T): void {
+    it.each(this.writeChar)
+  }
+
+  // Write a string to out, escaping unprintable or non-ASCII characters.
+  mutable fun writeEscapedBytes<T: Sequence<Int>>(bytes: T): void {
+    for (b in bytes) {
+      invariant(b >= 0 && b <= 0xff, "Expected byte values.");
+
+      c = Char::fromCode(b);
+      if (c >= ' ' && c < '\x7F' && c != '\"' && c != '\\') {
+        this.writeChar(c)
+      } else {
+        this.write("\\x");
+        this.writeHex(b, 2)
+      }
+    }
+  }
+
+  mutable fun writeEscapedString(s: String): void {
+    this.writeEscapedBytes(UTF8String::make(s).utf8)
+  }
+
+  private static fun throwBadFormatString(why: String, fmt: String): _ {
+    sstr = mutable StringTextOutputStream{};
+    sstr.write("Invalid format string \"");
+    sstr.writeEscapedString(fmt);
+    sstr.write("\": ");
+    sstr.write(why);
+    invariant_violation(sstr.toString())
+  }
+
+  // This could be a building block for a printf where arguments stream
+  // themselves out, so e.g. ints don't allocate strings.
+
+  // private mutable fun _printf1<T: Show>(
+  //   fmt: String,
+  //   iter: StringIterator,
+  //   arg: T
+  // ): StringIterator {
+  //   if (iter.atEnd()) {
+  //     static::throwBadFormatString("Not enough arguments")
+  //   } else {
+  //     c = iter.current();
+  //     !iter = iter.next();
+
+  //     if (c != '%') {
+  //       this.writeChar(c);
+  //       this._printf1(fmt, iter, arg)
+  //     } else if (iter.atEnd()) {
+  //       static::throwBadFormatString("Incomplete format string.");
+  //     } else {
+  //       c2 = iter.current();
+  //       !iter = iter.next();
+
+  //       if (c2 == '%') {
+  //         this.writeChar('%')
+  //       } else {
+  //         arg.format(this, c2)
+  //       };
+  //       iter
+  //     }
+  //   }
+  // }
+
+  overridable mutable fun printf(fmt: String, args: Array<String>): void {
+    i = 0;
+    pct = false;
+
+    for (c in fmt) {
+      if (pct) {
+        c match {
+        | '%' -> this.writeChar('%')
+        | 's' ->
+          if (i == args.size()) {
+            static::throwBadFormatString("Not enough arguments.", fmt)
+          };
+          this.write(args[i]);
+          !i = i + 1
+        | 'r' ->
+          if (i == args.size()) {
+            static::throwBadFormatString("Not enough arguments.", fmt)
+          };
+          arg = args[i];
+          !i = i + 1;
+          this.writeChar('\"');
+          this.writeEscapedString(arg);
+          this.writeChar('\"')
+        | _ -> static::throwBadFormatString("Only %s and %r supported.", fmt)
+        };
+        !pct = false
+      } else {
+        c match {
+        | '%' -> !pct = true
+        | _ -> this.writeChar(c)
+        }
+      }
+    };
+
+    if (pct) {
+      static::throwBadFormatString("Incomplete format string.", fmt)
+    };
+    if (i != args.size()) {
+      static::throwBadFormatString("Too many arguments.", fmt)
+    }
+  }
+
+  // TODO: Allocating a string for each argument is wasteful if e.g. they
+  // are Ints. We can do better by extending Show with a method that writes
+  // the object to a TextOutputStream, defaulting to just
+  // out.writeString(this.toString()), but overridden for classes like Int
+  // that can do better.
+
+  mutable fun printf1<T1: Show>(fmt: String, a1: T1): void {
+    this.printf(fmt, Array[a1.toString()])
+  }
+  mutable fun printf2<T1: Show, T2: Show>(fmt: String, a1: T1, a2: T2): void {
+    this.printf(fmt, Array[a1.toString(), a2.toString()])
+  }
+  mutable fun printf3<T1: Show, T2: Show, T3: Show>(
+    fmt: String,
+    a1: T1,
+    a2: T2,
+    a3: T3,
+  ): void {
+    this.printf(fmt, Array[a1.toString(), a2.toString(), a3.toString()])
+  }
+  mutable fun printf4<T1: Show, T2: Show, T3: Show, T4: Show>(
+    fmt: String,
+    a1: T1,
+    a2: T2,
+    a3: T3,
+    a4: T4,
+  ): void {
+    this.printf(
+      fmt,
+      Array[a1.toString(), a2.toString(), a3.toString(), a4.toString()],
+    )
+  }
+  mutable fun printf5<T1: Show, T2: Show, T3: Show, T4: Show, T5: Show>(
+    fmt: String,
+    a1: T1,
+    a2: T2,
+    a3: T3,
+    a4: T4,
+    a5: T5,
+  ): void {
+    this.printf(
+      fmt,
+      Array[
+        a1.toString(),
+        a2.toString(),
+        a3.toString(),
+        a4.toString(),
+        a5.toString(),
+      ],
+    )
+  }
+  mutable fun printf6<
+    T1: Show,
+    T2: Show,
+    T3: Show,
+    T4: Show,
+    T5: Show,
+    T6: Show,
+  >(
+    fmt: String,
+    a1: T1,
+    a2: T2,
+    a3: T3,
+    a4: T4,
+    a5: T5,
+    a6: T6,
+  ): void {
+    this.printf(
+      fmt,
+      Array[
+        a1.toString(),
+        a2.toString(),
+        a3.toString(),
+        a4.toString(),
+        a5.toString(),
+        a6.toString(),
+      ],
+    )
+  }
+  mutable fun printf7<
+    T1: Show,
+    T2: Show,
+    T3: Show,
+    T4: Show,
+    T5: Show,
+    T6: Show,
+    T7: Show,
+  >(
+    fmt: String,
+    a1: T1,
+    a2: T2,
+    a3: T3,
+    a4: T4,
+    a5: T5,
+    a6: T6,
+    a7: T7,
+  ): void {
+    this.printf(
+      fmt,
+      Array[
+        a1.toString(),
+        a2.toString(),
+        a3.toString(),
+        a4.toString(),
+        a5.toString(),
+        a6.toString(),
+        a7.toString(),
+      ],
+    )
+  }
+}
+
+// Delegate key TextOutputStream methods to another stream, in part for speed.
+mutable base class DelegatingTextOutputStream{
+  wrappedStream: mutable TextOutputStream,
+} extends TextOutputStream {
+  overridable mutable fun writeChar(c: Char): void {
+    this.wrappedStream.writeChar(c)
+  }
+  overridable mutable fun writeString(s: String): void {
+    this.wrappedStream.writeString(s)
+  }
+  overridable mutable fun writeInt(n: Int): void {
+    this.wrappedStream.writeInt(n)
+  }
+  overridable mutable fun writeFloat(f: Float): void {
+    this.wrappedStream.writeFloat(f)
+  }
+  overridable mutable fun printf(fmt: String, args: Array<String>): void {
+    this.wrappedStream.printf(fmt, args)
+  }
+  overridable mutable fun flush(): void {
+    this.wrappedStream.flush()
+  }
+}
+
+// This is a growable String builder.
+//
+// Logically it accrues text into a Vector<Char> and concatenates all of them
+// into a String when you call toString().
+//
+// For efficiency, though, we don't literally implement it that way.
+// Instead we try to optimize around the fact that Char takes
+// four bytes while a typical String character takes 1 byte (using UTF-8).
+// So we occasionally flush the Chars into a String as we go, even before
+// toString() is called, as a form of compression. We exponentially increase
+// the number of characters for each String when we flush like this, to
+// keep the total number of Strings logarithmic in the number of characters.
+// When toString() is called, we concatenate all of these Strings.
+mutable class StringTextOutputStream{
+  private mutable charBuf: mutable Array<Char> = mutable Array[],
+  private mutable charBufSize: Int = 0,
+
+  // As we grow we periodically convert our Char array to a String
+  // because they are more compact.
+  private strBuf: mutable Vector<String> = mutable Vector[],
+
+  // Total chars in strBuf, but ignoring charBuf.
+  private mutable totalStrChars: Int = 0,
+} extends TextOutputStream {
+  mutable fun clear(): void {
+    this.strBuf.clear();
+    this.!charBufSize = 0;
+    this.!totalStrChars = 0
+  }
+
+  mutable fun writeChar(c: Char): void {
+    if (this.charBufSize == this.charBuf.size()) {
+      this.flushCharBuf()
+    };
+
+    this.charBuf.set(this.charBufSize, c);
+    this.!charBufSize = this.charBufSize + 1
+  }
+
+  mutable fun writeString(s: String): void {
+    if (
+      this.charBufSize != 0 ||
+      {
+        size = s.length();
+        if (size >= this.totalStrChars / 8) {
+          // Keep large strings as-is, as it preserves our exponential growth.
+          this.strBuf.push(s);
+          this.!totalStrChars = this.totalStrChars + size;
+          false
+        } else {
+          true
+        }
+      }
+    ) {
+      s.each(this.writeChar)
+    }
+  }
+
+  mutable fun toString(): String {
+    this.flushCharBuf();
+
+    buf = this.strBuf;
+    buf.size() match {
+    | 0 -> ""
+    | 1 -> buf[0]
+    | _ ->
+      s = this.strBuf.join("");
+      buf.clear();
+      buf.push(s);
+      s
+    }
+  }
+
+  // Dump any chars in this.charBuf into this.strBuf as a String.
+  private mutable fun flushCharBuf(): void {
+    size = this.charBufSize;
+    if (size != 0) {
+      this.!charBufSize = 0;
+
+      chars = if (size == this.charBuf.size()) {
+        this.charBuf
+      } else {
+        this.charBuf.take(size)
+      };
+
+      this.strBuf.push(String::fromChars(chars));
+      this.!totalStrChars = this.totalStrChars + size;
+    };
+
+    // Use an exponentially larger buffer each time, but with a low
+    // growth factor since Char is so much larger than a byte.
+    newSize = max(this.totalStrChars / 8, 32);
+    if (newSize > this.charBuf.size()) {
+      this.!charBuf = Array::mfill(newSize, '\0')
+    }
+  }
+
+  // Total number of chars written to this.
+  readonly fun size(): Int {
+    this.totalStrChars + this.charBufSize
+  }
+}
+
+// Line- or block-buffered output, e.g. for writing to stdout.
+//
+// TODO: A flushFunc that took Array[String] could handle some writev stuff.
+//
+// TODO: Make different classes hardcoded for linebuffered mode vs. not?
+mutable class BufferedTextOutputStream{
+  flushFunc: (String ~> void),
+  lineBuffered: Bool,
+  buf: mutable Array<Char>,
+  mutable size: Int,
+} extends TextOutputStream {
+  static fun make{
+    flushFunc: (String ~> void) = print_raw,
+    lineBuffered: Bool = false,
+    bufferSize: Int = 4096,
+  }: mutable BufferedTextOutputStream {
+    mutable BufferedTextOutputStream{
+      flushFunc,
+      lineBuffered,
+      buf => Array::mfill(max(bufferSize, 1), '\0'),
+      size => 0,
+    }
+  }
+
+  mutable fun writeChar(c: Char): void {
+    this.buf.set(this.size, c);
+    this.!size = this.size + 1;
+
+    if (this.size == this.buf.size() || (c == '\n' && this.lineBuffered)) {
+      this.flush()
+    }
+  }
+
+  // TODO: Override writeString for efficiency. Some thoughts:
+  //
+  // 1) If the buffer is empty, and the string >= the buffer size,
+  //    just flushFunc the string directly. And maybe even if the buffer is not
+  //    empty just concatenate and dump it. Or, in lineBuffered mode, just
+  //    dump until the last newline if that leaves a less-than-full buffer?
+  // 2) Otherwise, dump as much of the string as we can into the buffer
+  //    at once to avoid flushing on each newline in lineBuffered mode.
+  //    Make sure to flush on the *last* newline in the string in lineBuffered
+  //    mode though.
+
+  mutable fun flush(): void {
+    size = this.size;
+    if (size != 0) {
+      // Clear size now in case flushing re-enters.
+      this.!size = 0;
+      buf = this.buf;
+      this.flushFunc(String::fromChars(buf.slice(0, size)))
+    }
+  }
+}

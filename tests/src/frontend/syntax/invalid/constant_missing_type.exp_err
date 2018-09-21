@@ -1,0 +1,6 @@
+File "./syntax/invalid/constant_missing_type.sk", line 2, characters 13-13:
+Expected ':'. Found '='.
+1 | class C {} {
+2 |   const TID = 0;
+  |             ^
+3 | }

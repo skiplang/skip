@@ -1,0 +1,30 @@
+File "./typechecking/invalid/lambda_mutable_arg4.sk", line 17, characters 13-18:
+Invalid argument
+15 |   );
+16 |   move(lambda, "");
+17 |   doNothing(lambda, "");
+   |             ^^^^^^
+18 |   print_raw("fail")
+
+File "./typechecking/invalid/lambda_mutable_arg4.sk", line 1, characters 22-24:
+The type: Ref<_>
+1 | fun doNothing<T>(_f: Ref<T> -> void, _t: T): void {
+  |                      ^^^
+2 |   void
+
+File "./typechecking/invalid/lambda_mutable_arg4.sk", line 5, characters 17-30:
+Is not a subtype of: mutable Ref<String>
+3 | }
+4 |
+5 | fun move<T>(f: (mutable Ref<T>) -> void, t: T): void {
+  |                 ^^^^^^^^^^^^^^
+6 |   ref = mutable Ref(t);
+
+File "./typechecking/invalid/lambda_mutable_arg4.sk", line 5, characters 17-30:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Ref<String>
+3 | }
+4 |
+5 | fun move<T>(f: (mutable Ref<T>) -> void, t: T): void {
+  |                 ^^^^^^^^^^^^^^
+6 |   ref = mutable Ref(t);

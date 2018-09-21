@@ -1,0 +1,8 @@
+@test
+fun testIter(): void {
+  v = mutable Vector[];
+  Range(0, 5).each(i -> {
+    v.push(i)
+  });
+  assertTrue(v == freeze(Vector[0, 1, 2, 3, 4]))
+}

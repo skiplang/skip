@@ -1,0 +1,11 @@
+base class B1(a: void)
+base class B2 private (b: void)
+class Foo(x: void) extends B1, B2
+
+fun test<T: B1 & B2>(f: Foo, f2: T): void {
+  f.x;
+  _ = f with {x => void, a => void, b => void};
+  _ = f2 with {a => void};
+  _ = f2 with {a => void, b => void};
+  void
+}

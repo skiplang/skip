@@ -1,0 +1,10 @@
+base class Foo {
+  static fun abs(): void;
+  deferred static fun bad(): void {
+    static::abs()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

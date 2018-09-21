@@ -1,0 +1,95 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Convert Skip to JavaScript */
+/*****************************************************************************/
+
+module alias AP = ArgumentParser;
+
+module SkipJs;
+
+const help: String = "Usage: skip_to_js [--output <sk.js>] [--no-source-map] [--filter <filter>] list_of_sk_files";
+
+// Note: utilsConfigSchema is also parsed in skipUtils; it is included here
+// to distinguish those arguments from skip files in the `ParseResult.unknown`
+// field.
+const schema: Array<AP.Param> = Array[
+  AP.BoolParam{name => "help", negatable => false, help => "Show help"},
+  AP.StringParam{
+    name => "output",
+    help => "Write generated JavaScript to this file.",
+    default => Some("sk.js"),
+    validate => AP.nonEmpty,
+  },
+  AP.StringParam{
+    name => "filter",
+    // help => "...",
+    default => Some(""),
+  },
+  AP.BoolParam{
+    name => "no-source-map",
+    help => "Set to disable generation of source maps",
+    negatable => false,
+  },
+].concat(utilsConfigSchema);
+
+class SkipJS_arguments{
+  arg_files: Vector<String>,
+  arg_filter: String,
+  arg_output: String,
+  arg_source_map: Bool,
+}
+
+fun parse_args(): SkipJS_arguments {
+  AP.parse(schema, arguments()) match {
+  | Success(results) ->
+    if (results.getBool("help")) {
+      print_string(AP.help(schema));
+      exit(0)
+    };
+    if (results.unknown.isEmpty()) {
+      usage("No source files provided.");
+    };
+    SkipJS_arguments{
+      arg_files => results.unknown,
+      arg_filter => results.getString("filter"),
+      arg_output => results.getString("output"),
+      arg_source_map => !results.getBool("no-source-map"),
+    }
+  | Failure(exn) -> usage(exn.getMessage())
+  };
+}
+
+fun usage(msg: String): _ {
+  print_error_ln(msg.trim());
+  print_error_ln(help);
+  print_error_ln(AP.help(schema));
+  exit(1)
+}
+
+module end;
+
+untracked fun main(): void {
+  args = SkipJs.parse_args();
+  files = List::createFromItems(
+    SkipProject.getFilesForTargets(
+      SkipProject.nonnativePreludeBindings,
+      args.arg_files.collect(Vector),
+    ),
+  );
+  prog = SkipMain.compile(files);
+  prog1 = {
+    if (args.arg_filter == "") {
+      SkipTranscompileJs.compile(prog)
+    } else {
+      SkipTranscompileJs.compile_filter(prog, args.arg_filter)
+    }
+  };
+  _ = SkipJsIstPp.to_files(args.arg_output, prog1, files, args.arg_source_map);
+  void
+}

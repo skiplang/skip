@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_in_paren_expression.sk", line 2, characters 6-7:
+'.!' in non-lvalue
+1 | fun main(): String {
+2 |   (y.!x)
+  |      ^^
+3 | }

@@ -1,0 +1,4 @@
+File "./syntax/invalid/class_constructor_final.sk", line 1, characters 11-15:
+Concrete classes already have final constructors
+1 | class Foo final {f: Int}
+  |           ^^^^^

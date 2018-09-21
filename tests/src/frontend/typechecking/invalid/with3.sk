@@ -1,0 +1,7 @@
+class Foo(x: Int, y: String)
+
+fun main(): void {
+  foo = Foo(42, "hello");
+  !foo = foo with {x => "Fail"};
+  print_raw(foo.x)
+}

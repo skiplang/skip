@@ -1,0 +1,26 @@
+@no_inline
+fun makeGen(): mutable Iterator<Int> {
+  // Make some crazy vector that becomes part of the generator's coroutine
+  // state, to make sure it doesn't get GC'd away.
+  vec = mutable Vector[];
+  loop {
+    vec.push(Array::mfill(vec.size() * 4 + 1, vec.size()));
+
+    size = 0;
+    for (a in vec) {
+      !size = size + a[0]
+    };
+
+    localGC();
+
+    yield size;
+  }
+}
+
+fun main(): void {
+  gen = makeGen();
+
+  for (_ in Range(0, 100)) {
+    print_string(`${gen.next().fromSome()}`);
+  }
+}

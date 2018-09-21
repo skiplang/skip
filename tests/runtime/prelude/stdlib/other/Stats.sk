@@ -1,0 +1,66 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Stats;
+
+// numeric average
+@synonym("average")
+fun avg<T: Number>(s: readonly Sequence<T>): ?Float {
+  if (s.size() == 0) None() else {
+    Some(s.reduce((acc, x) -> acc + x.toFloat(), 0.0) / (s.size().toFloat()))
+  }
+}
+
+// numeric median
+fun median<T: Number>(s: readonly Sequence<T>): ?Float {
+  v = Vector::mcreateFromItems(s);
+  v.sort();
+  size = v.size();
+  if (size == 0) {
+    None()
+  } else if (size % 2 == 0) {
+    // average of two middle values
+    lower = v[(size / 2) - 1].toFloat();
+    upper = v[size / 2].toFloat();
+    Some((lower + upper) / 2.0)
+  } else {
+    // middle
+    Some(v[size / 2].toFloat())
+  }
+}
+
+// standard deviation with option to give an already calculated average
+@synonym("standardDeviation")
+fun stddev<T: Number>(s: readonly Sequence<T>): ?Float {
+  Stats.avg(s) match {
+  | None() -> None()
+  | Some(avg) ->
+    normalize = (x) ~> Math.pow((x.toFloat() - avg), 2.0);
+    Some(
+      Math.sqrt(
+        s.reduce((acc, x) -> acc + normalize(x), 0.0) / (s.size().toFloat()),
+      ),
+    )
+  }
+}
+
+// Remove outlier values (top and bottom fraction of
+// values given by outlierFraction)
+// example: outlierFraction = 0.2 => top and bottom 20% of values are removed
+fun removeOutliers<T: Orderable>(
+  s: readonly Sequence<T>,
+  outlierFraction: Float,
+): Sequence<T> {
+  invariant(outlierFraction < 0.5, "Outlier fraction must be less than 0.5");
+  size = s.size();
+  numIndeces = (size.toFloat() * outlierFraction).toInt();
+  firstN = size - numIndeces;
+  lastN = size - (2 * numIndeces) - 1;
+  s.sorted().values().take(firstN).drop(lastN).collect(Vector)
+}
+
+module end;

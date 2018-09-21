@@ -1,0 +1,15 @@
+mutable class Foo(mutable dummy: String)
+
+base class Bar {
+  fun get(): Foo {
+    foo = mutable Foo("");
+    this.getWithMutableFoo(foo);
+    freeze(foo)
+  }
+
+  protected fun getWithMutableFoo(mutable Foo): void;
+}
+
+fun main(): void {
+  void
+}

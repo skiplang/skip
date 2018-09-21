@@ -1,0 +1,2 @@
+base class X
+trait Y extends X

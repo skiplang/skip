@@ -1,0 +1,21 @@
+@debug
+async memoized fun combineInt(n1: Int, n2: Int): ^Int {
+  print_string("Combine Int: " + n1 + " + " + n2);
+  n1 + n2 * 3
+}
+
+async fun asyncMain(): ^void {
+  a = combineInt(1, 2);
+  b = combineInt(1, 2);
+  c = combineInt(5, 6);
+
+  n1 = await a;
+  n2 = await b;
+  n3 = await c;
+
+  print_string(`${n1} ${n2} ${n3} ${n1 + n2 + n3}`);
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

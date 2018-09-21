@@ -1,0 +1,22 @@
+base class Cont<-T>
+class Foo<T>(x: T) extends Cont<T>
+
+base class B
+class A() extends B {
+  fun foo(): String {
+    "Fail"
+  }
+}
+class C() extends B
+
+fun main(): void {
+  b: B = C();
+  f: Cont<B> = Foo(b);
+  f2: Cont<A> = f;
+  print_raw(
+    f2 match {
+    | Foo(x) -> x.foo()
+    // Boom, x is not an A
+    },
+  )
+}

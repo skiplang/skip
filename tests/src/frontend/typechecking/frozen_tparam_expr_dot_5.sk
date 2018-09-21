@@ -1,0 +1,8 @@
+mutable class Foo(v: mutable Array<mutable Ref<Int>>)
+fun yes<T: mutable Foo>(x: T): Array<Ref<Int>> {
+  freeze(x).v
+}
+
+fun main(): void {
+  print_string("Pass")
+}

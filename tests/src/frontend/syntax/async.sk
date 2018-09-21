@@ -1,0 +1,11 @@
+async fun asyncMain(): ^void {
+  print_raw(await foo())
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}
+
+async fun foo(): ^String {
+  "1\n"
+}

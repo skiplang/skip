@@ -1,0 +1,7 @@
+fun f(): () {
+  void
+}
+
+fun main(): void {
+  _ = f();
+}

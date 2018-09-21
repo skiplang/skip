@@ -1,0 +1,4 @@
+fun main(): void {
+  (x, _y): (String, Int) = ("Pass\n", 0);
+  print_raw(x)
+}

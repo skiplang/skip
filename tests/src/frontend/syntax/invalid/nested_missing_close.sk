@@ -1,0 +1,14 @@
+fun main(): String {
+  List[
+    {
+      (
+        x match {
+        | (a, (b, c)) -> {
+          List[
+            e
+          ]
+        }
+      )
+    }
+  ]
+}

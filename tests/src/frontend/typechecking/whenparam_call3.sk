@@ -1,0 +1,13 @@
+base class Foo<T>{x: T} {
+  fun hello[T: Test.MixedInt](): String;
+}
+
+class Bar<T> extends Foo<T> {
+  fun hello[T: Test.MixedScalar](): String {
+    this.x.toString()
+  }
+}
+
+fun main(): void {
+  print_raw(Bar{x => Test.MixedString("Pass\n")}.hello())
+}

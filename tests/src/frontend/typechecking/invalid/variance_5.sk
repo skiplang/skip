@@ -1,0 +1,36 @@
+base class Parent final ()
+class ChildA extends Parent {
+  fun getIntA(): Int {
+    42
+  }
+}
+class ChildB extends Parent {
+  fun getIntB(): Int {
+    43
+  }
+}
+
+class ClosureBreaker<Tin, Tout>(x: Fun_<Tin, Tout>) {
+  fun get(): Fun_<Tin, Tout> {
+    this.x
+  }
+}
+
+fun child_to_parent(x: Fun_<ChildA, Int>): Fun_<Parent, Int> {
+  ClosureBreaker(x).get()
+}
+
+base class Fun_<T1, T2> {
+  fun apply(T1): T2;
+}
+
+class MyFun_() extends Fun_<ChildA, Int> {
+  fun apply(c: ChildA): Int {
+    c.getIntA()
+  }
+}
+
+fun main(): void {
+  f = child_to_parent(MyFun_());
+  print_raw(f.apply(ChildB()).toString())
+}

@@ -1,0 +1,54 @@
+module alias A = M;
+
+module M;
+
+class NamedParameters{x: Int} {}
+
+const CONST: Int = 42;
+
+class .O() {}
+fun .f(): void {
+  void
+}
+type .T = O;
+trait .Trait() {}
+
+module end;
+
+class .O() {}
+fun .f(): void {
+  void
+}
+type .T = O;
+trait .Trait() {}
+
+class PositionalParameters(s: String) {
+  fun instanceMethod(): void {
+    void
+  }
+  static fun staticMethod{}: void {
+    void
+  }
+
+  type TypeConstant = Int;
+}
+
+class Base() {
+  // Class Level Comment
+  children =
+  | A()
+  | B()
+  | C()
+}
+
+// Top Level Comment
+fun main(): void {
+  void
+}
+
+type TypeAlias = Int;
+
+// parse errors here
+fun missingParams: void {
+  void
+}

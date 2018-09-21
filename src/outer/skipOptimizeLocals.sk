@@ -1,0 +1,926 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+//*****************************************************************************
+// Optimize local variables in the OuterIst
+//*****************************************************************************
+
+module alias O = OuterIst;
+module alias OU = SkipOuterIstUtils;
+module alias AU = SkipAstUtils;
+
+module SkipOptimizeLocals;
+
+// The OuterIst contains several sub-optimal constructs with local variables.
+//  - writes to locals which are never read
+//  - aliasing of local variables which are never themselves later modified
+//  - writes to locals which are only ever read a single time in the next statement
+//    - specifically when the 'read' is a return statement. This optimization
+//      is required for the later tail call optimization pass to succeed.
+//    - member access on a local.
+//
+// The presence of locals captured by lambdas adds some subtlety:
+//  - a write to a local can only be considered dead iff:
+//    - it is never read after the current location in the function
+//    - it is never read after the current location in an outer scope.
+//      Currently we simplify this to, variable is not captured from an outer scope.
+//    - it is never read after the current location in a nested lambda
+//      Currently we simplify this to, variable is not captured by any nested lambda.
+//  - a variable is considered modifiable after the current location iff:
+//    - there are any direct writes in the current statement tail
+//    - the variable might be written by an inner lambda after the current location
+//      Currently simplified to written by any inner lambda
+//    - the variable might be written by an outer scope after the current location
+//      Currently simplified to written by any outer scope
+//  - a variable is considered read after the current location iff:
+//    - there are direct reads in the current statement tail
+//    - the variable might be read by an outer scope or an inner lambda
+//  - aliased assignments can be replaced, iff:
+//    - RHS is not modifiable after the current location
+//    - LHS is not modifiable after the current location
+//    - LHS is not read after the current location
+//
+
+// This pass also does the following:
+//  - removes unreachable statements
+//  - removes parts of expressions which have no side effects and are not observed
+
+// This pass traverses Statements backwards, building up a Context which
+// accumulates state about the statements already encountered.
+//
+class Context{
+  // The optimized statements
+  result: List<O.Stmt>,
+
+  // Tracks if the statement after the current one is of the form 'Return (local)'
+  local_to_return: ?String,
+
+  // Local variables captured by nested Lambda expressions
+  captured_bindings: SMap<O.BindingInfo>,
+
+  // Local variables which this function captures from an outer scope
+  outer_bindings: SMap<O.BindingInfo>,
+
+  // The sets of local variables which are read/written after the current statement.
+  // Note that tail reads/writes cannot always derived from this.result
+  // In particular, this occurs when recursing into control flow statements.
+  tail_reads: SSet,
+  tail_writes: SSet,
+  jump_label_contexts: SMap<Context>,
+  in_loop: Bool,
+}
+
+fun create_context(s: O.Stmt, outer_bindings: SMap<O.BindingInfo>): Context {
+  Context{
+    result => List[],
+    local_to_return => None(),
+    captured_bindings => OU.captured_locals_of_statement(s),
+    outer_bindings,
+    tail_reads => SSet[],
+    tail_writes => SSet[],
+    jump_label_contexts => SortedMap[],
+    in_loop => false,
+  }
+}
+
+fun create_top_level_context(s: O.Stmt): Context {
+  create_context(s, SortedMap[])
+}
+
+fun create_lambda_context(
+  body: O.Stmt,
+  outer_bindings: SMap<O.Binding>,
+): Context {
+  create_context(body, outer_bindings.map((_, b) ~> b.info))
+}
+
+fun create_initializer_context(e: O.Expr): Context {
+  s = O.SingleExpr(e);
+  Context{
+    result => List[],
+    local_to_return => None(),
+    captured_bindings => OU.captured_locals_of_statement(s),
+    outer_bindings => SortedMap[],
+    tail_reads => reads_of_expr(e),
+    tail_writes => writes_of_stmt(s),
+    jump_label_contexts => SortedMap[],
+    in_loop => false,
+  }
+}
+
+fun make_unreachable_context(context: Context): Context {
+  context with {
+    result => List[],
+    local_to_return => None(),
+    tail_reads => SSet[],
+    tail_writes => SSet[],
+  }
+}
+
+fun is_name_captured(context: Context, name: String): Bool {
+  context.captured_bindings.containsKey(name)
+}
+
+// Returns true if the given local is used in any function other than the current one.
+// Specifically, if the variable is captured by a nested lambda, or was defined in
+// an outer scope.
+fun is_name_captured_or_outer(context: Context, name: String): Bool {
+  context.outer_bindings.containsKey(name) || is_name_captured(context, name)
+}
+
+// Returns true if the given local is read after the current location in the
+// current function. Does not track reads in lambdas.
+fun is_name_read_local(context: Context, name: String): Bool {
+  context.tail_reads.contains(name)
+}
+
+// Returns true if the given local is written after the current location in the
+// current function. Does not track writes in lambdas.
+fun is_name_written_local(context: Context, name: String): Bool {
+  context.tail_writes.contains(name)
+}
+
+// Returns true if the given local is written in a contained lambda.
+fun is_name_written_captured(context: Context, name: String): Bool {
+  context.captured_bindings.maybeGet(name) match {
+  | Some(O.BindingInfo{updated => true}) -> true
+  | _ -> false
+  }
+}
+
+// Returns true if the given local is read after the current location.
+fun is_name_read(context: Context, name: String): Bool {
+  is_name_read_local(context, name) ||
+    is_name_captured_or_outer(context, name) // TODO: Can we get more precise for captured and outer bindings?
+}
+
+// Returns true if the given local is written after the current location.
+fun is_name_written(context: Context, name: String): Bool {
+  is_name_written_local(context, name) || // TODO: Can we get more precise for captured and outer bindings?
+    is_name_captured_or_outer(context, name)
+}
+
+fun binding_info_of_context(context: Context, name: String): O.BindingInfo {
+  O.BindingInfo{
+    read => is_name_read_local(context, name),
+    updated => is_name_written_local(context, name) ||
+      is_name_written_captured(context, name),
+    captured => is_name_captured(context, name),
+  }
+}
+
+//*****************************************************************************
+// Returns true if a local variable is always immediately returned in
+// the current context.
+//
+// Enables replacing:
+//   $t = e; return $t
+// with:
+//   return e
+//
+// Note that this optimization works backwards throught control flow.
+// For example:
+//   if (c) { $t = e1 } else { $t = e2 }; return $t
+// will get optimized to:
+//   if (c) { return e1 } else { return e2 }
+//
+// Note there can be no side-effecting statements between the assignment
+// and return; and also if $t is captured by a lambda, then the optimization.
+// is disabled.
+//*****************************************************************************
+fun id_should_be_return(context: Context, id: String): Bool {
+  context.local_to_return.isSome() && id == context.local_to_return.fromSome()
+}
+
+//*****************************************************************************
+// Determine the sets of reads/writes in a Statement or Expression
+//*****************************************************************************
+fun add_string(result: mutable Ref<SSet>, name: String): OU.IterationControl {
+  result.!value = result.value.set(name);
+  OU.Continue()
+}
+
+fun add_name(result: mutable Ref<SSet>, name: O.Name): OU.IterationControl {
+  add_string(result, name.id)
+}
+
+fun add_binding(
+  result: mutable Ref<SSet>,
+  binding: O.Binding,
+): OU.IterationControl {
+  add_name(result, binding.name)
+}
+
+fun add_local_var(
+  result: mutable Ref<SSet>,
+  local_var: O.LocalVar,
+): OU.IterationControl {
+  add_name(result, local_var.name)
+}
+
+fun read_of_expr_rec(result: mutable Ref<SSet>): O.Expr -> OU.IterationControl {
+  expr ->
+    expr.expr match {
+    | O.Local(name) -> add_name(result, name)
+    | O.Lambda(_, _, captured, _, _) ->
+      for (binding in captured) {
+        _ = add_binding(result, binding)
+      };
+      OU.NoChildren()
+    | _ -> OU.Continue()
+    }
+}
+
+fun read_of_stmt_rec(result: mutable Ref<SSet>): O.Stmt -> OU.IterationControl {
+  stmt ->
+    stmt match {
+    | O.AssignField(local_var, _, _, _) -> add_local_var(result, local_var)
+    | _ -> OU.Continue()
+    }
+}
+
+// The set of local vars which are read in the given expression
+fun reads_of_expr(expr: O.Expr): SSet {
+  result = mutable Ref(SSet[]);
+  _ = OU.iterate_expression(
+    read_of_expr_rec(result),
+    read_of_stmt_rec(result),
+    expr,
+  );
+  result.value
+}
+
+// The set of local vars which are read in the given statement
+fun reads_of_stmt(stmt: O.Stmt): SSet {
+  result = mutable Ref(SSet[]);
+  _ = OU.iterate_stmt(read_of_expr_rec(result), read_of_stmt_rec(result), stmt);
+  result.value
+}
+
+// The set of local vars which are written in a given statement
+fun writes_of_stmt(stmt: O.Stmt): SSet {
+  result = mutable Ref(SSet[]);
+  _ = OU.iterate_stmt(
+    // Note that expressions have no writes (outside of nested lambdas)
+    expr -> {
+      expr.expr match {
+      | _ -> OU.NoChildren()
+      }
+    },
+    stmt -> {
+      stmt match {
+      | O.Assign(lv, _) -> add_local_var(result, lv)
+      | O.Bind(binding, Some _) -> add_binding(result, binding)
+      | _ -> OU.Continue()
+      }
+    },
+    stmt,
+  );
+  result.value
+}
+
+// Make a context for a return a of a value
+fun make_return_context(context: Context, return_expr: O.Expr): Context {
+  context with {
+    local_to_return => return_expr.expr match {
+    | O.Local(n) ->
+      local = n.id;
+      if (is_name_captured_or_outer(context, local)) None() else Some(local)
+    | _ -> None()
+    },
+    result => return_expr.expr match {
+    | O.Unreachable() -> List[]
+    | _ -> OU.stmt_to_seq(O.Return(return_expr))
+    },
+    tail_reads => reads_of_expr(return_expr),
+    tail_writes => SSet[], // exprs cannot write outside of lambdas
+  }
+}
+
+fun expr_is_default_arg(expr: O.Expr): Bool {
+  expr.expr match {
+  | O.DefaultArg() -> true
+  | _ -> false
+  }
+}
+
+fun trim_expression_to_effectful_statement(expr: O.Expr): O.Stmt {
+  expr.expr match {
+  | O.Unreachable()
+  | O.ELiteral(_)
+  | O.Const(_)
+  | O.Local(_)
+  | O.Lambda _
+  | O.Classname _ ->
+    OU.make_empty_statement
+
+  | O.Dot(di)
+  | O.StaticDot(di) ->
+    trim_expression_to_effectful_statement(di.obj_expr)
+
+  | O.Freeze(e)
+  | O.GetClass(e)
+  | O.Cast(_, e) ->
+    trim_expression_to_effectful_statement(e)
+
+  | O.EArray(exprs) -> trim_expressions_to_effectful_statement(exprs)
+
+  | O.Object(_, _, params) if (!params.any(expr_is_default_arg)) ->
+    trim_expressions_to_effectful_statement(params.toArray())
+
+  | O.DynamicConstruction(
+    obj,
+    _,
+    _,
+    params,
+  ) if (!params.any(expr_is_default_arg)) ->
+    trim_expressions_to_effectful_statement(Array[obj].concat(params.toArray()))
+
+  | O.With(obj, with_updates) ->
+    trim_expressions_to_effectful_statement(
+      Array[obj].concat(
+        with_updates.values().map(wu ~> wu.expr).collect(Array),
+      ),
+    )
+
+  | O.Object _
+  | O.DynamicConstruction _
+  | O.Call(_, _)
+  | O.FunCall(_, _, _)
+  | O.MethodCall(_, _)
+  | O.StaticCall(_, _)
+  | O.Await(_)
+  | O.Async(_, _) ->
+    O.SingleExpr(expr)
+
+  | O.DefaultArg() ->
+    invariant_violation(
+      "Should not encounter default args as they may have side effects",
+    )
+  }
+}
+
+fun trim_expressions_to_effectful_statement(exprs: Array<O.Expr>): O.Stmt {
+  OU.flatten_statement_sequence(
+    List::createFromItems(exprs.map(trim_expression_to_effectful_statement)),
+  )
+}
+
+fun trim_statement_to_side_effects(stmt: O.Stmt): O.Stmt {
+  stmt match {
+  | O.SingleExpr(e) -> trim_expression_to_effectful_statement(e)
+  | O.Return _ ->
+    invariant_violation("Use make_return_context for return statments")
+  | O.JumpTo _ -> invariant_violation("JumpTo must be handled specially")
+  | O.Seq _ ->
+    invariant_violation("Seq should be handled by optimize_statements")
+  // TODO: Could check for If/Switch/TypeSwitch with all empty branches
+  //  and optimize down to the side effects of the condition expression.
+  | _ -> stmt
+  }
+}
+
+// Add a statement to the current context.
+// Updates result, tail_reads, and tail_writes.
+// Only works for non-control flow statements.
+fun make_statement_context(context: Context, stmt: O.Stmt): Context {
+  optimized_stmt = trim_statement_to_side_effects(stmt);
+
+  if (OU.is_statement_empty(optimized_stmt)) {
+    context
+  } else if (OU.is_statement_end_reachable(optimized_stmt)) {
+    context with {
+      local_to_return => None(),
+      result => OU.prepend_stmt_to_list(optimized_stmt, context.result),
+      tail_reads => context.tail_reads.union(reads_of_stmt(optimized_stmt)),
+      tail_writes => context.tail_writes.union(writes_of_stmt(optimized_stmt)),
+    }
+  } else {
+    context with {
+      local_to_return => None(),
+      result => OU.stmt_to_seq(optimized_stmt),
+      tail_reads => reads_of_stmt(optimized_stmt),
+      tail_writes => writes_of_stmt(optimized_stmt),
+    }
+  }
+}
+
+fun context_to_stmt(context: Context): O.Stmt {
+  OU.make_statement_of_list(context.result)
+}
+
+fun maybe_context_to_stmt(context_opt: ?Context): ?O.Stmt {
+  context_opt.map(context_to_stmt)
+}
+
+fun recurse_stmt(new_id: () -> Int, context: Context, stmt: O.Stmt): Context {
+  optimize_statement_rec(new_id, stmt, context with {result => List[]})
+}
+
+fun maybe_recurse_stmt(
+  new_id: () -> Int,
+  context: Context,
+  stmt_opt: ?O.Stmt,
+): ?Context {
+  stmt_opt.map(stmt -> recurse_stmt(new_id, context, stmt))
+}
+
+fun join_contexts(first: Context, second: Context): Context {
+  Context{
+    local_to_return => None(),
+    result => List[],
+    tail_reads => first.tail_reads.union(second.tail_reads),
+    tail_writes => first.tail_writes.union(second.tail_writes),
+    captured_bindings => first.captured_bindings,
+    outer_bindings => first.outer_bindings,
+    jump_label_contexts => {
+      invariant(
+        first.jump_label_contexts.size() <= second.jump_label_contexts.size(),
+        "second context must contain more jump blocks",
+      );
+      second.jump_label_contexts
+    },
+    in_loop => {
+      invariant(
+        first.in_loop == second.in_loop,
+        "ICE one label in loop, one not",
+      );
+      second.in_loop
+    },
+  }
+}
+
+// Adds an expression whose value is consumed to the Context.
+fun add_expr_to_context(context: Context, expr: O.Expr): Context {
+  context with {
+    local_to_return => None(),
+    tail_reads => context.tail_reads.union(reads_of_expr(expr)),
+    // NOTE: exprs cannot write outside of nested lambdas
+  }
+}
+
+// Caller is responsible for updating all members of context other than result.
+fun prepend_stmt_to_context_result(
+  context: Context,
+  result: List<O.Stmt>,
+  stmt: O.Stmt,
+): Context {
+  context with {
+    result => if (OU.is_statement_end_reachable(stmt)) {
+      OU.prepend_stmt_to_list(stmt, result)
+    } else {
+      OU.stmt_to_seq(stmt)
+    },
+  }
+}
+
+fun maybe_prepend_list<T>(values: List<T>, value_opt: ?T): List<T> {
+  value_opt match {
+  | None() -> values
+  | Some(value) -> List.Cons(value, values)
+  }
+}
+
+fun optimize_bind(
+  context: Context,
+  binding: O.Binding,
+  init_opt: ?O.Expr,
+): Context {
+  name = binding.name.id;
+  mk_bind = () -> {
+    info = binding_info_of_context(context, name);
+    make_statement_context(
+      context,
+      O.Bind(OU.set_info_of_binding(binding, info), init_opt),
+    )
+  };
+
+  init_opt match {
+  | Some(init) ->
+    if (id_should_be_return(context, name)) {
+      make_return_context(context, init)
+    } else if (!is_name_read(context, name)) {
+      make_statement_context(context, O.SingleExpr(init))
+    } else {
+      mk_bind()
+    }
+
+  | None() -> if (!is_name_written(context, name)) context else mk_bind()
+  }
+}
+
+// TODO: Remove local from context.tail_reads when it is not read in value.
+fun optimize_assign(
+  context: Context,
+  local: O.LocalVar,
+  value: O.Expr,
+): Context {
+  name = local.name.id;
+  mk_assign = () -> make_statement_context(context, O.Assign(local, value));
+  if (context.in_loop) return mk_assign();
+
+  if (id_should_be_return(context, name)) {
+    make_return_context(context, value)
+  } else if (!is_name_read(context, name)) {
+    make_statement_context(context, O.SingleExpr(value))
+  } else {
+    mk_assign()
+  }
+}
+
+fun optimize_statements(
+  new_id: () -> Int,
+  ss: List<O.Stmt>,
+  context: Context,
+): Context {
+  ss.foldr((s, c) -> optimize_statement_rec(new_id, s, c), context)
+}
+
+fun optimize_if(
+  new_id: () -> Int,
+  context: Context,
+  e: O.Expr,
+  st: O.Stmt,
+  sf: O.Stmt,
+): Context {
+  trueContext = recurse_stmt(new_id, context, st);
+  falseContext = recurse_stmt(new_id, context, sf);
+
+  prepend_stmt_to_context_result(
+    add_expr_to_context(join_contexts(trueContext, falseContext), e),
+    context.result,
+    O.If(e, context_to_stmt(trueContext), context_to_stmt(falseContext)),
+  )
+}
+
+fun optimize_loop(
+  new_id: () -> Int,
+  context: Context,
+  pos: FileRange,
+  body: O.Stmt,
+): Context {
+  stmtContext = context with {local_to_return => None(), in_loop => true};
+  resultContext = recurse_stmt(new_id, stmtContext, body);
+  prepend_stmt_to_context_result(
+    resultContext with {in_loop => context.in_loop},
+    context.result,
+    O.LoopForever(pos, context_to_stmt(resultContext)),
+  )
+}
+
+fun optimize_switch(
+  new_id: () -> Int,
+  context: Context,
+  e: O.Expr,
+  sbl: List<O.SwitchBranch>,
+  d: ?O.Stmt,
+): Context {
+  optimize_branch = sb -> {
+    branch_context = recurse_stmt(new_id, context, sb.action);
+    (O.SwitchBranch(sb.cases, context_to_stmt(branch_context)), branch_context)
+  };
+  optimized_branches = sbl.map(optimize_branch);
+  default_context = maybe_recurse_stmt(new_id, context, d);
+  contexts = maybe_prepend_list(
+    optimized_branches.map(p -> p.i1),
+    default_context,
+  );
+
+  prepend_stmt_to_context_result(
+    add_expr_to_context(
+      contexts.foldl(join_contexts, make_unreachable_context(context)),
+      e,
+    ),
+    context.result,
+    O.Switch(
+      e,
+      optimized_branches.map((p: (O.SwitchBranch, Context)) -> p.i0),
+      maybe_context_to_stmt(default_context),
+    ),
+  )
+}
+
+fun optimize_type_switch(
+  new_id: () -> Int,
+  context: Context,
+  e: O.Expr,
+  tsbl: List<O.TypeSwitchBranch>,
+  d: ?O.Stmt,
+): Context {
+  optimize_branch = tsb -> {
+    branch_context = recurse_stmt(new_id, context, tsb.action);
+    (
+      O.TypeSwitchBranch(tsb.cases, context_to_stmt(branch_context)),
+      branch_context,
+    )
+  };
+  optimized_branches = tsbl.map(optimize_branch);
+  default_context = maybe_recurse_stmt(new_id, context, d);
+  contexts = maybe_prepend_list(
+    optimized_branches.map(p -> p.i1),
+    default_context,
+  );
+
+  prepend_stmt_to_context_result(
+    add_expr_to_context(
+      contexts.foldl(join_contexts, make_unreachable_context(context)),
+      e,
+    ),
+    context.result,
+    O.TypeSwitch(
+      e,
+      optimized_branches.map((p: (O.TypeSwitchBranch, Context)) -> p.i0),
+      maybe_context_to_stmt(default_context),
+    ),
+  )
+}
+
+fun add_jump_label_to_context(context: Context, label: O.Name): Context {
+  context with {
+    jump_label_contexts => context.jump_label_contexts.set(label.id, context),
+  }
+}
+
+fun optimize_jump_block(
+  new_id: () -> Int,
+  context: Context,
+  lstmts: List<O.LabeledStmt>,
+  loopb: Bool,
+): Context {
+  // local might not be defined in all blocks
+  stmtContext = if (loopb) {
+    context with {local_to_return => None()}
+  } else {
+    context
+  };
+
+  // Must traverse statements in reverse order, so that all jump destination
+  // contexts are available before they are jumped to.
+  (conEnd, revOptLstmts) = lstmts
+    .reversed()
+    .map_foldl(
+      (conStart, lstmt) -> {
+        (label, stmt) = (lstmt.label, lstmt.stmt);
+
+        // Labelled statements fall through to the end of the JumpBlock
+        // However, we need the accumulated jump_label_contexts for jumps
+        // to labels later in the block.
+        conRec = stmtContext with {
+          jump_label_contexts => conStart.jump_label_contexts,
+        };
+        conEnd = recurse_stmt(new_id, conRec, stmt);
+        optStmt = context_to_stmt(conEnd);
+        conNext = join_contexts(conStart, conEnd);
+        (
+          add_jump_label_to_context(conNext, label),
+          O.LabeledStmt(label, optStmt),
+        )
+      },
+      context,
+    );
+
+  // ... and that jump labels cannot escape the containing block
+  conNext = conEnd with {jump_label_contexts => context.jump_label_contexts};
+  prepend_stmt_to_context_result(
+    conNext,
+    context.result,
+    O.JumpBlock(revOptLstmts.reversed(), loopb),
+  )
+}
+
+fun optimize_try_catch(
+  new_id: () -> Int,
+  context: Context,
+  pos: FileRange,
+  body: O.Stmt,
+  caught_binding: O.Binding,
+  catch_clause: O.Stmt,
+): Context {
+  bodyContext = recurse_stmt(new_id, context, body);
+  catchContext = recurse_stmt(new_id, context, catch_clause);
+
+  prepend_stmt_to_context_result(
+    join_contexts(bodyContext, catchContext),
+    context.result,
+    O.TryCatch(
+      pos,
+      context_to_stmt(bodyContext),
+      OU.set_info_of_binding(
+        caught_binding,
+        binding_info_of_context(context, caught_binding.name.id),
+      ),
+      context_to_stmt(catchContext),
+    ),
+  )
+}
+
+fun optimize_jump_to(context: Context, destinationName: O.Name): Context {
+  destination = destinationName.id;
+  destinationContext = context.jump_label_contexts[destination];
+  context with {
+    local_to_return => destinationContext.local_to_return,
+    result => OU.stmt_to_seq(O.JumpTo(destinationName)),
+    tail_reads => destinationContext.tail_reads,
+    tail_writes => destinationContext.tail_writes,
+  }
+}
+
+// TODO: Handle lambdas and async in nested expressions
+fun optimize_statement_rec(
+  new_id: () -> Int,
+  s: O.Stmt,
+  context: Context,
+): Context {
+  // print_error_ln("optimize_statement_rec");
+  // sk_sset_iter(context.tail_reads, print_error_ln);
+  // print_error_ln(BufferedPrinter.pp_to_string(SkipOuterIstPp.stmt, s));
+
+  s match {
+  | O.Bind(binding, init_opt) -> optimize_bind(context, binding, init_opt)
+  | O.Assign(local, value) -> optimize_assign(context, local, value)
+  | O.Seq(ss) -> optimize_statements(new_id, ss, context)
+  | O.If(e, st, sf) -> optimize_if(new_id, context, e, st, sf)
+  | O.Switch(e, sbl, d) -> optimize_switch(new_id, context, e, sbl, d)
+  | O.TypeSwitch(e, tsbl, d) ->
+    optimize_type_switch(new_id, context, e, tsbl, d)
+  | O.JumpBlock(lstmts, loopb) ->
+    optimize_jump_block(new_id, context, lstmts, loopb)
+  | O.TryCatch(pos, body, caught_binding, catch_clause) ->
+    optimize_try_catch(new_id, context, pos, body, caught_binding, catch_clause)
+  | O.AssignField _
+  | O.SingleExpr _
+  | O.Throw _
+  | O.Yield _
+  | O.YieldBreak _ ->
+    make_statement_context(context, s)
+  | O.JumpTo(destinationName) -> optimize_jump_to(context, destinationName)
+  | O.Return(value) -> make_return_context(context, value)
+
+  | O.LoopForever(pos, body) -> optimize_loop(new_id, context, pos, body)
+  | O.Match _
+  | O.Try _ ->
+    invariant_violation(
+      "Optimization pass must occur after lowering of matches",
+    )
+  }
+}
+
+// Initializers for constants and parameter default values are represented
+// by a Stmt followed by an Expr. Optimize these pairs.
+fun optimize_initializer(
+  new_id: () -> Int,
+): ((O.Stmt, O.Expr)) -> (O.Stmt, O.Expr) {
+  init -> {
+    (stmt, expr) = init;
+    end_context = optimize_statement_rec(
+      new_id,
+      stmt,
+      create_initializer_context(expr),
+    );
+    (
+      optimize_lambdas_in_stmt(new_id)(context_to_stmt(end_context)),
+      optimize_lambdas_in_expr(new_id)(expr),
+    )
+  }
+}
+
+fun optimize_lambdas_in_expr(new_id: () -> Int): O.Expr -> O.Expr {
+  expr ->
+    OU.transform_expr_children(
+      optimize_lambdas_in_expr(new_id),
+      optimize_lambdas_in_stmt(new_id),
+      expr,
+    ) match {
+    | O.Expr(
+      ty,
+      pos,
+      O.Lambda(parameters, lambda_ty, captured_bindings, body, yields),
+    ) ->
+      O.Expr(
+        ty,
+        pos,
+        O.Lambda(
+          parameters,
+          lambda_ty,
+          captured_bindings,
+          context_to_stmt(
+            optimize_statement_rec(
+              new_id,
+              body,
+              create_lambda_context(body, captured_bindings),
+            ),
+          ),
+          yields,
+        ),
+      )
+    | e -> e
+    }
+}
+
+fun optimize_lambdas_in_stmt(new_id: () -> Int): O.Stmt -> O.Stmt {
+  stmt ->
+    OU.transform_stmt_children(
+      optimize_lambdas_in_expr(new_id),
+      optimize_lambdas_in_stmt(new_id),
+      stmt,
+    )
+}
+
+fun optimize_statement_top_level_with_context(
+  new_id: () -> Int,
+  s: O.Stmt,
+): (Context, O.Stmt) {
+  context = optimize_statement_rec(new_id, s, create_top_level_context(s));
+  (context, optimize_lambdas_in_stmt(new_id)(context_to_stmt(context)))
+}
+
+// Locals-optimizing visitor
+// TODO bring the rest of the traversal into here, don't copy unchanged nodes
+mutable class LocalsOptimizer(new_id: () -> Int) extends OU.Visitor {
+  readonly fun getVisitorName(): String {
+    "LocalsOptimizer";
+  }
+
+  // Initializers for constants and parameter default values are represented
+  // by a Stmt followed by an Expr. Optimize these pairs.
+  mutable fun initializer(init: O.Initializer): (Bool, O.Initializer) {
+    (stmt, expr) = init.asOuter();
+
+    end_context = optimize_statement_rec(
+      this.new_id,
+      stmt,
+      create_initializer_context(expr),
+    );
+    !stmt = optimize_lambdas_in_stmt(this.new_id)(context_to_stmt(end_context));
+    !expr = optimize_lambdas_in_expr(this.new_id)(expr);
+    (true, O.OuterInit((stmt, expr)))
+  }
+
+  mutable fun optimize_parameters_and_binding(
+    context: Context,
+    parameters: Parameters<O.Parameter>,
+  ): Parameters<O.Parameter> {
+    (_, !parameters) = this.parameters(parameters);
+    parameters.map(p ->
+      p with {frozen_ => binding_info_of_context(context, p.name.id)}
+    )
+  }
+
+  @gc
+  mutable fun fun_def(func: O.FunDef): (Bool, O.FunDef) {
+    func.body match {
+    | Some(b) ->
+      fb = b.asOuter();
+      (context, body) = optimize_statement_top_level_with_context(
+        this.new_id,
+        fb,
+      );
+      (
+        true,
+        func with {
+          body => Some(O.OuterBody(body)),
+          params => this.optimize_parameters_and_binding(context, func.params),
+        },
+      )
+    | None() ->
+      this.parameters(func.params) match {
+      | (false, _) -> (false, func)
+      | (_, params) -> (true, func with {params})
+      }
+    }
+  }
+
+  @gc
+  mutable fun method_def(met: O.MethodDef): (Bool, O.MethodDef) {
+    met.body match {
+    | Some(b) ->
+      mb = b.asOuter();
+      (context, body) = optimize_statement_top_level_with_context(
+        this.new_id,
+        mb,
+      );
+      (
+        true,
+        met with {
+          body => Some(O.OuterBody(body)),
+          params => this.optimize_parameters_and_binding(context, met.params),
+          implicit_param => OU.set_info_of_binding(
+            met.implicit_param,
+            binding_info_of_context(context, met.implicit_param.name.id),
+          ),
+        },
+      )
+    | None() ->
+      this.parameters(met.params) match {
+      | (false, _) -> (false, met)
+      | (_, params) -> (true, met with {params})
+      }
+    }
+  }
+}
+
+module end;

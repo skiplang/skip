@@ -1,0 +1,8 @@
+const MyNan: Float = 0.0 / 0.0;
+
+fun shouldFail(x: Float): String {
+  x match {
+  | MyNan -> "You shouldn't be seeing this\n"
+  | _ -> "Pass\n"
+  }
+}

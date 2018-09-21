@@ -1,0 +1,75 @@
+// binary-trees from The Computer Language Benchmarks Game
+
+fun say(heading: String, depth: Int, count: Int): void {
+  print_string(heading + " of depth " + depth + "\t check: " + count);
+  void
+}
+
+base class Tree {
+  children =
+  | Empty_()
+  | Node(Int, Tree, Tree)
+}
+
+// Create a tree, depth d.
+fun make(i: Int, d: Int): Tree {
+  if (d == 0) Empty_() else Node(i, make(2 * i - 1, d - 1), make(2 * i, d - 1))
+}
+
+// Traverse a tree, counting nodes.
+fun check(t: Tree): Int {
+  t match {
+  | Empty_() -> 0
+  | Node(i, l, r) -> check(l) + i - check(r)
+  }
+}
+
+fun make_iterate(i: Int, d: Int, done: Int, c: Int): Int {
+  if (i > done) {
+    c
+  } else {
+    a = make(i, d);
+    b = make(-i, d);
+    c2 = c + check(a) + check(b);
+    make_iterate(i + 1, d, done, c2)
+  }
+}
+
+fun make_several(d: Int, min_depth: Int, max_depth: Int): void {
+  if (d > max_depth) {
+    void
+  } else {
+    one = 1;
+    iterations = one.shl(max_depth - d + min_depth);
+    count = make_iterate(0, d, iterations, 0);
+    print_string(
+      (2 * iterations).toString() +
+        "\t trees of depth " +
+        d +
+        "\t check: " +
+        count,
+    );
+    make_several(d + 2, min_depth, max_depth)
+  }
+}
+
+fun main(): void {
+  min_depth = 4;
+  arg = 20; // TODO: should read args
+  !arg = 2; // 20 crashes right now
+  max_depth = max(min_depth + 2, arg);
+
+  // stretch memory tree
+  stretch_depth = max_depth + 1;
+  c = check(make(0, stretch_depth));
+  say("stretch tree", stretch_depth, c);
+
+  // long lived tree
+  long = make(0, max_depth);
+
+  // allocate, walk, and deallocate many bottom-up binary trees
+  make_several(min_depth, min_depth, max_depth);
+
+  say("long lived tree", max_depth, check(long));
+  void
+}

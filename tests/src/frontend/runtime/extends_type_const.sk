@@ -1,0 +1,23 @@
+async fun asyncMain(): ^void {
+  p: P<Dog> = C();
+  print_string(p.doIt())
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}
+
+base class Animal
+class Dog() extends Animal
+
+base class P<+T> {
+  fun doIt(): String {
+    "Pass"
+  }
+}
+base class I extends P<this::T> {
+  type T: Animal;
+}
+class C() extends I {
+  type T = Dog;
+}

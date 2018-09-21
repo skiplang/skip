@@ -1,0 +1,6 @@
+# debug_js_file [--no-unhandled-exception-stack] sk-to-js-file [args...]
+
+# Like run_js_file, but starts in the node command line debugger.
+
+export NODE_PARAMS="${NODE_PARAMS} debug"
+$(dirname "$0")/run_js_file "$@"

@@ -1,0 +1,5 @@
+fun main(): String {
+  x = "";
+  (x : String) = "Fail";
+  x
+}

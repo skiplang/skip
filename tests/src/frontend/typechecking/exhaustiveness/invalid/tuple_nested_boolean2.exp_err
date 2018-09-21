@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/tuple_nested_boolean2.sk", line 4, characters 5-16:
+The following pattern is unused:
+ | (true, true)
+2 |   (true, true) match {
+3 |   | (true, true)
+4 |   | (true, true)
+  |     ^^^^^^^^^^^^
+5 |   | (false, true)

@@ -1,0 +1,9 @@
+base class List_<T> {
+  fun foo<U: Orderable>[T: U](x: T, y: U): Order {
+    (x : U).compare(y)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

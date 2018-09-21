@@ -1,0 +1,8 @@
+mutable class C1(mutable value: Int)
+
+mutable class C2(c1: mutable C1)
+
+fun test(): void {
+  myc1 = mutable C1(99);
+  _ = C2(myc1);
+}

@@ -1,0 +1,7 @@
+base class Foo
+class A() extends Foo
+
+fun main(): void {
+  x = A();
+  _ = x as Foo _
+}

@@ -1,0 +1,21 @@
+// Expansion
+base class Bs
+class C1() extends Bs
+class C2() extends Bs
+
+base class Bar<T>
+class Foo<T: Bs>(T) extends Bar<T>
+
+fun test(_: Bs): void {
+  void
+}
+
+fun matchF<T: C1>(v: Bar<T>): void {
+  v match {
+  | Foo(x) -> test(x)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

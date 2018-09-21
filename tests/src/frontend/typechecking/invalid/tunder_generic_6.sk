@@ -1,0 +1,4 @@
+fun main(): void {
+  x: _ = "No";
+  print_raw(x)
+}

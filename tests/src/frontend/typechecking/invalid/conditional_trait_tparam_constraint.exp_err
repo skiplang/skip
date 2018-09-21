@@ -1,0 +1,23 @@
+File "./typechecking/invalid/conditional_trait_tparam_constraint.sk", line 2, characters 7-9:
+For the child: 'Foo', invalid use of the parent: 'X'
+1 | trait X<T: Equality>
+2 | class Foo<T>() uses X<T>[T: Equality], X<T>
+  |       ^^^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint.sk", line 2, characters 21-21:
+Constraint not satisfied
+1 | trait X<T: Equality>
+2 | class Foo<T>() uses X<T>[T: Equality], X<T>
+  |                     ^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint.sk", line 2, characters 23-23:
+The type: T
+1 | trait X<T: Equality>
+2 | class Foo<T>() uses X<T>[T: Equality], X<T>
+  |                       ^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint.sk", line 1, characters 12-19:
+Is not a subtype of: Equality
+1 | trait X<T: Equality>
+  |            ^^^^^^^^
+2 | class Foo<T>() uses X<T>[T: Equality], X<T>

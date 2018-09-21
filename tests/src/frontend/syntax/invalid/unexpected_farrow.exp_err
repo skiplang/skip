@@ -1,0 +1,14 @@
+File "./syntax/invalid/unexpected_farrow.sk", line 3, characters 5-6:
+Expected '}'. Found '=>'. If your intention is to write a lambda function, you should use '->' for a mutable lambda function or '~>' for an immutable one.
+1 |
+2 | fun test(): void {
+3 |   1 => 2
+  |     ^^
+4 | }
+
+File "./syntax/invalid/unexpected_farrow.sk", line 2, characters 18-18:
+ For opening '{'
+1 |
+2 | fun test(): void {
+  |                  ^
+3 |   1 => 2

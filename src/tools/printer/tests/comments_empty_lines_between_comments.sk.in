@@ -1,0 +1,89 @@
+// Local Variables and Definite Assignment
+// For each hack Statement calculate:
+//    - what locals are assigned by that statement
+//    - locals that are read by the statement
+
+// For a statement in a sequence:
+//  - if a var is not referenced before or after this statement:
+//    - then scope it locally in this statement
+//  - if a read var:
+//    - is initialized before this statement then normal reference
+//    - is not initialized before this statement, (then it must be referenced after)
+//      then init must be lifted to the statement head.
+//  - if a written var:
+//    - is initialized before this statement then writes are assigns
+//
+// When lifting a variable init out of a statement:
+//    - within the statement, convert all refs to the variable to a new local
+//    - append to the statement list an assignment for each lifted variable
+
+// Control flow and loops
+//  - loop bodies become closures
+//
+//  - without inner return:
+//    - while -> while
+//    - while/do -> do
+//    - foreach without break (or return) -> each
+//      - continue -> return void
+//    - foreach with break/continue (without return) -> do
+//      - continue -> return true
+//      - break -> return false
+//      - add terminating return true
+//  - with inner return:
+//    - while, foreach -> whileNone(loopBody) match { Some(result) -> return result }
+//    - do -> doWhileNone(loopBody) match { Some(result) -> return result }
+//        - continue -> Continue()
+//        - break -> Break()
+//        - return -> Return(result)
+
+// return statement
+//  - return just becomes return, unless:
+//    - returns as last statement in the function can be elided
+
+// Note: Semicolons are inserted as separators; not as statement terminators.
+
+mutable class StatementConverter{context: mutable StatementContext}
+
+// Local Variables and Definite Assignment
+// For each hack Statement calculate:
+//    - what locals are assigned by that statement
+//    - locals that are read by the statement
+
+// For a statement in a sequence:
+//  - if a var is not referenced before or after this statement:
+//    - then scope it locally in this statement
+//  - if a read var:
+//    - is initialized before this statement then normal reference
+//    - is not initialized before this statement, (then it must be referenced after)
+//      then init must be lifted to the statement head.
+//  - if a written var:
+//    - is initialized before this statement then writes are assigns
+//
+// When lifting a variable init out of a statement:
+//    - within the statement, convert all refs to the variable to a new local
+//    - append to the statement list an assignment for each lifted variable
+
+// Control flow and loops
+//  - loop bodies become closures
+//
+//  - without inner return:
+//    - while -> while
+//    - while/do -> do
+//    - foreach without break (or return) -> each
+//      - continue -> return void
+//    - foreach with break/continue (without return) -> do
+//      - continue -> return true
+//      - break -> return false
+//      - add terminating return true
+//  - with inner return:
+//    - while, foreach -> whileNone(loopBody) match { Some(result) -> return result }
+//    - do -> doWhileNone(loopBody) match { Some(result) -> return result }
+//        - continue -> Continue()
+//        - break -> Break()
+//        - return -> Return(result)
+
+// return statement
+//  - return just becomes return, unless:
+//    - returns as last statement in the function can be elided
+
+// Note: Semicolons are inserted as separators; not as statement terminators.

@@ -1,0 +1,21 @@
+File "./typechecking/invalid/positional_arg.sk", line 6, characters 12-12:
+Invalid argument to the construction of 'Y'
+4 |   a = 10;
+5 |   b = 1;
+6 |   _ = Y(a, b);
+  |            ^
+7 |   print_string("Hello Skip!")
+
+File "./typechecking/invalid/positional_arg.sk", line 5, characters 7-7:
+The type: Int
+3 | fun main(): void {
+4 |   a = 10;
+5 |   b = 1;
+  |       ^
+6 |   _ = Y(a, b);
+
+File "./typechecking/invalid/positional_arg.sk", line 1, characters 20-24:
+Is not a subtype of: Float
+1 | class Y(a: Int, b: Float)
+  |                    ^^^^^
+2 |

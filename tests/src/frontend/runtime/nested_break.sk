@@ -1,0 +1,49 @@
+fun main(): void {
+  print_string(
+    while (1 == 1) {
+      while (break "Pass") void
+    } else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    while (1 == 1) {
+      while (false) void else break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    do {
+      do void while (break "Pass")
+    } while (1 == 1) else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    do {
+      do void while (false) else break "Pass"
+    } while (1 == 1) else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    for (_ in Vector[1, 2]) {
+      while (break "Pass") void
+    } else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    for (_ in Vector[1, 2]) {
+      for (_ in Vector[1, 2]) void else break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+}

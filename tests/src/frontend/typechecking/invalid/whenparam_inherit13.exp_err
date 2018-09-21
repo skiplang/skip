@@ -1,0 +1,33 @@
+File "./typechecking/invalid/whenparam_inherit13.sk", line 2, characters 7-9:
+Invalid conditional type override for the field 'foo' on child 'C' for parent 'P'.
+With additional constraints on the child's method,
+ these constraints must be satisfied when upcasting a child to the parent's type,
+ and then adding any additional constraints from the parent's version of the method
+1 | trait P<+T> {
+2 |   fun foo(f: (T, T) -> void): readonly this;
+  |       ^^^
+3 | }
+
+File "./typechecking/invalid/whenparam_inherit13.sk", line 5, characters 11-11:
+The possibly mutable type 'T' appeared inside an immutable type.
+3 | }
+4 | class C<+T>() uses P<T> {
+5 |   fun foo[T: frozen](_f: (T, T) -> void): this {
+  |           ^
+6 |     C()
+
+File "./typechecking/invalid/whenparam_inherit13.sk", line 5, characters 14-19:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+3 | }
+4 | class C<+T>() uses P<T> {
+5 |   fun foo[T: frozen](_f: (T, T) -> void): this {
+  |              ^^^^^^
+6 |     C()
+
+File "./typechecking/invalid/whenparam_inherit13.sk", line 5, characters 11-11:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try constraining the type parameter to be frozen, for example 'T: frozen'
+3 | }
+4 | class C<+T>() uses P<T> {
+5 |   fun foo[T: frozen](_f: (T, T) -> void): this {
+  |           ^
+6 |     C()

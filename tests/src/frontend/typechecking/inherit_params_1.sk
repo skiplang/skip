@@ -1,0 +1,8 @@
+base class Foo{f1: Int}
+base class Foo2{f2: Int} extends Foo
+class Bar{f3: String} extends Foo2
+
+fun main(): void {
+  x = Bar{f1 => 1, f2 => 2, f3 => "Pass\n"};
+  print_raw(x.f3)
+}

@@ -1,0 +1,708 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias Config = SkipProjectConfig;
+
+module SkipProject;
+
+const PROJECT_FILENAME: String = "skip.project.json";
+const SKIP_FILE_EXTENSION: String = ".sk";
+
+fun isSkipFile(path: String): Bool {
+  Path.extname(path) == SKIP_FILE_EXTENSION;
+}
+
+fun projectFilenameOfDirectory(dirname: String): String {
+  Path.join(dirname, PROJECT_FILENAME);
+}
+
+fun findProjectFileOfPath(
+  filename: String,
+): Result<String, Vector<SkipError.Error>> {
+  FileSystem.findNearestFile(Path.resolve(filename), PROJECT_FILENAME) match {
+  | None() ->
+    Failure(
+      Vector[
+        SkipError.Error{
+          traces => List[
+            getTraceForFileMessage(filename, "Project file not found."),
+          ],
+          fix => None(),
+        },
+      ],
+    )
+  | Some(projectPath) -> Success(projectPath)
+  };
+}
+
+fun getTraceForDirPositionMessage(
+  dirname: String,
+  position: Position,
+  message: String,
+): SkipError.Trace {
+  (
+    FileRange.create(
+      projectFilenameOfDirectory(dirname),
+      TextRange.create(position, position.nextColumn()),
+    ),
+    message,
+  );
+}
+
+fun getTraceForMessage(message: String): SkipError.Trace {
+  getTraceForFileMessage("", message);
+}
+
+fun getTraceForFileMessage(filename: String, message: String): SkipError.Trace {
+  (FileRange.create(filename, TextRange.none), message);
+}
+
+fun getTraceForDirectoryMessage(
+  dirname: String,
+  message: String,
+): SkipError.Trace {
+  getTraceForFileMessage(projectFilenameOfDirectory(dirname), message);
+}
+
+fun getTracesForProjectPaths(
+  projectPaths: Vector<String>,
+): List<SkipError.Trace> {
+  List::createFromItems(
+    projectPaths.reversed().map(path ->
+      getTraceForDirectoryMessage(path, `Referenced from`)
+    ),
+  );
+}
+
+fun createErrorWithPosition(
+  projectDir: String,
+  position: Position,
+  message: String,
+  relatedProjects: Vector<String> = Vector[],
+): SkipError.Error {
+  trace = getTraceForDirPositionMessage(projectDir, position, message);
+  SkipError.Error{
+    traces => List.Cons(trace, getTracesForProjectPaths(relatedProjects)),
+    fix => None(),
+  }
+}
+
+fun createError(
+  projectDir: String,
+  message: String,
+  relatedProjects: Vector<String> = Vector[],
+): SkipError.Error {
+  trace = getTraceForDirectoryMessage(projectDir, message);
+  SkipError.Error{
+    traces => List.Cons(trace, getTracesForProjectPaths(relatedProjects)),
+    fix => None(),
+  }
+}
+
+// TODO: Consider storing this in a file at the root of the repo.
+// Unix shells ignore any file starting with '.' when expanding globs.
+// This is specifically for emacs temp files.
+const unixShellGlobbingExcludes: String = "^\\.[^.]";
+class SolutionConfig{
+  excludes: Vector<String> = Vector[unixShellGlobbingExcludes],
+}
+
+// Loads a project, and all of its dependent Projects.
+mutable class SolutionLoader{
+  solutionConfig: SolutionConfig = SolutionConfig{},
+  rootProjectPath: String,
+  projects: mutable Map<String, Project> = mutable Map[],
+  variables: mutable Map<String, Variable> = mutable Map[],
+  loadingPath: mutable Vector<Project> = mutable Vector[],
+  errors: mutable Vector<SkipError.Error> = mutable Vector[],
+  filesByPath: mutable Map<String, Vector<String>> = mutable Map[],
+  fileToInfo: mutable Map<String, FileInfo> = mutable Map[],
+  programUnits: mutable Map<ProgramUnitKey, ProgramUnit> = mutable Map[],
+} {
+  static fun load(
+    rootProjectPath: String,
+  ): Result<Solution, Vector<SkipError.Error>> {
+    invariant(
+      Path.isNormalized(rootProjectPath),
+      "Expected normalized project path",
+    );
+    loader = mutable SolutionLoader{rootProjectPath};
+    loader.loadProjects();
+    if (!loader.hadErrors()) {
+      loader.loadProgramUnits();
+    };
+
+    if (!loader.hadErrors()) {
+      solution = Solution{
+        projects => freeze(loader.projects),
+        rootProjectPath,
+        programUnits => freeze(loader.programUnits),
+        fileToInfo => freeze(loader.fileToInfo),
+        variables => freeze(loader.variables),
+      };
+      log(solution);
+      Success(solution);
+    } else {
+      Failure(freeze(loader.errors));
+    };
+  }
+
+  mutable fun loadProjects(): void {
+    log("loading projects");
+    this.loadProject(this.rootProjectPath);
+    if (this.hadErrors()) return void;
+    this.checkForProjectCycles();
+  }
+
+  private mutable fun getLoadingPaths(): Vector<String> {
+    freeze(this.loadingPath.map(project ~> project.dirpath));
+  }
+
+  mutable fun hadErrors(): Bool {
+    !this.errors.isEmpty();
+  }
+
+  mutable fun addError(projectDir: String, message: String): void {
+    this.addErrorWithRelatedProjects(
+      projectDir,
+      message,
+      this.getLoadingPaths(),
+    );
+  }
+
+  mutable fun addErrorWithPosition(
+    projectDir: String,
+    position: Position,
+    message: String,
+  ): void {
+    this.errors.push(
+      createErrorWithPosition(
+        projectDir,
+        position,
+        message,
+        this.getLoadingPaths(),
+      ),
+    );
+  }
+
+  mutable fun addErrorWithRelatedProjects(
+    projectDir: String,
+    message: String,
+    relatedProjects: Vector<String>,
+  ): void {
+    this.errors.push(createError(projectDir, message, relatedProjects));
+  }
+
+  mutable fun loadProject(dirname: String): void {
+    invariant(Path.isNormalized(dirname));
+    if (this.projects.containsKey(dirname)) {
+      return void;
+    };
+
+    projectFilename = projectFilenameOfDirectory(dirname);
+    fileContents = try {
+      FileSystem.readTextFile(projectFilename);
+    } catch {
+    | e ->
+      this.addError(
+        dirname,
+        `Unable to read project file '${projectFilename}'. ${e.getMessage()}`,
+      );
+      return void
+    };
+
+    result = JSON.deserialize(fileContents, Config.Project::meta);
+
+    config = result match {
+    | Success(s) -> s
+    | Failure(JSON.InvalidJSONError(position, message)) ->
+      this.addErrorWithPosition(
+        dirname,
+        position,
+        `JSON syntax error. ${message}`,
+      );
+      return void
+    | Failure(e) ->
+      this.addError(
+        dirname,
+        `Is not a valid project config because '${e.getMessage()}'`,
+      );
+      return void
+    };
+
+    if (config.skipVersion != Config.CURRENT_VERSION) {
+      this.addError(dirname, `Invalid skipVersion '${config.skipVersion}'.`);
+      return void;
+    };
+
+    project = Project{dirpath => dirname, config};
+    log("loaded project ...");
+    log(project);
+    this.projects.add(dirname, project);
+    this.validateProjectVariables(project);
+    this.loadReferencedProjects(project);
+  }
+
+  mutable fun validateProjectVariables(project: Project): void {
+    for (name => variable in project.config.variables) {
+      // names must be globally unique
+      if (this.variables.containsKey(name)) {
+        this.addErrorWithRelatedProjects(
+          project.dirpath,
+          `Duplicate variable name '${name}'.`,
+          Vector[this.variables[name].project.dirpath],
+        );
+      } else {
+        // values must be unique for the variable
+        values = mutable Set[];
+        for (value in variable.values) {
+          if (values.contains(value)) {
+            this.addError(
+              project.dirpath,
+              `Variable '${name}' contains duplicate value '${value}'.`,
+            );
+          } else {
+            values.add(value);
+          };
+        };
+
+        // default value must be present
+        default = variable.default;
+        if (!values.contains(default)) {
+          this.addError(
+            project.dirpath,
+            `Default value '${default}' is not a valid value for variable '${name}'.`,
+          );
+        };
+
+        this.variables.add(
+          name,
+          Variable{name, project, values => freeze(values), default},
+        );
+      };
+    };
+  }
+
+  mutable fun loadReferencedProjects(project: Project): void {
+    this.loadingPath.push(project);
+
+    project.allReferencedProjects().each(this.loadProject);
+
+    poppedProject = this.loadingPath.pop();
+    invariant(project == poppedProject);
+  }
+
+  mutable fun getProjectGraph(): DirectedGraph<String> {
+    DirectedGraph.create(
+      this.projects.values()
+        .map(project ~>
+          (project.dirpath, project.allReferencedProjects().collect(Vector))
+        )
+        .collect(Vector),
+    );
+  }
+
+  mutable fun checkForProjectCycles(): void {
+    log("checking for project cycles");
+    this.getProjectGraph()
+      .getSmallestStronglyConnectedComponent()
+      .each(cycle -> {
+        this.addErrorWithRelatedProjects(
+          cycle[0],
+          `Cycle in project definitions`,
+          cycle.slice(1, cycle.size()),
+        )
+      });
+  }
+
+  mutable fun loadProgramUnits(): void {
+    log("loading program units");
+    for (projectPath in this.getProjectGraph().dfsOrderAll()) {
+      project = this.projects.get(projectPath);
+      defaultProgramUnitName = project.getDefaultProgramUnitName();
+      for (name => programUnit in project.config.programUnits) {
+        isDefault = defaultProgramUnitName == Some(name);
+        this.loadProgramUnit(project, name, programUnit, isDefault);
+      };
+    };
+
+    if (this.hadErrors()) return void;
+
+    this.programUnits.values().each(this.validateProgramUnitReferences);
+
+    if (this.hadErrors()) return void;
+
+    this.checkForProgramUnitCycles();
+  }
+
+  mutable fun checkForProgramUnitCycles(): void {
+    log("checking for program unit cycles");
+    programUnitGraph = DirectedGraph.create(
+      this.programUnits.values()
+        .map(unit ~> (unit.key, unit.references))
+        .collect(Vector),
+    );
+
+    errorOfCycle = cycle -> {
+      firstProjectPath = this.programUnits.get(cycle[0]).project.dirpath;
+      SkipError.Error{
+        traces => List.Cons(
+          getTraceForDirectoryMessage(
+            firstProjectPath,
+            `Cycle in program unit definitions.`,
+          ),
+          List::createFromItems(
+            cycle.map(unitKey -> {
+              project = this.projects.get(unitKey.projectPath);
+              getTraceForDirectoryMessage(
+                project.dirpath,
+                `Cycle includes '${
+                  unitKey.name
+                }' in project '${projectFilenameOfDirectory(
+                  project.dirpath,
+                )}.'`,
+              );
+            }),
+          ),
+        ),
+        fix => None(),
+      };
+    };
+
+    programUnitGraph
+      .getSmallestStronglyConnectedComponent()
+      .map(errorOfCycle)
+      .each(this.errors.push);
+  }
+
+  // validate referenced program units exist, and are Libraries.
+  mutable fun validateProgramUnitReferences(programUnit: ProgramUnit): void {
+    for (key in programUnit.references) {
+      if (!this.programUnits.containsKey(key)) {
+        this.addError(
+          programUnit.project.dirpath,
+          `Referenced project '${projectFilenameOfDirectory(
+            key.projectPath,
+          )}' does not contain program unit '${key.name}'.`,
+        );
+      } else if (!this.programUnits.get(key).kind.isLibrary()) {
+        this.addError(
+          programUnit.project.dirpath,
+          `Program unit '${key.name}' in project '${projectFilenameOfDirectory(
+            key.projectPath,
+          )}' referenced from '${programUnit.name()}' is not a library.`,
+        );
+      };
+    };
+  }
+
+  // Creates the reference, but does not check that the referenced program unit exists
+  mutable fun maybeCreateReference(
+    sourceProject: Project,
+    reference: Config.ProgramUnitReference,
+  ): ?ProgramUnitKey {
+    sourceProjectPath = sourceProject.dirpath;
+    destinationPath = sourceProject.getPathOfReference(reference);
+    this.projects.maybeGet(destinationPath) match {
+    | None() ->
+      // Error already reported when loading projects.
+      None()
+    | Some(destinationProject) ->
+      destinationName = reference.name match {
+      | None() ->
+        destinationProject.getDefaultProgramUnitName() match {
+        | None() ->
+          this.addError(
+            sourceProjectPath,
+            `Referenced project '${destinationPath}' does not have a default program unit.`,
+          );
+          return None()
+        | Some(name) -> name
+        }
+      | Some(name) -> name
+      };
+      Some(ProgramUnitKey::create(destinationPath, destinationName))
+    };
+  }
+
+  mutable fun loadParameterValue(
+    key: ProgramUnitKey,
+    variable: Variable,
+    valueToSources: mutable Map<String, Set<String>>,
+    valueName: String,
+  ): Bool {
+    projectPath = key.projectPath;
+    programUnitName = key.name;
+    parameterName = variable.name;
+    if (valueToSources.containsKey(valueName)) {
+      this.addError(
+        projectPath,
+        `Duplicate value '${valueName}' for variable '${parameterName}' in program unit '${programUnitName}'.`,
+      );
+      return false;
+    };
+
+    if (!variable.values.contains(valueName)) {
+      this.addError(
+        projectPath,
+        `Value '${valueName}' is not a valid value for variable '${parameterName}' in program unit '${programUnitName}'.`,
+      );
+      return false;
+    };
+
+    if (valueToSources.containsKey(valueName)) {
+      this.addError(
+        projectPath,
+        `Duplicate value '${valueName}' for variable '${parameterName}' in program unit '${programUnitName}'.`,
+      );
+      return false;
+    };
+
+    true;
+  }
+
+  mutable fun maybeLoadParameter(
+    key: ProgramUnitKey,
+    parameterName: String,
+    values: Map<String, Config.ParameterValue>,
+  ): ?Parameter {
+    projectPath = key.projectPath;
+    programUnitName = key.name;
+
+    variable = this.variables.maybeGet(parameterName) match {
+    | None() ->
+      this.addError(
+        projectPath,
+        `Variable '${parameterName}' referenced in program unit '${programUnitName}' not found.`,
+      );
+      return None()
+    | Some(var) -> var
+    };
+
+    valueToSources = mutable Map[];
+    for (value => valueSources in values) {
+      if (this.loadParameterValue(key, variable, valueToSources, value)) {
+        excludes = this.excludesToFilter(key, valueSources.excludes);
+
+        binding = Some(Binding{variable => variable.name, value});
+        sources = this.loadSourceList(
+          key,
+          excludes,
+          valueSources.sources,
+          binding,
+        );
+        valueToSources.add(value, sources);
+      };
+    };
+
+    missingValues = variable.values.difference(
+      valueToSources.keys().collect(Set),
+    );
+    if (!missingValues.isEmpty()) {
+      for (missingValue in missingValues) {
+        this.addError(
+          projectPath,
+          `Missing value '${missingValue}' for variable '${parameterName}' in program unit '${programUnitName}'.`,
+        );
+      };
+    };
+
+    Some(
+      Parameter{
+        name => parameterName,
+        valueToSources => freeze(valueToSources),
+      },
+    );
+  }
+
+  mutable fun loadProgramUnit(
+    project: Project,
+    name: String,
+    config: Config.ProgramUnit,
+    isDefault: Bool,
+  ): void {
+    projectPath = project.dirpath;
+    key = ProgramUnitKey::create(projectPath, name);
+    if (this.programUnits.containsKey(key)) {
+      this.addError(
+        projectPath,
+        `Project file contains duplicate program unit '${name}'.`,
+      );
+      return void;
+    };
+
+    excludes = this.excludesToFilter(key, config.excludes);
+
+    files = this.loadSourceList(key, excludes, config.sources, None());
+
+    references = config.references
+      .map(reference -> this.maybeCreateReference(project, reference))
+      .filterNone();
+
+    parameters = config.parameters
+      .items()
+      .map(nameValues ->
+        this.maybeLoadParameter(key, nameValues.i0, nameValues.i1)
+      )
+      .collect(Vector)
+      .filterNone();
+
+    unit = ProgramUnit{
+      key,
+      kind => config.kind,
+      isDefault,
+      project,
+      files,
+      references,
+      parameters,
+    };
+    log("loaded program unit ...");
+    log(unit);
+    this.programUnits.add(key, unit);
+  }
+
+  // Returns None() if no excludes were present.
+  mutable fun excludesToFilter(
+    key: ProgramUnitKey,
+    excludes: Vector<String>,
+  ): ?String ~> Bool {
+    excludeToRegexOption = exclude -> {
+      try {
+        Some(Regex::create(exclude));
+      } catch {
+      | e ->
+        this.addError(
+          key.projectPath,
+          `Regular expression '${exclude}' in excludes of program unit '${
+            key.name
+          }' is invalid. ${e.getMessage()}`,
+        );
+        None()
+      }
+    };
+    regexps: Vector<Regex> = excludes
+      .concat(this.solutionConfig.excludes)
+      .map(excludeToRegexOption)
+      .filterNone();
+    if (regexps.isEmpty()) {
+      None();
+    } else {
+      Some((path: String) ~> {
+        !regexps.any((regexp: Regex) ~> path.matches(regexp));
+      });
+    };
+  }
+
+  mutable fun loadSourceList(
+    key: ProgramUnitKey,
+    excludes: ?String ~> Bool,
+    sourceList: Vector<String>,
+    binding: ?Binding,
+  ): Set<String> {
+    projectPath = key.projectPath;
+    name = key.name;
+
+    files = sourceList
+      .flatMap(source -> this.loadSources(projectPath, source, excludes, name))
+      .collect(Set);
+
+    fileInfo = FileInfo{key, binding};
+
+    for (file in files) { // Check that files exist in at most one program unit + binding, combo.
+      this.fileToInfo.maybeGet(file) match {
+      | None() -> this.fileToInfo.add(file, fileInfo)
+      | Some(existingInfo) ->
+        existingKey = existingInfo.key;
+        existingBinding = existingInfo.binding;
+        if (existingKey != key) {
+          // Different program units - so report a simpler error which doesn't
+          // mention bindings.
+          this.addError(
+            projectPath,
+            `File '${file}' contained in '${name}' is also contained in program unit '${
+              existingKey.name
+            }' in project '${projectFilenameOfDirectory(
+              existingKey.projectPath,
+            )}'.`,
+          );
+        } else {
+          // Difference must be in the variable bindings.
+          (existingBinding, binding) match {
+          | (Some(b1), Some(b2)) ->
+            this.addError(
+              projectPath,
+              `File '${file}' contained in '${name}' is included with binding '${b1}' as well as with binding '${b2}'.`,
+            )
+          | (Some(b), None())
+          | (None(), Some(b)) ->
+            this.addError(
+              projectPath,
+              `File '${file}' contained in '${name}' is included both with no variable bindings and with binding '${b}'.`,
+            )
+          | (None(), None()) ->
+            invariant_violation("No bindings should have been caught above")
+          };
+        }
+      };
+    };
+
+    files;
+  }
+
+  mutable fun loadSources(
+    projectPath: String,
+    sourcePath: String,
+    excludes: ?String ~> Bool,
+    programUnitName: String,
+  ): Vector<String> {
+    resolvedPath = Path.join(projectPath, sourcePath);
+    if (excludes.isSome() || !this.filesByPath.containsKey(resolvedPath)) {
+      invariant(Path.isNormalized(resolvedPath));
+      fileFilter = excludes match {
+      | None() -> isSkipFile
+      | Some(excludesFilter) ->
+        path -> (isSkipFile(path) && excludesFilter(path))
+      };
+      directoryFilter = excludes.default(_ ~> true);
+      files = if (resolvedPath.endsWith("**")) {
+        recursiveDir = Path.normalize(
+          resolvedPath.sub(0, resolvedPath.length() - 2),
+        );
+        if (!FileSystem.isDirectory(recursiveDir)) {
+          this.addError(
+            projectPath,
+            `Recursive source '${recursiveDir}' in program unit '${programUnitName}' is not a directory.`,
+          );
+          Vector[];
+        } else {
+          FileSystem.readFilesRecursive(
+            recursiveDir,
+            fileFilter,
+            directoryFilter,
+          );
+        };
+      } else {
+        if (FileSystem.isDirectory(resolvedPath)) {
+          FileSystem.readDirectory(resolvedPath)
+            .collect(Vector)
+            .filter(fileFilter)
+            .map(file ~> Path.join(resolvedPath, file));
+        } else {
+          Vector[resolvedPath];
+        };
+      };
+      if (excludes.isNone()) {
+        this.filesByPath.set(resolvedPath, files);
+      };
+      files;
+    } else {
+      this.filesByPath.get(resolvedPath);
+    };
+  }
+}
+
+module end;

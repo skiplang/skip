@@ -1,0 +1,22 @@
+@serialize
+class OptionWrapper{
+  option: ?Int,
+} uses Show, Equality {
+  fun toString(): String {
+    this.option.toString()
+  }
+}
+
+fun main(): void {
+  assertSerializes(
+    `{"option": null}`,
+    OptionWrapper::meta,
+    OptionWrapper{option => (None() : ?Int)},
+  );
+  assertSerializes(
+    `{"option": 1}`,
+    OptionWrapper::meta,
+    OptionWrapper{option => (Some(1) : ?Int)},
+  );
+  print_string("Pass")
+}

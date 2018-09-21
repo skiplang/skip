@@ -1,0 +1,21 @@
+base class A<T> {
+  overridable static fun foo(): String {
+    "A::foo"
+  }
+}
+
+trait MyTC
+
+class Z<T2: MyTC>() extends A<T2> {
+  static fun bar(): String {
+    "B::bar"
+  }
+  static fun foo(): String {
+    x = static;
+    x::bar()
+  }
+}
+
+fun main(): void {
+  print_raw(A::foo() + Z::foo() + "\n")
+}

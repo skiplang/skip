@@ -1,0 +1,21 @@
+async fun no1(): ^void {
+  bad_x = 1;
+  a = async {
+    bad_x + 1
+  };
+  _ = await a;
+  !bad_x = 100;
+  void
+}
+async fun no2(): ^void {
+  bad_x = 1;
+  a = async {
+    bad_x + 1
+  };
+  _ = await a;
+  f = () -> {
+    !bad_x = 100
+  };
+  f();
+  void
+}

@@ -1,0 +1,16 @@
+mutable class Cell(mutable value: String) {
+  readonly fun get(): String {
+    this.value
+  }
+
+  mutable fun set(v: String): void {
+    this.!value = v; //
+    void
+  }
+}
+
+fun main(): void {
+  c = mutable Cell("");
+  c.set("OK\n");
+  print_raw(c.get())
+}

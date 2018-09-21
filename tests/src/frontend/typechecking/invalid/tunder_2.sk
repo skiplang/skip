@@ -1,0 +1,11 @@
+fun foo(): _ {
+  foo()
+}
+
+fun bar(x: _): _ {
+  x
+}
+
+fun baz(): _ {
+  bar(foo())
+}

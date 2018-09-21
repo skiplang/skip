@@ -1,0 +1,5 @@
+base class Foo<Tv: nonNullable> {
+  static fun doesnt_have_constraint<Tv_>(_: Foo<Tv_>): void {
+    void
+  }
+}

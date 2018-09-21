@@ -1,0 +1,89 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Appends logs messages to a file.
+
+base class LogKind() uses Jsonable {
+  children =
+  | LogKindMessage()
+  | LogKindError()
+  | LogKindSend()
+  | LogKindReceive()
+
+  fun toJson(): JSON.Value
+  | LogKindMessage() -> "message".toJson()
+  | LogKindError() -> "error".toJson()
+  | LogKindSend() -> "send".toJson()
+  | LogKindReceive() -> "receive".toJson()
+}
+
+class LogMessage{
+  kind: LogKind,
+  // Time elapsed since process start
+  elapsedTime: Int,
+  // Time elapsed since previous log message
+  deltaTime: Int,
+  contents: JSON.Value,
+} uses JsonableObject {}
+
+mutable class MessageLogger{
+  startTime: Int = nowNanos(),
+  mutable lastMessageTime: Int = nowNanos(),
+  logFileName: String,
+} {
+  static fun create(logFileName: String): mutable MessageLogger {
+    mutable MessageLogger{logFileName => static::getLogFileName(logFileName)}
+  }
+
+  static fun getLogFileName(rootLogFileName: String): String {
+    if (FileSystem.exists(rootLogFileName)) {
+      // If the log file already exists, let's do a linear search to look for
+      // one that doesn't exist yet.
+      for (i in Range(1, 100)) {
+        dotFileName = `${rootLogFileName}.${i}`;
+        if (!FileSystem.exists(dotFileName)) {
+          return dotFileName;
+        }
+      }
+      // If all 1-1000 are taken, let's just override the initial one instead
+      // of potentially infinite-looping...
+    };
+
+    rootLogFileName
+  }
+
+  const nanosPerMicro: Int = 1000;
+  const nanosPerMilli: Int = 1000000;
+
+  readonly fun elapsedTimeMillis(): Int {
+    (nowNanos() - this.startTime) / static::nanosPerMilli
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Log messages go to a file in /tmp/skip_lsp__<project-path>.##
+  mutable fun createLogMessage(kind: LogKind, contents: JSON.Value): String {
+    currentTime = nowNanos();
+    elapsedTime = (currentTime - this.startTime) / static::nanosPerMilli;
+    deltaTime = (currentTime - this.lastMessageTime) / static::nanosPerMicro;
+    this.!lastMessageTime = currentTime;
+
+    LogMessage{kind, contents, elapsedTime, deltaTime}.toJson().encode()
+  }
+
+  mutable fun logMessage(message: String): void {
+    if (!message.isEmpty()) {
+      this.logJson(LogKindMessage(), message.toJson())
+    }
+  }
+
+  mutable fun logJson(kind: LogKind, contents: JSON.Value): void {
+    FileSystem.appendTextFile(
+      this.logFileName,
+      this.createLogMessage(kind, contents) + "\n",
+    )
+  }
+}

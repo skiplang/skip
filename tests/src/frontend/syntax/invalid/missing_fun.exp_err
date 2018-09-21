@@ -1,0 +1,6 @@
+File "./syntax/invalid/missing_fun.sk", line 2, characters 3-11:
+Expected class member. Did you mean 'fun normalize('?
+1 | class X() {
+2 |   normalize(): void {}
+  |   ^^^^^^^^^
+3 | }

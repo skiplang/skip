@@ -1,0 +1,15 @@
+fun main(): void {
+  print_raw(X.z())
+}
+
+module X;
+
+fun y(): void {
+  void
+}
+
+fun z(): String {
+  Test.MixedString("Pass\n") match {
+  | Test.MixedString(y) -> y
+  }
+}

@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+mutable base class X {
+  overridable readonly fun foo(): void {
+    void
+  }
+}
+class Y() extends X {
+  fun foo(): void {
+    void
+  }
+}

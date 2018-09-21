@@ -1,0 +1,23 @@
+File "./typechecking/invalid/pattern_multi_binds_diff_types.sk", line 13, characters 11-11:
+Invalid cross pattern binding of local variable x
+11 |     b match {
+12 |     | Bar(x)
+13 |     | Baz(x) ->
+   |           ^
+14 |       _ = x;
+
+File "./typechecking/invalid/pattern_multi_binds_diff_types.sk", line 3, characters 9-11:
+The type: Int
+1 | base class Foo {
+2 |   children =
+3 |   | Bar(Int)
+  |         ^^^
+4 |   | Baz(Bool)
+
+File "./typechecking/invalid/pattern_multi_binds_diff_types.sk", line 4, characters 9-12:
+Does not share a common super type with: Bool
+2 |   children =
+3 |   | Bar(Int)
+4 |   | Baz(Bool)
+  |         ^^^^
+5 | }

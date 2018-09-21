@@ -1,0 +1,27 @@
+File "./typechecking/invalid/memo_mut_2.sk", line 2, characters 22-31:
+Invalid return type. The return type to a 'memoized' function must be frozen
+1 | class Foo() {
+2 |   memoized fun no(): () -> void {
+  |                      ^^^^^^^^^^
+3 |     () -> void
+
+File "./typechecking/invalid/memo_mut_2.sk", line 2, characters 3-10:
+The function was declared 'memoized' here
+1 | class Foo() {
+2 |   memoized fun no(): () -> void {
+  |   ^^^^^^^^
+3 |     () -> void
+
+File "./typechecking/invalid/memo_mut_2.sk", line 2, characters 22-31:
+The following type is not frozen: (() -> void)
+1 | class Foo() {
+2 |   memoized fun no(): () -> void {
+  |                      ^^^^^^^^^^
+3 |     () -> void
+
+File "./typechecking/invalid/memo_mut_2.sk", line 2, characters 22-31:
+Try replacing '->' with '~>'
+1 | class Foo() {
+2 |   memoized fun no(): () -> void {
+  |                      ^^^^^^^^^^
+3 |     () -> void

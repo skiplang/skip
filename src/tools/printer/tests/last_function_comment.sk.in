@@ -1,0 +1,10 @@
+fun main(): void {
+  call(
+    a,
+    b,
+    // c,
+  );
+
+  void
+  // some comment
+}

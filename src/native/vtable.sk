@@ -1,0 +1,1125 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+
+This file use a graph coloring algorithm to lay out vtables.
+This general idea is known as as "selector coloring" in the literature.
+
+As in other languages, vtables hold method code pointers for fast method
+dispatching. For example, suppose we have a call site that invokes method X
+on an object O. Through the inheritance graph we can find all concrete
+subclasses that O might be an instance of at runtime. Each of those
+subclasses must have a code pointer for method X stored at the same offset
+in its vtable, so the call site can do a simple load from the vtable to find it.
+
+Each Skip object has only a single vtable, which must work no matter
+which base class it is cast to. This is difficult in the multiple inheritance
+case, because those different base classes may each have their own ideas
+about how their vtables should be laid out in their subclasses. When a class
+inherits from two base classes, those layouts may conflict.
+Some languages, like C++, solve this by giving each object instance multiple
+vtables, but that consumes memory in each instance. Skip uses a different
+approach.
+
+We call values that call sites want us to record in vtables "Requests".
+Method pointers are just one kind of Request; we also store flags, "match"
+code labels, etc. Vtables should be thought of as a general way to map types
+to constant values, not just code pointers.
+
+To solve this problem, we can view vtable slot assignment as a graph coloring
+problem: the nodes are Requests, the edges indicate two Requests that
+cannot occupy the same slot (because some vtable contains both
+Requests), and the assigned colors are the slot indices.
+
+A conventional graph coloring algorithm tries to minimize the total number of
+colors used, which in our case would map to minimizing the size of the largest
+vtable. That's not quite the problem we want to solve; we would rather minimize
+the total size of all vtables. Furthermore, actually materializing such a
+graph is a bit bulky because we have so many fully-connected subgraphs
+(cliques). For example, a class that has 50 Requests will need at a
+fully-connected 50-node graph just to keep those Requests from occupying
+the same slot.
+
+Instead of creating an explicit graph we represent and solve the problem more
+directly, by literally "building up" a vtable per class and greedily adding
+each Request to the same slot in all vtables that need it:
+
+- For each Request in decreasing order of "popularity"
+  - Examine all vtables that must contain that Request and find the
+    "cheapest" slot "compatible" in all of them.
+  - Update all vtables to record they have that Request in that slot.
+
+Some definitions for the above:
+
+- "Popularity" is defined as how many vtables contain each Request.
+  The intuition behind allocating slots for popular Requests first is that
+  placing a popular Request to a "high" slot could force a large number of
+  vtables to grow.
+
+- A VTable slot is "compatible" with a Request if it is either unassigned,
+  or already contains the Request's value in that slot (because some other
+  Request wanted the same value).
+
+- A slot is "cheapest" when it consumes the fewest empty slots across all
+  vtables. If no such slot exists and one or more vtables needs to grow
+  beyond its theoretical minimum size, that solution is harshly penalized.
+
+TODO: In the future we could investigate further improvements:
+We process Requests in order of how many vtables contain them.
+
+- Using a greedy hill climbing postprocessing step that attempts to "swap"
+  Request slots to reduce total vtable size. The idea is that a vtable's size is
+  defined as the index of its highest used slot plus one. "Swapping" the slot
+  used for the last Request in with an earlier "hole" in that vtable will
+  make that vtable smaller, but may increase or decrease the size of other
+  vtables. The idea is to keep applying beneficial swaps until no
+  single swap improves things.
+
+- Using a better heuristic search order, perhaps taking into account
+  something analogous to saturation degree ordering.
+
+*/
+
+module VTable;
+
+// A bit in the vtable address that indicates the object owning that vtable
+// is frozen. This allows an object to be frozen in place by changing its
+// vtable pointer. Unfortunately this means that each vtable has to appear
+// twice, once at an address with this bit clear and once with it set.
+// See vtableLogicalToPhysicalBitOffset() for the gory details.
+//
+// This value is copied from the runtime and must stay in sync.
+const kFrozenMask: Int = 256;
+
+// Each VTableRequest gets a unique ID so that CallMethodBase etc. can
+// later find out where it ended up.
+value class VTableRequestID uses TypeSafeID<Int> {
+  const none: VTableRequestID = VTableRequestID(-1);
+}
+
+// A type -> Constant mapping, which serves as input to the
+// selector coloring algorithm.
+//
+// This object typically corresponds to a method; The "mapping" field
+// provides the code pointer to use for each class that provides that method.
+// Ultimately at runtime method dispatching code will load the vtable from
+// an object instance then load the code pointer from whatever slot is
+// allocated for this VTableRequest.
+class VTableRequest(
+  mapping: Array<(SClassID, Constant)>,
+  // TODO: Do we really need a name, and should it really affect equality?
+  name: String,
+  id: VTableRequestID,
+) uses Hashable, Equality {
+  fun hash(): Int {
+    (this.mapping, this.name).hash()
+  }
+
+  fun ==(other: VTableRequest): Bool {
+    this.name == other.name && this.mapping == other.mapping
+  }
+}
+
+// An object that incrementally builds up a vtable by adding entries to it.
+// Holes between these entries can be used by later values inserted into
+// the vtable.
+mutable private class VTableBuilder(
+  sclass: SClassID,
+  env: GlobalEnv,
+  // A possibly sparse map of which slots are occupied so far.
+  slots: mutable Vector<StaticImageField> = mutable Vector[],
+  // Theoretical lower bound on the bit size based on distinct values it holds.
+  mutable bitSizeLowerBound: Int = 0,
+) {
+  mutable fun insert(value: Constant, bitOffset: Int): void {
+    scalarType = value.typ.getScalarType(this.env);
+    invariant(bitOffset % scalarType.bitAlignment == 0, "Buggy misalignment");
+
+    // Find the index where to insert.
+    slots = this.slots;
+    index = slots.size();
+    while (index > 0 && slots[index - 1].bitOffset >= bitOffset) {
+      !index = index - 1
+    };
+
+    if (index == slots.size()) {
+      slots.push(StaticImageField(value, bitOffset))
+    } else if (slots[index].bitOffset != bitOffset) {
+      invariant(
+        bitOffset + scalarType.bitSize <= slots[index].bitOffset,
+        "Buggy overlap",
+      );
+      slots.insert(index, StaticImageField(value, bitOffset))
+    } else {
+      invariant(
+        slots[index].value == value,
+        "Selector coloring tried to " +
+          "put two nonequal values in the same vtable slot.",
+      )
+    }
+  }
+}
+
+// Advances through a VTableBuilder reporting valid bit offsets where
+// a value could be stored.
+mutable private class VTableBuilderIterator(
+  builder: mutable VTableBuilder,
+  value: Constant,
+  // The index of the first field that this might overlap with.
+  mutable index: Int = 0,
+) {
+  // Advance to the first legal offset at or after 'begin'.
+  // Assumes "begin" is monotonically nondecreasing across calls.
+  //
+  // Returns:
+  // - the next legal bit offset >= begin
+  // - "cost" of the next choice (higher is worse
+  // - a flag indicating whether we had to grow the vtable to make room
+  mutable fun next(begin: Int, align: Int): (Int, Int, Bool) {
+    env = this.builder.env;
+    end = begin + this.value.typ.getScalarType(env).bitSize;
+
+    if (this.index >= this.builder.slots.size()) {
+      // This is after all existing slots, so no overlap is possible.
+      (begin, 0x10000, end > this.builder.bitSizeLowerBound)
+    } else {
+      // See if this overlaps with some existing slot, either compatibly
+      // or incompatibly.
+
+      slot = this.builder.slots[this.index];
+      slotBegin = slot.bitOffset;
+      slotEnd = slotBegin + slot.value.typ.getScalarType(env).bitSize;
+
+      if (begin == slotBegin && this.value == slot.value) {
+        // Excellent, identical value already exists, zero-cost!
+        (begin, 0, false)
+      } else if (end <= slotBegin) {
+        // We found some dead space in between existing slots. Cheap.
+        (begin, 0x10000, false)
+      } else {
+        newBegin = if (begin < slotEnd) {
+          // At least partial overlap, skip over existing slot.
+          roundUp(slotEnd, align);
+        } else {
+          // Advance to the next index that might overlap and check again.
+          this.!index = this.index + 1;
+          begin
+        };
+
+        this.next(newBegin, align)
+      }
+    }
+  }
+}
+
+// Generate one initial empty VTableBuilder per type mentioned by any
+// VTableRequest. This is a bit convoluted, returning a Vector rather
+// than a Map, because we cannot currently have a mutable value in
+// a Map.
+private fun createVTableBuilders(
+  requests: Array<VTableRequest>,
+  classesNeedingVTables: UnorderedSet<SClassID>,
+  env: GlobalEnv,
+): mutable Map<SClassID, mutable VTableBuilder> {
+  // Create our return array. Unused slots have a dummy entry identifiable
+  // by the SClassID::none.
+  builders = mutable Map[];
+
+  // Track what must go into each VTable so we can lower-bound its size.
+  uniqueEntriesPerVTable = mutable UnorderedMap[];
+
+  // Intern table for SkipGcType structs.
+  gcTypes = mutable UnorderedSet[];
+
+  for (sc in classesNeedingVTables) {
+    _ = builders.getOrAdd(sc, () -> {
+      builder = mutable VTableBuilder(sc, env);
+
+      // Sanity check what we are being asked to create a VTable for.
+      sclass = env.getSClass(sc);
+      if (!sclass.kind.isKClass()) {
+        sclass.die(
+          "Trying to create VTable for class " +
+            `${sclass}, but it is not a concrete reference type.`,
+        )
+      };
+
+      // Seed the VTable with its SkipGcType, which all vtables must have.
+      // Note that it goes in the second possible pointer slot, not the first.
+      tentative = createGCType(sclass, env);
+      gct = gcTypes.maybeGet(tentative) match {
+      | Some(old) -> old
+      | None() ->
+        gcTypes.add(tentative);
+        tentative
+      };
+      builder.insert(gct, ptrBitSize);
+
+      // Lambdas and memoize thunks are callable from the runtime
+      // so they need to have their code pointer at a predictable location,
+      // vtable offset zero.
+      if (sclass.isLambda || sclass.isMemoizeThunk) {
+        // Only do this if we actually decided to compile a code pointer at all.
+        key = MethodKey("call", MethodSuperpositionID::empty);
+        sclass.methods.maybeGet(key) match {
+        | Some(value) if (env.sfuns.contains(value)) ->
+          code = ConstantFun{id => InstrID::none, typ => tNonGCPointer, value};
+          builder.insert(code, 0)
+        | _ -> void
+        }
+      };
+
+      // Create a Set tracking this builder's unique entries.
+      unique = mutable UnorderedSet[];
+      for (vs in builder.slots) unique.insert(vs.value);
+      uniqueEntriesPerVTable.set(sc, unique);
+
+      builder
+    })
+  };
+
+  // Compute every unique value that goes into each builder's vtable.
+  for (request in requests) {
+    for (m in request.mapping) {
+      (sc, value) = m;
+      _ = uniqueEntriesPerVTable[sc].maybeInsert(value)
+    }
+  };
+
+  // Sum the sizes of each vtable's contents as a rough lower bound on
+  // how small it could possibly be.
+  for (builder in builders) {
+    if (builder.sclass != SClassID::none) {
+      bound = 0;
+      for (value in uniqueEntriesPerVTable[builder.sclass]) {
+        !bound = bound + value.typ.getScalarType(env).bitSize
+      };
+      builder.!bitSizeLowerBound = roundUp(bound, 64);
+    }
+  };
+
+  builders
+}
+
+// Returns the best bit offset to use for 'entry', taking into account what
+// slots in 'vtables' are already in use.
+private fun allocateBestSlot(
+  request: VTableRequest,
+  builders: mutable Map<SClassID, mutable VTableBuilder>,
+  env: GlobalEnv,
+): Int {
+  invariant(!request.mapping.isEmpty(), "Empty vtable request");
+
+  // Create iterators to walk through all the vtables and find the best
+  // offset for this method.
+  iterators = mutable Vector[];
+  for (m in request.mapping) {
+    (sc, val) = m;
+    iterators.push(mutable VTableBuilderIterator(builders[sc], val))
+  };
+
+  align = request.mapping[0].i1.typ.getScalarType(env).bitAlignment;
+
+  bestBitOffset = -1;
+  bestCost = Int::max;
+
+  // TODO: Technically vtable offsets should start at -128 bytes, since
+  // that can be encoded as an 8-bit offset in x86, and that would maximize
+  // the number of 8-bit offsets we use, which would reduce machine code size.
+  bitOffset = 0;
+
+  // Should we keep looking even after we have a legal solution?
+  keepSearching = true;
+
+  while (bestBitOffset < 0 || keepSearching) {
+    first = true;
+    cost = 0;
+
+    foundImprovedSolution = iterators.all(it -> {
+      (newBitOffset, thisCost, hadToGrow) = it.next(bitOffset, align);
+
+      !cost = cost + thisCost;
+
+      if (hadToGrow) {
+        // This solution expands at least one VTable, which we really don't
+        // want to do, so avoid expanding it further once we have any legal
+        // solution.
+        !keepSearching = false
+      };
+
+      if (newBitOffset == bitOffset || first) {
+        // This offset is consistent with all previous iterators.
+
+        if (cost < bestCost) {
+          // Still looking good.
+          !first = false;
+          !bitOffset = newBitOffset;
+          true
+        } else {
+          // This slot was not good enough, try the next one.
+          !bitOffset = newBitOffset + align;
+          false
+        }
+      } else {
+        // This VTable requires a different bit offset than some earlier
+        // vtable, so we'll start over checking the earlier vtables starting
+        // at this bit offset to see if they are OK with it too.
+        !bitOffset = newBitOffset;
+        false
+      }
+    });
+
+    if (foundImprovedSolution) {
+      // This bit offset was legal for every VTable.
+      !bestBitOffset = bitOffset;
+      !bestCost = cost;
+
+      if (cost == 0) {
+        // Stop searching if we happen to get a perfect answer (one that
+        // entirely overlaps existing entries).
+        !keepSearching = false
+      };
+
+      // Try the next possible iterator.
+      !bitOffset = bitOffset + align
+    }
+  };
+
+  // Update the builders to note the newly-added value in each one.
+  for (it in iterators) it.builder.insert(it.value, bestBitOffset);
+
+  bestBitOffset
+}
+
+// This function maps logical vtable bit offsets to physical ones.
+//
+// Selector coloring allocates logical vtable offsets from a simple
+// linear space. But the physical bit offsets for those are actually
+// permuted, for two reasons:
+//
+// 1) On x86, signed 8-bit offsets assemble to smaller machine code, so we want
+//    to use both the 128 bytes before AND after the vtable pointer to reduce
+//    code size. So although logical byte offsets [0, 128) map to themselves,
+//    logical byte offsets [128, 256) are actually stored at [-128, 0), where
+//    they can still be reached via a signed 8-bit displacement. To keep
+//    the vtable layout a bit denser we store this range "backwards", so byte
+//    offset 128 is physical -8, 128+8 is -16, etc. Reversing is OK since no
+//    vtable entry can span an 8-byte boundary (if they ever do, we'll need
+//    to adjust this mapping).
+//
+//    This trick is only applied to the first 256 logical bytes. After that,
+//    increasing logical offsets correspond to increasing physical offsets.
+//
+// 2) The runtime needs somewhere to stash a bit indicating whether an
+//    object instance is frozen or mutable, and it chooses to store that in
+//    each object's vtable pointer since it doesn't have anywhere else.
+//
+//    What this means is that each vtable entry appears twice, once at
+//    an address with the "frozen" bit set to zero, and again at an
+//    address with that bit set to one. Each vtable is chunked into pairs
+//    of adjacent, identical 256-byte blocks (so no matter how you set
+//    that frozen bit, you'll load the same value).
+//
+//    This "mirroring" means that logical offset 256 bytes cannot actually
+//    be physical 256, since that's the start of the first mirror.
+//    Instead it skips over that mirror and becomes 512. Similarly, 512 maps
+//    to 1024, to skip over the second mirror, etc.
+//
+//    Note that vtables have no guaranteed alignment (beyond 8 bytes),
+//    but the object's mutable vtable pointer must of course start at an
+//    address where the "frozen" bit (kFrozenMask) is clear. Not every
+//    slot in the "mutable" vtable mirror need have kFrozenMask clear, just
+//    logical offset 0, the one the object instance points to.
+//
+//    Note that we can and do pack small vtables together rather than
+//    allocating a full 512 bytes for each one.
+//
+// Putting it all together, the first logical 32 8-byte words A-Za-f are
+// laid out and mirrored in this physical order, with the vtable pointing
+// 128 bytes into the allocated vtable storage:
+//
+//    fedcbaZY XWVUTSRQ ABCDEFGH IJKLMNOP fedcbaZY XWVUTSRQ ABCDEFGH IJKLMNOP
+//                     ^
+//                     |
+//                   vtable
+
+fun vtableLogicalToPhysicalBitOffset(bo: Int): Int {
+  if (bo < 128 * 8) {
+    bo
+  } else if (bo < 256 * 8) {
+    128 * 8 - 64 - bo.and(-64) + bo.and(63);
+  } else {
+    mask = (kFrozenMask * 8) - 1;
+    (bo.and(mask.not()) * 2 + bo.and(mask)) - 128 * 8
+  }
+}
+
+// Vtable bit offsets are allowed to go as low as this.
+// See vtableLogicalToPhysicalBitOffset for an explanation.
+const kMinVTableBitOffset: Int = -128 * 8;
+
+// Create fields for a struct containing the SkipGcType for the given SClass.
+private fun createGCType(sc: SClass, env: GlobalEnv): ConstantStruct {
+  (
+    userByteSize,
+    numMaskWords,
+    tilesPerMask,
+    uninternedMetaSize,
+    internedMetaSize,
+    kind,
+    isAllDeepFrozen,
+  ) = sc.arraySlot match {
+  | None() ->
+    // This is a non-Vector type.
+
+    layout = sc.getLayout();
+
+    userSize = if (layout.isEmpty()) {
+      0
+    } else {
+      // Figure out the object size.
+      last = layout[layout.size() - 1];
+      roundUp(last.bitOffset + last.typ.bitSize, 64) / 8
+    };
+
+    // We need this many words for our bit mask.
+    words = if (layout.any(x -> x.typ.isGCPointer())) {
+      (userSize / ptrByteSize + (ptrBitSize - 1)) / ptrBitSize
+    } else {
+      0
+    };
+
+    isAllDeepFrozen = sc.fields.all(x -> x.typ.isDeepFrozen());
+
+    (gcKindClass, internedMetaSize_) = if (sc.isMemoizeThunk) {
+      (
+        2, // kSkipGcKindInvocation
+        56,
+      ) // FIXME: Bogus to hardcode this, see T21762773
+    } else {
+      (
+        0, // kSkipGcKindClass
+        3 * ptrByteSize,
+      ) // sizeof(IObjMetadata)
+    };
+
+    (
+      userSize, // userByteSize
+      words, // numMaskWords
+      1, // tilesPerMask
+      ptrByteSize, // sizeof(RObjMetadata)
+      internedMetaSize_,
+      gcKindClass,
+      isAllDeepFrozen,
+    ) // kSkipGcRefsHintFrozenRefs
+  | Some(slotInfo) ->
+    // This is a Vector type.
+
+    // Count how many pointers are in each array slot.
+    // They go at the beginning of each slot (in the case of a tuple etc.)
+    numPointers = slotInfo.types.foldl(
+      (acc, t) ->
+        if (t.getScalarType(env).isGCPointer()) {
+          acc + 1
+        } else {
+          acc
+        },
+      0,
+    );
+
+    userSize = slotInfo.bitSize / 8;
+
+    words = if (numPointers == 0) {
+      0
+    } else {
+      (userSize / ptrByteSize + (ptrBitSize - 1)) / ptrBitSize
+    };
+
+    tiles = if (words == 0) {
+      1
+    } else {
+      max(1, 64 / (userSize / ptrByteSize))
+    };
+
+    // Set the GC bits. All pointers are at the beginning of each slot,
+    // but we tile it out as many times as will fit in a 64-bit word
+    // so the inner loop of the GC can be tighter.
+    isAllDeepFrozen = slotInfo.types.all(x -> x.isDeepFrozen());
+
+    (
+      userSize, // userByteSize
+      words, // numMaskWords
+      tiles, // tilesPerMask
+      2 * ptrByteSize, // uninternedMetaSize
+      3 * ptrByteSize, // internedMetaSize
+      1, // kSkipGcKindArray
+      isAllDeepFrozen,
+    ) // kSkipGcRefsHintFrozenRefs
+  };
+
+  // Create the string declaring a SkipGcType.
+
+  !numMaskWords =
+    numMaskWords * 2 -
+    (if (isAllDeepFrozen && (numMaskWords > 0)) 1 else 0);
+
+  refsHint = 0;
+  if (numMaskWords != 0) {
+    !refsHint = refsHint.or(1) // kSkipGcRefsHintMixedRefs
+  };
+  if (isAllDeepFrozen) {
+    !refsHint = refsHint.or(2) // kSkipGcRefsHintAllFrozenRefs
+  };
+
+  if (!sc.canAliasMutableTypes) {
+    !refsHint = refsHint.or(4) // kSkipGcRefsHintNoDuplicateMutables
+  };
+
+  // Inserting names into GC info prevents SkipGcTypes from being shared
+  // between different classes, which prevents their vtables from being
+  // shared, which can bloat the binary. So we only include detailed
+  // information in release mode.
+  provideName = !kConfig.release;
+
+  fields = mutable Vector[];
+
+  fieldBitOffset = 0;
+  pushField = (f: Constant) -> {
+    fields.push(StaticImageField(f, fieldBitOffset));
+    !fieldBitOffset = fieldBitOffset + f.typ.getScalarType(env).bitSize
+  };
+
+  // m_refsHint
+  pushField(kByteConstants[refsHint]);
+
+  // m_kind
+  pushField(kByteConstants[kind]);
+
+  // m_tilesPerMask
+  pushField(kByteConstants[tilesPerMask]);
+
+  // m_hasName
+  pushField(kByteConstants[if (provideName) 1 else 0]);
+
+  // m_uninternedMetadataByteSize
+  pushField(
+    ConstantInt{
+      id => InstrID::none,
+      typ => tInt16,
+      value => uninternedMetaSize,
+    },
+  );
+
+  // m_internedMetadataByteSize
+  pushField(
+    ConstantInt{id => InstrID::none, typ => tInt16, value => internedMetaSize},
+  );
+
+  // m_userByteSize
+  pushField(
+    ConstantInt{id => InstrID::none, typ => tInt, value => userByteSize},
+  );
+
+  // m_onStateChange
+  pushField(
+    if (sc.isMemoizeThunk) {
+      ConstantFun{
+        id => InstrID::none,
+        typ => tNonGCPointer,
+        value => env.runtimeFunctions["Runtime.invocationOnStateChange"],
+      }
+    } else {
+      ConstantPointer{id => InstrID::none, typ => tNonGCPointer, value => 0}
+    },
+  );
+
+  if (ptrBitSize == 32) {
+    // Emit alignment padding before the mask words.
+    // TODO: Maybe use 32-bit mask words in this case.
+    pushField(ConstantInt{id => InstrID::none, typ => tInt32, value => 0})
+  };
+
+  // m_refMask
+  if (numMaskWords != 0) {
+    // Create a memory image of the flag words array.
+    flags = Array::mfill(numMaskWords, 0);
+
+    setBit = (bitOffset, isMutable) -> {
+      bitIndex = bitOffset / ptrBitSize;
+      wordIndex = 2 * (bitIndex / 64);
+      bit = 1.shl(bitIndex % 64);
+      flags.set(wordIndex, flags[wordIndex].or(bit));
+      if (isMutable) {
+        flags.set(wordIndex + 1, flags[wordIndex + 1].or(bit));
+      };
+    };
+
+    sc.arraySlot match {
+    | None() ->
+      for (x in sc.fields) {
+        if (x.typ.getScalarType(env).isGCPointer()) {
+          bitOffset = sc.getLayoutSlot(x.name, sc.pos).bitOffset;
+          setBit(bitOffset, !isAllDeepFrozen && !x.typ.isDeepFrozen())
+        }
+      }
+    | Some(slotInfo) ->
+      // Set the GC bits. All pointers are at the beginning of each slot,
+      // but we tile it out as many times as will fit in a 64-bit word
+      // so the inner loop of the GC can be tighter.
+      for (i in Range(0, tilesPerMask)) {
+        slotInfo.types.eachWithIndex((idx, x) -> {
+          scalarType = x.getScalarType(env);
+          if (scalarType.isGCPointer()) {
+            bitOffset = slotInfo.bitOffsets[idx];
+            setBit(
+              (slotInfo.bitSize * i) + bitOffset,
+              !isAllDeepFrozen &&
+                !x.isDeepFrozen() &&
+                !scalarType.isHhvmHandle(),
+            )
+          }
+        });
+      }
+    };
+
+    for (f in flags) {
+      pushField(ConstantInt{id => InstrID::none, typ => tInt, value => f})
+    };
+  };
+
+  if (provideName) {
+    // Append a 0-terminated name to the end of the struct.
+
+    name = UTF8String::make(
+      if (kConfig.mainConfig.useSpecializedNames) {
+        sc.toString()
+      } else if (sc.superposition == ClassSuperpositionID::empty) {
+        sc.gclassName.id
+      } else {
+        // Indicate that there were some Tparams, but we collapsed them.
+        sc.gclassName.id + "<...>"
+      },
+    );
+    for (c in name.utf8) pushField(kByteConstants[c]);
+    pushField(kByteConstants[0]);
+  };
+
+  fv = fields.toArray();
+
+  ConstantStruct{
+    id => InstrID::none,
+    typ => tNonGCPointer,
+    values => fv,
+    cachedHash => ("ConstantStruct", fv).hash(),
+    byteAlignment => 8,
+  }
+}
+
+// For layout purposes we organize VTables into "slots" of this many bits
+// each. Each slot may contain multiple values, if they fit.
+//
+// NOTE: This is unrelated to ptrBitSize, we always use 64-bit slots.
+const kLog2VTableSlotBitSize: Int = 6;
+const kVTableSlotBitSize: Int = 1.shl(kLog2VTableSlotBitSize);
+const kVTableSlotByteSize: Int = kVTableSlotBitSize.shr(3);
+
+// Populate an array of 32-bit masks, one per 256-byte vtable block
+// (skipping mirrors) indicating which vtable offsets this vtable
+// touches.
+private fun computeVTableMask(slots: Array<StaticImageField>): Array<Int> {
+  buf = mutable Vector[];
+
+  for (slot in slots) {
+    bitOffset = vtableLogicalToPhysicalBitOffset(slot.bitOffset);
+
+    // Which 64-bit object word contains this slot? (it can only be one).
+    // Offset to start from 0.
+    mirroringWordIndex = (bitOffset - kMinVTableBitOffset).shr(
+      kLog2VTableSlotBitSize,
+    );
+
+    // Splice out the mirrored copies, to make the numbering system dense
+    // for purposes of this search.
+    bpb = kFrozenMask / 8;
+    high = mirroringWordIndex.shr(1).and(-bpb);
+    low = mirroringWordIndex.and(bpb - 1);
+    wordIndex = high.or(low);
+
+    // We pack in 32 bits per array entry.
+    bufIndex = wordIndex.shr(5);
+    if (bufIndex >= buf.size()) {
+      buf.resize(bufIndex + 1, 0)
+    };
+
+    // Set a bit indicating this word is in use by this vtable.
+    inUseMask = 1.shl(wordIndex.and(31));
+
+    buf.set(bufIndex, buf[bufIndex].or(inUseMask));
+  };
+
+  buf.toArray()
+}
+
+private fun isPlacementAllowed(
+  vtableMask: Array<Int>,
+  megaMask: mutable Vector<Int>,
+  shift: Int,
+  vi: Int,
+  mi: Int,
+): Bool {
+  if (vi >= vtableMask.size()) {
+    // We have run out of room for conflicts, so it works.
+    true
+  } else {
+    m = megaMask[mi];
+    v = vtableMask[vi];
+
+    if (m.and(v.shl(shift)) != 0) {
+      // Conflict with existing megaVTable entry, so can't go here.
+      false
+    } else {
+      // So far so good, see if the next word is also compatible.
+      isPlacementAllowed(vtableMask, megaMask, shift, vi + 1, mi + 1)
+    }
+  }
+}
+
+// For debugging: convert an int to a binary string, but with LSB first.
+private fun binaryToString(n: Int, numBits: Int = 64): String {
+  ret = "";
+
+  for (_ in Range(0, numBits)) {
+    !ret =
+      ret +
+      if (n.and(1) == 0) {
+        "0"
+      } else {
+        "1"
+      };
+    !n = n.ushr(1)
+  };
+
+  ret
+}
+
+// For debugging: checks that megaMask is consistent with the current
+// contents of megaVTable. This is slow.
+private fun checkMegamask(
+  megaMask: mutable Vector<Int>,
+  megaVTable: mutable Vector<StaticImageField>,
+): void {
+  newMask = mutable Vector[];
+
+  for (slot in megaVTable) {
+    bo = slot.bitOffset / 8;
+    if (bo.and(kFrozenMask) == 0) {
+      o = (bo % kFrozenMask) + ((bo / (kFrozenMask * 2)) * kFrozenMask);
+
+      word = o / 8;
+      maskIndex = word / 32;
+
+      if (maskIndex >= newMask.size()) {
+        newMask.resize(maskIndex + 1, 0xFFFF00000000FFFF);
+      };
+
+      newMask.set(maskIndex, newMask[maskIndex].or(1.shl((word % 32) + 16)))
+    }
+  };
+
+  v1 = megaMask.toArray();
+  v2 = newMask.toArray();
+  if (v1 != v2) {
+    txt = n -> {
+      // Discard the high and low 16 guard bits.
+      bits = n.ushr(16).and(0xFFFFFFFF);
+      binaryToString(bits, 32);
+    };
+
+    invariant_violation(
+      "Masks differ:\n" +
+        "computed: " +
+        v1.map(txt) +
+        "\n" +
+        "scratch:  " +
+        v2.map(txt),
+    )
+  }
+}
+
+// Places one VTable into the mega vtable and returns its BYTE offset.
+private fun storeOneVTableInMegaVTable(
+  slots: Array<StaticImageField>,
+  megaMask: mutable Vector<Int>,
+  megaVTable: mutable Vector<StaticImageField>,
+): Int {
+  debugMode = false;
+
+  if (debugMode) {
+    checkMegamask(megaMask, megaVTable)
+  };
+
+  baseMask = 0xFFFF00000000FFFF;
+
+  vtableMask = computeVTableMask(slots);
+
+  // This is the slot number (i.e. array entry, treating megaVTable as
+  // an array of pointers) where logical & physical vtable entry 0 should
+  // end up. Note that entries may precede it, as negative physical offsets
+  // are possible (see vtableLogicalToPhysicalBitOffset).
+  slotNumber = Int::min;
+
+  // Scan the mega vtable being built up, looking for holes where we can
+  // insert this vtable. To avoid O(n^2) behavior we limit ourselves to
+  // looking at the most recent 100 blocks.
+  megaBlockIndex = max(-1, megaMask.size() - 100);
+  while (slotNumber == Int::min) {
+    !megaBlockIndex = megaBlockIndex + 1;
+
+    // Make sure we have enough mask entries for our search.
+    minSize = megaBlockIndex + vtableMask.size();
+    if (minSize > megaMask.size()) {
+      megaMask.resize(minSize, baseMask)
+    };
+
+    if (megaMask[megaBlockIndex] != -1) {
+      // See if we can place the vtable starting anywhere in megaBlockIndex.
+      shift = 0;
+      while ({
+        ok = isPlacementAllowed(vtableMask, megaMask, shift, 0, megaBlockIndex);
+        if (ok) {
+          // Got the answer!
+          !slotNumber = megaBlockIndex * (32 * 2) + shift;
+          false
+        } else {
+          !shift = shift + 1;
+          shift < 32
+        }
+      }) void;
+    }
+  };
+
+  // OR in the new vtable slots we just reserved.
+  vtableMask.eachWithIndex((i, mask) -> {
+    old = megaMask[megaBlockIndex + i];
+    new = mask.shl(slotNumber.and(31));
+
+    invariant(old.and(new) == 0, "Unexpected overlap");
+
+    megaMask.set(megaBlockIndex + i, old.or(new))
+  });
+
+  // Record the new mega vtable entries we just created, including mirror.
+  for (slot in slots) {
+    bitOffset = (
+      vtableLogicalToPhysicalBitOffset(slot.bitOffset) +
+      slotNumber * kVTableSlotBitSize
+    );
+
+    // Mutable class entry.
+    megaVTable.push(slot with {bitOffset});
+
+    // Frozen class "mirror" entry, kFrozenMask bytes later.
+    megaVTable.push(slot with {bitOffset => bitOffset + kFrozenMask * 8});
+  };
+
+  if (debugMode) {
+    checkMegamask(megaMask, megaVTable)
+  };
+
+  slotNumber * kVTableSlotByteSize
+}
+
+// Final result describing how vtables got laid out.
+class VTableInfo(
+  // Maps each VTableRequestID to the bit offset where that entry ended
+  // up the vtable for each class in that VTableRequest.
+  vtableBitOffsets: Array<Int>,
+
+  // The single array containing all vtables interleaved & overlapped.
+  megaVTable: Array<StaticImageField>,
+
+  // Byte offsets where the VTable for each KClass ended up in the mega vtable.
+  // This points to the mutable variant, the frozen variant is kFrozenMask
+  // bytes later.
+  classByteOffsets: UnorderedMap<SClassID, Int>,
+)
+
+// Run an internal consistency check on a VTableInfo.
+private fun verifyVTableInfo(
+  vti: VTableInfo,
+  requests: Array<VTableRequest>,
+  env: GlobalEnv,
+): void {
+  // Map bit offsets to what is at that offset.
+  o2v = UnorderedMap::mcreate(vti.megaVTable.size());
+  for (vs in vti.megaVTable) {
+    o2v.add(vs.bitOffset, vs)
+  };
+
+  prevEnd = Int::min;
+  for (vs in vti.megaVTable) {
+    // Make sure entries are sorted and do not overlap.
+    bo = vs.bitOffset;
+    invariant(bo >= prevEnd, "vtable fields overlap");
+    scalarType = vs.value.typ.getScalarType(env);
+    invariant(bo % scalarType.bitAlignment == 0, "Misaligned");
+    !prevEnd = bo + scalarType.bitSize;
+
+    // Make sure each entry is mirrored.
+    invariant(o2v[bo] == vs, "Hash table mishap");
+    invariant(
+      o2v[bo.xor(kFrozenMask * 8)].value == vs.value,
+      "Value not mirrored in vtable",
+    );
+  };
+
+  // Make sure every request does in fact map to the value it wanted
+  // in the mega vtable.
+  for (r in requests) {
+    bo = vti.vtableBitOffsets[r.id.id];
+    for (m in r.mapping) {
+      (sc, value) = m;
+      invariant(
+        o2v[vti.classByteOffsets[sc] * 8 + bo].value == value,
+        "Class did not get requested vtable value.",
+      )
+    }
+  };
+
+  // Make sure every vtable starts at an address with the kFrozenMask bit clear.
+  // TODO: Catastrophically stupid that we need to clone a mutable version of
+  // this table to iterate through it.
+  for (byteOffset in vti.classByteOffsets.clone().values()) {
+    invariant(
+      byteOffset.and(kFrozenMask) == 0,
+      "Mutable vtable variant has kFrozenMask bit set.",
+    )
+  }
+}
+
+// Given an array of desired VTable layouts, packs them into a single
+// large array, to amortize the cost of vtable "holes" forced on us by
+// the mirroring layout described in vtableLogicalToPhysicalBitOffset.
+private fun interleaveVTables(
+  builders: readonly Vector<mutable VTableBuilder>,
+  requestOffsets: Array<Int>,
+): VTableInfo {
+  // This is an array of 32-bit Ints, where each Int indicates which 64-bit
+  // slots are occupied in that block of 256 vtable bytes (see
+  // vtableLogicalToPhysicalBitOffset).
+  megaMask = mutable Vector[];
+
+  // Actual contents of the megaVTable (unsorted at first).
+  megaVTable = mutable Vector[];
+
+  // Byte offset of where each class's vtable ended up.
+  classByteOffsets = UnorderedMap::mcreate(builders.size());
+
+  // Cache of VTables we have already processed, in case two classes end
+  // up with the same vtable. This can easily happen with generics.
+  seen = mutable UnorderedMap[];
+
+  for (builder in builders) {
+    slots = builder.slots.toArray();
+    byteOffset = seen.maybeGet(slots) match {
+    | Some(o) ->
+      // Some other SClass has the exact same VTable, so just reuse it.
+      o
+    | None() ->
+      // Place this VTable into the megaVTable.
+      o = storeOneVTableInMegaVTable(slots, megaMask, megaVTable);
+
+      // Remember where we placed it, for next time.
+      seen.add(slots, o);
+
+      o
+    };
+
+    classByteOffsets.add(builder.sclass, byteOffset)
+  };
+
+  megaVTable.sortBy(a ~> a.bitOffset);
+
+  VTableInfo(requestOffsets, megaVTable.toArray(), freeze(classByteOffsets))
+}
+
+// Choose a vtable slot for each VTableRequest such that no two requests
+// end up in the same slot in the same vtable (unless they happen to have
+// identical values). This roughly tries to minimize the total size of
+// all vtables, but won't always get the perfect answer.
+//
+// Returns two values:
+// - the bit offset at which each VTableRequest ended up, indexed by its ID.
+// - For each KClass SClassID, the layout of its VTable.
+fun populateVTables(
+  requestsSet: mutable UnorderedSet<VTableRequest>,
+  classesNeedingVTables: mutable UnorderedSet<SClassID>,
+  env: GlobalEnv,
+): VTableInfo {
+  // Choose a heuristic order in which to assign vtables (values that
+  // appear in more vtables get assigned first).
+  requests = requestsSet.toArray().sortedBy(x ~>
+    Orderable.create(x, (a, b) ~>
+      (b.mapping.size(), a.name).compare((a.mapping.size(), b.name))
+    )
+  );
+
+  // Any class that shows up in a request also needs a VTable.
+  for (request in requests) {
+    for (m in request.mapping) {
+      (sc, value) = m;
+
+      // We need to create a vtable for SC.
+      _ = classesNeedingVTables.maybeInsert(sc);
+
+      value match {
+      | ConstantArray{typ}
+      | ConstantObject{typ} ->
+        sclassInVTable = typ.exampleSClass(env);
+        if (env.sclasses[sclassInVTable.id].kind.isKClass()) {
+          // This singleton will need a vtable.
+          _ = classesNeedingVTables.maybeInsert(sclassInVTable.id);
+        }
+      | _ -> void
+      }
+    }
+  };
+
+  builders = createVTableBuilders(requests, freeze(classesNeedingVTables), env);
+
+  // Track the bit offset that each request ended up with.
+  bitOffsets = Array::mfill(requests.size(), Int::min);
+
+  for (r in requests) {
+    // Choose a slot for this entry.
+    slot = allocateBestSlot(r, builders, env);
+
+    // Tell the caller what bit offset we picked for this entry.
+    bitOffsets.set(r.id.id, vtableLogicalToPhysicalBitOffset(slot))
+  };
+
+  // Place the "biggest" vtables first. The rough intuition is to place
+  // the big ones then let the tiny ones fill in holes in the big ones.
+  buildersVec = Vector::mcreateFromIterator(builders.values());
+  buildersVec.sortBy(x ~>
+    Orderable.create(x, (a, b) ~> {
+      sa = a.slots;
+      sb = b.slots;
+
+      (sb[sb.size() - 1].bitOffset - sb[0].bitOffset, sb.size()).compare(
+        (sa[sa.size() - 1].bitOffset - sa[0].bitOffset, sa.size()),
+      )
+    })
+  );
+
+  vti = interleaveVTables(buildersVec, freeze(bitOffsets));
+
+  verifyVTableInfo(vti, requests, env);
+
+  vti
+}

@@ -1,0 +1,19 @@
+fun foo(): String {
+  "fail"
+}
+
+module A;
+
+fun foo(): String {
+  "Pass\n"
+}
+
+fun bar(): String {
+  foo()
+}
+
+module end;
+
+fun main(): void {
+  print_raw(A.bar())
+}

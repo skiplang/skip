@@ -1,0 +1,48 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Regex;
+
+class Match(private matches: Array<String>) uses Equality {
+  fun size(): Int {
+    this.matches.size()
+  }
+
+  fun get(i: Int): String {
+    this.matches[i]
+  }
+
+  // Mostly useful for tests
+  fun toArray(): Array<String> {
+    this.matches
+  }
+}
+
+native class .Regex {
+  native private static fun createWithoutCheck(
+    pattern: String,
+    flags: String = "",
+  ): Regex;
+}
+
+module end;
+
+module String;
+extension class .String {
+  @synonym("test")
+  native fun matches(regex: Regex): Bool;
+  @synonym("search")
+  native fun match(regex: Regex): ?Regex.Match;
+  native fun matchAll(regex: Regex): mutable Iterator<Regex.Match>;
+  native fun replaceRegex(
+    regex: Regex,
+    callback: Regex.Match -> String,
+  ): String;
+  native fun splitRegex(regex: Regex): mutable Iterator<String>;
+}
+
+module end;

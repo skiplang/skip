@@ -1,0 +1,2154 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+
+This file implements pattern match exhaustiveness checking based on
+the algorithm outlined in the following paper:
+
+  http://moscova.inria.fr/~maranget/papers/warn/warn.pdf
+
+While we stay fairly true to the algorithm in general, we also utilize the
+typing information that we have at our disposal in order to prove exhaustiveness
+-- in particular, the algorithm for determining whether a given set of root
+constructors is complete (@is_complete_sig), utilizes typing information that
+has been passed to us from the typechecker -- and that we then extend as we
+progress across the columns in the pattern matrix.
+
+The way this typing information is gathered and tracked is a bit complicated.
+This complexity is largely due to the fact that we are flattening out a possibly
+nested structure while simultaneously gathering and tracking typing information
+based on the nested structure that is being flattened.
+
+In order to track this typing information correctly, we perform a similar
+operation to our specialization process on vectors/matrices at the type level:
+whenever we specialize a matrix on a constructor we also specialize our type
+based on that constructor and get the type arguments from it. This tracks in
+parallel the expansion that we are doing to our pattern vectors and pattern
+matrix in the specialization process.
+
+Once we have created this flattened version of the typing structure that we are
+matching on, we then traverse this along with the specialized vector/matrix in
+parallel. Moreover, we keep the invariant that there is a one-one and onto
+mapping of class map -> column in the pattern matrix.
+
+# The general outline for the code is as follows:
+---------------------------------------------------------------------------
+
+  We have two entry points, one for try matches (@check_exhaustive_try) and one
+  for normal matches (@check_exhaustive_match). These then both use
+  @is_exhaustive to determine overlapping patterns, exhaustivity, and
+  counterexample generation.
+
+  The function @is_exhaustive then prepares our patterns by first removing any
+  Pat_as's, flattening all or patterns, and removing any patterns that contain
+  'when' clauses, and in the case of @check_exhaustive_try, if @is_exhaustive
+  determines that the patterns are non-exhaustive we don't raise an error. The
+  precise algorithm to determine unused patterns and exhaustiveness is detailed
+  in the paper.
+
+  From @is_exhaustive we wind up calling two main functions:
+   1. is_useful: which given a pattern matrix P, and another pattern q,
+      determines if q is "useful" for P (i.e., whether q is an unused pattern).
+      This corresponds to "U" in the paper.
+   2. generate_non_matching: which given a pattern matrix P that isn't exhaustive,
+      generates a counterexample (or shape of a value that won't be matched).
+      This corresponds to "I" in Sec. 5 of the paper.
+
+   In @is_useful, we first save the original pattern matrix for error reporting
+   purposes, and then @useful takes over from there. Most of this function
+   follows immediately from the paper. This then calls our various
+   specialization functions, @build_class_set, and @is_complete sig.
+
+   The specialization functions are generally not terribly interesting. With the
+   only interesting bits coming from subtyping relationships that we need to
+   handle in the specialization process for vectors (see comment above
+   @specialize_vector). The overarching goal of these specialization functions
+   is to take off a constructor and return back a flat list of the arguments to
+   that constructor (or None, in the case that the specializing constructor
+   doesn't match the constructor for the first pattern in the pattern vector).
+
+   Now the interesting bits....
+
+   All of the interesting stuff really happens in determining whether a given
+   set of constructors is complete for the type that we expect in that column,
+   or in other words, from @is_complete_sig on down. When we enter
+   @is_complete_sig we do a couple things to prepare our patterns before we
+   start exmamining them:
+   a.1. We get the root constructors for the patterns in the pattern matrix (@get_root_constructors);
+   a.2. then filter out all the wildcard matches;
+   a.3. and finally separate the remaining patterns into constant patterns, and other patterns.
+   Since constant patterns can be any number of things, we take the following view towards them here:
+   b.1. Try and pick a different pattern constructor, and try and prove
+        exhaustiveness for that (and report errors against that).
+   b.2. If the only things we have in that column are constant patterns (and
+        possibly wildcards), then report the name of the constant pattern as a
+        missing constructor. This will then get fixed later on -- if we also
+        have a wildcard in that column we won't report anything, if we don't,
+        we'll report the error as the constant pattern.
+
+   Now for the other patterns...
+
+   * Pat_void is easy -- it only has one constructor so once
+     we see it we're done.
+
+   * Pat_literal -- This calls @is_complete_literal_sig, and all that does is
+     scan the current column in the pattern matrix for literals, and literal
+     constraints and keeps track of them in an accumulator which it then checks
+     at the end. Note that we don't track anything other than bools and chars in
+     the accumulator. Once we've finished with the column, we then check the
+     size of the accumulator, and verify it against the literal type. If we find
+     it is incomplete (via @is_complete), we then find an example literal that
+     isn't matched. Note that for anything other than chars and ints,
+     @find_example outputs the literals typename followed by an underscore
+     (e.g., String _) for a string.
+
+   * Pat_type WHEN it is a literal constraint, then we know right then and there
+     that the column is complete.
+
+   * Pat_type -- We collect up the various classes that we see in the column of
+     our pattern matrix. If during this process, we see a class that is not in
+     the class map that we've generated for the column (recall that this class
+     map was generated based on the type for the column) we report a not-a-subtype
+     error.
+     The rest is fairly straightforward and just seeks to resolve names for
+     class constants (etc.).
+     At the end we filter out the classes that we've seen along with parents --
+     since matching on the children for the base class will make the match
+     complete (even if we haven't matched on the parent). If after this
+     filtering we still have a non-empty class map, then we know that we've
+     found an incomplete column. We then pick a class name from the class map,
+     and create a "blank" pattern from this that we return out as a
+     counterexample (this is only important for when we generate
+     counterexamples).
+
+# Notes
+---------------------------------------------------------------------------
+ * Patterns as we think of them in the rest of the compiler are actually
+   represented as a list of patterns internally here. This is needed due to the
+   fact that we are peeling off constructors one-by-one as we go along during
+   the specialization process e.g. If we come in with the pattern
+   c1 = Foo(Bar((Baz(), Qux())), y)
+   We then represent this internally as
+   c2 = [c1]
+   Then if we specialize c2 on Foo we get
+   c3 = [Bar((Baz(), Qux())); y]
+   and specializing on Bar, we then get
+   c4 = [(Baz(), Qux()); y]
+   and specializing on the tuple we then get
+   c5 = [Baz(); Qux(); y]
+   and specializing on Baz we then get
+   c6 = [Qux(); y]
+   etc.
+
+ * The @sort_named_params variable in our environment controls whether or not we
+   take into account the declaration order of named class parameters when
+   generating counterexamples for classes with named arguments: if this flag is
+   set to true we respect the order in which the named variables were declared
+   in the class definition when presenting the counterexample to the user.
+   Moreover, we also use this to a guide where we should start searching for a
+   counterexample. This _should not_ be set for exhaustiveness and
+   unused-pattern checking, all it will do is add a lot of overhead. Here's a
+   quick example of how this changes things:
+
+   base class P { children = B{z:Bool, x:Int} }
+    ...
+   (x : P) match {
+   | B{z => true, x => 1}  -> ..
+   }
+   ...
+
+   If we set @sort_named_params = true when entering @generate_non_matching, we
+   generate (and report) the following counterexample:
+   >> B{z => false, x => _}
+   If we set @sort_named_params = false, we instead generate and report:
+   >> B{x => Int _, z => _}
+   Notice how both the order we print the fields in has changed, as well as the
+   inner counterexamples have also changed.
+
+*/
+
+module alias AUtils = SkipAstUtils;
+
+module alias TAst = SkipTypedAst;
+
+module alias TAstUtils = SkipTypedAstUtils;
+
+module alias TUtils = SkipTypingUtils;
+
+module alias N = SkipNamedAst;
+
+module alias Error = SkipError;
+
+module alias A = SkipAst;
+
+module alias Types = SkipTypes;
+
+/* Since we are manipulating and splitting the matrix a lot, keep around the row
+ * index in the original pattern matrix for that pattern. */
+module SkipExhaustivePatterns;
+
+type Pattern_matrix = List<(List<TAst.Pattern>, Int)>;
+
+type Indexed_pattern = (TAst.Pattern, Int);
+
+base class Completeness_result {
+  children =
+  /* Overlap and an example of that overlap. */
+  | Overlapping(Indexed_pattern, ClassSet)
+  /* The signature was complete, and this the set of constructors minus
+   * wildcards. */
+  | Complete(List<Indexed_pattern>)
+  /* The set of signatures was incomplete, and a counterexample along with it. */
+  | Incomplete(List<TAst.Pattern>)
+}
+
+base class RestPatUsefulResult {
+  children =
+  // Not useful patter
+  | NotUseful()
+  // Not only not useful, but it wasn't in the class set
+  | NotInSet()
+  // Useful pattern
+  | Useful()
+}
+
+mutable class Env{
+  /* Don't try and simplify the class map (etc.) when we're not in
+   * counterexample generation mode. */
+  generating_counterexamples: Bool,
+  /* We memoize class maps, and index them by the type we're generating the
+   * class map for. This way we can handle GADTs too (since we specialize the
+   * type based on the constructor). */
+  class_sets: mutable UnorderedMap<
+    TUtils.TparamConstraints,
+    mutable UnorderedMap<N.Type__, ClassSet>,
+  >,
+  // How many, and how deeply should we generate counterexamples?
+  counterexample_depth: Int,
+  sk_this: ?TAst.Name,
+  sort_named_params: Bool,
+  typing_acc: SkipTypingUtils.Acc,
+  typing_env: SkipTypingUtils.Env,
+}
+
+/* Exception types for exhaustiveness */
+class Overlapping_pattern(
+  FileRange,
+  Env,
+  Indexed_pattern,
+  ClassSet,
+  Pattern_matrix,
+) extends Exception
+class Unused_pattern(FileRange, Env, List<TAst.Pattern>) extends Exception
+class Non_exhaustive_match(
+  FileRange,
+  Bool,
+  Env,
+  List<List<TAst.Pattern>>,
+) extends Exception
+
+/***************************************************************************/
+/*             Class Set                                                   */
+/***************************************************************************/
+
+value class ClassSet(private inner: SSet) {
+  // true iff we contain the given class or base class, or any concrete children
+  fun contains(n: N.Name): Bool {
+    this.inner.contains(n.i1) ||
+      {
+        cd = SkipNaming.getClass(n);
+        (cd.kind is A.KBase()) && this.containsCd(cd)
+      }
+  }
+
+  // true iff we contain the given concrete class, or a concrete child of
+  // the given base class
+  fun containsCd(cd: N.Class_def): Bool {
+    cd.kind match {
+    | A.KTrait() -> invariant_violation("ICE KTrait pattern")
+    | A.KClass() -> this.inner.contains(cd.name.i1)
+    | A.KBase() -> cd.concrete_children.any(this.inner.contains)
+    }
+  }
+
+  fun isEmpty(): Bool {
+    this.inner.isEmpty()
+  }
+
+  fun validChildren(cd: N.Class_def): SSet {
+    invariant(cd.kind == A.KBase(), "ICE validChildren call on non kbase");
+    cd.concrete_children.filter(this.inner.contains) // get all possible children // filter valid children (GADT case)
+  }
+
+  fun toList(): List<String> {
+    List::createFromIterator(this.inner.values())
+  }
+
+  fun size(): Int {
+    this.inner.size()
+  }
+
+  // Assumes that the inbound predicate knows that the ClassSet only contains
+  // KClasses
+  fun filterRaw(p: String -> Bool): this {
+    ClassSet(this.inner.filter(p))
+  }
+
+  fun first(): String {
+    this.inner.values().next().fromSome()
+  }
+}
+
+/***************************************************************************/
+/*             Pattern, and Indexed Patterns Utilities                     */
+/***************************************************************************/
+
+// We want to specialize based on the resolved type name for the constructor.
+fun resolve_tid(tid: TAst.Type_identifier): TAst.Name {
+  tid match {
+  | TAst.Tid_object(obj_name) -> obj_name
+  | TAst.Tid_static(_, obj_name) -> obj_name
+  }
+}
+
+fun str_of_tid(tid: TAst.Type_identifier): String {
+  AUtils.string_of_name(resolve_tid(tid))
+}
+
+/* Given a tid return back the class def for this. Note that we may at times not
+ * want to use this, and instead get the class def from nobject. */
+fun class_def_of_tid(
+  env: mutable Env,
+  tid: TAst.Type_identifier,
+): (Bool, N.Class_def) {
+  tid match {
+  | TAst.Tid_object(name) -> (false, SkipNaming.getClass(name))
+  | TAst.Tid_static((nthis, nconst), _nobject) ->
+    ty_abstract = cd -> {
+      td = cd.types[nconst];
+      td.body match {
+      | N.TydAbstract _ -> true
+      | N.TydDefined _ -> false
+      }
+    };
+    (nthis, env.sk_this) match {
+    | ((_, "this"), None()) ->
+      invariant_violation("Internal error: \"this\" not defined for tid")
+    | ((_, "this"), Some(sk_this)) ->
+      cd = SkipNaming.getClass(sk_this);
+      (ty_abstract(cd), cd)
+    | _ ->
+      cd = SkipNaming.getClass(nthis);
+      (ty_abstract(cd), cd)
+    }
+  }
+}
+
+/* For generating counterexamples for class patterns with named parameters, we
+ * sort the arguments based upon the declaration order of the variables for that
+   class. This means a couple things:
+   1. We will generate a counterexample in a DFS-like manner starting at the
+      leftmost variable (according to class declaration order)
+   2. We will spit out the counterexample in the canonical declaration order for that class.
+*/
+fun canonical_param_names(tid: TAst.Type_identifier): SMap<Int> {
+  nm = resolve_tid(tid);
+  cd = SkipNaming.getClass(nm);
+  cd.params match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    invariant_violation(
+      "Internal error: expected, but was unable to find parameters for class " +
+        AUtils.string_of_name(nm),
+    )
+  | N.HasParams(class_params) ->
+    SortedMap::createFromItems(
+      class_params.params.toList().map(param -> {
+        (AUtils.string_of_name(param.name), param.index)
+      }),
+    )
+  }
+}
+
+fun canonicalize_params<Ta>(
+  env: readonly Env,
+  tid: TAst.Type_identifier,
+  named_params: UMap<Ta>,
+): mutable Array<(TAst.Name, Ta)> {
+  values = named_params.items() |> Array::mcreateFromIterator;
+  if (env.sort_named_params) {
+    canonical_order = canonical_param_names(tid);
+    cmp = p ~> {
+      ((_, nm), _) = p;
+      canonical_order[nm]
+    };
+    values.sortBy(cmp, compare);
+  };
+  values
+}
+
+fun add_params<Ta>(
+  env: mutable Env,
+  tid: TAst.Type_identifier,
+  acc: Array<Ta>,
+  params: Parameters<Ta>,
+): Array<Ta> {
+  params match {
+  | Named(m) ->
+    values = if (env.sort_named_params) {
+      canonicalize_params(env, tid, m).values()
+    } else {
+      m.items()
+    };
+    values.map(p -> p.i1).concat(acc.values()).collect(Array)
+  | Positional(a) -> a.concat(acc)
+  }
+}
+
+/* Update the underlying pattern while keeping all other information intact. */
+fun update_pat(pat: TAst.Pattern, new_pat: TAst.Pattern__): TAst.Pattern {
+  (ty, (pos, _)) = pat;
+  (ty, (pos, new_pat))
+}
+
+fun unindex(ipats: List<Indexed_pattern>): List<TAst.Pattern> {
+  ipats.map(p -> p.i0)
+}
+
+fun make_pat_var(pos: FileRange, nm: String): TAst.Pattern {
+  typ = (pos, N.Tanything());
+  nm1 = (pos, nm);
+  info = TAstUtils.default_binding_info;
+  binding = (typ, nm1, info);
+  (typ, (pos, TAst.Pat_var(binding)))
+}
+
+fun make_wildcard_pat(pos: FileRange): TAst.Pattern {
+  make_pat_var(pos, "_")
+}
+
+/* Make a bunch of wildcard variables */
+fun repeat_wildcard<Ta>(wildcard: Ta, acc: List<Ta>, n: Int): List<Ta> {
+  if (n <= 0) {
+    acc
+  } else {
+    repeat_wildcard(wildcard, List.Cons(wildcard, acc), n - 1)
+  }
+}
+
+fun make_wildcards(
+  acc: List<TAst.Pattern>,
+  pos: FileRange,
+  n: Int,
+): List<TAst.Pattern> {
+  wildcard = make_wildcard_pat(pos);
+  repeat_wildcard(wildcard, acc, n)
+}
+
+fun make_wildcards_array(pos: FileRange, n: Int): Array<TAst.Pattern> {
+  wildcard = make_wildcard_pat(pos);
+  Array::fillBy(n, _ ~> wildcard)
+}
+
+fun is_variable_pat(pat: TAst.Pattern): Bool {
+  pat is (_, (_, TAst.Pat_var _))
+}
+
+fun constr_of_pat<Ta>(x: List<Ta>): Ta {
+  x match {
+  | List.Cons(ctor, _) -> ctor
+  // We should never be calling this on a empty list of patterns
+  | _ -> invariant_violation("ICE empty list constr_of_pat")
+  }
+}
+
+fun pats_pos(pats: List<TAst.Pattern>): FileRange {
+  TAstUtils.pattern_pos(constr_of_pat(pats))
+}
+
+/* Flatten all the patterns for our match, and mark the patterns that are part
+ * of when patterns. */
+fun marked_patterns_of_mbl(
+  mbl: List<TAst.Match_branch>,
+): (List<(TAst.Pattern, Bool)>, Bool) {
+  (has_whens, pats) = mbl.map_foldl(
+    ((has_when, acc) -> {
+      (pats, when_expr, _) = acc;
+      is_when = when_expr.isSome();
+      ((has_when || is_when), pats.map(pat -> (pat, is_when)))
+    }),
+    false,
+  );
+  (pats.flatten(), has_whens)
+}
+
+/* The number of parameters for this type based upon the class def. We need this
+ * in order to handle overridden constructors properly. */
+fun parameters_length_of_type(tid: TAst.Type_identifier): Int {
+  nm = resolve_tid(tid);
+  cd = SkipNaming.getClass(nm);
+  cd.params match {
+  | N.HasParams(params) -> params.params.size()
+  | _ -> 0
+  }
+}
+
+/* Give us the arity of this constructor */
+fun constructor_arity(con: TAst.Pattern__): Int {
+  con match {
+  | TAst.Pat_var _
+  | TAst.Pat_literal _ ->
+    0
+  | TAst.Pat_type(_, _castType, None()) -> 0
+  | TAst.Pat_type(tid, _castType, Some _) -> parameters_length_of_type(tid)
+  /* Since we remove Pat_as from our internal representation of patterns, we
+   * should never encounter one here. */
+  | TAst.Pat_as _ ->
+    invariant_violation("Internal error: encountered as-pattern")
+  }
+}
+
+/* Since named (named) patterns don't need to have all the parameters in them,
+ * we normalize them here so that all parameters are present. */
+fun normalize_params_if_named(
+  pos: FileRange,
+  tid: TAst.Type_identifier,
+  params: Parameters<TAst.ParamPattern>,
+): Parameters<TAst.ParamPattern> {
+  params match {
+  | Named(our_params) ->
+    nm = resolve_tid(tid);
+    cd = SkipNaming.getClass(nm);
+    cd.params match {
+    | N.HasParams(class_params) ->
+      class_params.params match {
+      | Named(class_params1) ->
+        normalized_params = class_params1.reduce(
+          (acc, key, _) -> {
+            // Found a missing parameter name, so fill it in with a wildcard
+            if (!acc.containsKey(key)) {
+              wc_pat = make_wildcard_pat(pos);
+              acc.add((pos, key.i1), (wc_pat.i0, wc_pat))
+            } else {
+              acc
+            }
+          },
+          our_params,
+        );
+        Named(normalized_params)
+      | _ ->
+        invariant_violation(
+          "Internal error: found positional parameters where we expected named",
+        )
+      }
+    | N.NoParams()
+    | N.NativeConstruct _ ->
+      invariant_violation(
+        "Internal error: found parameters where we expected none",
+      )
+    }
+  | _ -> params
+  }
+}
+
+/* Add wildcards to @params so that it matches the length of the parameters
+ * expected for patterns with type @tid1. We _cannot_ simply tack on parameters
+ * to the front of the parameters since this fails in the multiple inheritance case. */
+fun normalize_positional_params(
+  pos: FileRange,
+  child_tid: TAst.Type_identifier,
+  parent_tid: TAst.Type_identifier,
+  parent_params: Array<TAst.ParamPattern>,
+): Array<TAst.ParamPattern> {
+  params_of = cd -> {
+    cd.params match {
+    | N.NoParams()
+    | N.NativeConstruct _
+    | N.HasParams(N.Class_params{params => Named _}) ->
+      invariant_violation(
+        "Internal error: encountered named parameters but was expecting positional",
+      )
+    | N.HasParams(N.Class_params{params => Positional(class_params)}) ->
+      class_params
+    }
+  };
+  child_tid1 = resolve_tid(child_tid);
+  parent_tid1 = resolve_tid(parent_tid);
+  child = SkipNaming.getClass(child_tid1);
+  parent = SkipNaming.getClass(parent_tid1);
+  child_cla_params = params_of(child);
+  parent_cla_params = params_of(parent);
+  params_named = parent_cla_params.zipWith(parent_params, (cp_param, pat) ->
+    (cp_param.name, pat)
+  );
+  params_named1 = UMap::createFromItems(params_named);
+  child_cla_params.map(cp_param -> {
+    nm = (cp_param : N.Parameter).name;
+    params_named1.maybeGet(nm) match {
+    | None() ->
+      wc_pat = make_wildcard_pat(pos);
+      (wc_pat.i0, wc_pat)
+    | Some(param_pat) -> param_pat
+    }
+  })
+}
+
+/* To prepare a pattern for exhaustiveness checking, we remove all Pat_as. */
+fun prep_pattern(env: mutable Env, pat: TAst.Pattern): TAst.Pattern {
+  TAstUtils.pattern_of__(pat) match {
+  | TAst.Pat_literal _
+  | TAst.Pat_var _ ->
+    pat
+  | TAst.Pat_type(_tid, _castType, None()) -> pat
+  | TAst.Pat_type(tid, castType, Some(params)) ->
+    pos = TAstUtils.pattern_pos(pat);
+    prepped_params = params.map(param ->
+      (param.i0, prep_pattern(env, param.i1))
+    );
+    normalized_params = normalize_params_if_named(pos, tid, prepped_params);
+    update_pat(pat, TAst.Pat_type(tid, castType, Some(normalized_params)))
+  | TAst.Pat_as(p, _) -> prep_pattern(env, p)
+  }
+}
+
+/* Take a pattern and shove the things in @args into it. This is used in our
+ * counterexample generation process to reconstruct patterns after the recuwrsive step. */
+fun rebuild_constr(
+  env: mutable Env,
+  skeleton: TAst.Pattern,
+  args: Array<TAst.Pattern>,
+): TAst.Pattern {
+  (ty, (pos, pat)) = skeleton;
+  pat match {
+  | TAst.Pat_literal _
+  | TAst.Pat_var _ ->
+    skeleton
+  | TAst.Pat_type(_, _castType, None()) -> skeleton
+  /* If we only have wildcard arguments return '<Constr> _' except for the case
+   * where <Constr> has no args. */
+  | TAst.Pat_type(
+    nm,
+    castType,
+    Some _,
+  ) if (args.all(is_variable_pat) && (!args.isEmpty())) ->
+    (ty, (pos, TAst.Pat_type(nm, castType, None())))
+  | TAst.Pat_type(nm, castType, Some(params)) ->
+    params1 = normalize_params_if_named(pos, nm, params);
+    params1 match {
+    | Positional(param_tys) ->
+      ty_args = param_tys.zipWith(args, (pty, arg) -> (pty.i0, arg));
+      (ty, (pos, TAst.Pat_type(nm, castType, Some(Positional(ty_args)))))
+    | Named(nom_map) ->
+      /* We need to make sure that we respect the way we de-serialize named
+       * to positional args in our checking algorithm. Thus the reason for
+       * this seemingly superfluous work of converting to a list and then back
+       * again.
+       */
+      kvs = canonicalize_params(env, nm, nom_map);
+      nom_args = kvs.zipWith(args, (p, arg) -> {
+        (k, (pty, _)) = p;
+        (k, (pty, arg))
+      });
+      new_args = nom_args.reduce(
+        (mp, k_arg) -> {
+          (k, arg) = k_arg;
+          mp.add(k, arg)
+        },
+        UMap[],
+      );
+      (ty, (pos, TAst.Pat_type(nm, castType, Some(Named(new_args)))))
+    }
+  /* Since we remove Pat_as from our internal representation of patterns, we
+   * should never encounter one here. */
+  | TAst.Pat_as _ ->
+    invariant_violation(
+      "Internal error: encountered as-pattern when trying to rebuild pattern",
+    )
+  }
+}
+
+/* Given a name for a class, generate a dummy pattern for that class so that we
+ * can then fill it in later. */
+private fun skel_pattern_of_class(pos: FileRange, name: String): TAst.Pattern {
+  SkipNaming.maybeGetClass(name) match {
+  | Some(cd) ->
+    ty = ((pos, N.Tanything()) : TAst.Type_);
+    cd.params match {
+    | N.NoParams()
+    | N.NativeConstruct _ ->
+      (ty, (pos, TAst.Pat_type(TAst.Tid_object((pos, name)), ty, None())))
+    | N.HasParams(cp) ->
+      skel_params = cp.params.map(_ -> {
+        wc_pat = make_wildcard_pat(pos);
+        (wc_pat.i0, wc_pat)
+      });
+      (
+        ty,
+        (
+          pos,
+          TAst.Pat_type(TAst.Tid_object((pos, name)), ty, Some(skel_params)),
+        ),
+      )
+    }
+  | None() ->
+    invariant_violation(
+      "Internal error: unable to find class definition for " + name,
+    )
+  }
+}
+
+private fun skel_patterns_of_class_set(
+  generate_all: Bool,
+  env: readonly Env,
+  pos: FileRange,
+  class_set: ClassSet,
+): List<TAst.Pattern> {
+  (env.generating_counterexamples, generate_all) match {
+  | (false, false) ->
+    invariant(
+      !class_set.isEmpty(),
+      "Internal error: tried generating a skeleton pattern from an empty class map",
+    );
+    List[skel_pattern_of_class(pos, class_set.first())]
+  | (_, true) ->
+    class_set.toList().map(cur1 -> skel_pattern_of_class(pos, cur1))
+  | (true, false) ->
+    pruned_classes = class_set
+      .toList()
+      .takeAndDrop(env.counterexample_depth).i0;
+    pruned_classes.map(cur1 -> skel_pattern_of_class(pos, cur1))
+  }
+}
+
+/* Returns true if the pattern @pat is a constraint pattern for the literal @lit. */
+fun is_literal_constraint(lit: A.LiteralValue, pat: TAst.Pattern): Bool {
+  TAstUtils.pattern_of__(pat) match {
+  | TAst.Pat_type(tid, _castType, _) ->
+    tid_name = resolve_tid(tid);
+    AUtils.string_of_name(tid_name) == TUtils.literal_type_name(lit)
+  | _ -> false
+  }
+}
+
+/* Is the class given by @child_tid a child of @parent_tid? */
+fun is_child(
+  class_set: ClassSet,
+  child_tid: TAst.Type_identifier,
+  parent_tid: TAst.Type_identifier,
+): Bool {
+  parent_tid1 = resolve_tid(parent_tid);
+  child_tid_str = str_of_tid(child_tid);
+  /* Make sure the parent is properly constrained by the type of the column that
+   * the child is in. */
+  is_valid_supertype = class_set.contains(parent_tid1);
+  is_valid_supertype &&
+    {
+      cd = SkipNaming.getClass(parent_tid1);
+      cd.kind == A.KBase() && cd.children_.contains(child_tid_str)
+    }
+}
+
+fun is_subtype(
+  class_set: ClassSet,
+  child: TAst.Type_identifier,
+  parent: TAst.Type_identifier,
+): Bool {
+  str_of_tid(child) == str_of_tid(parent) || is_child(class_set, child, parent)
+}
+
+/***************************************************************************/
+/*            Pattern pretty printing for error reporting                  */
+/***************************************************************************/
+/* Take a pattern and construct the string representation of it */
+fun print_pattern(env: readonly Env, acc: String, pat: TAst.Pattern): String {
+  pretty_str_of_tid = tid -> {
+    tid match {
+    | TAst.Tid_object(obj_name) -> AUtils.string_of_name(obj_name)
+    | TAst.Tid_static((nthis, nconst), _obj_name) ->
+      snthis = AUtils.string_of_name(nthis);
+      snconst = AUtils.string_of_name(nconst);
+      snthis + "::" + snconst
+    }
+  };
+  TAstUtils.pattern_of__(pat) match {
+  | TAst.Pat_type(
+    TAst.Tid_object(name),
+    _castType,
+    Some(Positional(pats)),
+  ) if (N.is_tuple_class(name)) ->
+    pats1 = pats.map(cur1 -> print_pattern(env, "", cur1.i1));
+    acc + "(" + pats1.join(", ") + ")"
+  | TAst.Pat_type(
+    TAst.Tid_object(name),
+    _castType,
+    _,
+  ) if (N.is_tuple_class(name)) ->
+    tuple_arity = N.tuple_arity(name);
+    acc + "(" + Vector::fill(tuple_arity, "_").join(", ") + ")"
+  | TAst.Pat_type(tid, _castType, obj_params) ->
+    acc1 = acc + pretty_str_of_tid(tid);
+    obj_params match {
+    | None() -> acc1 + " _"
+    | Some(obj_params1) ->
+      obj_params1 match {
+      | Positional(pats) ->
+        pats1 = pats.map(cur1 -> print_pattern(env, "", cur1.i1));
+        acc1 + "(" + pats1.join(", ") + ")"
+      | Named(map) ->
+        values = canonicalize_params(env, tid, map);
+        pats = values.map(nm_pat -> {
+          (nm, pat1) = nm_pat;
+          snm = AUtils.string_of_name(nm);
+          spat1 = print_pattern(env, "", pat1.i1);
+          snm + " => " + spat1
+        });
+
+        acc1 + "{" + pats.join(", ") + "}"
+      }
+    }
+  | TAst.Pat_var((_, x, _)) -> acc + AUtils.string_of_name(x)
+  | TAst.Pat_literal(l) ->
+    acc + BufferedPrinter.pp_to_string(SkipAstPp.literal, l)
+  | TAst.Pat_as(pat1, (_, (_, nm), _)) ->
+    nm + " @ " + print_pattern(env, acc, pat1)
+  }
+}
+
+/* Takes a patterns vector and produces the string representation of that pattern vector. */
+fun pat_to_string(env: readonly Env, pats: List<TAst.Pattern>): String {
+  pat_strs = pats.map(cur1 -> " | " + print_pattern(env, "", cur1));
+  pat_strs.join("\n")
+}
+
+fun class_set_to_string(
+  env: readonly Env,
+  pos: FileRange,
+  class_set: ClassSet,
+): String {
+  patterns = skel_patterns_of_class_set(true, env, pos, class_set);
+  pat_to_string(env, patterns)
+}
+
+fun combine(
+  pat: TAst.Pattern,
+  patterns: List<List<TAst.Pattern>>,
+): List<List<TAst.Pattern>> {
+  patterns.map(pat_list -> List.Cons(pat, pat_list))
+}
+
+/***************************************************************************/
+/*             Debugging                                                   */
+/***************************************************************************/
+
+fun debug_pattern_matrix(env: mutable Env, m: Pattern_matrix): void {
+  print_string("{\n");
+  msorted = m.sortedBy(x ~> x.i1, compare);
+  for (li in msorted) {
+    (l, i) = li;
+    print_string(i.toString());
+    print_string(": ");
+    debug_pattern_row(env, l);
+  };
+  print_string("}\n");
+}
+
+fun debug_pattern_row(env: mutable Env, l: List<TAst.Pattern>): void {
+  print_string("[");
+  for (p in l) {
+    print_string(print_pattern(env, "", p));
+    print_string(", ");
+  };
+  print_string("]\n");
+}
+
+fun debug_pattern(env: mutable Env, p: TAst.Pattern): void {
+  print_string(print_pattern(env, "", p));
+  print_string("\n");
+}
+
+/***************************************************************************/
+/*        Ways to build up class maps, and class map list utils            */
+/***************************************************************************/
+fun promote(env: mutable Env, ty: N.Type_): N.Type_ {
+  SkipTypingUtils.promote(env.typing_env, env.typing_acc, ty)
+}
+
+/* Build the class map for @ty w.r.t. @env. Note that before actually generating
+ * the class map for @ty we first check to make sure that we haven't built one for
+ * that type already. Furthermore, we take a conservative view towards memoization here,
+ * since GADTs/type refinement based on the current pattern can change @env (and
+ * therefore @ty). Thus it is important to note a couple things:
+ 1. @WeakTMap won't record types with Tvars, or Tparams in them -- thus types that
+    have type variables or type parameters after being unfolded are _not_ memoized.
+ 2. Due to 1. it is important that we unfold the type first to try and make the
+    type as concrete as possible and increase the likelihood that we'll be
+    able to memoize that type.
+
+Optimized version
+let rec build_class_set (env: env) (ty: TAst.type): class_set * env =
+  let unfolded_ty = Types.unfold_type env.typing_acc.TUtils.subst ty in
+  match WeakTMap.T.get unfolded_ty env.class_sets with
+  | None ->
+    let prom_ty = promote env ty in
+    let class_set = SkipTypingUtils.build_match_class_set env.typing_env env.typing_acc prom_ty in
+    let env = {env with class_sets = WeakTMap.T.weak_add unfolded_ty class_set env.class_sets;} in
+    class_set, env
+  | Some cls_map -> cls_map, env
+*/
+fun build_class_set(
+  next_id: () -> Int,
+  env: mutable Env,
+  ty: TAst.Type_,
+): ClassSet {
+  prom_ty = promote(env, ty);
+  unfolded = Types.fill_vars(env.typing_acc.subst, prom_ty);
+  inner_map = env.class_sets.getOrAdd(env.typing_acc.tparam_constraints, () -> {
+    mutable UnorderedMap[]
+  });
+  inner_map.getOrAdd(unfolded.i1, () -> {
+    ClassSet(
+      SkipTypingUtils.build_match_class_set(
+        next_id,
+        env.typing_env,
+        env.typing_acc,
+        unfolded,
+      ),
+    )
+  })
+}
+
+fun known_member_of_pat(s: SSet, pat: TAst.Pattern): SSet {
+  pat.i1.i1 match {
+  | TAst.Pat_type(id, _castType, _) -> s.set(str_of_tid(id))
+  | _ -> s
+  }
+}
+
+fun ty_pop(tys: List<TAst.Type_>): (TAst.Type_, List<TAst.Type_>) {
+  tys match {
+  | List.Cons(hd, tl) -> (hd, tl)
+  | List.Nil() ->
+    invariant_violation("Internal error: typing information out of sync")
+  }
+}
+
+/***************************************************************************/
+/*                         Vector and Matrix Specialization                */
+/***************************************************************************/
+
+// Add a child's missing parameters
+fun normalize_param_patterns(
+  pos: FileRange,
+  child_tid: TAst.Type_identifier,
+  parent_tid: TAst.Type_identifier,
+  other_pats: Parameters<TAst.ParamPattern>,
+): Parameters<TAst.ParamPattern> {
+  other_pats match {
+  | Named _ -> normalize_params_if_named(pos, child_tid, other_pats)
+  | Positional(lpats) ->
+    Positional(normalize_positional_params(pos, child_tid, parent_tid, lpats))
+  }
+}
+
+/* We are specializing the vector @orig_pat_vec based on the constructor @con.
+ * If the vector hasn't disappeared during the specialization process, we return
+ * Some(<specialized_vector>), otherwise we return None.
+ * We add the following rule to specialization:
+   S(c, ([B_ q1 ... qn])) -> None
+     if not(c <= B)
+   S(c, ([B_ q1 ... qn])) -> Some([_ ... _ q1 ... qn])
+     if c <= B and #(_ .. _) = arity(c)
+*/
+fun specialize_vector(
+  env: mutable Env,
+  class_set: ClassSet,
+  con: TAst.Pattern__,
+  orig_pat_vec: List<TAst.Pattern>,
+): ?List<TAst.Pattern> {
+  orig_pat_vec match {
+  | List.Cons(pat_con, rest_pat) ->
+    (con, TAstUtils.pattern_of__(pat_con)) match {
+    | (TAst.Pat_literal(l1), TAst.Pat_literal(l2)) ->
+      if (l1 == l2) Some(rest_pat) else None()
+    /* We need to take into account subtyping and pattern constraints when we
+     * specialize. So do that here. */
+    | (TAst.Pat_literal(l), TAst.Pat_type(tid, _castType, None())) ->
+      if (str_of_tid(tid) == TUtils.literal_type_name(l)) {
+        Some(rest_pat)
+      } else {
+        None()
+      }
+    /* C _ == C(_, _, ..., _) */
+    | (
+      TAst.Pat_type(tid1, _castType1, None()),
+      TAst.Pat_type(tid2, _castType2, Some _),
+    ) if (str_of_tid(tid1) == str_of_tid(tid2)) ->
+      invariant_violation("Unexpanded constructor")
+    | (
+      TAst.Pat_type(child_tid, _castTypeChild, None()),
+      TAst.Pat_type(parent_tid, _castTypeParent, None()),
+    ) ->
+      if (is_subtype(class_set, child_tid, parent_tid)) {
+        Some(rest_pat)
+      } else {
+        None()
+      }
+    | (
+      TAst.Pat_type(child_tid, _castTypeChild, Some _),
+      TAst.Pat_type(parent_tid, _castTypeParent, None()),
+    ) ->
+      if (is_subtype(class_set, child_tid, parent_tid)) {
+        len = parameters_length_of_type(child_tid);
+        Some(make_wildcards(rest_pat, TAstUtils.pattern_pos(pat_con), len));
+      } else {
+        None()
+      }
+    | (
+      TAst.Pat_type(child_tid, _castTypeChild, Some _),
+      TAst.Pat_type(parent_tid, _castTypeParent, Some(other_params)),
+    ) ->
+      pos = TAstUtils.pattern_pos(pat_con);
+      if (is_subtype(class_set, child_tid, parent_tid)) {
+        normalized_params = normalize_param_patterns(
+          pos,
+          child_tid,
+          parent_tid,
+          other_params,
+        );
+        normalized_pats = normalized_params.map(p -> p.i1);
+        arrayRest = Array::createFromItems(rest_pat);
+        params = add_params(env, child_tid, arrayRest, normalized_pats);
+        Some(List::createFromItems(params))
+      } else {
+        None()
+      }
+    | (c, TAst.Pat_var _) ->
+      n = constructor_arity(c);
+      Some(make_wildcards(rest_pat, TAstUtils.pattern_pos(pat_con), n))
+    | _ -> None()
+    }
+  /* We never specialize an empty pattern vector */
+  | _ -> invariant_violation("Internal error: Tried to specialize empty vector")
+  }
+}
+
+/* Take a type and specialize it based on the constructor that we are
+ * specializing our vectors/matrices on. We only need to worry about Pat_type since
+ * it is the only non-zero-arity constructors. */
+fun specialize_type(
+  next_id: () -> Int,
+  env: mutable Env,
+  pat: TAst.Pattern,
+  tys: List<TAst.Type_>,
+): (List<TAst.Type_>, mutable Env) {
+  pos = TAstUtils.pattern_pos(pat);
+  (ty, rest_tys) = ty_pop(tys);
+  ty1 = Types.fill_vars(env.typing_acc.subst, ty);
+  prom_ty = promote(env, N.unfold_tnamed(ty1));
+  TAstUtils.pattern_of__(pat) match {
+  | TAst.Pat_type(tid, _castType, Some _) ->
+    name = resolve_tid(tid);
+    (ty_env, ty_acc, (param_tys, _, _)) = TUtils.instantiate_pattern_object(
+      next_id,
+      pos,
+      env.typing_env,
+      env.typing_acc,
+      prom_ty,
+      name,
+    );
+    env1 = env with {typing_env => ty_env, typing_acc => ty_acc};
+    param_tys match {
+    | None() -> (rest_tys, env1)
+    | Some(param_tys1) ->
+      arrayRest = Array::createFromItems(rest_tys);
+      params = add_params(env1, tid, arrayRest, param_tys1.map(p -> p.ty));
+      (List::createFromItems(params), env1)
+    }
+  | _ -> (rest_tys, env)
+  }
+}
+
+/* Specializing a matrix w.r.t a constructor is just specializing each row
+ * of the matrix based on that constructor. Note that specialization of a matrix
+ * may very well remove some rows from the matrix. */
+fun specialize_matrix(
+  env: mutable Env,
+  class_set: ClassSet,
+  base_pcon: TAst.Pattern__,
+  pmatrix: Pattern_matrix,
+): Pattern_matrix {
+  pmatrix match {
+  | List.Nil() -> List[]
+  | List.Cons((row, idx), rest) ->
+    specialize_vector(env, class_set, base_pcon, row) match {
+    | None() -> specialize_matrix(env, class_set, base_pcon, rest)
+    | Some(spec_row) ->
+      List.Cons(
+        (spec_row, idx),
+        specialize_matrix(env, class_set, base_pcon, rest),
+      )
+    }
+  }
+}
+
+/* Create a default matrix for P */
+fun default_matrix(pmatrix: Pattern_matrix): Pattern_matrix {
+  pmatrix match {
+  | List.Nil() -> List[]
+  | List.Cons(
+    (List.Cons(pat_con, pv_rest), idx),
+    rest,
+  ) if (is_variable_pat(pat_con)) ->
+    List.Cons((pv_rest, idx), default_matrix(rest))
+  | List.Cons(_, rest) -> default_matrix(rest)
+  }
+}
+
+/***************************************************************************/
+/*            Root constructor and completeness logic                      */
+/***************************************************************************/
+
+value class WeakKeyIxPat(ipat: Indexed_pattern) uses Hashable, Equality {
+  fun hash(): Int {
+    TAstUtils.pattern_of__(this.ipat.i0) match {
+    | TAst.Pat_var _ -> 0
+    | TAst.Pat_literal(lit) -> lit.hash()
+    | TAst.Pat_type(tid, _, _) -> str_of_tid(tid).hash()
+    | TAst.Pat_as _ -> this.ipat.i0.i1.i0.die("unexpected Pat_as")
+    }
+  }
+
+  fun ==(other: WeakKeyIxPat): Bool {
+    (
+      TAstUtils.pattern_of__(this.ipat.i0),
+      TAstUtils.pattern_of__(other.ipat.i0),
+    ) match {
+    | (TAst.Pat_var _, TAst.Pat_var _) -> true
+    | (TAst.Pat_literal(l1), TAst.Pat_literal(l2)) -> l1 == l2
+    /* We _must_ include the pattern in this case since the first pattern might
+     * be a constraint pattern as well */
+    | (TAst.Pat_type(_, _, None()), TAst.Pat_type(_, _, Some _)) -> false
+    | (TAst.Pat_type(tid1, _, _), TAst.Pat_type(tid2, _, _)) ->
+      str_of_tid(tid1) == str_of_tid(tid2)
+    | _ -> false
+    }
+  }
+}
+
+/* If we don't remove extraneous constructors, than we will windup doing _way_
+ * more checks than we need in order to prove exhaustiveness. Thus, we want to
+ * setify our root constructors. */
+fun build_seen(pats: List<Indexed_pattern>): List<Indexed_pattern> {
+  // correctness depends on scanning the list in reverse,
+  // picking up the *last* instance of each unique pattern.
+  // unclear why.
+  wkpats = UnorderedSet::mcreate(pats.size());
+  pats.foldr(
+    (p, acc) ->
+      if (wkpats.maybeInsert(WeakKeyIxPat(p))) List.Cons(p, acc) else acc,
+    List[],
+  )
+}
+
+fun dedup_constrs(pats: List<Indexed_pattern>): List<Indexed_pattern> {
+  build_seen(pats)
+}
+
+// Expand no params to all wildcars
+fun expand_no_params(
+  pos: FileRange,
+  tid: TAst.Type_identifier,
+  param_opt: ?Parameters<TAst.ParamPattern>,
+): ?Parameters<TAst.ParamPattern> {
+  cd = SkipNaming.getClass(resolve_tid(tid));
+  (param_opt, cd.params) match {
+  | (None(), N.HasParams(cp)) ->
+    wild_params = cp.params.map(_ -> {
+      wc_pat = make_wildcard_pat(pos);
+      (wc_pat.i0, wc_pat)
+    });
+    Some(wild_params)
+  | _ -> param_opt
+  }
+}
+
+/* Given a set of constructors, return back the KClasses for each of the
+ * constructors -- i.e. after this we _should_ have no more base classes.
+ * However, note that while we will probably not have any base classes after
+ * this, it is not guaranteed -- it is legal to pattern match on a base class
+ * with no children.
+ * Also note that you'll need to re-setify after calling this. */
+fun concretize_ctors(
+  env: mutable Env,
+  class_set: ClassSet,
+  seen_ctors: List<Indexed_pattern>,
+): List<Indexed_pattern> {
+  concretize = ppat_index -> {
+    (ppat, index) = ppat_index;
+    (ty, (pos, pat)) = ppat;
+    pat match {
+    | TAst.Pat_type(orig_tid, castType, params) ->
+      tid = resolve_tid(orig_tid);
+      (is_abstract_ty, _) = class_def_of_tid(env, orig_tid);
+      cd = SkipNaming.getClass(tid);
+      if (class_set.containsCd(cd) && cd.kind == A.KBase() && !is_abstract_ty) {
+        valid_children = class_set.validChildren(cd);
+        parent_params = expand_no_params(pos, orig_tid, params);
+        child_pat = str_name -> {
+          child_tid = TAst.Tid_object((pos, str_name));
+          child_params = parent_params match {
+          | None() -> expand_no_params(pos, child_tid, None())
+          | Some(pparms) ->
+            normalized = normalize_param_patterns(
+              pos,
+              child_tid,
+              orig_tid,
+              pparms,
+            );
+            Some(normalized)
+          };
+          (ty, (pos, TAst.Pat_type(child_tid, castType, child_params)))
+        };
+        empty_list: List<Indexed_pattern> = List[];
+        child_pats = valid_children.reduce(
+          (acc, elt) -> List.Cons((child_pat(elt), index), acc),
+          empty_list,
+        );
+        child_pats match {
+        /* In the case where this is a base class without any children */
+        | List.Nil() -> List[(ppat, index)]
+        /* Recurse all the way down into the children */
+        | _ -> concretize_ctors(env, class_set, child_pats)
+        }
+      } else {
+        expanded_params = expand_no_params(pos, orig_tid, params);
+        new_pat = TAst.Pat_type(orig_tid, castType, expanded_params);
+        new_ppat = (ty, (pos, new_pat));
+        List[(new_ppat, index)]
+      }
+    | _ -> List[(ppat, index)]
+    }
+  };
+  seen_ctors.map(concretize).flatten()
+}
+
+/* Get the constructors in the first column of the pattern matrix. */
+fun get_root_constructors(
+  env: mutable Env,
+  class_set: ClassSet,
+  pmatrix: Pattern_matrix,
+): List<Indexed_pattern> {
+  root_constrs = pmatrix.map(pat_idx -> {
+    (pat, idx) = pat_idx;
+    (constr_of_pat(pat), idx)
+  });
+  concretized = concretize_ctors(env, class_set, root_constrs);
+  deduped = dedup_constrs(concretized);
+  deduped
+}
+
+/* If we find that we haven't matched all our literal values, then this
+ * function produces an example of something that hasn't been covered by our match
+ * clauses. Note that we specifically don't handle String, Int, and Float
+ * literals, and instead produce "String _" etc. for these. We make a
+ * best-effort attempt at finding Char values, but whether or not we want to do
+ * so is a question worth asking. */
+fun find_example(
+  pos: FileRange,
+  seen: SMap<A.LiteralValue>,
+  lit: SkipAst.LiteralValue,
+): List<TAst.Pattern> {
+  nm = TUtils.literal_type_name(lit) + " _";
+  pat_var = make_pat_var(pos, nm);
+  if (seen.isEmpty()) {
+    List[pat_var]
+  } else {
+    /* Since we are storing the literals in the map as a string, min and max
+     * bindings are meaningful for us. Moreover, min_binding will correspond to
+     * min_value. */
+    (_, min_value) = seen.minimum().fromSome();
+    (_, max_value) = seen.maximum().fromSome();
+    typ = (pos, N.Tanything());
+    literal_example = {
+      (min_value, max_value) match {
+      | (SkipAst.BoolLiteral(l), _) -> TAst.Pat_literal(SkipAst.BoolLiteral(!l))
+      | (SkipAst.CharLiteral(lmin), SkipAst.CharLiteral(lmax)) ->
+        (lmin, lmax) match {
+        | (l, _) if (l > 0) -> TAst.Pat_literal(SkipAst.CharLiteral(l - 1))
+        | (_, l) if (l < 65536) ->
+          TAst.Pat_literal(SkipAst.CharLiteral(lmax + 1))
+        | _ ->
+          (_, (_, pat)) = pat_var;
+          pat
+        }
+      | _ ->
+        invariant_violation(
+          "Internal error: recorded unexpected literal type " + nm,
+        )
+      }
+    };
+    List[(typ, (pos, literal_example))]
+  }
+}
+
+/* Since constraints on literal values (e.g. Int _) are represented as a
+ * Pat_type we need to first scan our patterns for a literal constraint. If we see
+ * one then we know it's exhaustive and don't have to check anymore. */
+/* Possible future: base this on the join of the types of the two rather
+ * than on the pats name. For now we assume you _can't_ shadow literal class names. */
+fun scan_for_constraints(lit: A.LiteralValue, pats: List<TAst.Pattern>): Bool {
+  pats.any(cur1 -> is_literal_constraint(lit, cur1))
+}
+
+/* Determine if a set of signatures is complete for the given literal value. Note
+ * that we don't check for exhaustiveness on literals that aren't bools or
+ * chars (at least for now).
+ * This returns one of the following two:
+ * Complete []    ==> The signature is complete
+ * Incomplete [x] ==> The signature is incomplete, and a counterexample @x
+ */
+fun gather_literals(
+  pos: FileRange,
+  lit: A.LiteralValue,
+  seen: SMap<A.LiteralValue>,
+  left: List<TAst.Pattern>,
+): Completeness_result {
+  is_same_lit_type = x -> {
+    x match {
+    | TAst.Pat_literal(ll) ->
+      (ll, lit) match {
+      | (A.VoidLiteral(), A.VoidLiteral())
+      | (A.BoolLiteral _, A.BoolLiteral _)
+      | (A.CharLiteral _, A.CharLiteral _) ->
+        Some(ll)
+      /* We don't check the other literal types */
+      | (_, _) -> None()
+      }
+    | _ -> None()
+    }
+  };
+  update_seen = (seen1, p) -> {
+    is_same_lit_type(TAstUtils.pattern_of__(p)) match {
+    | Some(l) ->
+      str_value = SkipAstPp.literal_to_string(l);
+      seen1.set(str_value, l)
+    | None() -> seen1
+    }
+  };
+  is_complete = seen1 -> {
+    (lit, seen1.size()) match {
+    | (A.VoidLiteral(), 1)
+    | (A.BoolLiteral _, 2)
+    | (A.CharLiteral _, 65536) ->
+      true
+    /* We don't check the other literal types */
+    | (_, _) -> false
+    }
+  };
+  (left, is_complete(seen)) match {
+  | (_, true) -> Complete(List[])
+  | (List.Nil(), false) -> Incomplete(find_example(pos, seen, lit))
+  | (List.Cons(p, rest), _) ->
+    gather_literals(pos, lit, update_seen(seen, p), rest)
+  }
+}
+
+fun is_complete_literal_sig(
+  lit: A.LiteralValue,
+  pats: List<TAst.Pattern>,
+): Completeness_result {
+  pos = pats_pos(pats);
+  if (scan_for_constraints(lit, pats)) {
+    Complete(List[])
+  } else {
+    gather_literals(pos, lit, SortedMap[], pats)
+  }
+}
+
+/* Return back the set of classes that we _haven't_ seen */
+fun remove_seen_classes(seen_classes: SSet, class_set: ClassSet): ClassSet {
+  class_set.filterRaw(x -> !seen_classes.contains(x))
+}
+
+/* Determine if a set of class constructors is complete for the type of the
+ * column in our pattern matrix (given by @class_set). Three possible results are returned from this:
+ * 1. Complete []                  ==> The signatures in @pats are complete w.r.t. @class_set
+ * 2. Incomplete [x]               ==> The signatures in @pats are incomplete w.r.t. @class_set
+ * 3. Overlapping(ipat, class_set) ==> One of the signatures (@pat) that we have found is not a subtype
+ */
+fun remove_exhausted(
+  env: mutable Env,
+  class_set: ClassSet,
+  ps: List<Indexed_pattern>,
+  seen_classes: SSet,
+): (SSet, ?(Indexed_pattern, ClassSet)) {
+  ps match {
+  | List.Nil() -> (seen_classes, None())
+  | List.Cons((pat, idx), rest) ->
+    TAstUtils.pattern_of__(pat) match {
+    | TAst.Pat_type(TAst.Tid_object(name), _castType, _) ->
+      n = AUtils.string_of_name(name);
+      cd = SkipNaming.getClass(name);
+      (new_seen, class_set_contains) = cd.kind match {
+      | A.KTrait() -> invariant_violation("ICE KTrait pattern")
+      | A.KClass() -> (SSet[n], class_set.containsCd(cd))
+      | A.KBase() -> (cd.concrete_children, class_set.containsCd(cd))
+      };
+      if (class_set_contains) {
+        remove_exhausted(env, class_set, rest, seen_classes.union(new_seen))
+      } else {
+        /* We have encountered a class that is not a subtype of the thing we
+         * are matching on. */
+        (seen_classes, Some(((pat, idx), class_set)))
+      }
+
+    | TAst.Pat_type(
+      TAst.Tid_static(nthis_nconst, nobject),
+      castType,
+      obj_params,
+    ) ->
+      tid = TAst.Tid_static(nthis_nconst, nobject);
+      (is_abstract_ty, _cd) = class_def_of_tid(env, tid);
+      is_abstract_ty match {
+      | _ if (SkipNaming.getClass(nobject).kind == A.KClass()) ->
+        /* There aren't any children to think about. So don't add anything */
+        remove_exhausted(
+          env,
+          class_set,
+          rest,
+          seen_classes.set(AUtils.string_of_name(nobject)),
+        )
+      | true -> remove_exhausted(env, class_set, rest, seen_classes)
+      | false ->
+        new_pats = List.Cons(
+          (
+            update_pat(
+              pat,
+              TAst.Pat_type(TAst.Tid_object(nobject), castType, obj_params),
+            ),
+            idx,
+          ),
+          rest,
+        );
+        remove_exhausted(env, class_set, new_pats, seen_classes)
+      }
+    | _ ->
+      invariant_violation(
+        "Internal error: expected Pat_type but received " +
+          pat_to_string(env, List[pat]),
+      )
+    }
+  }
+}
+
+fun is_complete_data_sig(
+  env: mutable Env,
+  class_set: ClassSet,
+  pat_all: TAst.Pattern,
+  pats: List<Indexed_pattern>,
+): Completeness_result {
+  (_ty, (pos, _pat)) = pat_all;
+  /* We need to filter out the possible parent(s) for the constructors we're
+   * matching on. */
+  (seen_classes, overlap) = remove_exhausted(env, class_set, pats, SSet[]);
+  classes_left = remove_seen_classes(seen_classes, class_set);
+  overlap match {
+  | Some((ipat, class_set1)) -> Overlapping(ipat, class_set1)
+  | None() if (classes_left.isEmpty()) -> Complete(pats)
+  | None() ->
+    skeleton_patterns = skel_patterns_of_class_set(
+      false,
+      env,
+      pos,
+      classes_left,
+    );
+    Incomplete(skeleton_patterns)
+  }
+}
+
+/* Determine if the set of signatures that we have seen is a complete set
+ * for what we are matching on and return the list of ones we still need to
+ * match on if the set of signatures is incomplete ([] ==> complete).
+ * Thus there are three possible return results from this:
+ * 1. Complete(seen_ctors) ==> The first column of @pmatrix is complete w.r.t. @class_set
+ *    - seen_ctors is the list of constructors that we've seen minus wildcards
+ * 2. Incomplete(missing_ctors) ==> The first column of @pmatrix is incomplete w.r.t. @class_set
+ *    - missing_ctors is the list of constructors missing for the given type/class map
+ * 3. Overlapping(overlap) ==> Overlap as reported in @is_complete_data_sig
+ */
+fun is_complete_sig(
+  env: mutable Env,
+  class_set: ClassSet,
+  pos: FileRange,
+  pmatrix: Pattern_matrix,
+): Completeness_result {
+  /* The list of non-wildcards that we have in our patterns */
+  roots = get_root_constructors(env, class_set, pmatrix);
+  ctors = (roots.filter(pat_idx -> !is_variable_pat(pat_idx.i0)) : List<
+    Indexed_pattern,
+  >);
+  col_has_wildcard = ctors.size() != roots.size();
+  update_complete = x -> {
+    x match {
+    | Complete _ -> Complete(ctors)
+    | x1 -> x1
+    }
+  };
+  ctors match {
+  | List.Nil() if (col_has_wildcard) ->
+    /* If we have a wildcard in that column give back a wildcard. */
+    Incomplete(List[make_wildcard_pat(pos)])
+  | List.Nil() if (class_set.isEmpty()) ->
+    Incomplete(List[make_wildcard_pat(pos)])
+  | List.Nil() ->
+    /* If we have something in the class set and no wildcard in that column,
+     * give back an explicit counterexample */
+    skeleton_patterns = skel_patterns_of_class_set(false, env, pos, class_set);
+    Incomplete(skeleton_patterns)
+  | List.Cons((ctor, _idx), _rest) ->
+    TAstUtils.pattern_of__(ctor) match {
+    | TAst.Pat_literal(l) ->
+      update_complete(is_complete_literal_sig(l, unindex(ctors)))
+    | TAst.Pat_type(TAst.Tid_object(name), _castType, _) ->
+      is_literal_constraint = TUtils.literal_class_names.contains(
+        AUtils.string_of_name(name),
+      );
+      if (is_literal_constraint) {
+        Complete(ctors)
+      } else {
+        update_complete(is_complete_data_sig(env, class_set, ctor, ctors))
+      }
+    | TAst.Pat_type _ ->
+      update_complete(is_complete_data_sig(env, class_set, ctor, ctors))
+    | TAst.Pat_as _
+    | TAst.Pat_var _ ->
+      invariant_violation(
+        "Internal error: encountered invalid pattern for completeness checking " +
+          pat_to_string(env, List[ctor]),
+      )
+    }
+  }
+}
+
+/* Is the pattern vector q useful for pattern matrix P.
+ * Thus we can answer the following questions given a set of patterns
+ * [p1; ... ; p_n]:
+ * 1. Is pattern p_j non-overlapping
+ *    ==> useful [p_1; ...; p_{j-1}] p_j
+ * 2. Are the patterns [p_1; ...; p_n] exhaustive?
+ *    ==> not (useful [p1; ...; p_n] _)
+ */
+fun is_useful_helper(
+  next_id: () -> Int,
+  env: mutable Env,
+  orig_pat_matrix: Pattern_matrix,
+  orig_pat: TAst.Pattern,
+  curr_ty: List<TAst.Type_>,
+  p: Pattern_matrix,
+  qvec: List<TAst.Pattern>,
+): (Bool, mutable Env) {
+  qvec match {
+  | List.Nil() ->
+    // empty qvec is useful iff pattern matrix is empty
+    (p.isEmpty(), env)
+  | List.Cons(q, qs) ->
+    q match {
+    | pat if (is_variable_pat(pat)) ->
+      pos = TAstUtils.pattern_pos(pat);
+      /* Grab the type for this column in our pattern match */
+      (top_ty, rest_tys) = ty_pop(curr_ty);
+      class_set = build_class_set(next_id, env, top_ty);
+      /* and determine if the set of patterns in this column is complete or not. */
+      is_complete_sig(env, class_set, pos, p) match {
+      | Overlapping(ipat, cls_mp) ->
+        /* Case: Dead pattern since one of the sub-patterns isn't a subtype
+         * of the object we are matching on. */
+        throw Overlapping_pattern(
+          pos,
+          freeze(env),
+          ipat,
+          cls_mp,
+          orig_pat_matrix,
+        )
+      | Complete(seen_ctors @ List.Cons(_, _)) ->
+        /* Case: The ctors that we've found are complete */
+        useful_pat_exists(
+          next_id,
+          env,
+          orig_pat_matrix,
+          orig_pat,
+          class_set,
+          p,
+          pat,
+          qvec,
+          curr_ty,
+          seen_ctors,
+        )
+      | _ ->
+        /* Case: the ctors that we've found _aren't_ complete */
+        dflt_matrix = default_matrix(p);
+        /* We are popping a constructor off, so we also need to pop a type
+         * off of our "type stack" in order to keep the mapping invariant. */
+        is_useful_helper(
+          next_id,
+          env,
+          orig_pat_matrix,
+          orig_pat,
+          rest_tys,
+          dflt_matrix,
+          qs,
+        )
+      }
+    | pat ->
+      (top_ty, _) = ty_pop(curr_ty);
+      /* build the class map for that column */
+      class_set = build_class_set(next_id, env, top_ty);
+      /* Need to iterate for each KClass of pat.
+       * Useful iff there exists a KClass of pat such that that KClass is useful. */
+      concretized_pats = concretize_ctors(env, class_set, List[(pat, 0)]);
+      useful_pat_exists(
+        next_id,
+        env,
+        orig_pat_matrix,
+        orig_pat,
+        class_set,
+        p,
+        pat,
+        qvec,
+        curr_ty,
+        concretized_pats,
+      )
+    }
+  }
+}
+
+fun is_rest_pat_useful(
+  next_id: () -> Int,
+  env: mutable Env,
+  orig_pat_matrix: Pattern_matrix,
+  class_set: ClassSet,
+  p: Pattern_matrix,
+  qvec: List<TAst.Pattern>,
+  curr_ty: List<TAst.Type_>,
+  ctor: TAst.Pattern,
+): (RestPatUsefulResult, mutable Env) {
+  base_constr = TAstUtils.pattern_of__(ctor);
+  possiblyUseful = base_constr match {
+  | TAst.Pat_type(TAst.Tid_object(name), _, _) ->
+    class_set.containsCd(SkipNaming.getClass(name))
+  | TAst.Pat_type(TAst.Tid_static(nthis_nconst, nobject), _, _) ->
+    nobjectCd = SkipNaming.getClass(nobject);
+    nobjectCd.kind match {
+    | A.KClass() -> class_set.containsCd(nobjectCd)
+    | _ ->
+      tid = TAst.Tid_static(nthis_nconst, nobject);
+      (is_abstract_ty, cd) = class_def_of_tid(env, tid);
+      is_abstract_ty || class_set.containsCd(cd)
+    }
+  | _ -> true
+  };
+  if (!possiblyUseful) return (NotInSet(), env);
+  specialized_vector = specialize_vector(env, class_set, base_constr, qvec);
+  specialized_vector match {
+  | None() -> (NotUseful(), env)
+  | Some(vec) ->
+    specialized_matrix = specialize_matrix(env, class_set, base_constr, p);
+    /* Build the type map vector for this ctor and push it onto our type stack.
+     * We know by the definition of specialization, that we only need to
+     * generate one extra class map for the specialized matrix. */
+    (specialized_tys, env1) = specialize_type(next_id, env, ctor, curr_ty);
+    (result, env2) = is_useful_helper(
+      next_id,
+      env1,
+      orig_pat_matrix,
+      ctor,
+      specialized_tys,
+      specialized_matrix,
+      vec,
+    );
+    (if (result) Useful() else NotUseful(), env2)
+  }
+}
+
+fun useful_pat_exists(
+  next_id: () -> Int,
+  env: mutable Env,
+  orig_pat_matrix: Pattern_matrix,
+  orig_pat: TAst.Pattern,
+  class_set: ClassSet,
+  p: Pattern_matrix,
+  qvec_pat: TAst.Pattern,
+  qvec: List<TAst.Pattern>,
+  curr_ty: List<TAst.Type_>,
+  pats: List<Indexed_pattern>,
+): (Bool, mutable Env) {
+  (result, next_env) = useful_pat_exists_result(
+    next_id,
+    env,
+    orig_pat_matrix,
+    class_set,
+    p,
+    qvec,
+    curr_ty,
+    pats,
+  );
+  result match {
+  | NotInSet() ->
+    fakem = List[(List[orig_pat], 0)];
+    pos = TAstUtils.pattern_pos(orig_pat);
+    throw Overlapping_pattern(pos, freeze(env), (qvec_pat, 0), class_set, fakem)
+  | NotUseful() -> (false, next_env)
+  | Useful() -> (true, next_env)
+  }
+}
+
+fun useful_pat_exists_result(
+  next_id: () -> Int,
+  env: mutable Env,
+  orig_pat_matrix: Pattern_matrix,
+  class_set: ClassSet,
+  p: Pattern_matrix,
+  qvec: List<TAst.Pattern>,
+  curr_ty: List<TAst.Type_>,
+  pats: List<Indexed_pattern>,
+): (RestPatUsefulResult, mutable Env) {
+  pats match {
+  | List.Nil() ->
+    // Defaults to NotInSet since the result of the whole list is
+    // NotInSet iff all eleements were not in the set
+    (NotInSet(), env)
+  | List.Cons((pat, _), rest) ->
+    (is_rest_useful, new_env) = is_rest_pat_useful(
+      next_id,
+      env,
+      orig_pat_matrix,
+      class_set,
+      p,
+      qvec,
+      curr_ty,
+      pat,
+    );
+    is_rest_useful match {
+    | Useful() -> (Useful(), new_env)
+    | _ ->
+      (next_result, final_env) = useful_pat_exists_result(
+        next_id,
+        env,
+        orig_pat_matrix,
+        class_set,
+        p,
+        qvec,
+        curr_ty,
+        rest,
+      );
+      (is_rest_useful, next_result) match {
+      | (Useful(), _) -> invariant_violation("ICE covered above")
+      | (_, Useful()) -> (Useful(), final_env)
+      | (NotUseful(), _)
+      | (_, NotUseful()) ->
+        (NotUseful(), final_env)
+      | (NotInSet(), NotInSet()) -> (NotInSet(), final_env)
+      }
+    }
+  }
+}
+
+fun is_useful(
+  next_id: () -> Int,
+  env: mutable Env,
+  orig_pat: TAst.Pattern,
+  ety: TAst.Type_,
+  p: Pattern_matrix,
+  qvec: List<TAst.Pattern>,
+): (Bool, mutable Env) {
+  orig_pat_matrix = p;
+  is_useful_helper(next_id, env, orig_pat_matrix, orig_pat, List[ety], p, qvec)
+}
+
+/* Once we determine that a match isn't exhaustive, we then use this to generate
+ * a pattern that isn't matched. */
+fun find_non_matching(
+  next_id: () -> Int,
+  env: mutable Env,
+  ty: List<TAst.Type_>,
+  pos: FileRange,
+  p: Pattern_matrix,
+  n: Int,
+  class_set: ClassSet,
+  constrs: List<TAst.Pattern>,
+): ?List<List<TAst.Pattern>> {
+  constrs match {
+  | List.Nil() -> None()
+  | List.Cons(pat, rest) ->
+    constr = TAstUtils.pattern_of__(pat);
+    num_pat_args = constructor_arity(constr);
+    specialized_matrix = specialize_matrix(env, class_set, constr, p);
+    (specialized_tys, env1) = specialize_type(next_id, env, pat, ty);
+    /* Generate a counterexample for the arguments to this constructor. */
+    generate_non_matching(
+      next_id,
+      env1,
+      specialized_tys,
+      pos,
+      specialized_matrix,
+      (num_pat_args + n) - 1,
+    ) match {
+    | None() -> find_non_matching(next_id, env1, ty, pos, p, n, class_set, rest)
+    | Some(pats) ->
+      new_pats = pats.map(p1 -> {
+        /* Grab only what we need to fill in the constructor */
+        (cstor_args, rest1) = p1.takeAndDrop(num_pat_args);
+        /* And now put those arguments that we generated back into the
+         * constructor that we specialized off. */
+        rebuilt_pat = rebuild_constr(
+          env1,
+          pat,
+          Array::createFromItems(cstor_args),
+        );
+        List.Cons(rebuilt_pat, rest1)
+      });
+      Some(new_pats)
+    }
+  }
+}
+
+fun generate_non_matching(
+  next_id: () -> Int,
+  env: mutable Env,
+  ty: List<TAst.Type_>,
+  pos: FileRange,
+  p: Pattern_matrix,
+  n: Int,
+): ?List<List<TAst.Pattern>> {
+  n match {
+  | 0 ->
+    if (p.isEmpty()) {
+      Some(List[List[]])
+    } else {
+      None()
+    }
+  | n1 ->
+    (top_ty, rest_tys) = ty_pop(ty);
+    class_set = build_class_set(next_id, env, top_ty);
+    is_complete_sig(env, class_set, pos, p) match {
+    | Complete(seen_ctors @ List.Cons(_, _)) ->
+      find_non_matching(
+        next_id,
+        env,
+        ty,
+        pos,
+        p,
+        n1,
+        class_set,
+        unindex(seen_ctors),
+      ) match {
+      | None() -> None()
+      | Some(p1) -> Some(p1)
+      }
+    | Incomplete(missing_ctors) ->
+      (
+        generate_non_matching(
+          next_id,
+          env,
+          rest_tys,
+          pos,
+          default_matrix(p),
+          n1 - 1,
+        ),
+        missing_ctors,
+      ) match {
+      | (Some(pats), missing_ctors1 @ List.Cons(_, _)) ->
+        rebuild = ctor -> {
+          ctor_arity = constructor_arity(TAstUtils.pattern_of__(ctor));
+          pos1 = TAstUtils.pattern_pos(ctor);
+          wildcards = make_wildcards_array(pos1, ctor_arity);
+          rebuilt_pat = rebuild_constr(env, ctor, wildcards);
+          combine(rebuilt_pat, pats)
+        };
+        counterexamples = missing_ctors1.map(rebuild);
+        (pruned_counterexamples, _) = counterexamples.takeAndDrop(
+          env.counterexample_depth,
+        );
+        Some(pruned_counterexamples.flatten())
+      | (None(), _) -> None()
+      | (Some _, List.Nil()) ->
+        invariant_violation(
+          "Internal error: generated counterexample for complete pattern column",
+        )
+      }
+    | Overlapping _ ->
+      invariant_violation(
+        "Internal error: encountered overlapping pattern during counterexample generation",
+      )
+    | Complete(List.Nil()) ->
+      invariant_violation(
+        "Internal error: encountered empty match during counterexample generation",
+      )
+    }
+  }
+}
+
+/* Determines if a match is exhaustive. There are three mains phases for this function:
+   - phase 1: Determine if the patterns in @mbl are non-overlapping (i.e., no unused patterns).
+   - phase 2: Determing if the patterns in @mbl are exhaustive
+   - phase 3: If the patterns are not exhaustive, generate a counterexample.
+*/
+fun check_useful(
+  next_id: () -> Int,
+  env: mutable Env,
+  top_pos: FileRange,
+  ety: TAst.Type_,
+  has_whens: Bool,
+  idx: Int,
+  pos: FileRange,
+  pm: Pattern_matrix,
+  pat: List<(TAst.Pattern, Bool)>,
+): void {
+  for (patval in pat) {
+    (orig_pat, is_when_pat) = patval;
+
+    inner_pat = prep_pattern(env, orig_pat);
+    pat1 = List[inner_pat];
+    (is_useful_res, ret_env) = is_useful(
+      next_id,
+      env,
+      inner_pat,
+      ety,
+      pm,
+      pat1,
+    );
+    /* Note: ret_env will have picked up new typing constraints that aren't
+     * present in env. We want to use ret_env in errors, but continue to use
+     * env for checking subsequent patterns. env and ret_env share the same
+     * class_sets object, so we'll pick up changes to that automatically. */
+    if (!is_useful_res) {
+      npos = TAstUtils.pattern_pos(inner_pat);
+
+      throw Unused_pattern(npos, freeze(ret_env), List[orig_pat])
+    } else if (!is_when_pat) {
+      /* We don't put in the when patterns for exhaustiveness checking. */
+
+      /* Since we are building the matrix up from the topmost pattern
+       * the order of patterns within the matrix doesn't matter for
+       * dead-pattern and exhaustiveness checking. However, the order of the
+       * patterns in the matrix _does_ matter for counterexample generation. */
+      !pm = List.Cons((pat1, idx), pm);
+      !idx = idx + 1
+    }
+  };
+
+  wildcard = make_wildcard_pat(pos);
+  /* We want to see the matrix top-down for counterexample generation. */
+  pm1 = pm.reversed();
+  (is_useful_res, env1) = is_useful(
+    next_id,
+    env,
+    wildcard,
+    ety,
+    pm1,
+    List[wildcard],
+  );
+  env2 = env1 with {
+    generating_counterexamples => true,
+    sort_named_params => true,
+  };
+  if (is_useful_res) {
+    generate_non_matching(next_id, env2, List[ety], pos, pm1, 1) match {
+    | Some(pat1) ->
+      throw Non_exhaustive_match(top_pos, has_whens, freeze(env2), pat1)
+    | _ ->
+      invariant_violation("Internal error: unable to generate counterexample")
+    }
+  }
+}
+
+fun is_exhaustive(
+  next_id: () -> Int,
+  env: mutable Env,
+  top_pos: FileRange,
+  ety: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  /* Don't try and prove exhaustiveness for patterns that use when expressions.
+   * However, do make sure that when patterns aren't unused. */
+  (marked_patterns, has_whens) = marked_patterns_of_mbl(mbl);
+  check_useful(
+    next_id,
+    env,
+    top_pos,
+    ety,
+    has_whens,
+    0,
+    top_pos,
+    List[],
+    marked_patterns,
+  )
+}
+
+/***************************************************************************/
+/*                    Error reporting and entry points                     */
+/***************************************************************************/
+
+fun exhaustiveness_err<Ta>(exn: Exception): Ta {
+  exn match {
+  | Overlapping_pattern(pos, env, (pat, idx), class_set, pat_matrix) ->
+    (orig_pat, _) = pat_matrix.getNth(idx);
+    orig_pat_str = pat_to_string(env, orig_pat);
+    pat_str = pat_to_string(env, List[pat]);
+    outer_pos = pats_pos(orig_pat);
+    inner_pos = TAstUtils.pattern_pos(pat);
+    tail_msg = if (class_set.isEmpty()) {
+      "This class does not have any instantiable children at this type."
+    } else {
+      "In particular, we encountered this sub-pattern\n" +
+        pat_str +
+        "\nBut expected one of\n" +
+        class_set_to_string(env, pos, class_set) +
+        "\nIn that position."
+    };
+    SkipError.errorl(
+      List[
+        (outer_pos, "The following pattern is unused:\n" + orig_pat_str),
+        (inner_pos, tail_msg),
+      ],
+    )
+  | Unused_pattern(pos, env, pat) ->
+    pat_str = pat_to_string(env, pat);
+    SkipError.error(pos, "The following pattern is unused:\n" + pat_str)
+  | Non_exhaustive_match(pos, has_whens, env, patterns) ->
+    pat_msg = {
+      patterns match {
+      | List.Nil() ->
+        invariant_violation(
+          "Internal error: failed to generate a counterexample for non-exhaustive pattern",
+        )
+      | List.Cons(pat, List.Nil()) ->
+        pat_str = pat_to_string(env, pat);
+        "The following is the structure of a value that won't be matched:\n" +
+          pat_str
+      | pats ->
+        pats1 = pats.map(cur1 -> pat_to_string(env, cur1));
+        pat_str = pats1.join("\n");
+        "The following are the structures of values that won't be matched:\n" +
+          pat_str
+      }
+    };
+    pat_msg1 = {
+      if (has_whens) {
+        pat_msg + "\nHowever some guarded (when) pattern may catch this pattern"
+      } else {
+        pat_msg
+      }
+    };
+    SkipError.error(pos, "Non-exhaustive pattern match found.\n" + pat_msg1)
+  | _ -> invariant_violation("ICE bad exn for exhaustiveness_err")
+  }
+}
+
+/* The two entry points for exhaustiveness checking. We don't check for
+ * exhaustiveness for try-catch match blocks since they'll just throw on an
+ * incomplete match. */
+fun check_exhaustive_try(
+  next_id: () -> Int,
+  env: mutable Env,
+  pos: FileRange,
+  mbl: List<TAst.Match_branch>,
+): void {
+  class_str = "Exception";
+  class_name = (pos, class_str);
+  ty = (pos, N.Tapply(N.Mchilled(), class_name, Array[]));
+  try {
+    is_exhaustive(next_id, env, pos, ty, mbl)
+  } catch {
+  | e @ Overlapping_pattern _
+  | e @ Unused_pattern _ ->
+    exhaustiveness_err(e)
+  | Non_exhaustive_match _ -> void
+  }
+}
+
+fun check_exhaustive_match(
+  next_id: () -> Int,
+  env: mutable Env,
+  pos: FileRange,
+  ety: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  try {
+    is_exhaustive(next_id, env, pos, ety, mbl)
+  } catch {
+  | e @ Overlapping_pattern _
+  | e @ Unused_pattern _
+  | e @ Non_exhaustive_match _ ->
+    exhaustiveness_err(e)
+  }
+}
+
+fun check_exhaustive_match_is(
+  next_id: () -> Int,
+  env: mutable Env,
+  pos: FileRange,
+  ety: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  try {
+    is_exhaustive(next_id, env, pos, ety, mbl)
+  } catch {
+  | e @ Overlapping_pattern _
+  | e @ Non_exhaustive_match _ ->
+    exhaustiveness_err(e)
+  | Unused_pattern(pos1, _, _) ->
+    SkipError.error(
+      pos1,
+      "Unnecessary 'is' expression. The value will always successfully match the pattern given.",
+    )
+  }
+}
+
+fun check_exhaustive_match_as(
+  next_id: () -> Int,
+  env: mutable Env,
+  pos: FileRange,
+  ety: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  try {
+    is_exhaustive(next_id, env, pos, ety, mbl)
+  } catch {
+  | e @ Overlapping_pattern _
+  | e @ Non_exhaustive_match _ ->
+    exhaustiveness_err(e)
+  | Unused_pattern(pos1, _, _) ->
+    pat_ty = mbl.getHead().i0.getHead().i1.i1 match {
+    | TAst.Pat_as((_, (_, t @ TAst.Pat_type _)), _) -> t.castType
+    | _ ->
+      invariant_violation(
+        "ICE Unexpected structure of desugared 'as' expression.",
+      )
+    };
+    try {
+      _ = TUtils.join_exn(
+        next_id,
+        env.typing_env,
+        env.typing_acc,
+        TUtils.promote(env.typing_env, env.typing_acc, ety),
+        TUtils.contra_promote(env.typing_env, env.typing_acc, pat_ty),
+      );
+      message = `If you want an explicit upcast (which isn't always necessary), try adding a type annotation instead, e.g. '(_ : ${Types.to_string(
+        env.typing_env.this_class,
+        env.typing_acc.subst,
+        pat_ty,
+      )})'`;
+      SkipError.error(pos1, message)
+    } catch {
+    | Types.Exception _ ->
+      message = "If the second branch is unused, then the one of two cases must exist. Either the value is a subtype (or the same type) of the pattern provided, or the given expression only has exactly one possible instantiable child at this type. The given downcast should be allowed for that child";
+      invariant(build_class_set(next_id, env, ety).size() == 1, message)
+    }
+  }
+}

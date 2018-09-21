@@ -1,0 +1,23 @@
+base class B uses IST {
+  children =
+  | C()
+  | D()
+}
+
+trait IST {
+  macro fun isSameType(other: inst): Bool {
+    other match {
+    | #ThisClass _ -> true
+    | _ -> false
+    }
+  }
+}
+
+fun main(): void {
+  c = C();
+  d = D();
+  print_string(c.isSameType(c).toString());
+  print_string(c.isSameType(d).toString());
+  print_string(d.isSameType(c).toString());
+  print_string(d.isSameType(d).toString());
+}

@@ -1,0 +1,33 @@
+mutable class Cell(mutable value: String) {
+  readonly fun get(): String {
+    this.value
+  }
+
+  mutable fun set(v: String): void {
+    this.!value = v; //
+    void
+  }
+}
+
+mutable class Wrapper(cell: mutable Cell) {
+  readonly fun get(): String {
+    this.cell.get()
+  }
+
+  mutable fun set(v: String): void {
+    this.cell.set(v);
+    void
+  }
+
+  mutable fun set_direct(v: String): void {
+    this.cell.!value = v;
+    void
+  }
+}
+
+fun main(): void {
+  w = mutable Wrapper(mutable Cell(""));
+  w.set("OK");
+  w.set_direct(w.get() + "\n");
+  print_raw(w.get())
+}

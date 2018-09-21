@@ -1,0 +1,36 @@
+mutable base class B {
+  overridable readonly fun n(): Int {
+    37
+  }
+  mutable fun dummy(): Int {
+    this.n()
+  }
+}
+
+mutable class X(mutable x: Int) extends B {
+  readonly fun n(): Int {
+    this.x
+  }
+}
+mutable class Y() extends B
+
+@no_inline
+fun mut(): mutable B {
+  sz = arguments().size();
+  if (sz != 999999999) {
+    // Trick optimizer; always runs this case.
+    mutable Y()
+  } else {
+    mutable X(sz)
+  }
+}
+
+@no_inline
+fun frz(): B {
+  freeze(mut())
+}
+
+fun main(): void {
+  f = frz();
+  print_raw("" + f.n() + "\n")
+}

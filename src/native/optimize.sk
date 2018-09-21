@@ -1,0 +1,776 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AP = ArgumentParser;
+
+module Optimize;
+
+// Optimizer config. Individual passes can be enabled or disabled
+// from the command line. Here config values are bitmasks rather
+// than bools for ease of manipulation during optimizer passes.
+// Singleton instance of this class is held in kConfig.optConfig.
+//
+// TODO publish flag names via some method Config can call when
+// assembling response to --help
+//
+mutable class Config private {
+  mutable dce: Int,
+  mutable peephole: Int,
+  mutable control: Int,
+  mutable regpromote: Int,
+  mutable inline: Int,
+  mutable ipa: Int,
+  mutable verify: Bool,
+  // Can we use computed gotos (indirectbr)?
+  mutable goto: Bool,
+} {
+  const kOptReady: Int = 0x01;
+  const kOptIntrinsics: Int = 0x02;
+  private const kOptDCE: Int = 0x04;
+  private const kOptPeephole: Int = 0x08;
+  private const kOptControl: Int = 0x10;
+  private const kOptRegPromote: Int = 0x20;
+  private const kOptIPA: Int = 0x40;
+  private const kOptInline: Int = 0x80;
+
+  // These passes must always be done to produce valid code, and we can't
+  // do any other passes until they are complete. They must be the first
+  // ones in the "passes" list. Each only runs to completion once and then
+  // is never run again for that function.
+  const kOptPrerequisites: Int = Config::kOptReady.or(Config::kOptIntrinsics);
+
+  // Supported command-line arguments.
+  const args: Array<AP.Param> = Array[
+    AP.BoolParam{name => "localopts"},
+    AP.BoolParam{name => "dce"},
+    AP.BoolParam{name => "peephole"},
+    AP.BoolParam{name => "control"},
+    AP.BoolParam{name => "regpromote"},
+    AP.BoolParam{name => "inline"},
+    AP.BoolParam{name => "ipa"},
+    AP.BoolParam{name => "verify"},
+    AP.BoolParam{name => "goto"},
+    AP.BoolParam{name => "noopt", negatable => false},
+  ];
+
+  static fun default(): mutable this {
+    mutable Config{
+      dce => static::kOptDCE,
+      peephole => static::kOptPeephole,
+      control => static::kOptControl,
+      regpromote => static::kOptRegPromote,
+      inline => static::kOptInline,
+      ipa => static::kOptIPA,
+      // The "goto" labels that get embedded in the megavtable can't point
+      // to blocks across .ll files
+      goto => false,
+      verify => true,
+    }
+  }
+
+  static fun make(results: AP.ParseResult): this {
+    config = static::default();
+
+    // Walk through args processing any we know about.
+    for (arg in results) {
+      arg match {
+      | AP.BoolValue{name, value} ->
+        mask = if (value) -1 else 0;
+
+        name match {
+        | "localopts" ->
+          config.!dce = static::kOptDCE.and(mask);
+          config.!peephole = static::kOptPeephole.and(mask);
+          config.!control = static::kOptControl.and(mask);
+          config.!regpromote = static::kOptRegPromote.and(mask)
+        | "dce" -> config.!dce = static::kOptDCE.and(mask)
+        | "peephole" -> config.!peephole = static::kOptPeephole.and(mask)
+        | "control" -> config.!control = static::kOptControl.and(mask)
+        | "regpromote" -> config.!regpromote = static::kOptRegPromote.and(mask)
+        | "inline" -> config.!inline = static::kOptInline.and(mask)
+        | "ipa" -> config.!ipa = static::kOptIPA.and(mask)
+        | "verify" -> config.!verify = value
+        | "goto" -> config.!goto = value
+        | "noopt" ->
+          config.!dce = 0;
+          config.!peephole = 0;
+          config.!control = 0;
+          config.!regpromote = 0;
+          config.!inline = 0;
+          config.!ipa = 0;
+          config.!goto = false
+        | _ -> void
+        }
+      | _ -> void
+      }
+    };
+
+    freeze(config)
+  }
+
+  fun local(): Int {
+    static::kOptIntrinsics.or(this.dce)
+      .or(this.peephole)
+      .or(this.control)
+      .or(this.regpromote)
+  }
+
+  fun global(): Int {
+    this.inline.or(this.ipa)
+  }
+
+  fun all(): Int {
+    static::kOptPrerequisites.or(this.local()).or(this.global())
+  }
+}
+
+private fun checkReady(f: Function, _env: GlobalEnv): (Function, PassResult) {
+  // Check for a coroutine "next" method that can't proceed yet.
+  deps = f.coroutineInfo match {
+  | Some(UnfinishedNext{rampUpID}) -> UnorderedSet[rampUpID]
+  | _ -> kNoFunctions
+  };
+
+  (f, PassUnchanged(deps))
+}
+
+private const passes: Array<
+  (String, Int, (Function, GlobalEnv) ~> (Function, PassResult)),
+> = {
+  config = kConfig.optConfig;
+  Array[
+    ("ready", Config::kOptReady, checkReady),
+    ("intrinsics", Config::kOptIntrinsics, IntrinsicsInliner::run),
+    ("dce", config.dce, EliminateDeadCode::run),
+    ("peephole", config.peephole, Peephole::run),
+    ("control", config.control, Control::run),
+    ("regpromote", config.regpromote, RegisterPromote::run),
+    ("ipa", config.ipa, Interprocedural::run),
+    ("inline", config.inline, Inline::run),
+  ]
+};
+
+// The result of optimizeOne optimizing a single function.
+//
+// This almost always this just contains 'f', the new version of the
+// optimized function.
+//
+// However, in rare cases involving coroutines, this can also return a
+// new version of a second function and a new version of a class. See
+// the big comment at the top of coroutine.sk for more details.
+private value class OptimizeOneResult(
+  f: Function,
+  extraFun: ?Function = None(),
+  extraClass: ?SClass = None(),
+)
+
+// Recompute function properties that summarize it for interprocedural
+// analysis. We only do this when there is an actual body.
+private fun finishOptimizingFunction(
+  f: Function,
+  env: GlobalEnv,
+): OptimizeOneResult {
+  returns = f.blocks.any(b -> b.instrs[b.instrs.size() - 1] is Return _);
+
+  // See if any Instr can throw. Note that we consider recursive calls
+  // to the same function as non-throwing, since that is what we are trying
+  // to prove (if it could throw, we'll see that in a different Instr).
+  canThrow = f.blocks.any(b ->
+    b.instrs.any(instr -> Interprocedural.instrCanThrow(instr, f.id, env))
+  );
+
+  optinfo = OptimizerInfo::make(f);
+
+  // If we don't know how much memory it allocates, pessimistically assume
+  // an unbounded amount.
+  allocAmount = funAllocAmount(optinfo, env, None()).default(AllocUnbounded());
+
+  result = f with {
+    status => OptDone{
+      inlineComplexity => Inline.computeInlineComplexity(f, env),
+      returns,
+      canThrow,
+      allocAmount,
+    },
+  };
+
+  OptimizeOneResult(result)
+}
+
+// Apply all optimizations in the opts bitmask until it hits a fixed point.
+@gc
+private fun optimizeOne(
+  f: Function,
+  env: GlobalEnv,
+  opts: Int,
+): OptimizeOneResult {
+  verbose = kConfig.verbose;
+
+  // Grab a bit mask of which optimizations are already applied.
+  donePasses = f.status match {
+  | p @ OptPartial _ -> p.donePasses
+  | OptDone _ -> f.pos.die("Unexpectedly optimizing finished function")
+  };
+
+  // Bit mask of optimization passes that are stuck waiting for some
+  // other function to hit the OptDone state.
+  unfinishedPasses = 0;
+
+  // Union of all the other functions that any pass in unfinishedPasses
+  // is waiting for.
+  unfinishedDependencies = mutable UnorderedSet[];
+
+  numIterations = 0;
+  limit = 200;
+
+  while ({
+    // TODO: This would be faster if we only made a new OptimizerInfo when
+    // an optimization pass actually changed something, otherwise reuse
+    // it for the next pass (T25558741).
+
+    changed = false;
+
+    if (
+      passes.all(pass -> {
+        (passName, mask, func) = pass;
+
+        if (unfinishedPasses.and(Config::kOptPrerequisites) != 0) {
+          // We failed on some pass we really need to do, so give up now.
+          false
+        } else if (mask.and(opts) == 0 || mask.and(donePasses) != 0) {
+          true
+        } else {
+          oldFunction = f;
+
+          if (verbose) {
+            print_error(
+              "\nAbout to run " + passName + " pass for " + f + ".\n",
+            );
+            // f.dump(env)
+          };
+
+          // Iterate this optimization to a fixed point.
+          thisChanged = false;
+          subIterations = 0;
+          while ({
+            !subIterations = subIterations + 1;
+
+            (!f, passResult) = func(f, env);
+
+            passResult match {
+            | PassChanged() ->
+              if (subIterations >= limit) {
+                f.pos.die(
+                  "Optimization pass " +
+                    passName +
+                    " for function " +
+                    f +
+                    " failed to converge after " +
+                    subIterations +
+                    " passes.",
+                )
+              };
+
+              if (verbose) {
+                print_error(
+                  "Finished " + passName + " iteration " + subIterations + "\n",
+                );
+                f.dump(env)
+              };
+
+              if (kConfig.optConfig.verify) {
+                Verify.verifyFunction(f, env, "optimize:" + passName)
+              };
+
+              !changed = true;
+              !thisChanged = true;
+
+              // Retry other optimizations which might newly be able to do
+              // something, except don't re-run the prerequisites.
+              !donePasses = donePasses.and(Config::kOptPrerequisites);
+
+              // Perhaps passes that were stalled waiting for some other
+              // function are now unstuck, because the code was optimized
+              // in a way that no longer thas that dependency.
+              !unfinishedPasses = 0;
+              unfinishedDependencies.clear();
+
+              // As a hacky heuristic we should measure, if any global
+              // optimization makes progress, restart all the local
+              // optimizations rather than trying that one again right away.
+              // For example, if we successfully inline something, it's
+              // unlikely we'll find anything else to inline until we simplify
+              // the resulting code, since the inlined function already did
+              // its own inlining.
+              mask.and(kConfig.optConfig.global()) == 0
+            | PassUnchanged(unfinishedForPass) ->
+              if (!unfinishedForPass.isEmpty()) {
+                unfinishedDependencies.extend(unfinishedForPass);
+                !unfinishedPasses = unfinishedPasses.or(mask)
+              };
+
+              false
+            }
+          }) void;
+
+          !donePasses = donePasses.or(mask);
+
+          if (verbose) {
+            if (thisChanged) {
+              oldFunction.dump(env)
+            };
+
+            print_error(
+              "Finished " +
+                passName +
+                " pass for " +
+                f +
+                ": " +
+                (if (thisChanged) {
+                  "changed"
+                } else {
+                  "did not change"
+                }) +
+                " after " +
+                subIterations +
+                " iteration" +
+                (if (subIterations == 1) "" else "s") +
+                "\n",
+            );
+
+            if (thisChanged) {
+              f.dump(env)
+            }
+          };
+
+          true
+        }
+      })
+    ) {
+      !numIterations = numIterations + 1;
+      if (changed && numIterations >= limit) {
+        f.pos.die(
+          "Optimization for " +
+            f +
+            " failed to converge after " +
+            numIterations +
+            " passes.",
+        )
+      };
+      changed
+    } else {
+      // We failed on a prerequisite pass, so give up.
+      false
+    }
+  }) void;
+
+  !donePasses = donePasses.and(unfinishedPasses.not());
+
+  if (donePasses == opts) {
+    f.coroutineInfo match {
+    | Some(info @ UnfinishedCoroutine _) ->
+      // We're ready to split the coroutine into two functions.
+      (rampUp, nextMethod, coroutineState) = LowerCoroutine::run(f, env, info);
+      OptimizeOneResult(rampUp, Some(nextMethod), Some(coroutineState))
+    | Some _ -> f.die(`Unexpected CoroutineInfo for ${f}`)
+    | None() ->
+      // We completely finished optimizing this!
+      finishOptimizingFunction(f, env)
+    }
+  } else {
+    u = Array::mcreateFromItems(unfinishedDependencies);
+    u.sort();
+    result = f with {
+      status => OptPartial{donePasses, unfinishedDependencies => freeze(u)},
+    };
+    OptimizeOneResult(result)
+  }
+}
+
+private fun getDeps(f: Function): Array<SFunctionID> {
+  f.status match {
+  | OptPartial{unfinishedDependencies} -> unfinishedDependencies
+  | OptDone _ -> Array[]
+  }
+}
+
+// Given a function which was unable to be optimized due to depending
+// on some other unfinished function, follow its dependencies until we
+// identify a function that's part of a dependency cycle and return it.
+//
+//
+private fun findUnfinishedDependencyCycleMember(
+  root: Function,
+  processed: mutable UnorderedSet<SFunctionID>,
+  popularity: readonly UnorderedMap<SFunctionID, Int>,
+  env: GlobalEnv,
+): ?Function {
+  pos = root.pos;
+
+  // Pick some unfinished dependency for 'fid'.
+  child = fid -> getDeps(env.getFunction(fid, pos))[0];
+
+  // Create two pointers to the dependency graph (a graph where, to get here,
+  // every node is known to have an outgoing edge). Advance both to child
+  // nodes, one twice as fast as the other. Eventually they must collide,
+  // and that node must be part of a cycle. We can recover the cycle by
+  // advancing until we reach this node again.
+  a = root.id;
+  b = root.id;
+  while ({
+    {
+      !b = child(b);
+      a != b
+    } &&
+      {
+        !b = child(b);
+        a != b
+      } &&
+      {
+        !a = child(a);
+        a != b
+      }
+  }) void;
+
+  if (!processed.maybeInsert(b)) {
+    // We're already breaking this cycle, don't worry about it.
+    return None()
+  };
+
+  // Now that we have a cycle member, find the "best" choice in the cycle
+  // to stop optimizing.
+  bestFunction = (None() : ?Function);
+  bestCost = (true, true, Int::max, Int::max, SFunctionID(Int::max));
+
+  while ({
+    // Mark every member of the cycle as "processed".
+    _ = processed.maybeInsert(b);
+
+    // See how tempting it is to give up on optimizing this function further.
+    //
+    // Unfinished coroutines must be turned into normal functions before
+    // we can do anything with them, so finishing those is always the best
+    // choice.
+    //
+    // Otherwise, @always_inline are good choices because they can still
+    // get optimized after they are inlined into their caller.
+    f = env.getFunction(b, pos);
+
+    f.status match {
+    | OptPartial{
+      donePasses,
+    } if (
+      Config::kOptPrerequisites.and(donePasses) != Config::kOptPrerequisites
+    ) ->
+      // This function hasn't even done its prerequite passes, it's
+      // definitely too early to declare it "done".
+      void
+    | _ ->
+      isCoroutine = f.coroutineInfo is Some(UnfinishedCoroutine _);
+
+      mustInline = (
+        annotationsContain(f.annotations, "@always_inline", f.pos) &&
+        Inline.isLegalToInline(f)
+      );
+
+      cost = (
+        !isCoroutine,
+        !mustInline,
+        Inline.computeInlineComplexity(f, env),
+        -popularity[b],
+        b,
+      );
+
+      if (cost < bestCost) {
+        !bestCost = cost;
+        !bestFunction = Some(f)
+      }
+    };
+
+    !b = child(b);
+
+    b != a
+  }) void;
+
+  if (kConfig.verbose) {
+    bestFunction match {
+    | Some(best) ->
+      print_error_ln(
+        `Prematurely declaring function ${best} fully ` +
+          `optimized to break the following dependency cycle:`,
+      );
+
+      start = best.id;
+
+      x = start;
+      while ({
+        print_error(
+          `   ${env.getFunction(x, pos)} [fanin=${popularity[x]}] ->\n`,
+        );
+        !x = child(x);
+        x != start
+      }) void;
+      print_error(`   ${env.getFunction(x, pos)} [fanin=${popularity[x]}]\n`)
+    | None() ->
+      print_error(
+        `Found no function that could be declared ` +
+          `fully optimized, starting with root ${root}`,
+      )
+    }
+  };
+
+  bestFunction
+}
+
+// Optimizes all functions with the given set of optimizations. Returns
+// the new Env.
+private fun optimizeAll(env: GlobalEnv, opts: Int): GlobalEnv {
+  verbose = kConfig.verbose;
+
+  // Extract the functions to optimize.
+  allFuns = env.sfuns.clone();
+  unoptimized = Vector::mcreate(env.sfuns.size());
+
+  for (f in allFuns) {
+    if (f.hasImplementation()) {
+      if (!f.isFullyOptimized()) {
+        unoptimized.push(f.id)
+      }
+    } else {
+      pos = f.pos;
+      pos.invariant(f.isNative, "Compiling non-native function with no body.");
+
+      f.status match {
+      | OptDone _ -> void
+      | OptPartial _ ->
+        // Provide a default status for native functions based on annotations.
+        allFuns.insert(
+          f with {
+            status => OptDone{
+              inlineComplexity => Int::max,
+              returns => !annotationsContain(f.annotations, "@no_return", pos),
+              canThrow => !annotationsContain(f.annotations, "@no_throw", pos),
+              allocAmount => if (
+                annotationsContain(f.annotations, "@may_alloc", pos)
+              ) {
+                AllocUnbounded()
+              } else {
+                AllocNothing()
+              },
+            },
+          },
+        )
+      }
+    }
+  };
+
+  round = 0;
+
+  while (!unoptimized.isEmpty()) {
+    !round = round + 1;
+
+    if (round > 100000) {
+      allFuns[unoptimized[0]].die(
+        `Optimizer failed to converge after ${round} rounds.`,
+      )
+    };
+
+    !env = env with {sfuns => freeze(allFuns)};
+
+    countFullyOptimized = (u, pos) ->
+      u.foldl(
+        (acc, d) -> {
+          acc + (if (env.getFunction(d, pos).isFullyOptimized()) 1 else 0)
+        },
+        0,
+      );
+
+    // Build up an array of functions we can make progress optimizing.
+    // If we find any that are fully ready to optimized (i.e. not waiting on
+    // some other functions to be fully optimized), we'll just do those.
+    // Otherwise we'll fall back and do all the ones that are at least
+    // partially ready to go (some but not all dependencies are ready).
+    foundFullyReady = false;
+    ready = Vector::mcreate(unoptimized.size());
+    for (fid in unoptimized) {
+      f = allFuns[fid];
+      f.status match {
+      | OptPartial{unfinishedDependencies} ->
+        count = countFullyOptimized(unfinishedDependencies, f.pos);
+        if (count == unfinishedDependencies.size()) {
+          if (!foundFullyReady) {
+            ready.clear();
+            !foundFullyReady = true
+          };
+          ready.push(f)
+        } else if (count != 0 && !foundFullyReady) {
+          // Only partially ready, but could make some progress.
+          ready.push(f)
+        }
+      | OptDone _ -> void
+      }
+    };
+
+    if (verbose) {
+      print_error(
+        `Beginning round ${round} with ${unoptimized.size()} ` +
+          `functions remaining. ${ready.size()} are ` +
+          (if (foundFullyReady) "fully" else "partially") +
+          " ready\n",
+      )
+    };
+
+    if (!ready.isEmpty()) {
+      // Optimize everything.
+      envSnapshot = env;
+      newFuns = Array::fillBy(unoptimized.size(), i ->
+        allFuns[unoptimized[i]]
+      ).parallelMap(f ~> optimizeOne(f, envSnapshot, opts));
+
+      // Record the results.
+      foundExtra = false;
+      for (fe in newFuns) {
+        allFuns.insert(fe.f);
+        !foundExtra =
+          foundExtra ||
+          fe.extraFun.isSome() ||
+          fe.extraClass.isSome()
+      };
+
+      if (foundExtra) {
+        // Some Function also produced extra side effects, which we
+        // need to apply here. We need to do this as a separate pass
+        // so we end up with any "extraFun" functions as the "keepers".
+        newClasses = (None() : ?mutable Map<SClassID, SClass>);
+
+        for (fe in newFuns) {
+          fe.extraFun match {
+          | Some(ef) -> allFuns.insert(ef)
+          | None() -> void
+          };
+
+          fe.extraClass match {
+          | Some(ec) ->
+            (newClasses match {
+            | Some(nc) -> nc
+            | None() ->
+              nc = env.sclasses.clone(1);
+              !newClasses = Some(nc);
+              nc
+            }).set(ec.id, ec)
+          | None() -> void
+          }
+        };
+
+        newClasses match {
+        | Some(nc) -> !env = env with {sclasses => freeze(nc)}
+        | None() -> void
+        };
+
+        if (kConfig.optConfig.verify) {
+          // Now that env is set up properly, we can verify any new funs.
+          for (fe in newFuns) {
+            fe.extraFun match {
+            | Some(ef) -> Verify.verifyFunction(ef, env, "new function")
+            | None() -> void
+            }
+          }
+        }
+      };
+
+      // Check what was optimized successfully.
+      unoptimized.clear();
+      for (fe in newFuns) {
+        f = allFuns[fe.f.id];
+        if (!f.isFullyOptimized()) {
+          unoptimized.push(f.id)
+        }
+      };
+
+      if (verbose) {
+        // First list the ones we failed to optimize.
+        for (fid in unoptimized) {
+          f = allFuns[fid];
+          print_error(
+            `round ${round}: failed to optimize ${f} ` + `because waiting for `,
+          );
+          print_error_ln(
+            getDeps(f)
+              .map(x -> env.getFunction(x, f.pos).toString())
+              .join(", "),
+          );
+        };
+
+        // Then list the ones that succeeded.
+        for (fe in newFuns) {
+          f = allFuns[fe.f.id];
+          if (f.isFullyOptimized()) {
+            print_error_ln(`round ${round}: finished optimizing ${f}`)
+          }
+        };
+      }
+    } else {
+      // There are unoptimized functions, but all of them are waiting for
+      // other functions to be compiled, so we must have a cycle, e.g.
+      // mutually recursive functions. To break a cycle we will just pick
+      // one function that's part of a cycle and declare it done, then
+      // resume optimizing as normal. Note that we will have done most
+      // optimizations on this cycle member already, just not all the
+      // interprocedural ones.
+      //
+      // Functions that were depending on the newly "finished" one will be
+      // able to make at least some forward progress so the algorithm will
+      // eventually terminate.
+
+      // Found out how many other functions depend on each function.
+      // The idea is that if lots of functions are waiting for the same
+      // one, it's a decent choice to just finish now.
+      popularity = UnorderedMap::mcreate(unoptimized.size());
+      for (fid in unoptimized) {
+        for (d in getDeps(allFuns[fid])) {
+          popularity.set(d, popularity.maybeGet(d).default(0) + 1)
+        }
+      };
+
+      processed = mutable UnorderedSet[];
+      abandonOpts = OptPartial{donePasses => opts};
+
+      for (fid in unoptimized) {
+        findUnfinishedDependencyCycleMember(
+          allFuns[fid],
+          processed,
+          popularity,
+          env,
+        ) match {
+        | Some(pretendDone) ->
+          // Mark all of this function's optimizations passes as done,
+          // because it is stuck in a cycle of dependent functions,
+          // so those passes can't make progress. This way, when we try
+          // again this function will instantly be finished up,
+          // and other functions in that cycle can start making progress.
+          allFuns.insert(pretendDone with {status => abandonOpts})
+        | None() -> void
+        }
+      }
+    }
+  };
+
+  env with {sfuns => freeze(allFuns)}
+}
+
+// Note that after we lower, we never inline again, as that may be illegal.
+fun compileAll(env: GlobalEnv): GlobalEnv {
+  !env = optimizeAll(env, kConfig.optConfig.all());
+
+  !env = LowerConst.lowerAllConsts(env);
+
+  !env = optimizeAll(env, kConfig.optConfig.all());
+
+  env
+}
+
+module end;

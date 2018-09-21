@@ -1,0 +1,13 @@
+async fun yes(): ^mutable Ref<Int> {
+  mutable Ref(0)
+}
+
+class Foo() {
+  async fun yes(): ^(() -> void) {
+    () -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

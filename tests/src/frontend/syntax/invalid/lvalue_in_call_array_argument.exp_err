@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_in_call_array_argument.sk", line 2, characters 7-8:
+'.!' in non-lvalue
+1 | fun main(): String {
+2 |   a[a.!x]
+  |       ^^
+3 | }

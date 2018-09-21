@@ -1,0 +1,19 @@
+base class BSeqy<T> {
+  overridable fun filterNone<U>[T: ?U](): BSeqy<U> {
+    invariant_violation("unimplemented")
+  }
+}
+
+base class Seqy<T> extends BSeqy<T> {
+  fun filterNone<U>[T: ?U](): Seqy<U> {
+    invariant_violation("unimplemnted2")
+  }
+}
+
+base class Seqy2<T> extends Seqy<T>
+
+class StringSeqy() extends Seqy2<String>
+
+fun main(): void {
+  print_string("Pass")
+}

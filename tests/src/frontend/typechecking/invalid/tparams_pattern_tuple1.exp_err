@@ -1,0 +1,21 @@
+File "./typechecking/invalid/tparams_pattern_tuple1.sk", line 3, characters 9-14:
+Invalid pattern
+1 | fun shouldFail<T: (Int, Int), B: (T, Int)>(x: B): String {
+2 |   x match {
+3 |   | (_, (_, _)) -> "Fail\n"
+  |         ^^^^^^
+4 |   }
+
+File "./typechecking/invalid/tparams_pattern_tuple1.sk", line 1, characters 38-40:
+The type: Int
+1 | fun shouldFail<T: (Int, Int), B: (T, Int)>(x: B): String {
+  |                                      ^^^
+2 |   x match {
+
+File "./typechecking/invalid/tparams_pattern_tuple1.sk", line 3, characters 9-14:
+Does not share a common super type with: (_, _)
+1 | fun shouldFail<T: (Int, Int), B: (T, Int)>(x: B): String {
+2 |   x match {
+3 |   | (_, (_, _)) -> "Fail\n"
+  |         ^^^^^^
+4 |   }

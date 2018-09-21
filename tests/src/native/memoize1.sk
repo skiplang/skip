@@ -1,0 +1,102 @@
+@debug
+memoized fun combineInt(n1: Int, n2: Int): Int {
+  print_string("Combine Int: " + n1 + " + " + n2);
+  n1 + n2 * 3
+}
+
+@debug
+memoized fun makeTuple(n1: Int, n2: (String, Float)): (Int, String, Float) {
+  print_string("Combine Tuple: " + n1 + " + " + n2.i0 + " + " + n2.i1);
+  (n1 * 2, n2.i0 + "!", n2.i1 * -3.0)
+}
+
+@debug
+memoized fun combineFloat(n1: Float, n2: Float): Float {
+  print_string("Combine Float: " + n1 + " + " + n2);
+  n1 + n2 * 3.0
+}
+
+@debug
+memoized fun combineString(n1: String, n2: String): String {
+  print_string("Combine String: " + n1 + " + " + n2);
+  n1 + " '" + n2 + "'"
+}
+
+@debug
+memoized fun compareStrings(
+  n1: String,
+  n2: String,
+): (Bool, Bool, Bool, Bool, Bool, Bool) {
+  print_string("Compare Strings: " + n1 + " + " + n2);
+  (n1 < n2, n1 <= n2, n1 == n2, n1 != n2, n1 >= n2, n1 > n2)
+}
+
+class MyObject(s: String, n: Int) uses Show {
+  fun toString(): String {
+    "o(" + this.s + ", " + this.n + ")"
+  }
+}
+
+@debug
+memoized fun combineObject(n1: MyObject, n2: MyObject): MyObject {
+  print_string("Combine Object: " + n1 + " + " + n2);
+  MyObject(n1.s + " '" + n2.s + "'", n1.n + n2.n)
+}
+
+value class MyValueClass(s: String) uses Show {
+  fun toString(): String {
+    "v(" + this.s + ")"
+  }
+}
+
+@debug
+memoized fun combineValueClass(
+  n1: MyValueClass,
+  n2: MyValueClass,
+): MyValueClass {
+  print_string("Combine ValueClass: " + n1 + " + " + n2);
+  MyValueClass(n1.s + " '" + n2.s + "'")
+}
+
+fun main(): void {
+  iv = Array[(1, 2), (2, 3), (1, 2)].map(x -> combineInt(x.i0, x.i1));
+  fv = Array[(1.125, 2.5), (2.125, 3.75), (1.125, 2.5)].map(x ->
+    combineFloat(x.i0, x.i1)
+  );
+
+  strings = Array[("x", "y"), ("zzz", "xx"), ("x", "y")];
+  sv = strings.map(x -> combineString(x.i0, x.i1));
+
+  compares = strings.map(x -> compareStrings(x.i0, x.i1));
+
+  ov = Array[
+    (MyObject("c", 37), MyObject("d", 12)),
+    (MyObject("c", 9), MyObject("ddd", 12)),
+    (MyObject("c", 37), MyObject("d", 12)),
+  ].map(x -> combineObject(x.i0, x.i1));
+  vv = Array[
+    (MyValueClass("c"), MyValueClass("d")),
+    (MyValueClass("c"), MyValueClass("really long yeah")),
+    (MyValueClass("c"), MyValueClass("d")),
+  ].map(x -> combineValueClass(x.i0, x.i1));
+  tv = Array[(1, "hi", 3.25), (9, "xx", 1.25), (1, "hi", 3.25)].map(x ->
+    makeTuple(x.i0, (x.i1, x.i2))
+  );
+
+  print_raw(
+    iv.toString() +
+      "\n" +
+      fv +
+      "\n" +
+      sv +
+      "\n" +
+      compares +
+      "\n" +
+      ov +
+      "\n" +
+      vv +
+      "\n" +
+      tv.map(x -> "(" + x.i0 + ", " + x.i1 + ", " + x.i2 + ")") +
+      "\n",
+  )
+}

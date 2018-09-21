@@ -1,0 +1,8 @@
+base class Foo {
+  fun foo(): void {
+    void
+  }
+}
+class MyFoo() {
+  fun foo from Foo;
+}

@@ -1,0 +1,20 @@
+type RealString = String;
+class Foo<T>()
+
+module M;
+
+class String() {}
+
+fun works(): Foo<RealString> {
+  Foo()
+}
+
+fun worksToo(): Foo<.String> {
+  Foo()
+}
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

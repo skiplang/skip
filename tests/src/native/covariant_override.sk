@@ -1,0 +1,46 @@
+/*
+Given a final class `C<+T>`, `C<Cow>` can get cast to `C<Animal>`,
+a normal covariant upcast. `C<Cow>` can get cast to `C<readonly Cow>`
+for the same reason.
+
+But in the native back end, due to no-copy freezes, it's also possible
+to convert an object allocated as `C<readonly Cow>` to `C<Cow>`.
+If this object is a field of a larger object getting no-copy frozen,
+its bits will suddenly just be interpreted as those of the frozen type.
+This is really just another exotic kind of cast.
+
+So in the native back end, we must treat both types as super- and
+subtypes of each other, a cycle in the graph. This ensures that
+the vtable and object layouts for both remain compatible.
+
+Unfortunately, there do exist some methods that make sense on
+`C<Cow>` but appear unsound on `C<readonly Cow>`, triggering a
+verifier error about a bad cast from `readonly Cow` to `Cow`.
+
+This tests one such case.
+*/
+
+mutable class B(mutable n: Int = 0)
+
+mutable value class V<+T>(x: T) {
+  @no_inline
+  readonly fun f<T2>[T: T2](flag: Bool, y: T2): T2 {
+    if (flag) {
+      !y = this.x;
+    };
+    id(y)
+  }
+}
+
+fun main(): void {
+  b1 = B();
+  b2 = (b1 : readonly B);
+
+  v1 = V(b1);
+  v2 = mutable V(b2);
+
+  _ = id(v2);
+
+  _q: B = v1.f(true, b1);
+  print_string("Pass")
+}

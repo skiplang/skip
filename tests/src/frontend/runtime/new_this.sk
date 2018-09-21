@@ -1,0 +1,14 @@
+base class Foo final {x: String} {
+  deferred static fun empty(): this {
+    static{x => "Pass\n"}
+  }
+  fun get(): String {
+    this.x
+  }
+}
+
+class Bar extends Foo
+
+fun main(): void {
+  print_raw(Bar::empty().get())
+}

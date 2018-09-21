@@ -1,0 +1,14 @@
+mutable class V(mutable value: String) {
+  readonly fun get(Int): String {
+    this.value
+  }
+
+  mutable fun set(Int, value: String): void {
+    this.!value = value
+  }
+}
+fun main(): void {
+  x: mutable V = mutable V("");
+  x![0] = "Pass\n";
+  print_raw(x[0])
+}

@@ -1,0 +1,13 @@
+mutable class Foo(mutable x: Int)
+
+fun main(): void {
+  mfoo = mutable Foo(42);
+  ifoo = Foo(0);
+  mfun: readonly Foo -> void = (_) -> void;
+  ifun: readonly Foo -> void = (_) -> void;
+  f = if (true) mfun else ifun;
+  f(mfoo);
+  f(ifoo);
+  f((ifoo : readonly Foo));
+  print_string("Pass")
+}

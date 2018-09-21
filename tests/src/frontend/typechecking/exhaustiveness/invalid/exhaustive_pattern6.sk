@@ -1,0 +1,15 @@
+base class MyBase final () {
+  children =
+  | A
+  | B
+  | C
+}
+
+fun matcher(obj: MyBase): Int {
+  obj match {
+  | A _ -> 42
+  | A _ -> 101
+  | B _ -> 112
+  | C _ -> -30
+  }
+}

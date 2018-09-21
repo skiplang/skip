@@ -1,0 +1,14 @@
+File "./typechecking/invalid/try_annotation_readonly.sk", line 9, characters 5-21:
+Cannot call this method on a mutable object
+ 7 | mutable class X() extends Y {
+ 8 |   mutable fun childFunc(): void {
+ 9 |     this.parentFunc();
+   |     ^^^^^^^^^^^^^^^^^
+10 |   }
+
+File "./typechecking/invalid/try_annotation_readonly.sk", line 2, characters 7-16:
+Try annotating 'parentFunc' method as 'readonly'
+1 | mutable base class Y() {
+2 |   fun parentFunc(): void {
+  |       ^^^^^^^^^^
+3 |     void

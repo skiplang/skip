@@ -1,0 +1,21 @@
+File "./syntax/invalid/void_invalid_type.sk", line 3, characters 5-8:
+Invalid literal pattern
+1 | fun shouldFail(x: Int): String {
+2 |   x match {
+3 |   | void -> "I should fail"
+  |     ^^^^
+4 |   | 42 -> "Nope"
+
+File "./syntax/invalid/void_invalid_type.sk", line 1, characters 19-21:
+The type: Int
+1 | fun shouldFail(x: Int): String {
+  |                   ^^^
+2 |   x match {
+
+File "./syntax/invalid/void_invalid_type.sk", line 3, characters 5-8:
+Does not share a common super type with: void
+1 | fun shouldFail(x: Int): String {
+2 |   x match {
+3 |   | void -> "I should fail"
+  |     ^^^^
+4 |   | 42 -> "Nope"

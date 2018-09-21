@@ -1,0 +1,17 @@
+base class P
+
+base class Xgen<T> {
+  type TX: P;
+}
+
+base class X extends Xgen<this::TX>
+
+base class Ygen<T, Tx: Xgen<T>> {
+  type TY: X;
+}
+
+base class Y extends Ygen<this::TY::TX, this::TY>
+
+fun main(): void {
+  print_string("Pass")
+}

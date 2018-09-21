@@ -1,0 +1,11 @@
+class X protected () {
+  static fun new(): this {
+    static()
+  }
+}
+
+class Z() {
+  static fun newX(): X {
+    X()
+  }
+}

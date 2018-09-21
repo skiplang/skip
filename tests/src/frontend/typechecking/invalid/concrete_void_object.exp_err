@@ -1,0 +1,23 @@
+File "./typechecking/invalid/concrete_void_object.sk", line 5, characters 8-21:
+Incompatible vector values
+3 | fun foo(): void {
+4 |   a = A();
+5 |   _v = Array[a, void]
+  |        ^^^^^^^^^^^^^^
+6 | }
+
+File "./typechecking/invalid/concrete_void_object.sk", line 4, characters 7-9:
+The type: A
+2 |
+3 | fun foo(): void {
+4 |   a = A();
+  |       ^^^
+5 |   _v = Array[a, void]
+
+File "./typechecking/invalid/concrete_void_object.sk", line 5, characters 17-20:
+Does not share a common super type with: void
+3 | fun foo(): void {
+4 |   a = A();
+5 |   _v = Array[a, void]
+  |                 ^^^^
+6 | }

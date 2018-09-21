@@ -1,0 +1,20 @@
+File "./typechecking/invalid/inherit_typeclass_params_mixed1.sk", line 4, characters 17-17:
+Incompatible kind of fields
+2 | trait Y(y: String)
+3 |
+4 | class C uses X, Y
+  |                 ^
+
+File "./typechecking/invalid/inherit_typeclass_params_mixed1.sk", line 2, characters 7-7:
+'Y' has positional fields '(...)'
+1 | trait X{x: String}
+2 | trait Y(y: String)
+  |       ^
+3 |
+
+File "./typechecking/invalid/inherit_typeclass_params_mixed1.sk", line 4, characters 7-7:
+But 'C' has named fields '{...}'
+2 | trait Y(y: String)
+3 |
+4 | class C uses X, Y
+  |       ^

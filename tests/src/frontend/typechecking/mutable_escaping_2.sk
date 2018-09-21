@@ -1,0 +1,11 @@
+mutable base class MySymbol
+
+mutable class MyAggregateSymbol{
+  mutable members: mutable Map<String, mutable MySymbol>,
+  parent: readonly ?readonly MyAggregateSymbol,
+} extends MySymbol {}
+
+fun main(): void {
+  _ = mutable MyAggregateSymbol{members => mutable Map[], parent => None()};
+  print_string("Pass")
+}

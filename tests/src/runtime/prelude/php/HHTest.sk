@@ -1,0 +1,166 @@
+class HHTestObject() extends HH.Object
+class HHTestResource() extends HH.Resource
+
+@test
+fun testPrimitiveEquality(): void {
+  i = HH.Int(0);
+  s = HH.String("");
+  assertTrue(i == i);
+  assertFalse(i == HH.Int(1));
+  assertFalse(i == s);
+
+  assertTrue(s == s);
+  assertFalse(s == HH.String(" "));
+  assertFalse(s == HH.String("0"));
+  assertFalse(s == HH.String("1"));
+}
+
+@test
+fun testPrimitiveHashing(): void {
+  i = HH.Int(0);
+  assertEqual(i.hash(), 0.hash());
+
+  s = HH.String("");
+  assertEqual(s.hash(), "".hash());
+}
+
+@test
+fun testNullSubtyping(): void {
+  v = HH.Null();
+  _: HH.Mixed = v;
+}
+
+@test
+fun testBoolSubtyping(): void {
+  v = HH.Bool(false);
+  _: HH.Nonnull = v;
+  _: HH.Mixed = v;
+}
+
+@test
+fun testFloatSubtyping(): void {
+  v = HH.Float(0.0);
+  _: HH.Number = v;
+  _: HH.Nonnull = v;
+  _: HH.Mixed = v;
+}
+
+@test
+fun testIntSubtyping(): void {
+  v = HH.Int(0);
+  _: HH.Arraykey = v;
+  _: HH.Number = v;
+  _: HH.Nonnull = v;
+  _: HH.Mixed = v;
+}
+
+@test
+fun testStringSubtyping(): void {
+  v = HH.String("");
+  _: HH.Arraykey = v;
+  _: HH.Nonnull = v;
+  _: HH.Mixed = v;
+}
+
+@test
+fun testArraykeySubtyping(): void {
+  v: HH.Arraykey = HH.Int(0);
+  _: HH.Nonnull = v;
+  _: HH.Mixed = v;
+}
+
+@test
+fun testNonnullSubtyping(): void {
+  v: HH.Nonnull = HH.Int(0);
+  _: HH.Mixed = v;
+}
+
+@test
+fun testNumberSubtyping(): void {
+  v: HH.Number = HH.Int(0);
+  _: HH.Mixed = v;
+}
+
+@test
+fun testNonexhaustiveObjectMatches(): void {
+  x: HH.Object = HHTestObject();
+  x match {
+  | HHTestObject _ -> void
+  | _ ->
+    void // catchall should be required
+  };
+}
+
+@test
+fun testNonexhaustiveResourceMatches(): void {
+  x: HH.Resource = HHTestResource();
+  x match {
+  | HHTestResource _ -> void
+  | _ ->
+    void // catchall should be required
+  };
+}
+
+@test
+fun testDarray(): void {
+  x = Map[0 => 0, 1 => 1, 2 => 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Darray(
+    Map[(HH.Int(0) : HH.Arraykey) => (HH.String("zero") : HH.Mixed)],
+  );
+}
+
+@test
+fun testDict(): void {
+  x = Map[0 => 0, 1 => 1, 2 => 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Dict(Map[(HH.Int(0) : HH.Arraykey) => (HH.String("zero") : HH.Mixed)]);
+}
+
+@test
+fun testMap(): void {
+  x = Map[0 => 0, 1 => 1, 2 => 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Map(Map[(HH.Int(0) : HH.Arraykey) => (HH.String("zero") : HH.Mixed)]);
+}
+
+@test
+fun testVarray(): void {
+  x = Vector[0, 1, 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Varray(Vector[(HH.Int(0) : HH.Mixed)]);
+}
+
+@test
+fun testVec(): void {
+  x = Vector[0, 1, 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Vec(Vector[(HH.Int(0) : HH.Mixed)]);
+}
+
+@test
+fun testVector(): void {
+  x = Vector[0, 1, 2];
+  assertEqual(x[0], 0);
+  assertEqual(x.size(), 3);
+  _ = HH.Vector(Vector[(HH.Int(0) : HH.Mixed)]);
+}
+
+@test
+fun testKeyset(): void {
+  x = Set[0, 1, 2];
+  assertEqual(x.size(), 3);
+  _ = HH.Keyset(Set[(HH.Int(0) : HH.Arraykey)]);
+}
+
+@test
+fun testSet(): void {
+  x = Set[0, 1, 2];
+  assertEqual(x.size(), 3);
+  _ = HH.Set(Set[(HH.Int(0) : HH.Arraykey)]);
+}

@@ -1,0 +1,3 @@
+class X() {
+  static fn f(): void {}
+}

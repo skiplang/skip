@@ -1,0 +1,17 @@
+module Bar;
+
+class .Bar() {
+  fun foo(): String {
+    "Pa"
+  }
+}
+
+fun foo(): String {
+  "ss\n"
+}
+
+module end;
+
+fun main(): void {
+  print_raw(Bar().foo() + Bar.foo())
+}

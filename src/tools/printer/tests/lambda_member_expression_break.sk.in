@@ -1,0 +1,19 @@
+fun getConstructorFieldParameterNames(ast: FunctionDeclarationHeaderAst): UnorderedSet<String> {
+  ast.parameter_list.getListItemElements()
+    .filter(parameter -> !parameter.asParameterDeclaration().visibility.isMissing());
+
+  statements.slice(0, lastIndex).any(
+    statement ~> allLocals(statement).contains(lastTarget),
+  );
+
+  (finally_clause.isMissing() || finally_clause.asFinallyClause().body.isStatementEndReachable())
+  && (compound_statement.isStatementEndReachable()
+      || catch_clauses.getListElements().any(
+          catch_clause -> catch_clause.asCatchClause().body.isStatementEndReachable()));
+
+  ast.declarators.getListItemElements().each(declarator ->
+    this.convertConstantDeclaratorCustom(
+      ast.type_specifier,
+      declarator.asConstantDeclarator())
+  );
+}

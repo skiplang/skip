@@ -1,0 +1,6 @@
+fun main(): void {
+  x = Ref(-42);
+  // should be the same as `x.value=x.value.negate()`
+  !x.value=.negate();
+  print_raw(x.value.toString() + "\n")
+}

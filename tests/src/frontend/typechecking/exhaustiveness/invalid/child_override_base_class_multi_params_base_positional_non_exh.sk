@@ -1,0 +1,11 @@
+base class A(Int, String)
+class B(b: String, t: Int) extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A(1, "a") -> "P"
+  | A(2, _) -> "a"
+  | B("Hi", 1, _, "b") -> "s"
+  | A(42, "c") -> "s"
+  }
+}

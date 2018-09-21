@@ -1,0 +1,15 @@
+File "./syntax/invalid/duplicate_named_parameter.sk", line 6, characters 15-15:
+Name already bound: t
+4 |
+5 | fun main(): void {
+6 |   foo{t => 0, t => 0};
+  |               ^
+7 |   void
+
+File "./syntax/invalid/duplicate_named_parameter.sk", line 6, characters 7-7:
+Previously here
+4 |
+5 | fun main(): void {
+6 |   foo{t => 0, t => 0};
+  |       ^
+7 |   void

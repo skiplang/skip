@@ -1,0 +1,11 @@
+class A(x: Int) {
+  fun y(): void {
+    void
+  }
+}
+
+type TA = A;
+
+fun test(a: TA): void {
+  a.z
+}

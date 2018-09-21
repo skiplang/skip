@@ -1,0 +1,476 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The abstract syntax tree. */
+/*****************************************************************************/
+
+module SkipAst;
+
+base class Class_kind uses Equality, Hashable {
+  children =
+  | KTrait()
+  | KClass()
+  | KBase()
+}
+
+type Name = (FileRange, String);
+
+base class Visibility uses Equality {
+  children =
+  | VPrivate()
+  | VPublic()
+  | VProtected()
+
+  fun isPrivate(): Bool {
+    this == VPrivate()
+  }
+}
+
+class Program{
+  type_defs: UMap<Type_alias_def>,
+  class_defs: UMap<Class_def>,
+  fun_defs: UMap<Fun_def>,
+  const_defs: UMap<Const_def>,
+}
+
+base class Definition {
+  children =
+  | DMalias(Module_alias)
+  | DFun(Fun_def)
+  | DClass(Class_def)
+  | DModule(FileRange, Name)
+  | DConst(Const_def)
+  | DType(Type_alias_def)
+  | DModuleEnd(FileRange)
+}
+
+class Const_def{
+  annotations: SSet,
+  native_: ?FileRange,
+  overridable_: ?FileRange,
+  deferred_: ?FileRange,
+  visibility: (FileRange, Visibility),
+  name: Name,
+  type: Type_,
+  value: Inherited_body,
+}
+
+class Type_def<Tbody>{
+  visibility: (FileRange, Visibility),
+  name: Name,
+  tparams: Array<Type_parameter>,
+  body: Tbody,
+  source: ?Name,
+  annotations: SSet,
+}
+
+base class Cla_tyd {
+  children =
+  | TydAbstract(?Type_, ?Type_)
+  | TydDefined(Type_)
+}
+
+type Type_alias_def = Type_def<Type_>;
+type Cla_type_def = Type_def<Cla_tyd>;
+
+class Class_def{
+  range: FileRange,
+  depth: Int,
+  extension: ?FileRange,
+  native_: ?FileRange,
+  kind: Class_kind,
+  mutable_: ?FileRange,
+  value: ?FileRange,
+  data: ?FileRange,
+  name: Name,
+  tparams: Array<Type_parameter>,
+  params: MaybeClassParams,
+  extends_: Array<Parent>,
+  use: Array<Parent>,
+  children_: Children,
+  children__set: SSet,
+  concrete_children: SSet,
+  consts: UMap<Const_def>,
+  types: UMap<Cla_type_def>,
+  methods: UMap<Method_def>,
+  private_: ?FileRange,
+  annotations: SSet,
+  fields: Array<Class_field>,
+} {
+  // A class is chilled only if it never has mutable instances
+  // traits could be used by a mutable class so always false
+  fun isChilledOnly(): Bool {
+    this.mutable_.isNone() && !(this.kind is KTrait());
+  }
+
+  // A class is frozen only if it is a KClass whose chilled version is
+  // equivalent to it's frozen version, i.e. no tparams
+  fun isFrozenOnly(): Bool {
+    this.mutable_.isNone() && this.tparams.isEmpty() && this.kind is KClass()
+  }
+}
+
+base class Class_field {
+  children =
+  | Class_const(Const_def)
+  | Class_type(Cla_type_def)
+  | Class_method(Method_def)
+}
+
+base class MaybeClassParams {
+  children =
+  | NoParams()
+  | NativeConstruct(FileRange)
+  | HasParams(Class_params)
+
+  fun mapClassParams(f: Class_params -> Class_params): this
+  | HasParams(cp) -> HasParams(f(cp))
+  | _ -> this
+
+  fun transformClassParams<T>(f: Class_params -> T, default: T): T
+  | HasParams(cp) -> f(cp)
+  | _ -> default
+}
+
+class Class_params{
+  pos: FileRange,
+  final_: ?FileRange,
+  params: Parameters<Parameter>,
+  source: Name,
+  visibility: (FileRange, Visibility),
+}
+
+/* The parent where this comes from (before expansion) */
+value class Parent{
+  source: Name,
+  parent: Named_type,
+  conditions: Array<When_type_clause>,
+}
+
+class Module_alias{pos: FileRange, mal_name: Name, mal_rhs_name: Name}
+
+type Children = List<Child>;
+
+class Child{
+  chi_range: FileRange,
+  chi_name: Name,
+  chi_params: ?Class_params,
+  chi_annotations: SSet,
+}
+
+base class Callable_def{
+  annotations: SSet,
+  async_: ?FileRange,
+  memoized_: ?FileRange,
+  name: Name,
+  native_: ?FileRange,
+  params: Parameters<Parameter>,
+  return_: Type_,
+  tparams: Array<Type_parameter>,
+  untracked_: ?FileRange,
+}
+
+class Method_def{
+  range: FileRange,
+  visibility: (FileRange, Visibility),
+  static_: ?FileRange,
+  macro_: ?FileRange,
+  mutable_: ?FileRange,
+  frozen_: ?FileRange,
+  readonly_: ?FileRange,
+  overridable_: ?FileRange,
+  deferred_: ?FileRange,
+  whenparams: Array<When_type_clause>,
+  body: Inherited_body,
+} extends Callable_def {
+  fun isMacro(): Bool {
+    this.macro_.isSome()
+  }
+}
+
+type Inherited_body = (FileRange, Inherited_body_);
+
+base class Inherited_body_ {
+  children =
+  | Inherited(InheritedKind)
+  | Body(Expr_body)
+}
+
+base class Expr_body {
+  children =
+  | BNone()
+  | BExpr(() ~> Expr)
+  | BAlgebraic(List<Match_branch>)
+  | BFrom(Type_name)
+  | BNative(FileRange)
+}
+
+class InheritedKind{
+  /* Was the inheritance made explicit by the user (using 'from ClassName') */
+  explicit: Explicity,
+
+  /* Was the inheritance made from an algebraic body */
+  algebraic: Bool,
+
+  /* Which class was the element inherited from */
+  from_: Name,
+
+  /* Which original class was the element inherited from */
+  source: Name,
+
+  /* The value that was inherited. */
+  value: Expr_body,
+}
+
+base class Explicity uses Equality {
+  children =
+  | Implicit()
+  | Explicit()
+
+  /* Was found with a From of a different name,
+   * we keep the body temporarily for override checks.
+   */
+  | TempFrom(Name)
+}
+
+class Fun_def{fun_private: ?FileRange, body: ?() ~> Expr} extends Callable_def
+
+base class Variance uses Equality, Hashable {
+  children =
+  | Vnone()
+  | Vplus()
+  | Vminus()
+}
+
+type Type_parameter = (Variance, String, Name, ?Array<Type_>);
+
+type When_type_clause = (Type_, Array<Type_>);
+
+class Parameter{
+  annotations: SSet,
+  visibility: (FileRange, Visibility),
+  deferred_: ?FileRange,
+  mutable_: ?FileRange,
+  anonymous: Bool,
+  name: Name,
+  type: Type_,
+  value: ?Expr,
+  source: ?Name,
+  index: Int, // Order it is written
+}
+
+type Named_type = (Type_name, Array<Type_>);
+
+type Type_ = (FileRange, Type__);
+
+base class Type__ {
+  children =
+  | Tany()
+  | Tunder()
+  | Tinst()
+  | Tthis()
+  | Tfrozen()
+  | TnonNullable()
+  | Tapply(Type_name, Array<Type_>)
+  | Ttuple(Array<Type_>)
+  | Tfun(Lam_modifier, Parameters<Type_>, Type_)
+  | Tabstract(Type_name, Array<Name>)
+  | Tmutable(Type_)
+  | Treadonly(Type_)
+  | Tawaitable(Type_)
+}
+
+base class Type_name uses Show {
+  children =
+  | Tclass(name: Name)
+  | Tmacro(name: Name)
+  | Tmodule_class(fr: FileRange, moduleName: Name, className: Name)
+  | Tparam(name: Name, id: String)
+
+  fun toString(): String
+  | Tclass(n) -> n.i1
+  | Tmacro(n) -> n.i1
+  | Tmodule_class(_, mn, cn) -> mn.i1 + "." + cn.i1
+  | Tparam(n, id) -> n.i1 + "#" + id
+}
+
+type Expr = (FileRange, Expr_);
+
+base class Expr_ {
+  children =
+  | Literal(LiteralValue)
+  | Var(Name)
+  | MacroVar(Name)
+  | Cstr(Name, Array<Type_>)
+  | Seq(Expr, Expr)
+  | If(Expr, Expr, Expr)
+  | CallArray(Expr, Array<Type_>, Call_args)
+  | CallMap(Expr, Array<Type_>, Array<(Expr, Expr)>)
+  | Call(Expr, Array<Type_>, Call_args)
+  | Annotated(Expr, Type_)
+  /* The last expression here is the "rest of the function", like a let-in
+   * binding in OCaml rather than an assignment. This simplifies handling
+   * bound variables when traversing expressions.
+   * Bind(lvalue, type_annotation, rvalue, rest_of_expression)
+   */
+  | Bind(Lvalue, Expr, Expr)
+  /*  lvalue = rvalue or (lvalue : type) = rvalue
+   *  Note that since the LHS must already be defined, the lvalue could in
+   *  some sense be seen as an rvalue (hence the way we allow typing)
+   *  But since the only valid forms of the LHS are syntatically lvalues, we
+   *  keep it that way in the grammar as a convience
+   */
+  | Dot(Expr, Name)
+  | StaticDot(Expr, Name)
+  | Pipe(Expr, Expr)
+  | Binop(Binoperator, Expr, Expr)
+  | Unop(Unoperator, Expr)
+  | Is(Expr, Pattern)
+  | As(Expr, Pattern)
+  | Match(Expr, List<Match_branch>)
+  | Lambda(Lam_modifier, Parameters<Lam_parameter>, Expr)
+  | Tuple(Array<Expr>)
+  | Try(Expr, List<Match_branch>)
+  | Await(Expr)
+  | Return(Expr)
+  | Yield(Expr)
+  | YieldBreak()
+  | Async(Expr)
+  | Throw(Expr)
+  /* e> with { name1 => <rv1>; name2 => <rv2> } */
+  | With(Expr, UMap<Ordered_expr>)
+  | Mutable(Expr)
+  | TemplateLiteral(Call_args)
+
+  | Continue()
+  | Break(Expr)
+  | Loop(body: Expr)
+  | DoWhile(body: Expr, condition: Expr, withoutBreak: Expr)
+  | While(condition: Expr, body: Expr, withoutBreak: Expr)
+  | ForEach(
+    binding: ForEachBinding,
+    collection: Expr,
+    body: Expr,
+    withoutBreak: Expr,
+  )
+  | ForEachFieldMacro(field: Name, fieldName: ?Name, body: Expr)
+  | MacroDot(Expr, Name)
+  | MacroStaticDot(Expr, Name)
+}
+
+const evoid_: Expr_ = Literal(VoidLiteral());
+
+base class ForEachBinding(fr: FileRange) {
+  children =
+  | FEKeyed(key: Name, value: Name)
+  | FEIdent(name: Name)
+  | FETuple(idents: Array<Name>)
+}
+
+type Lam_parameter = (Name, ?Type_);
+
+type Ordered_expr = (Int, Expr);
+
+type Call_args = Parameters<Ordered_expr>;
+
+class Lam_modifier{is_mutable: Bool, is_untracked: Bool}
+
+base class LiteralValue uses Hashable, Equality {
+  children =
+  | VoidLiteral()
+  | BoolLiteral(Bool)
+  | IntLiteral(Int)
+
+  /* Unicode code point */
+  | CharLiteral(Int)
+
+  /* UTF-8 encoded Unicode string */
+  | StringLiteral(String)
+}
+
+class FloatLiteral(value: Float) extends LiteralValue {
+  fun ==(other: LiteralValue): Bool {
+    other match {
+    | FloatLiteral(value) -> this.value.isEqual(value)
+    | _ -> false
+    }
+  }
+}
+
+type Lvalue = (FileRange, Lvalue_);
+
+base class Lvalue_ {
+  children =
+  | Lvalue_tuple(Array<Lvalue>)
+  | Lvalue_bind_local(Name)
+  | Lvalue_array_set(Expr, Call_args)
+  | Lvalue_assign(Lvalue_assign_value)
+}
+
+base class Lvalue_assign_value {
+  children =
+  | Lvalue_assign_local(Name)
+  | Lvalue_assign_field(Expr, Name)
+  | Lvalue_assign_with(Lvalue_assign_value, Name)
+  | Lvalue_assign_array_set(Lvalue_assign_value, Call_args)
+}
+
+type Match_branch = (List<Pattern>, ?Expr, Expr);
+
+base class Pattern_complete {
+  children =
+  | Complete()
+  | Incomplete()
+}
+
+type Pattern = (FileRange, Pattern_);
+
+base class Pattern_ {
+  children =
+  | Pat_const(Expr)
+  | Pat_var(Name)
+  | Pat_type(TypeIdentifier, ?Parameters<Pattern>, Pattern_complete)
+  | Pat_tuple(Array<Pattern>)
+  | Pat_literal(LiteralValue)
+  | Pat_as(Pattern, Name)
+}
+
+base class TypeIdentifier {
+  children =
+  | Tid_object(Type_name)
+  | Tid_static(Name, Name)
+}
+
+type Unoperator = (FileRange, Unop_);
+
+base class Unop_ {
+  children =
+  | Not()
+  | Uminus()
+}
+
+type Binoperator = (FileRange, Binop_);
+
+base class Binop_ uses Equality {
+  children =
+  | Barbar()
+  | Ampamp()
+  | Eqeq()
+  | Diff()
+  | Lt()
+  | Lte()
+  | Gt()
+  | Gte()
+  | Plus()
+  | Minus()
+  | Star()
+  | Slash()
+  | Percent()
+}
+
+module end;

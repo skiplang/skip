@@ -1,0 +1,72 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "skip_check": {
+      "kind": "Program",
+      "sources": ["skipCheck.sk"],
+      "references": [ { "path": "../project", "name": "analyze"  } ]
+    },
+    "skip_check_json": {
+      "kind": "Program",
+      "sources": ["skipCheckJson.sk"],
+      "references": [ { "path": "../project", "name": "analyze"  } ]
+    },
+    "skip_format": {
+      "kind": "Program",
+      "sources": ["skipFormat.sk"],
+      "references": [
+        { "path": "../frontend" },
+        { "path": "../tools/printer" }
+      ]
+    },
+    "skip_outline": {
+      "kind": "Program",
+      "sources": ["outline.sk"],
+      "references": [ { "path": "../frontend" } ]
+    },
+    "skip_server": {
+      "kind": "Program",
+      "sources": ["skipServer.sk"],
+      "references": [ { "path": "../project", "name": "analyze"  } ]
+    },
+    "get_definition": {
+      "kind": "Library",
+      "sources": ["getDefinition.sk"],
+      "references": [ { "path": "../project", "name": "analyze"  } ]
+    },
+    "skip_lsp": {
+      "kind": "Program",
+      "sources": [
+        "convert.sk",
+        "logger.sk",
+        "OpenFiles.sk",
+        "LspServer.sk",
+        "skipLsp.sk",
+        "Jsonable.sk",
+        "jsonRpc.sk",
+        "languageServerProtocol.sk",
+        "lspOutline.sk",
+        "RingBuffer.sk"
+      ],
+      "parameters": {
+        "backend": {
+            "native": {"sources": ["native"]},
+            "nonnative": {"sources": []}
+        }
+      },
+      "references": [
+        { "path": "../tools/printer" },
+        { "path": "../project", "name": "analyze" },
+        { "path": ".", "name": "get_definition" }
+      ]
+    },
+    "skip_get_definition": {
+      "kind": "Program",
+      "sources": ["skipGetDefinition.sk"],
+      "references": [
+        { "path": "../project", "name": "analyze"  },
+        { "path": ".", "name": "get_definition" }
+      ]
+    }
+  }
+}

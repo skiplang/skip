@@ -1,0 +1,35 @@
+@serialize
+class NamedPoint{
+  p: Point,
+  name: String,
+} uses Show, Equality {
+  fun toString(): String {
+    `NamedPoint(${this.p}, ${this.name})`
+  }
+}
+
+@serialize
+class Point{
+  x: Int,
+  y: Int,
+} uses Show, Equality {
+  fun toString(): String {
+    `Point(${this.x}, ${this.y})`
+  }
+}
+
+fun main(): void {
+  assertSerializes(`{"x": 0, "y": 0}`, Point::meta, Point{x => 0, y => 0});
+  assertSerializes(`{"x": 4, "y": 4}`, Point::meta, Point{x => 4, y => 4});
+  assertSerializes(
+    `{"p": {"x": 0, "y": 0}, "name": "test"}`,
+    NamedPoint::meta,
+    NamedPoint{p => Point{x => 0, y => 0}, name => "test"},
+  );
+  assertSerializes(
+    `{"p": {"x": 4, "y": 4}, "name": "test"}`,
+    NamedPoint::meta,
+    NamedPoint{p => Point{x => 4, y => 4}, name => "test"},
+  );
+  print_string("Pass")
+}

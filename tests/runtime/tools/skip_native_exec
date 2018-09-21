@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import argparse
+import imp
+import logging
+import os
+import pipes
+import subprocess
+import sys
+
+import common
+import skip_native_compile
+
+logger = logging.getLogger(os.path.basename(__file__))
+
+build_dir = common.build_dir
+
+def main(stack):
+    remainder = common.splitRemainder()
+    parser = argparse.ArgumentParser(
+        description='Run the Skip compiler',
+        parents=[common.commonArguments(False, 'native'), skip_native_compile.arguments()])
+    parser.add_argument('--watch', default=False, action='store_true')
+    parser.add_argument('srcs', metavar='SOURCE', nargs='+')
+
+    args = common.parse_args(parser)
+
+    binFile = skip_native_compile.compile(stack, args)
+
+    # Don't allow the actual test run to take more than 5 minutes
+    timeout = int(os.environ.get('SKIP_TEST_TIMEOUT', '300'))
+
+    cmd = (binFile.name,)
+
+    if args.watch:
+        cmd += ('--watch',)
+
+    cmd += tuple(remainder)
+
+    logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
+    with common.PerfTimer('skip_native_exec.test_runtime'):
+        res = subprocess.call(('ulimit -t %d ; ' % (timeout,)) + ' '.join(map(pipes.quote, cmd)), shell=True, env=os.environ)
+    if res != 0:
+        sys.exit(res)
+
+
+if __name__ == '__main__':
+    with common.ExitStack() as stack:
+        rc = main(stack)
+    sys.exit(rc)

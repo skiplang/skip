@@ -1,0 +1,1491 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Module building an internal abstract tree (from a typed AST). */
+/*****************************************************************************/
+module alias O = OuterIst;
+
+module alias OU = SkipOuterIstUtils;
+
+/*****************************************************************************/
+/* The main entry point. */
+/*****************************************************************************/
+module alias Ast = SkipAst;
+
+module alias NAst = SkipNamedAst;
+
+module alias TAst = SkipTypedAst;
+
+module SkipMakeOuterIst;
+
+type Name = (FileRange, String);
+
+// states for iterative expr(), toplevel_stmt()
+// TODO: skip_to_ocaml doesn't support having these definitions between
+// mutually recursive functions. Can move it down once we're fully self-hosted
+base class ExprNode {
+  children =
+  | EInitial(TAst.Expr)
+  | EFinal(O.Expr)
+}
+
+// Note: `e` prefix is to make field names unique. This is an artifact
+// of ocaml conversion, not fundamental to skip. Ditto `s` below
+class ExprState{eacc: List<O.Stmt>, ecur: ExprNode}
+
+base class StmtNode {
+  children =
+  | SInitial(TAst.Expr)
+  | SFinal(O.Stmt)
+}
+
+class StmtState{sacc: List<O.Stmt>, scur: StmtNode}
+
+class Env{breakTmp: ?O.LocalVar, breakLabel: ?O.Name, continueLabel: ?O.Name}
+
+const EMPTY_ENV: Env = Env{
+  breakTmp => None(),
+  breakLabel => None(),
+  continueLabel => None(),
+};
+
+/************************************************************/
+
+@gc
+fun program_phase(prog: TAst.Program): O.Program {
+  const_defs = prog.const_defs.map(const_def);
+  class_defs = prog.class_defs.map(class_def);
+  fun_defs = prog.fun_defs.map(fun_def);
+  tya_defs = prog.tya_defs.map(tya_def);
+  O.Program{const_defs, class_defs, fun_defs, tya_defs}
+}
+
+fun program(prog: TAst.Program): O.Program {
+  runCompilerPhase("outer/makeOuter", () -> program_phase(prog));
+}
+
+fun tya_def(TAst.Name, tya: TAst.Type_alias_def): O.TypeAliasDef {
+  O.TypeAliasDef{
+    annotations => tya.annotations,
+    name => O.name(tya.name),
+    tparams => tparams(tya.tparams),
+    body => sig_type_(tya.body),
+  }
+}
+
+fun tparams(tparams: Array<(String, NAst.Name)>): Array<O.TypeAliasTparam> {
+  tparams.map(tya_tparam)
+}
+
+fun tya_tparam(x: (String, NAst.Name)): O.TypeAliasTparam {
+  (i, n) = x;
+  O.TypeAliasTparam(i, O.name(n))
+}
+
+/*****************************************************************************/
+/* Classes. */
+/*****************************************************************************/
+
+fun class_def(TAst.Name, cd: TAst.Class_def): O.ClassDef {
+  O.ClassDef{
+    depth => cd.depth,
+    native_ => cd.native_,
+    kind => kind(cd.kind),
+    value => cd.value,
+    mutable_ => cd.mutable_,
+    name => O.name(cd.name),
+    tparams => type_parameters(cd.tparams),
+    params => cd.params.map(class_parameters),
+    extends_ => class_extends(cd.extends_),
+    concrete_children => cd.concrete_children,
+    use => class_extends(cd.use),
+    methods => class_method_defs(cd),
+    fields => cd.fields,
+    consts => class_const_defs(cd.consts),
+    types => cd.types.map(type_def),
+    annotations => cd.annotations,
+  }
+}
+
+/*****************************************************************************/
+/* Strip deferred methods and class params */
+/*****************************************************************************/
+fun class_parameters(cp: TAst.Class_params): O.ClassParams {
+  params = cp.params.filter(p -> p.deferred_.isNone());
+  O.ClassParams{
+    pos => cp.pos,
+    final_ => cp.final_,
+    source => O.name(cp.source),
+    params => lazy_parameters(params),
+    visibility => visibility(cp.visibility),
+  }
+}
+
+fun kind(x: TAst.Class_kind): O.ClassKind {
+  x match {
+  | Ast.KClass() -> O.KClass()
+  | Ast.KBase() -> O.KBase()
+  | Ast.KTrait() -> O.KTrait()
+  }
+}
+
+/*****************************************************************************/
+/* Class constants. */
+/*****************************************************************************/
+fun class_const_defs(defs: UMap<TAst.Const_def>): UMap<O.ConstDef> {
+  defs.filter((_, c) -> c.deferred_.isNone()).map(const_def)
+}
+
+fun const_def(TAst.Name, con: TAst.Const_def): O.ConstDef {
+  O.ConstDef{
+    annotations => con.annotations,
+    native_ => con.native_,
+    name => O.name(con.name),
+    type => sig_type_(con.type),
+    value => lazy_initializer_opt(con.value),
+    visibility => visibility(con.visibility),
+    from_ => con.from_.map(O.name),
+    source => con.source.map(O.name),
+  }
+}
+
+/*****************************************************************************/
+/* Class extends/use. */
+/*****************************************************************************/
+fun class_extends(parent_map: UMap<TAst.Parent>): UMap<O.Parent> {
+  parent_map.map((_, p) ->
+    O.Parent{
+      effective_source => O.name(p.effective_source),
+      inherited_source => O.name(p.inherited_source),
+      targs => p.targs.map(sig_type_),
+    }
+  )
+}
+
+/*****************************************************************************/
+/* Type parameters. */
+/*****************************************************************************/
+fun type_parameters(tyl: Array<TAst.Type_parameter>): Array<O.TypeParameter> {
+  tyl.map(tparam -> {
+    (v, i, n, tyl1) = tparam;
+    type_parameter(v, i, n, tyl1)
+  })
+}
+
+fun when_clause(wcs: Array<TAst.Whenclause>): Array<O.WhenClause> {
+  wcs.map(wc -> {
+    (ty, tyl) = wc;
+    O.WhenClause(sig_type_(ty), tyl.map(sig_type_))
+  })
+}
+
+fun type_parameter(
+  v: TAst.Variance,
+  i: String,
+  n: TAst.Name,
+  tyl: Array<TAst.Type_>,
+): O.TypeParameter {
+  otyl = List::createFromItems(tyl.map(sig_type_));
+  O.TypeParameter(variance(v), i, O.name(n), otyl)
+}
+
+fun variance(x: TAst.Variance): O.Variance {
+  x match {
+  | Ast.Vnone() -> O.Vnone()
+  | Ast.Vminus() -> O.Vminus()
+  | Ast.Vplus() -> O.Vplus()
+  }
+}
+
+fun cla_tyd(x: NAst.Cla_tyd): (?O.Type, ?O.Type) {
+  x match {
+  | NAst.TydDefined(ty) -> (None(), Some(sig_type_(ty)))
+  | NAst.TydAbstract(tyd_type, tyd_default) ->
+    (tyd_type.map(sig_type_), tyd_default.map(sig_type_))
+  }
+}
+
+fun type_def(TAst.Name, tyd: TAst.Type_def): O.TypeDef {
+  visibility = visibility(tyd.visibility);
+  name = O.Name(tyd.name.i0, tyd.name.i1);
+  tparams = type_parameters(tyd.tparams);
+  (tyd_type, tyd_value) = cla_tyd(tyd.body);
+  source = O.Name(tyd.source.i0, tyd.source.i1);
+  O.TypeDef{visibility, name, tparams, tyd_type, tyd_value, source}
+}
+
+fun visibility(vis: (FileRange, TAst.Visibility)): (FileRange, O.Visibility) {
+  (pos, vis1) = vis;
+  (pos, visibility_(vis1))
+}
+
+fun visibility_(x: TAst.Visibility): O.Visibility {
+  x match {
+  | NAst.VPrivate() -> O.VPrivate()
+  | NAst.VPublic() -> O.VPublic()
+  | NAst.VProtected() -> O.VProtected()
+  }
+}
+
+/*****************************************************************************/
+/* Methods. */
+/*****************************************************************************/
+fun class_method_defs(cd: TAst.Class_def): UMap<O.MethodDef> {
+  cd.methods
+    .filter((_, m) -> m.deferred_.isNone())
+    .map((_, m) ~> method_def(m, cd))
+}
+
+fun method_def(met: TAst.Method_def, cd: TAst.Class_def): O.MethodDef {
+  O.MethodDef{
+    visibility => visibility(met.visibility),
+    overridable_ => met.overridable_,
+    memoized_ => met.memoized_,
+    annotations => met.annotations,
+    async_ => met.async_,
+    native_ => met.native_,
+    kind => met.kind,
+    untracked_ => met.untracked_,
+    name => O.name(met.name),
+    from_ => O.name(met.from_),
+    source => O.name(met.source),
+    met_class => O.name(cd.name),
+    whenparams => when_clause(met.whenparams),
+    tparams => type_parameters(met.tparams),
+    params => lazy_parameters(met.params),
+    return_ => sig_type_(met.return_),
+    body => lazy_method_body(native_body(met.name, cd.name), met.body),
+    implicit_param => binding(met.implicit_param),
+    generic_mapping => met.generic_mapping.map((_, tparam_map) ->
+      tparam_map.map((_, ty) -> type(true, ty))
+    ),
+    yields => met.yields,
+  }
+}
+
+fun lazy_method_body(native_body: ?O.Body, x: TAst.Expr_body): ?O.Body {
+  x match {
+  | TAst.Abstract() -> None()
+  | TAst.Native() -> native_body
+  | TAst.Implemented(e) -> Some(O.TypedBody(e))
+  }
+}
+
+/*****************************************************************************/
+/* Parameters. */
+/*****************************************************************************/
+fun lazy_parameters(
+  params: Parameters<TAst.Parameter>,
+): Parameters<O.Parameter> {
+  params.map(lazy_parameter)
+}
+
+fun lazy_parameter(par: TAst.Parameter): O.Parameter {
+  O.Parameter{
+    annotations => par.annotations,
+    visibility => visibility(par.visibility),
+    name => O.Name(par.name.i0, par.name.i1),
+    type => sig_type_(par.type),
+    value => lazy_initializer_opt(par.value),
+    frozen_ => binding_info(par.frozen_),
+    index => par.index,
+    mutable_ => par.mutable_,
+  }
+}
+
+fun lazy_initializer_opt(e_opt: ?TAst.Expr): ?O.Initializer {
+  e_opt.map(e -> O.TypedInit(e))
+}
+
+// Warning: this is called from the on-demand lowering pipeline in
+// SkipLowerOuterIst. It shouldn't be called from here, because the
+// lowering passes won't be run on the resulting outerist.
+fun initializer(new_id: () -> Int, expr: TAst.Expr): O.Initializer {
+  O.OuterInit(expr_const(new_id, expr))
+}
+
+/*****************************************************************************/
+/* Functions. */
+/*****************************************************************************/
+fun fun_def(TAst.Name, fd: TAst.Fun_def): O.FunDef {
+  O.FunDef{
+    annotations => fd.annotations,
+    native_ => fd.native_,
+    memoized_ => fd.memoized_,
+    async_ => fd.async_,
+    untracked_ => fd.untracked_,
+    name => O.name(fd.name),
+    tparams => type_parameters(fd.tparams),
+    params => lazy_parameters(fd.params),
+    return_ => sig_type_(fd.return_),
+    body => lazy_function_body(fd.body),
+    yields => fd.yields,
+  }
+}
+
+fun lazy_function_body(b: TAst.Expr_body): ?O.Body {
+  b match {
+  | TAst.Abstract()
+  | TAst.Native() ->
+    None()
+  | TAst.Implemented(e) -> Some(O.TypedBody(e))
+  }
+}
+
+fun make_string_type(pos: FileRange): O.Type {
+  O.Type(pos, O.Tapply(O.Name(pos, "String"), Array[]));
+}
+
+fun make_vector_string_type(pos: FileRange): O.Type {
+  O.Type(pos, O.Tapply(O.Name(pos, "Array"), Array[make_string_type(pos)]));
+}
+
+fun make_empty_string(pos: FileRange): O.Expr {
+  tystring = O.Type(pos, O.Tapply(O.Name(pos, "String"), Array[]));
+  O.Expr(tystring, pos, O.ELiteral(O.LString("")));
+}
+
+fun native_body(name: Name, className: Name): ?O.Body {
+  pos = name.i0;
+  tystring = O.Type(pos, O.Tapply(O.Name(pos, "String"), Array[]));
+  msg = O.ELiteral(
+    O.LString(
+      "Attempting to call the native function: " +
+        className.i1 +
+        "::" +
+        name.i1,
+    ),
+  );
+  msg1 = O.Expr(tystring, pos, msg);
+  sk_void = OU.make_void_type(pos);
+  ivname = O.Name(pos, "invariant_violation");
+  ecall = O.FunCall(ivname, Array[sk_void], Positional(Array[msg1]));
+  ecall1 = O.Expr(sk_void, pos, ecall);
+  Some(
+    O.OuterBody(
+      O.Seq(
+        List[
+          O.SingleExpr(ecall1),
+          O.SingleExpr(O.Expr(sk_void, pos, O.Unreachable())),
+        ],
+      ),
+    ),
+  )
+}
+
+/*****************************************************************************/
+/* Types. */
+/*****************************************************************************/
+fun type(remove_aliases: Bool, pty: NAst.Type_): O.Type {
+  (pos, ty) = pty;
+  type__(remove_aliases, pos, ty)
+}
+
+fun type__(remove_aliases: Bool, pos: FileRange, x: NAst.Type__): O.Type {
+  x match {
+  | NAst.Tfrozen _
+  | NAst.TnonNullable _
+  | NAst.Tanything() ->
+    O.Type(pos, O.Tany())
+  | NAst.Tnamed(NAst.NStatic _, (_, ty_)) -> type__(remove_aliases, pos, ty_)
+  | NAst.Tnamed(ninfo, ty) ->
+    if (remove_aliases) {
+      (_, ty_) = ty;
+      type__(remove_aliases, pos, ty_)
+    } else {
+      nl = {
+        ninfo match {
+        | NAst.NAlias(n) -> Array[O.name(n)]
+        | NAst.NThis _ -> Array[O.Name(pos, "this")]
+        | NAst.NInst _ -> Array[O.Name(pos, "inst")]
+        | NAst.NTydResolved(c, nl)
+        | NAst.NTydAbstract(c, nl) ->
+          Array[O.name(c)].concat(nl.map(O.name))
+        | NAst.NStatic _ -> invariant_violation("assert false")
+        }
+      };
+      O.Type(pos, O.Tnamed(nl, type(remove_aliases, ty)))
+    }
+  | NAst.Tawaitable(_, ty) ->
+    O.Type(
+      pos,
+      O.Tmutable(
+        O.Type(
+          pos,
+          O.Tapply(O.Name(pos, "Awaitable"), Array[type(remove_aliases, ty)]),
+        ),
+      ),
+    )
+  | NAst.Tapply(mode, x1, tyl) ->
+    tapply = O.Type(
+      pos,
+      O.Tapply(O.name(x1), tyl.map(t -> type(remove_aliases, t))),
+    );
+    mode match {
+    | NAst.Mchilled() -> tapply
+    | NAst.Mreadonly(rfr) -> O.Type(rfr, O.Treadonly(tapply))
+    | NAst.Mmutable(mfr) -> O.Type(mfr, O.Tmutable(tapply))
+    }
+  | NAst.Tparam(_, v, i, n) ->
+    O.Type(pos, O.Tparam(variance(v), i, O.name(n), None()))
+  | NAst.Tset(_, _, tparams, elts) if (tparams.isEmpty() && elts.isEmpty()) ->
+    O.Type(pos, O.Tany())
+  | NAst.Tdefault(ty) -> O.Type(pos, O.Tdefault(type(remove_aliases, ty)))
+  | NAst.Tset(_var, mode, tparams, elts) if (elts.size() == 1) ->
+    nelt = elts[0];
+    elt = O.TsetElt(
+      tparams,
+      O.name(nelt.name),
+      nelt.targs.map(cur1 -> type(remove_aliases, cur1)),
+    );
+    pelt = O.Type(pos, elt);
+    mode match {
+    | NAst.Mchilled() -> pelt
+    | NAst.Mreadonly(rfr) -> O.Type(rfr, O.Treadonly(pelt))
+    | NAst.Mmutable(mfr) -> O.Type(mfr, O.Tmutable(pelt))
+    }
+  | NAst.Tfun(
+    _,
+    (purity, tracking),
+    _,
+    tparam,
+    ty,
+  ) if (purity.size() == 1 && tracking.size() == 1) ->
+    O.Type(
+      pos,
+      O.Tfun(
+        tfun_modifiers(purity[0], tracking[0]),
+        parameters_type(remove_aliases, tparam),
+        type(remove_aliases, ty),
+      ),
+    )
+  | NAst.Tset _ ->
+    print_error(pos.toString());
+    invariant_violation(
+      "Nast.Tfun modifiers should have been expanded to have at most one elt",
+    )
+  | NAst.Tfun _ ->
+    print_error(pos.toString());
+    invariant_violation("Nast.Tfun modifiers should have been expanded")
+  | NAst.Tvar _ ->
+    print_error(pos.toString());
+    invariant_violation("NAst.Tvar should have been expanded")
+  | NAst.Tlambda _ ->
+    print_error(pos.toString());
+    invariant_violation("NAst.Tlambda should have been expanded")
+  | NAst.Tpromoted _ ->
+    print_error(pos.toString());
+    invariant_violation("NAst.Tpromoted should have been expanded")
+  }
+}
+
+/* Types in signatures must preserve aliases for PHP compat */
+fun sig_type_(ty: NAst.Type_): O.Type {
+  type(false, ty)
+}
+
+/* Types in exprs must remove all aliases to simplify backends */
+fun expr_type_(ty: NAst.Type_): O.Type {
+  type(true, ty)
+}
+
+fun tfun_modifiers(
+  purity: NAst.Purity_modifier,
+  tracking: NAst.Tracking_modifier,
+): O.TfunModifiers {
+  O.TfunModifiers(purity_modifier(purity), tracking_modifier(tracking))
+}
+
+fun purity_modifier(x: NAst.Purity_modifier): O.PurityModifier {
+  x match {
+  | NAst.Fpure() -> O.Fpure()
+  | NAst.Fmutable() -> O.Fmutable()
+  }
+}
+
+fun tracking_modifier(x: NAst.Tracking_modifier): O.TrackingModifier {
+  x match {
+  | NAst.Ftracked() -> O.Ftracked()
+  | NAst.Funtracked() -> O.Funtracked()
+  }
+}
+
+fun parameters_type(
+  remove_aliases: Bool,
+  x: Parameters<NAst.Type_>,
+): Parameters<O.Type> {
+  x.map(ty -> type(remove_aliases, ty))
+}
+
+/*****************************************************************************/
+/* Expressions. */
+/*****************************************************************************/
+
+// Warning: this is called from the on-demand lowering pipeline in
+// SkipLowerOuterIst.  It shouldn't be called from here, because the
+// lowering passes won't be run on the resulting outerist.
+fun body(new_id: () -> Int, st: TAst.Expr): O.Body {
+  O.OuterBody(fun_body(new_id, st))
+}
+
+fun fun_body(new_id: () -> Int, st: TAst.Expr): O.Stmt {
+  (acc, st1) = toplevel_stmt(new_id, EMPTY_ENV, List[], st);
+  make_seq(List.Cons(SkipOuterIstUtils.set_return_default(st1), acc))
+}
+
+fun toplevel_stmt(
+  new_id: () -> Int,
+  env: Env,
+  acc_: List<O.Stmt>,
+  orig_e: TAst.Expr,
+): (List<O.Stmt>, O.Stmt) {
+  init = StmtState{sacc => acc_, scur => SInitial(orig_e)};
+  cycle(init, state -> {
+    state.scur match {
+    | SInitial(e) ->
+      e match {
+      | (_, (_, TAst.Seq(e1, e2))) ->
+        (acc1, e11) = expr(new_id, env, state.sacc, e1);
+        Cycle.Next(
+          StmtState{
+            sacc => List.Cons(O.SingleExpr(e11), acc1),
+            scur => SInitial(e2),
+          },
+        )
+      | _ ->
+        (acc1, stmt) = toplevel_stmt_(new_id, env, state.sacc, e);
+        Cycle.Next(StmtState{sacc => acc1, scur => SFinal(stmt)})
+      }
+    | SFinal(stmt) -> Cycle.Done((state.sacc, stmt))
+    }
+  })
+}
+
+fun toplevel_stmt_(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  orig_e: TAst.Expr,
+): (List<O.Stmt>, O.Stmt) {
+  (_, (pos, e__)) = orig_e;
+  e__ match {
+  | TAst.Seq _ -> invariant_violation("Unexpected TAst.Seq in toplevel_stmt_")
+  | TAst.If(c, e1, e2) ->
+    (acc1, c1) = expr(new_id, env, acc, c);
+    e11 = toplevel_block(new_id, env, e1);
+    e21 = toplevel_block(new_id, env, e2);
+    (acc1, O.If(c1, e11, e21))
+  | TAst.Match(e2, mbl) ->
+    (acc1, e3) = expr(new_id, env, acc, e2);
+    mbl1 = mbl.map(x -> toplevel_match_branch(new_id, env, x));
+    (acc1, O.Match(e3, mbl1))
+  | TAst.Try(e2, mbl) ->
+    e3 = toplevel_block(new_id, env, e2);
+    mbl1 = mbl.map(x -> toplevel_match_branch(new_id, env, x));
+    (acc, O.Try(pos, e3, mbl1))
+  | TAst.Assign((_, (_, "_")), e2) ->
+    (acc1, e3) = expr(new_id, env, acc, e2);
+    (acc1, O.SingleExpr(e3))
+  | TAst.Assign(v, e2) ->
+    (acc1, e3) = expr(new_id, env, acc, e2);
+    (acc1, O.Assign(local(v), e3))
+  | _ ->
+    (acc1, e2) = expr(new_id, env, acc, orig_e);
+    (acc1, O.SingleExpr(e2))
+  }
+}
+
+fun expr(
+  new_id: () -> Int,
+  env: Env,
+  acc_: List<O.Stmt>,
+  e_: TAst.Expr,
+): (List<O.Stmt>, O.Expr) {
+  init = ExprState{eacc => acc_, ecur => EInitial(e_)};
+  cycle(init, state -> {
+    state.ecur match {
+    | EInitial(e) ->
+      e match {
+      | (_, (_, TAst.Bind(v, rvalue, scope))) ->
+        (acc1, rvalue1) = expr(new_id, env, state.eacc, rvalue);
+        acc2 = make_bind_assign(acc1, binding(v), rvalue1);
+        Cycle.Next(ExprState{eacc => acc2, ecur => EInitial(scope)})
+      | (_, (_, TAst.Seq(e1, e2))) ->
+        (acc1, e11) = expr(new_id, env, state.eacc, e1);
+        acc2 = List.Cons(O.SingleExpr(e11), acc1);
+        Cycle.Next(ExprState{eacc => acc2, ecur => EInitial(e2)})
+      | _ ->
+        (acc1, e1) = expr_(new_id, env, state.eacc, e);
+        Cycle.Next(ExprState{eacc => acc1, ecur => EFinal(e1)})
+      }
+    | EFinal(f) -> Cycle.Done((state.eacc, f))
+    }
+  })
+}
+
+/**************************************************************
+ * FYI here's a cps version with non-capturing lambdas, which our
+ * TCO can handle. But it introduces polymorphic recursion, which
+ * ocaml's type system doesn't allow (though we appear to)
+
+ fun expr(
+   new_id: () -> Int,
+   acc: List<O.Stmt>,
+   e: TAst.Expr,
+ ): (List<O.Stmt>, O.Expr) {
+   expr_cps(new_id, env, acc, e, void, (k, x, _) -> (k, x))
+ }
+
+ fun expr_cps<T, T2>(
+   new_id: () -> Int,
+   acc: List<O.Stmt>,
+   e: TAst.Expr,
+   extra: T,
+   k: (List<O.Stmt>, O.Expr, T2) -> (List<O.Stmt>, O.Expr),
+ ): (List<O.Stmt>, O.Expr) {
+   (old_ty, (pos, e__)) = e;
+   e__ match {
+   | TAst.Bind(v, rvalue, scope) ->
+     expr_cps(new_id, env, acc, rvalue, (v, new_id, scope, extra, k),
+       (acc1, rvalue1, extra) -> {
+         (v_, new_id_, scope_, extra_, k_) = extra;
+         acc2 = make_bind_assign(acc1, binding(v_), rvalue1);
+         expr_cps(new_id_, acc2, scope_, extra_, k_)
+       }
+     )
+   | TAst.Seq(e1, e2) ->
+     expr_cps(new_id, env, acc, e1, (new_id, e2, extra, k),
+       (acc, e11, extra) -> {
+         (new_id_, e2_, extra_, k_) = extra;
+         acc2 = List.Cons(O.SingleExpr(e11), acc);
+         expr_cps(new_id_, acc2, e2_, extra_, k_)
+       }
+     )
+   | _ ->
+     (acc2, l) = expr_(new_id, env, acc, (old_ty, (pos, e__)));
+     k(acc2, l, extra)
+   }
+ }
+ */
+
+fun expr_(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  e: TAst.Expr,
+): (List<O.Stmt>, O.Expr) {
+  (old_ty, (pos, e__)) = e;
+  ty = expr_type_(old_ty);
+  e__ match {
+  | TAst.DefaultArg() -> (acc, O.Expr(ty, pos, O.DefaultArg()))
+  | TAst.Literal(l) -> (acc, O.Expr(ty, pos, O.ELiteral(literal(l))))
+  | TAst.Local(n) -> (acc, O.Expr(ty, pos, O.Local(O.name(n))))
+  | TAst.Const(n) -> (acc, O.Expr(ty, pos, O.Const(O.name(n))))
+  | TAst.Classname(n) -> (acc, O.Expr(ty, pos, O.Classname(O.name(n))))
+  | TAst.DynamicConstruction(e1, n, targs, args) ->
+    (acc1, e2) = bind_expr(new_id, env, acc, e1);
+    (acc2, args1) = call_args(new_id, env, acc1, args);
+    (
+      acc2,
+      O.Expr(
+        ty,
+        pos,
+        O.DynamicConstruction(e2, O.name(n), targs.map(expr_type_), args1),
+      ),
+    )
+  | TAst.Object(n, targs, args) ->
+    (acc1, args1) = call_args(new_id, env, acc, args);
+    (acc1, O.Expr(ty, pos, O.Object(O.name(n), targs.map(expr_type_), args1)))
+  | TAst.Barbar(e1, e2) ->
+    expr(
+      new_id,
+      env,
+      acc,
+      (old_ty, (pos, TAst.If(e1, make_bool(pos, true), e2))),
+    )
+  | TAst.Ampamp(e1, e2) ->
+    expr(
+      new_id,
+      env,
+      acc,
+      (old_ty, (pos, TAst.If(e1, e2, make_bool(pos, false)))),
+    )
+  | TAst.Annotated(e1, ty_) ->
+    (acc1, e2) = bind_expr(new_id, env, acc, e1);
+    ty_1 = expr_type_(ty_);
+    (acc1, O.Expr(ty, pos, O.Cast(ty_1, e2)))
+  | TAst.Call(
+    (elt_ty, (_, TAst.Dot(di))),
+    args,
+  ) if (di.elt_kind is NAst.EMethod()) ->
+    elt_ty1 = expr_type_(elt_ty);
+    (acc1, di1) = dot_info(new_id, env, acc, elt_ty1, di);
+    (acc2, args1) = call_args(new_id, env, acc1, args);
+    res = (acc2, O.Expr(ty, pos, O.MethodCall(di1, args1)));
+    res
+  | TAst.Call(
+    (elt_ty, (_, TAst.StaticDot(di))),
+    args,
+  ) if (di.elt_kind is NAst.EMethod()) ->
+    elt_ty1 = expr_type_(elt_ty);
+    (acc1, di1) = dot_info(new_id, env, acc, elt_ty1, di);
+    (acc2, args1) = call_args(new_id, env, acc1, args);
+    (acc2, O.Expr(ty, pos, O.StaticCall(di1, args1)))
+  | TAst.Call((_, (_, TAst.Fun(n, tyl))), args) ->
+    (acc1, args1) = call_args(new_id, env, acc, args);
+    (acc1, O.Expr(ty, pos, O.FunCall(O.name(n), tyl.map(expr_type_), args1)))
+  | TAst.Call(e1, args) ->
+    unwrap_annotated(e1) match {
+    | e2 @ (_, (_, TAst.Lambda _)) ->
+      bind_away_lambda(new_id, env, acc, ty, pos, e2, args)
+    | _ ->
+      (acc1, e2) = bind_expr(new_id, env, acc, e1);
+      (acc2, args1) = call_args(new_id, env, acc1, args);
+      (acc2, O.Expr(ty, pos, O.Call(e2, args1)))
+    }
+  | TAst.Fun(n, targs) ->
+    targs1 = targs.map(expr_type_);
+    f_call = (ty_ret, vars) ->
+      O.Expr(ty_ret, pos, O.FunCall(O.name(n), targs1, vars));
+    wrap_fun(new_id, acc, ty, pos, SortedMap[], f_call)
+  | TAst.StaticDot(di) if (di.elt_kind is NAst.EMethod()) ->
+    wrap_method(new_id, env, acc, true, ty, pos, di)
+  | TAst.Dot(di) if (di.elt_kind is NAst.EMethod()) ->
+    wrap_method(new_id, env, acc, false, ty, pos, di)
+  | TAst.Dot(di) ->
+    (acc1, di1) = dot_info(new_id, env, acc, ty, di);
+    (acc1, O.Expr(ty, pos, O.Dot(di1)))
+  | TAst.StaticDot(di) ->
+    (acc1, di1) = dot_info(new_id, env, acc, ty, di);
+    (acc1, O.Expr(ty, pos, O.StaticDot(di1)))
+  | TAst.AssignField(e1, source, name, e2) ->
+    (acc1, e11) = bind_expr(new_id, env, acc, e1);
+    (acc2, e21) = expr(new_id, env, acc1, e2);
+    info = OU.const_binding_info;
+    (acc3, var) = make_var_assign(new_id, acc2, e11, pos, info);
+    acc4 = List.Cons(
+      O.AssignField(var, O.name(source), O.name(name), e21),
+      acc3,
+    );
+    (acc4, OU.make_void(pos))
+  | TAst.Array(el) ->
+    (acc1, el1) = el.mapAcc(((acc, e) -> bind_expr(new_id, env, acc, e)), acc);
+    (acc1, O.Expr(ty, pos, O.EArray(el1)))
+  | TAst.Lambda(np, fvs, ebody, yields) ->
+    (acc2, eret) = expr(new_id, EMPTY_ENV, List[], ebody);
+    ret_ty = eret.ty;
+    stbody = make_seq(List.Cons(O.Return(eret), acc2));
+    np1 = np.map(binding);
+    fvs1 = fvs.map((_, x) -> binding(x));
+    (acc, O.Expr(ty, pos, O.Lambda(np1, ret_ty, fvs1, stbody, yields)))
+  | TAst.Await(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    (acc1, O.Expr(ty, pos, O.Await(e2)))
+  | TAst.Return(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    acc2 = List.Cons(O.Return(e2), acc1);
+    (acc2, OU.make_void(pos))
+  | TAst.Async(_, e1) ->
+    (acc2, e2) = expr(new_id, EMPTY_ENV, List[], e1);
+    s = make_seq(acc2);
+    (acc, O.Expr(ty, pos, O.Async(s, e2)))
+  | TAst.Throw(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    acc2 = List.Cons(O.Throw(e2), acc1);
+    (acc2, O.Expr(ty, pos, O.Unreachable()))
+  | TAst.Concurrent _ -> pos.die("concurrent not implemented")
+  | TAst.Freeze(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    (acc1, O.Expr(ty, pos, O.Freeze(e2)))
+  | TAst.GetClass(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    (acc1, O.Expr(ty, pos, O.GetClass(e2)))
+  | TAst.With(e1, updates) ->
+    (acc1, e2) = bind_expr(new_id, env, acc, e1);
+    (acc2, updates1) = with_updates(new_id, env, acc1, updates);
+    (acc2, O.Expr(ty, pos, O.With(e2, updates1)))
+  | TAst.Assign((_, (_, "_")), e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    acc2 = List.Cons(O.SingleExpr(e2), acc1);
+    (acc2, OU.make_void(pos))
+  | TAst.Assign(v, e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    acc2 = List.Cons(O.Assign(local(v), e2), acc1);
+    (acc2, OU.make_void(pos))
+  | TAst.If(c, e1, e2) ->
+    (acc1, c1) = expr(new_id, env, acc, c);
+    info = OU.nonconst_binding_info;
+    (acc2, var) = make_var(new_id, acc1, ty, pos, info);
+    e11 = block(new_id, env, var, e1);
+    e21 = block(new_id, env, var, e2);
+    acc3 = List.Cons(O.If(c1, e11, e21), acc2);
+    (acc3, expr_of_var(var))
+  | TAst.Match(e1, mbl) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    info = OU.nonconst_binding_info;
+    (acc2, var) = make_var(new_id, acc1, ty, pos, info);
+    mbl1 = mbl.map(cur1 -> match_branch(new_id, env, var, cur1));
+    acc3 = List.Cons(O.Match(e2, mbl1), acc2);
+    (acc3, expr_of_var(var))
+  | TAst.Try(e1, mbl) ->
+    info = OU.nonconst_binding_info;
+    (acc1, var) = make_var(new_id, acc, ty, pos, info);
+    e2 = block(new_id, env, var, e1);
+    mbl1 = mbl.map(cur1 -> match_branch(new_id, env, var, cur1));
+    acc2 = List.Cons(O.Try(pos, e2, mbl1), acc1);
+    (acc2, expr_of_var(var))
+  | TAst.LazyLambda _ ->
+    print_error(pos.toString());
+    pos.die("NAst.LazyLambda should have been expanded")
+  | TAst.Bind _
+  | TAst.Seq _ ->
+    pos.die("encountered Bind or Seq in expr_")
+  | TAst.TemplateLiteral(args) ->
+    (acc1, args1) = call_args(new_id, env, acc, args);
+    argArray = args1 match {
+    | Positional(a) -> a
+    | Named _ -> pos.die("Expected positional args for TemplateLiteral")
+    };
+    result = argArray.size() match {
+    | 0 -> make_empty_string(pos)
+    | 1 -> argArray[0]
+    | _ ->
+      // Array[args1]
+      vec = O.Expr(make_vector_string_type(pos), pos, O.EArray(argArray));
+      // "".join(vec)
+      di = O.DotInfo{
+        obj_expr => make_empty_string(pos),
+        field => O.Name(pos, "join"),
+        field_targs => Array[
+          make_string_type(pos),
+          make_vector_string_type(pos),
+        ],
+        source => O.Name(pos, "String"),
+        elt_kind => O.EMethod(),
+        field_type => O.Type(
+          pos,
+          O.Tfun(
+            O.TfunModifiers(O.Fpure(), O.Funtracked()),
+            Positional::create(),
+            make_string_type(pos),
+          ),
+        ),
+      };
+      joinArgs: Parameters<O.Expr> = Positional(Array[vec]);
+      O.Expr(make_string_type(pos), pos, O.MethodCall(di, joinArgs))
+    };
+    (acc1, result)
+
+  | TAst.Continue() ->
+    !acc = List.Cons(O.JumpTo(env.continueLabel.fromSome()), acc);
+    (acc, O.Expr(ty, pos, O.Unreachable()))
+  | TAst.Break(eb) ->
+    (!acc, breakResult) = expr(new_id, env, acc, eb);
+    !acc = List.Cons(O.Assign(env.breakTmp.fromSome(), breakResult), acc);
+    !acc = List.Cons(O.JumpTo(env.breakLabel.fromSome()), acc);
+    (acc, O.Expr(ty, pos, O.Unreachable()))
+
+  | TAst.Loop(tbody) ->
+    breakn = O.Name(pos, "break_val!" + new_id());
+    lbreak = O.Name(pos, "break!" + new_id());
+    lcontinue = O.Name(pos, "continue!" + new_id());
+    lentry = O.Name(pos, "_loop_entry!" + new_id());
+    lstart = O.Name(pos, "_loop_start!" + new_id());
+
+    bodyEnv = env with {
+      breakTmp => Some(O.LocalVar(ty, breakn)),
+      breakLabel => Some(lbreak),
+      continueLabel => Some(lcontinue),
+    };
+    body = toplevel_block(new_id, bodyEnv, tbody);
+
+    breakBinding = O.Binding(
+      ty,
+      breakn,
+      O.BindingInfo{captured => false, updated => true, read => true},
+    );
+    !acc = List.Cons(O.Bind(breakBinding, None()), acc);
+
+    nop = OU.make_void_statement(pos);
+    jumpBody = O.JumpBlock(
+      List[O.LabeledStmt(lstart, body), O.LabeledStmt(lcontinue, nop)],
+      true,
+    );
+    loopForever = O.LoopForever(pos, jumpBody);
+    loopStmts = List[
+      O.LabeledStmt(lentry, loopForever),
+      O.LabeledStmt(lbreak, nop),
+    ];
+    !acc = List.Cons(O.JumpBlock(loopStmts, true), acc);
+
+    (acc, O.Expr(ty, pos, O.Local(breakn)))
+
+  | TAst.While(tcond, tbody, twoBreak) ->
+    breakn = O.Name(pos, "break_val!" + new_id());
+    lelse = O.Name(pos, "while_else!" + new_id());
+    lbreak = O.Name(pos, "break!" + new_id());
+    lcontinue = O.Name(pos, "continue!" + new_id());
+    lentry = O.Name(pos, "_while_entry!" + new_id());
+    lstart = O.Name(pos, "_while_start!" + new_id());
+
+    (condAcc, cond) = expr(new_id, env, List[], tcond);
+
+    bodyEnv = env with {
+      breakTmp => Some(O.LocalVar(ty, breakn)),
+      breakLabel => Some(lbreak),
+      continueLabel => Some(lcontinue),
+    };
+    bodyNoCond = toplevel_block(new_id, bodyEnv, tbody);
+    bodyWithCond = O.If(cond, bodyNoCond, O.JumpTo(lelse));
+    body = make_seq(List.Cons(bodyWithCond, condAcc));
+
+    woBreak = block(new_id, env, O.LocalVar(ty, breakn), twoBreak);
+
+    breakBinding = O.Binding(
+      ty,
+      breakn,
+      O.BindingInfo{captured => false, updated => true, read => true},
+    );
+    !acc = List.Cons(O.Bind(breakBinding, None()), acc);
+
+    nop = OU.make_void_statement(pos);
+    jumpBody = O.JumpBlock(
+      List[O.LabeledStmt(lstart, body), O.LabeledStmt(lcontinue, nop)],
+      true,
+    );
+    loopForever = O.LoopForever(pos, jumpBody);
+    loopStmts = List[
+      O.LabeledStmt(lentry, loopForever),
+      O.LabeledStmt(lelse, woBreak),
+      O.LabeledStmt(lbreak, nop),
+    ];
+    !acc = List.Cons(O.JumpBlock(loopStmts, true), acc);
+
+    (acc, O.Expr(ty, pos, O.Local(breakn)))
+
+  | TAst.DoWhile(tbody, tcond, twoBreak) ->
+    breakn = O.Name(pos, "break_val!" + new_id());
+    lelse = O.Name(pos, "dowhile_else!" + new_id());
+    lbreak = O.Name(pos, "break!" + new_id());
+    lcond = O.Name(pos, "dowhile_cond!" + new_id());
+    lentry = O.Name(pos, "_dowhile_entry!" + new_id());
+    lstart = O.Name(pos, "_dowhile_start!" + new_id());
+    nop = OU.make_void_statement(pos);
+
+    bodyEnv = env with {
+      breakTmp => Some(O.LocalVar(ty, breakn)),
+      breakLabel => Some(lbreak),
+      continueLabel => Some(lcond),
+    };
+    bodyNoCondJump = List.Cons(
+      toplevel_block(new_id, bodyEnv, tbody),
+      List.Nil(),
+    );
+    body = make_seq(List.Cons(O.JumpTo(lcond), bodyNoCondJump));
+
+    (condAcc, econd) = expr(new_id, env, List[], tcond);
+
+    cond = make_seq(List.Cons(O.If(econd, nop, O.JumpTo(lelse)), condAcc));
+
+    woBreak = block(new_id, env, O.LocalVar(ty, breakn), twoBreak);
+
+    breakBinding = O.Binding(
+      ty,
+      breakn,
+      O.BindingInfo{captured => false, updated => true, read => true},
+    );
+    !acc = List.Cons(O.Bind(breakBinding, None()), acc);
+
+    jumpBody = O.JumpBlock(
+      List[O.LabeledStmt(lstart, body), O.LabeledStmt(lcond, cond)],
+      true,
+    );
+    loopForever = O.LoopForever(pos, jumpBody);
+    loopStmts = List[
+      O.LabeledStmt(lentry, loopForever),
+      O.LabeledStmt(lelse, woBreak),
+      O.LabeledStmt(lbreak, nop),
+    ];
+    !acc = List.Cons(O.JumpBlock(loopStmts, true), acc);
+
+    (acc, O.Expr(ty, pos, O.Local(breakn)))
+  | TAst.Yield(e1) ->
+    (acc1, e2) = expr(new_id, env, acc, e1);
+    acc2 = List.Cons(O.Yield(e2), acc1);
+    (acc2, OU.make_void(pos))
+  | TAst.YieldBreak() ->
+    acc1 = List.Cons(O.YieldBreak(pos), acc);
+    (acc1, OU.make_void(pos))
+  }
+}
+
+fun dot_info(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  field_type: O.Type,
+  info: TAst.Dot_info,
+): (List<O.Stmt>, O.DotInfo) {
+  obj_expr = info.obj_expr;
+  field = info.field;
+  field_targs = info.field_targs;
+  source = info.source;
+  (acc1, obj_expr1) = bind_expr(new_id, env, acc, obj_expr);
+  field_targs1 = field_targs.map(expr_type_);
+  elt_kind1 = elt_kind(info.elt_kind);
+  (
+    acc1,
+    O.DotInfo{
+      obj_expr => obj_expr1,
+      field => O.name(field),
+      field_targs => field_targs1,
+      source => O.name(source),
+      elt_kind => elt_kind1,
+      field_type,
+    },
+  )
+}
+
+fun elt_kind(x: TAst.Elt_kind): O.EltKind {
+  x match {
+  | NAst.EType() -> invariant_violation("assert false")
+  | NAst.EConst() -> O.EConst()
+  | NAst.EProperty() -> O.EProperty()
+  | NAst.EMethod() -> O.EMethod()
+  }
+}
+
+fun local(ty_name: TAst.LocalInfo): O.LocalVar {
+  (ty, n) = ty_name;
+  O.LocalVar(expr_type_(ty), O.name(n))
+}
+
+fun binding_info(info: TAst.Binding_info): O.BindingInfo {
+  O.BindingInfo{
+    captured => info.captured,
+    updated => info.updated,
+    read => info.read,
+  }
+}
+
+fun binding(ty_name_info: TAst.Binding): O.Binding {
+  (ty, n, info) = ty_name_info;
+  O.Binding(expr_type_(ty), O.name(n), binding_info(info))
+}
+
+fun make_var_binding(
+  new_id: () -> Int,
+  ty: O.Type,
+  pos: FileRange,
+  info: O.BindingInfo,
+): O.Binding {
+  tmp = O.Name(pos, "!tmp" + new_id());
+  O.Binding(ty, tmp, info)
+}
+
+fun make_var(
+  new_id: () -> Int,
+  acc: List<O.Stmt>,
+  ty: O.Type,
+  pos: FileRange,
+  info: O.BindingInfo,
+): (List<O.Stmt>, O.LocalVar) {
+  b = make_var_binding(new_id, ty, pos, info);
+  (List.Cons(O.Bind(b, None()), acc), O.LocalVar(ty, b.name))
+}
+
+fun make_bind_assign(acc: List<O.Stmt>, b: O.Binding, e: O.Expr): List<O.Stmt> {
+  List.Cons(O.Bind(b, Some(e)), acc)
+}
+
+fun make_var_assign(
+  new_id: () -> Int,
+  acc: List<O.Stmt>,
+  e: O.Expr,
+  pos: FileRange,
+  info: O.BindingInfo,
+): (List<O.Stmt>, O.LocalVar) {
+  b = make_var_binding(new_id, e.ty, pos, info);
+  (make_bind_assign(acc, b, e), O.LocalVar(b.ty, b.name))
+}
+
+fun make_assign(acc: List<O.Stmt>, var: O.LocalVar, e: O.Expr): List<O.Stmt> {
+  List.Cons(O.Assign(var, e), acc)
+}
+
+fun expr_of_var(var: O.LocalVar): O.Expr {
+  O.Expr(var.ty, var.name.pos, O.Local(var.name))
+}
+
+fun block(new_id: () -> Int, env: Env, var: O.LocalVar, e: TAst.Expr): O.Stmt {
+  (acc, e1) = expr(new_id, env, List[], e);
+  make_seq(make_assign(acc, var, e1))
+}
+
+fun toplevel_block(new_id: () -> Int, env: Env, e: TAst.Expr): O.Stmt {
+  (acc, e1) = toplevel_stmt(new_id, env, List[], e);
+  make_seq(List.Cons(e1, acc))
+}
+
+fun wrap_method(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  sk_static: Bool,
+  ty: O.Type,
+  pos: FileRange,
+  di: TAst.Dot_info,
+): (List<O.Stmt>, O.Expr) {
+  (acc1, di1) = dot_info(new_id, env, acc, ty, di);
+  (acc2, di2, frozens) = {
+    uncast(di1.obj_expr) match {
+    | O.Expr(_, _, O.Classname _) -> (acc1, di1, SortedMap[])
+    | e ->
+      info = OU.const_binding_info;
+      (acc2, var) = make_var_assign(new_id, acc1, e, pos, info);
+      di2 = di1 with {obj_expr => expr_of_var(var)};
+      (acc2, di2, SortedMap[var.name.id => O.Binding(var.ty, var.name, info)])
+    }
+  };
+  f_call = {
+    if (sk_static) {
+      (ty_ret, vars) -> O.Expr(ty_ret, pos, O.StaticCall(di2, vars))
+    } else {
+      (ty_ret, vars) -> O.Expr(ty_ret, pos, O.MethodCall(di2, vars))
+    }
+  };
+  wrap_fun(new_id, acc2, ty, pos, frozens, f_call)
+}
+
+fun strip_tdefault_from_type_(ty: O.Type): O.Type {
+  ty match {
+  | O.Type(_, O.Tdefault(inner_ty)) -> strip_tdefault_from_type_(inner_ty)
+  | O.Type(pos, O.Tmutable(inner_ty)) ->
+    O.Type(pos, O.Tmutable(strip_tdefault_from_type_(inner_ty)))
+  | O.Type(pos, O.Tnamed(n, inner_ty)) ->
+    O.Type(pos, O.Tnamed(n, strip_tdefault_from_type_(inner_ty)))
+  | _ -> ty
+  }
+}
+
+fun wrap_fun(
+  new_id: () -> Int,
+  acc: List<O.Stmt>,
+  ty: O.Type,
+  pos: FileRange,
+  frozens: SMap<O.Binding>,
+  f_call: ((O.Type, Parameters<O.Expr>) -> O.Expr),
+): (List<O.Stmt>, O.Expr) {
+  (params, ty_fun, ty_ret, vars) = new_call(new_id, pos, ty);
+  call = f_call(ty_ret, vars);
+  (
+    acc,
+    O.Expr(
+      ty_fun,
+      pos,
+      O.Lambda(params, ty_ret, frozens, O.Return(call), None()),
+    ),
+  )
+}
+
+fun new_call(
+  new_id: () -> Int,
+  pos: FileRange,
+  ty: O.Type,
+): (Parameters<O.Binding>, O.Type, O.Type, Parameters<O.Expr>) {
+  unwrap_type(ty) match {
+  | O.Type(fpos, O.Tfun(fmods, targs, ty_ret)) ->
+    info = OU.const_binding_info;
+    fixed_targs = targs.map(strip_tdefault_from_type_);
+    fixed_ty_fun = O.Type(fpos, O.Tfun(fmods, fixed_targs, ty_ret));
+    params = targs.map(t ->
+      O.Binding(t, O.Name(pos, new_tmp_sk(new_id)), info)
+    );
+    vars = params.map(t_var -> {
+      O.Expr(t_var.ty, pos, O.Local(t_var.name))
+    });
+    (params, fixed_ty_fun, ty_ret, vars)
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+fun expr_const(new_id: () -> Int, x: TAst.Expr): (O.Stmt, O.Expr) {
+  (acc, e) = expr(new_id, EMPTY_ENV, List[], x);
+  (make_seq(acc), e)
+}
+
+fun call_args(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  x: TAst.Call_args,
+): (List<O.Stmt>, Parameters<O.Expr>) {
+  x match {
+  | Positional(el) ->
+    (acc1, el1) = el.mapAcc(
+      ((acc1, pos_e) -> {
+        (_, e) = pos_e;
+        bind_expr(new_id, env, acc1, e)
+      }),
+      acc,
+    );
+    (acc1, Positional(el1))
+  | Named(em) ->
+    (acc1, em1) = named_call_args(new_id, env, acc, em);
+    (acc1, Named(em1))
+  }
+}
+
+fun named_call_args(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  em: UMap<TAst.Ordered_expr>,
+): (List<O.Stmt>, UMap<O.Expr>) {
+  sorted_args = em.items().collect(Vector).sortedBy(oe ~> (oe.i1.i0 : Int));
+  (acc1, args) = sorted_args.mapAcc(
+    ((acc1, n_e) -> {
+      (n, (_, e)) = n_e;
+      (acc2, e1) = bind_expr(new_id, env, acc1, e);
+      (acc2, (n, e1))
+    }),
+    acc,
+  );
+  (acc1, UMap::createFromItems(args))
+}
+
+fun with_updates(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  em: TAst.With_updates,
+): (List<O.Stmt>, O.WithUpdates) {
+  sorted_updates = em.items().collect(Vector).sortedBy(with_update_compare_by);
+  (acc1, updates) = sorted_updates.mapAcc(
+    ((acc1, x) -> {
+      (n, (_, e, source, cast_opt)) = x;
+      (acc2, e1) = bind_expr(new_id, env, acc1, e);
+      (acc2, (n, O.WithUpdate(e1, O.name(source), cast_opt.map(expr_type_))))
+    }),
+    acc,
+  );
+  (acc1, UMap::createFromItems(updates))
+}
+
+fun with_update_compare_by(k1_i1_e1: (TAst.Name, TAst.With_update)): Int {
+  (_, (i1, _, _, _)) = k1_i1_e1;
+  i1
+}
+
+fun bind_expr(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  e1: TAst.Expr,
+): (List<O.Stmt>, O.Expr) {
+  (acc1, e) = expr(new_id, env, acc, e1);
+  pos = e.pos;
+  if (!oist_needs_binding(e)) {
+    (acc1, e)
+  } else {
+    info = OU.const_binding_info;
+    (acc2, var) = make_var_assign(new_id, acc1, e, pos, info);
+    (acc2, expr_of_var(var))
+  }
+}
+
+fun unwrap_annotated(x: TAst.Expr): TAst.Expr {
+  x match {
+  | (_, (_, TAst.Annotated(e, _))) -> unwrap_annotated(e)
+  | e -> e
+  }
+}
+
+fun unwrap_cast(x: O.Expr): O.Expr {
+  x match {
+  | O.Expr(_, _, O.Cast(_, e)) -> unwrap_cast(e)
+  | e -> e
+  }
+}
+
+fun bind_away_lambda(
+  new_id: () -> Int,
+  env: Env,
+  acc: List<O.Stmt>,
+  ty: O.Type,
+  pos: FileRange,
+  lam: (TAst.Type_, (FileRange, TAst.Expr__)),
+  args: TAst.Call_args,
+): (List<O.Stmt>, O.Expr) {
+  (params, body) = {
+    lam match {
+    | (_, (_, TAst.Lambda(params, _, body, _yields))) -> (params, body)
+    | _ -> invariant_violation("assert false")
+    }
+  };
+  params1 = params.map(binding);
+  (acc1, args1) = call_args(new_id, env, acc, args);
+  acc2 = bind_params(acc1, params1, args1);
+  (acc3, e) = expr(new_id, env, acc2, body);
+  (acc3, O.Expr(ty, pos, e.expr))
+}
+
+fun bind_params(
+  acc: List<O.Stmt>,
+  params: Parameters<O.Binding>,
+  args: Parameters<O.Expr>,
+): List<O.Stmt> {
+  (params1, args1) = {
+    (params, args) match {
+    | (Positional(params1), Positional(args1)) ->
+      (params1.values(), args1.values())
+    | (Named(params1), Named(args1)) -> (params1.values(), args1.values())
+    | _ -> invariant_violation("assert false")
+    }
+  };
+  params1
+    .zip(args1)
+    .reduce((acc1, p) -> make_bind_assign(acc1, p.i0, p.i1), acc)
+}
+
+fun oist_needs_binding(e: O.Expr): Bool {
+  e__ = e.expr;
+  e__ match {
+  | O.Unreachable()
+  | O.DefaultArg()
+  | O.ELiteral _
+  | O.Classname _
+  | O.Lambda _
+  | O.Const _ ->
+    false
+  | O.StaticDot(dot)
+  | O.Dot(dot) ->
+    e1 = dot.obj_expr;
+    oist_needs_binding(e1)
+  | O.Await(e1)
+  | O.Freeze(e1)
+  | O.GetClass(e1)
+  | O.Cast(_, e1) ->
+    oist_needs_binding(e1)
+  | O.EArray(el) -> el.any(oist_needs_binding)
+  | O.DynamicConstruction(e1, _, _, el) ->
+    el.foldl((b, e2) ~> b || oist_needs_binding(e2), oist_needs_binding(e1))
+  | O.Object(_, _, el) ->
+    el.foldl((b, e1) ~> b || oist_needs_binding(e1), false)
+  | O.With(e1, em) ->
+    oist_needs_binding(e1) ||
+      em.reduce((b, _, x) -> b || oist_needs_binding(x.expr), false)
+  | O.Call _
+  | O.FunCall _
+  | O.MethodCall _
+  | O.StaticCall _
+  | O.Local _
+  | O.Async _ ->
+    true
+  }
+}
+
+fun uncast(x: O.Expr): O.Expr {
+  x match {
+  | O.Expr(_, _, O.Cast(_, e)) -> uncast(e)
+  | e -> e
+  }
+}
+
+fun unwrap_type(x: O.Type): O.Type {
+  x match {
+  | O.Type(_, O.Tnamed(_, ty))
+  | O.Type(_, O.Tmutable(ty)) ->
+    unwrap_type(ty)
+  | ty -> ty
+  }
+}
+
+fun make_seq(seq: List<O.Stmt>): O.Stmt {
+  O.Seq(seq.reversed())
+}
+
+fun make_bool(pos: FileRange, b: Bool): TAst.Expr {
+  ty = (pos, NAst.Tapply(NAst.Mchilled(), (pos, "Bool"), Array[]));
+  (ty, (pos, TAst.Literal(SkipAst.BoolLiteral(b))))
+}
+
+fun literal(x: SkipAst.LiteralValue): O.Literal {
+  x match {
+  | SkipAst.BoolLiteral(b) -> O.LBool(b)
+  | SkipAst.IntLiteral(i) -> O.LInt(i)
+  | SkipAst.FloatLiteral(f) -> O.LFloat(f)
+  | SkipAst.CharLiteral(c) -> O.LChar(c)
+  | SkipAst.StringLiteral(s) -> O.LString(s)
+  | SkipAst.VoidLiteral() -> O.LVoid()
+  }
+}
+
+/*****************************************************************************/
+/* Pattern-matching. */
+/*****************************************************************************/
+fun toplevel_match_branch(
+  new_id: () -> Int,
+  env: Env,
+  x: TAst.Match_branch,
+): O.MatchBranch {
+  (pats, maybe_guard, e) = x;
+  O.MatchBranch(
+    patterns(pats),
+    maybe_guard.map(x -> toplevel_block(new_id, env, x)),
+    toplevel_block(new_id, env, e),
+  )
+}
+
+fun match_branch(
+  new_id: () -> Int,
+  env: Env,
+  tmp: O.LocalVar,
+  x: TAst.Match_branch,
+): O.MatchBranch {
+  (pats, maybe_guard, e) = x;
+  O.MatchBranch(
+    patterns(pats),
+    maybe_guard.map((x -> fun_body(new_id, x))),
+    block(new_id, env, tmp, e),
+  )
+}
+
+fun patterns(pats: List<TAst.Pattern>): List<O.Pattern> {
+  pats.map(pattern)
+}
+
+fun pattern(pat: TAst.Pattern): O.Pattern {
+  (ty, (pos, pat__)) = pat;
+  O.Pattern(expr_type_(ty), pos, pattern_(pat__))
+}
+
+fun pattern_(x: TAst.Pattern__): O.Pattern_ {
+  x match {
+  | TAst.Pat_var(v) -> O.Pat_var(binding(v))
+  | TAst.Pat_literal(SkipAst.VoidLiteral()) -> O.Pat_all()
+  | TAst.Pat_literal(l) -> O.Pat_literal(literal(l))
+  | TAst.Pat_type(tid, castType, params) ->
+    params1 = params.map(x -> x.map(y -> param_pattern(y)));
+    O.Pat_type(type_identifier(tid), expr_type_(castType), params1)
+  | TAst.Pat_as(pat, v) -> O.Pat_as(pattern(pat), binding(v))
+  }
+}
+
+fun param_pattern(param_pat: TAst.ParamPattern): O.ParamPattern {
+  (ty, pat) = param_pat;
+  O.ParamPattern(expr_type_(ty), pattern(pat))
+}
+
+fun type_identifier(x: TAst.Type_identifier): O.TypeIdentifier {
+  x match {
+  | TAst.Tid_object(n) -> O.TidObject(O.name(n))
+  | TAst.Tid_static(ns, n) ->
+    O.TidStatic(O.name(ns.i0), O.name(ns.i1), O.name(n))
+  }
+}

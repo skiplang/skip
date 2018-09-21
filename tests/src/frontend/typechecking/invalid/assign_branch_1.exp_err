@@ -1,0 +1,32 @@
+File "./typechecking/invalid/assign_branch_1.sk", line 12, characters 5-6:
+Invalid assignment
+10 |   x = Foo();
+11 |   if (true) {
+12 |     !x = Bar()
+   |     ^^
+13 |   };
+
+File "./typechecking/invalid/assign_branch_1.sk", line 12, characters 10-14:
+The type: Bar
+10 |   x = Foo();
+11 |   if (true) {
+12 |     !x = Bar()
+   |          ^^^^^
+13 |   };
+
+File "./typechecking/invalid/assign_branch_1.sk", line 10, characters 7-11:
+Is not a subtype of: Foo
+ 8 |
+ 9 | fun main(): void {
+10 |   x = Foo();
+   |       ^^^^^
+11 |   if (true) {
+
+File "./typechecking/invalid/assign_branch_1.sk", line 10, characters 7-11:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+ 8 |
+ 9 | fun main(): void {
+10 |   x = Foo();
+   |       ^^^^^
+11 |   if (true) {

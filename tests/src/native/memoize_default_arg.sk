@@ -1,0 +1,62 @@
+// This test verifies that default arg expressions are only run inside
+// the memoized function, after memoization, rather than before.
+//
+// This means that we end up evaluating what turns out to be the same
+// function multiple times because of irrelevant differences in whether
+// or not the caller supplied a default argument value explicitly. There's
+// no need for this -- it could sometimes sbe more efficient if we didn't
+// (e.g. a second layer of memoization after defaults were computed), but
+// this is how it works now, and this test verifies we're doing what we
+// expected.
+
+@debug
+fun default1(): String {
+  print_string("Running default1");
+  "Q"
+}
+
+@debug
+fun default2(): String {
+  print_string("Running default2");
+  "R"
+}
+
+@debug
+memoized async fun f(
+  n: Int,
+  // This unused argument will be dropped from the memo key.
+  _unused: Int,
+  a: String = default1(),
+  // Verify that even an unused default arg is relevant, only because we
+  // use it to run the default arg expression for any throw side effects
+  // it may have. This is suboptimal but what we currently do.
+  _b: String = default2(),
+): ^String {
+  print_string(`f(${n}, ${a})`);
+  `${a}${n}`
+}
+
+async fun asyncMain(): ^void {
+  a1 = await f(37, -99);
+  print_string("a1");
+  a2 = await f(37, -100);
+  print_string("a2");
+  a3 = await f(37, -99, "X");
+  print_string("a3");
+  a4 = await f(37, -100, "X");
+  print_string("a4");
+  a5 = await f(37, -99, "Q");
+  print_string("a5");
+  a6 = await f(37, -100, "Q");
+  print_string("a6");
+  a7 = await f(37, -99, "Q", "Y");
+  print_string("a7");
+  a8 = await f(37, -100, "Q", "Z");
+  print_string("a8");
+
+  print_string(`${a1} ${a2} ${a3} ${a4} ${a5} ${a6} ${a7} ${a8}`);
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

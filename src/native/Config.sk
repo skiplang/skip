@@ -1,0 +1,69 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AP = ArgumentParser;
+
+module Config;
+
+// Global config object.
+const .kConfig: Config = Config::make(arguments());
+
+// global config settings, built from arguments() on startup.
+private class Config{
+  release: Bool,
+  verbose: Bool,
+  optConfig: Optimize.Config,
+  mainConfig: Main.Config,
+  unknown: Array<String>,
+} {
+  static fun make(commandLineArgs: Array<String>): this {
+    globalParams = Array[
+      AP.BoolParam{name => "release"},
+      AP.BoolParam{name => "verbose"},
+      AP.BoolParam{name => "help", negatable => false},
+    ];
+
+    params = globalParams
+      .concat(Optimize.Config::args)
+      .concat(Main.Config::args);
+
+    AP.parse(params, commandLineArgs) match {
+    | Success(results) ->
+      if (results.getBool("help")) {
+        print_string(AP.help(params));
+        exit(0)
+      };
+
+      // modules configure themselves, returning unused flags
+      optConfig = Optimize.Config::make(results);
+      mainConfig = Main.Config::make(results);
+
+      release = results.getBool("release");
+      verbose = results.getBool("verbose");
+      // preserve legacy behavior of capturing all unmatched args in a single array
+      unknown = Vector::mcreateFromItems(results.unknown);
+      if (results.hasRest) {
+        unknown.push("--");
+        unknown.extend(results.rest);
+      };
+
+      Config{
+        release,
+        verbose,
+        optConfig,
+        mainConfig,
+        unknown => unknown.collect(Array),
+      }
+    | Failure(exn) ->
+      print_error_ln(exn.getMessage().trim());
+      print_error_ln(AP.help(params));
+      exit(1)
+    }
+  }
+}
+
+module end;

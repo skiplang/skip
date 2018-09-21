@@ -1,0 +1,4 @@
+fun main(): String {
+  X::y.z = 42;
+  "Fail"
+}

@@ -1,0 +1,10 @@
+mutable class Foo(mutable x: Int) {
+  static fun new(): this {
+    static(0)
+  }
+}
+
+fun no(): void {
+  _ = mutable Foo::new();
+  void
+}

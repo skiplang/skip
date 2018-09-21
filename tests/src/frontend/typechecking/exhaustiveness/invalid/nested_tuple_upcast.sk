@@ -1,0 +1,20 @@
+base class B {
+  children =
+  | X()
+  | Y()
+  | Z()
+}
+base class L {
+  children =
+  | R()
+  | G()
+  | H()
+}
+fun test(): String {
+  ((Y() : B), (G() : L)) match {
+  | (Y(), G()) -> "Fail1\n"
+  | (X(), R()) -> "Fail2\n"
+  | (Z(), H()) -> "Fail3\n"
+  | (B _, H()) -> "Fail4\n"
+  }
+}

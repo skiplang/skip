@@ -1,0 +1,7 @@
+File "./visibility/invalid/module_private_class.sk", line 12, characters 11-13:
+Cannot access a private module element Bar outside of module Foo
+10 |
+11 | fun main(): void {
+12 |   _ = Foo.Bar();
+   |           ^^^
+13 |   print_raw("Fail")

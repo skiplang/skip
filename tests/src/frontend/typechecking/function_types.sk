@@ -1,0 +1,45 @@
+fun foo(Int, mutable Int): void {
+  void
+}
+fun bar{x: Int, y: mutable Ref<Int> = mutable Ref(0)}: void {
+  _ = x;
+  _ = y;
+  void
+}
+fun baz(x: Int): void {
+  _ = x;
+  void
+}
+fun quux(f: Int -> Int): void {
+  _ = f;
+  void
+}
+fun spam(Int): Int ~> Int {
+  x ~> x
+}
+fun eggs(x: Int): (Int, Int) {
+  (x, x)
+}
+fun bacon(x: (Int, Int)): Int {
+  _ = x;
+  0
+}
+fun ham(x: {x: Int, y: String} ~> void): {y: String} ~> void {
+  {y} ~> {
+    x{x => 0, y}
+  }
+}
+
+fun main(): void {
+  _: (Int, mutable Int) ~> void = foo;
+  _: (unused: Int, other: mutable Int) -> void = foo;
+  _: {x: Int, y: mutable Ref<Int>} -> void = bar;
+  _: Int -> void = baz;
+  _: (Int) -> void = baz;
+  _: ((Int)) -> void = baz;
+  _: (Int -> Int) ~> void = quux;
+  _: Int -> Int ~> Int = spam;
+  _: Int -> (Int, Int) = eggs;
+  _: ((Int, Int)) -> Int = bacon;
+  print_string("Pass")
+}

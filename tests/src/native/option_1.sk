@@ -1,0 +1,108 @@
+@no_inline
+@debug
+fun print<U, T: ?U>(tag: String, x: T): void {
+  print_string(tag + ": " + x.isSome())
+}
+
+@no_inline
+@debug
+fun doTest<T: frozen>(tag: String, val: T): void {
+  // Some
+  s1: Some<T> = Some(val);
+  print(tag + " s1", s1);
+
+  s2: ?T = Some(val);
+  print(tag + " s2", s2);
+
+  s3: ??T = Some(s1);
+  print(tag + " s3", s3);
+
+  s4: ?Some<T> = Some(s1);
+  print(tag + " s4", s4);
+
+  s5: Some<?T> = Some(s2);
+  print(tag + " s5", s5);
+
+  s6: Some<Some<T>> = Some(s1);
+  print(tag + " s6", s6);
+
+  // None
+  n1: None<T> = None();
+  print(tag + " n1", n1);
+
+  n2: ?T = None();
+  print(tag + " n2", n2);
+
+  n3: ??T = None();
+  print(tag + " n3", n3);
+
+  n4: ??T = Some(None());
+  print(tag + " n4", n4);
+
+  // Tuple (Int, T)
+  ts1: Some<(Int, T)> = Some((37, val));
+  print(tag + " ts1", ts1);
+
+  ts2: ?(Int, T) = Some((37, val));
+  print(tag + " ts2", ts2);
+
+  ts3: ??(Int, T) = Some(ts1);
+  print(tag + " ts3", ts3);
+
+  ts4: ?Some<(Int, T)> = Some(ts1);
+  print(tag + " ts4", ts4);
+
+  ts5: Some<?(Int, T)> = Some(ts2);
+  print(tag + " ts5", ts5);
+
+  ts6: Some<Some<(Int, T)>> = Some(ts1);
+  print(tag + " ts6", ts6);
+
+  // Tuple (T, T)
+  xs1: Some<(T, T)> = Some((val, val));
+  print(tag + " xs1", xs1);
+
+  xs2: ?(T, T) = Some((val, val));
+  print(tag + " xs2", xs2);
+
+  xs3: ??(T, T) = Some(xs1);
+  print(tag + " xs3", xs3);
+
+  xs4: ?Some<(T, T)> = Some(xs1);
+  print(tag + " xs4", xs4);
+
+  xs5: Some<?(T, T)> = Some(xs2);
+  print(tag + " xs5", xs5);
+
+  xs6: Some<Some<(T, T)>> = Some(xs1);
+  print(tag + " xs6", xs6);
+}
+
+fun main(): void {
+  doTest("Int", 37);
+  doTest("String", "hi");
+
+  doTest("?Int 1", (Some(37) : ?Int));
+  doTest("?Int 2", Some(37));
+  doTest("?Int 3", (None() : ?Int));
+  doTest("?Int 4", None());
+
+  doTest("?String 1", (Some("hi") : ?String));
+  doTest("?String 2", Some("hi"));
+  doTest("?String 3", (None() : ?String));
+  doTest("?String 4", None());
+
+  ints = (1, 2, 3);
+  doTest("?(Int, Int, Int) 1", (Some(ints) : ?(Int, Int, Int)));
+  doTest("?(Int, Int, Int) 2", Some(ints));
+  doTest("?(Int, Int, Int) 3", (None() : ?(Int, Int, Int)));
+  doTest("?(Int, Int, Int) 4", None());
+
+  mixed = (1, "hi", 3);
+  doTest("?(Int, String, Int) 1", (Some(mixed) : ?(Int, String, Int)));
+  doTest("?(Int, String, Int) 2", Some(mixed));
+  doTest("?(Int, String, Int) 3", (None() : ?(Int, String, Int)));
+  doTest("?(Int, String, Int) 4", None());
+
+  void
+}

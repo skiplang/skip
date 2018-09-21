@@ -1,0 +1,19 @@
+File "./typechecking/invalid/tparam_super4.sk", line 2, characters 27-29:
+Constraint not satisfied
+1 | class Foo<T: Int>(x: T) {
+2 |   fun add<U>[T: U](x: U): Foo<U> {
+  |                           ^^^
+3 |     Foo(x)
+
+File "./typechecking/invalid/tparam_super4.sk", line 2, characters 31-31:
+The type: U
+1 | class Foo<T: Int>(x: T) {
+2 |   fun add<U>[T: U](x: U): Foo<U> {
+  |                               ^
+3 |     Foo(x)
+
+File "./typechecking/invalid/tparam_super4.sk", line 1, characters 14-16:
+Is not a subtype of: Int
+1 | class Foo<T: Int>(x: T) {
+  |              ^^^
+2 |   fun add<U>[T: U](x: U): Foo<U> {

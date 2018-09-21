@@ -1,0 +1,4455 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module AsmOutput;
+
+// asm.print format characters:
+//
+// %A: Instr: LLVM type attribute, if any (e.g. "zeroext " or "").
+// %d: Int: decimal integer digits
+// %D: InstrWithPos, InstrID, Pos: Debug info for Pos
+// %n: Instr, Block: LLVM name (no leading % for blocks)
+// %N: Instr: LLVM type followed by LLVM name
+// %s: Bool, Char, Int, String: simple toString() text
+// %t: LLVM type for a use (e.g. %foo* for a global %foo struct)
+// %T: LLVM type for the definition (e.g. %foo for a global %foo struct)
+// %x: Int: 16 hexadecimal digits
+
+// Types that can write themselves to an AsmDefBuilder.
+trait AsmWritable {
+  readonly fun asmWrite(asm: mutable AsmDefBuilder): void;
+}
+
+// Types that can write themselves to an AsmDefBuilder controlled by a
+// given formatting character.
+trait AsmFormattable extends AsmWritable {
+  readonly fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void;
+
+  overridable readonly fun asmWrite(asm: mutable AsmDefBuilder): void {
+    this.asmFormat(asm, 's')
+  }
+}
+
+trait AsmFormatTree {
+  readonly fun asmPrint(
+    asm: mutable AsmDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void;
+}
+
+// Consumes and emits format string characters up to the first format
+// specifier, then emits this.val using that format specifier.
+value class AsmFormatLeaf<T: readonly AsmFormattable>(
+  val: T,
+) uses AsmFormatTree {
+  fun asmPrint(
+    asm: mutable AsmDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void {
+    this.val.asmFormat(asm, asm.printUntilFormatChar(fmt))
+  }
+}
+
+value class AsmFormatInner<
+  T1: readonly AsmFormatTree,
+  T2: readonly AsmFormatTree,
+>(
+  lhs: T1,
+  rhs: T2,
+) uses AsmFormatTree {
+  fun asmPrint(
+    asm: mutable AsmDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void {
+    this.lhs.asmPrint(asm, fmt);
+    this.rhs.asmPrint(asm, fmt)
+  }
+}
+
+value class AsmFormat<T: readonly AsmFormatTree>(
+  fmt: String,
+  val: T,
+) uses AsmWritable {
+  fun asmWrite(asm: mutable AsmDefBuilder): void {
+    fmt = this.fmt.getIter();
+    this.val.asmPrint(asm, fmt);
+    if (!asm.printUntilMaybeFormatChar(fmt).isNone()) {
+      asm.die("Not enough arguments for format string")
+    }
+  }
+
+  fun %<U: readonly AsmFormattable>(
+    rhs: U,
+  ): AsmFormat<AsmFormatInner<T, AsmFormatLeaf<U>>> {
+    AsmFormat(this.fmt, AsmFormatInner(this.val, AsmFormatLeaf(rhs)))
+  }
+}
+
+extension class .String uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    text = asm.text;
+    spec match {
+    | 's' -> text.writeString(this)
+    | 'r' ->
+      text.writeChar('\"');
+
+      for (b in UTF8String::make(this).utf8) {
+        if (
+          b >= 0x20 /* ' ' */ &&
+          b < 0x7F &&
+          b != 0x22 /* '\"' */ &&
+          b != 0x5c
+        /* '\\' */ ) {
+          text.writeChar(Char::fromCode(b))
+        } else {
+          text.writeChar('\\');
+          text.writeHex(b, 2)
+        }
+      };
+
+      text.writeChar('\"')
+    | _ -> asm.die(`Bad format for String: "${spec}"`)
+    }
+  }
+
+  fun %<T: readonly AsmFormattable>(rhs: T): AsmFormat<AsmFormatLeaf<T>> {
+    AsmFormat(this, AsmFormatLeaf(rhs))
+  }
+}
+
+extension class .Bool uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 's' -> asm.text.writeString(if (this) "true" else "false")
+    | _ -> asm.die(`Bad format for Bool: "${spec}"`)
+    }
+  }
+}
+
+extension class .Char uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 'c' | 's' -> asm.text.writeChar(this)
+    | _ -> asm.die(`Bad format for Char: "${spec}"`)
+    }
+  }
+}
+
+extension class .Int uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 'd' | 's' -> asm.text.writeInt(this)
+    | 'x' -> asm.text.writeHex(this, 16)
+    | _ -> asm.die(`Bad format for Int: "${spec}"`)
+    }
+  }
+}
+
+extension base class .Pos uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    if (spec != 'D') {
+      this.die(`Debug info must be written using %D, not %${spec}`)
+    };
+    asm.writeDebug(this, false)
+  }
+}
+
+private fun asmFormatInstr(
+  instr: Instr,
+  asm: mutable AsmDefBuilder,
+  spec: Char,
+): void {
+  spec match {
+  | 'A' -> llvmWriteTypeCallAttribute(asm, instr.typ, false, true)
+  | 'N' -> llvmWriteTypeAndName(instr, asm)
+  | 'n' -> llvmWriteName(instr, asm)
+  | 't' -> llvmWriteTypeName(asm, instr.typ)
+  | _ -> asm.die(`Bad format for Instr: "${spec}"`)
+  }
+}
+
+extension base class .Instr uses AsmFormattable {
+  overridable fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    asmFormatInstr(this, asm, spec)
+  }
+}
+
+extension base class .InstrWithPos {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 'D' -> this.pos.asmFormat(asm, spec)
+    | _ -> asmFormatInstr(this, asm, spec)
+    }
+  }
+}
+
+extension class .InstrID uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    asm.optinfo().getInstr(this).asmFormat(asm, spec)
+  }
+}
+
+extension class .Block uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 'N' -> asm.print("label %%%n" % this)
+    | 'n' -> llvmWriteBlockName(this, asm)
+    | _ -> asm.die(`Bad format for Block: "${spec}"`)
+    }
+  }
+}
+
+extension class .BlockID uses AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    asm.optinfo().getBlock(this).asmFormat(asm, spec)
+  }
+}
+
+extension class .Function uses AsmFormattable {
+  fun getAsmDefID(): AsmDefID {
+    // AsmDefID preserves same numeric values for all existing SFunctionID.
+    AsmDefID(this.id.id)
+  }
+
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 'D' ->
+      // Debug for a Function is special, creating the diSubprogram entry.
+      asm.writeDebug(this.pos, true)
+    | 'n' ->
+      // AsmDefID uses the same numbers for all existing SFunctionID
+      asm.print('@');
+      asm.writeRef(this.getAsmDefID())
+    | 't' ->
+      t = this.funType;
+
+      // NOTE: LLVM function types cannot have parameter/return attributes.
+      llvmWriteReturnTypeName(asm, t.returnType, false);
+      asm.print(" (");
+      t.params.eachWithIndex((i, p) -> {
+        if (i > 0) asm.print(", ");
+        llvmWriteTypeName(asm, p)
+      });
+      asm.print(") *")
+    | 'N' -> asm.print("%t %n" % this % this)
+    | _ -> asm.die(`Bad format for Function: "${spec}"`)
+    }
+  }
+}
+
+value class AsmDefID() uses TypeSafeID<Int>, AsmFormattable {
+  fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    asm.common.defs[this].asmFormat(asm, spec)
+  }
+
+  fun writeGetPointer(asm: mutable AsmDefBuilder, byteOffset: Int): void {
+    if (byteOffset != 0) {
+      asm.print("getelementptr (i8, i8* ");
+    };
+
+    asm.print("bitcast (%N to i8*)" % this);
+
+    if (byteOffset != 0) {
+      asm.print(", i64 %d)" % byteOffset)
+    }
+  }
+}
+
+mutable class AsmDefIDToAsmDef extends
+  OptimizerInfo.InsertableIDMap<AsmDefID, AsmDef>,
+{
+  mutable fun allocID(): AsmDefID {
+    AsmDefID(this.allocIndex())
+  }
+}
+
+// Common base class for AsmDef and AsmDefBuilder, factoring out common fields.
+mutable private base class AsmDefBase{
+  // Symbol we would like to use. If it turns out to conflict it will
+  // be disambiguated by adding a numeric suffix. If two AsmDefs end
+  // up getting shared (merged into one), this symbol may contain too
+  // much detail (such as Tparam names) to use for both shared functions.
+  // In that case we will try to fall back to sharedSymbol.
+  symbol: String,
+
+  // Symbol to use for a family of collapsed values.
+  // This removes specific type names that would be misleading for the
+  // different defs sharing this object.
+  sharedSymbol: ?String = None(),
+
+  // Typically "@" or "%".
+  symbolPrefix: String = "@",
+
+  forceExternal: Bool = false,
+  canShare: Bool,
+
+  typeString: ?String,
+  typeRef: ?AsmDefID,
+
+  // Character offset where we should insert either internalLinkage or
+  // "external ", depending on whether this value is accessed from
+  // other .ll files. If linkageOffset is -1 then this value is assumed
+  // to be emittable again in every file that references it (e.g. a struct
+  // typedef).
+  mutable linkageOffset: Int = -1,
+  mutable internalLinkage: String = "",
+} extends HasID<AsmDefID> uses AsmFormattable {
+  readonly fun asmFormat(asm: mutable AsmDefBuilder, spec: Char): void {
+    spec match {
+    | 't' | 'T' | 'n' | 'N' -> void
+    | _ -> asm.die(`Bad format for AsmDef: "${spec}"`)
+    };
+
+    if (spec == 't' || spec == 'T' || spec == 'N') {
+      (this.typeString, this.typeRef) match {
+      | (Some(str), None()) -> asm.print(str)
+      | (None(), Some(ref)) ->
+        asm.print(asm.common.defs[ref].symbolPrefix);
+        asm.writeRef(ref)
+      | _ -> asm.die("AsmBuilder has no type to emit")
+      };
+
+      if (spec != 'T') {
+        // The type of a global is always a pointer.
+        asm.print("*")
+      }
+    };
+
+    if (spec == 'N') {
+      asm.print(' ')
+    };
+
+    if (spec == 'n' || spec == 'N') {
+      asm.print(this.symbolPrefix);
+      asm.writeRef(this.id)
+    };
+  }
+}
+
+// A top-level assembly definition like a function on string constant.
+// These are connected together in a graph.
+mutable class AsmDef{
+  text: String,
+  refs: Array<(Int, AsmDefID)>,
+  // The first numDefinitionRefs in refs are for the definition,
+  // the rest are used for the declaration. Keeping all refs in one
+  // array makes some graph operations easier.
+  numDefinitionRefs: Int,
+  debug: Array<(Int, Pos, Bool)>,
+  declarationText: String,
+} extends AsmDefBase {
+  // Functions with definitions must be emitted in some asm file.
+  // Those without definitions need only be emitted on demand, when
+  // something else needs them, and can be emitted in many asm files
+  // (e.g. a struct typedef).
+  //
+  // Defs with definitions referenced across files must have a declaration
+  // written out in each file that references it (via writeDeclaration()).
+  fun hasDefinition(): Bool {
+    this.linkageOffset >= 0
+  }
+
+  fun isFunction(): Bool {
+    !this.debug.isEmpty()
+  }
+
+  fun write(
+    out: mutable TextOutputStream.StringTextOutputStream,
+    metadata: mutable Metadata,
+    internalLinkage: Bool,
+  ): void {
+    refs = this.refs;
+    dbg = this.debug;
+
+    refsIndex = 0;
+    debugIndex = 0;
+
+    // Text index of next upcoming special value to emit.
+    next = 0;
+
+    funPos = (None() : ?FunPos);
+
+    i = 0;
+
+    writeExternal = () -> {
+      if (i == this.linkageOffset) {
+        out.write(if (internalLinkage) this.internalLinkage else "external ")
+      };
+
+      if (refsIndex < this.numDefinitionRefs) {
+        (charIndex, ref) = refs[refsIndex];
+        if (charIndex == i) {
+          // Write out the symbol for the referenced object.
+          out.write(metadata.defs[ref].symbol);
+          !refsIndex = refsIndex + 1;
+        }
+      };
+
+      if (debugIndex < dbg.size()) {
+        (charIndex, pos, isDISubprogram) = dbg[debugIndex];
+
+        if (charIndex == i) {
+          metadataID = if (isDISubprogram) {
+            fp = FunPos{
+              name => this.symbol,
+              pos => pos match {
+              | range @ FileRange _ -> range
+              | _ -> pos.die("Function positions must be FileRange")
+              },
+              id => SFunctionID(this.id.id),
+            };
+            !funPos = Some(fp);
+            metadata.diSubprogram(fp).id
+          } else {
+            // The diSubprogram should come first so we should have
+            // created a FunPos already.
+            metadata.diLocation(
+              pos,
+              funPos.fromSome("Did not see diSubprogram"),
+            ).id
+          };
+
+          out.write("!dbg !");
+          out.writeInt(metadataID);
+
+          !debugIndex = debugIndex + 1;
+        }
+      };
+
+      // Locate the next upcoming special value.
+      min(
+        if (refsIndex == this.numDefinitionRefs) {
+          Int::max
+        } else {
+          refs[refsIndex].i0
+        },
+        if (debugIndex == dbg.size()) Int::max else dbg[debugIndex].i0,
+      )
+    };
+
+    for (c in this.text.getIter()) {
+      if (i == next) {
+        // NOTE: We assume we do not have two refs at the same char offset,
+        // etc. as that wouldn't be syntactically valid anyway. We could
+        // easily change this to a loop if we want.
+        !next = writeExternal()
+      };
+
+      out.writeChar(c);
+
+      !i = i + 1
+    };
+
+    last = writeExternal();
+    invariant(last == Int::max, "Unexpected additional ref")
+  }
+
+  fun writeDeclaration(
+    out: mutable TextOutputStream.StringTextOutputStream,
+    defs: readonly AsmDefIDToAsmDef,
+  ): void {
+    refs = this.refs;
+    refsIndex = this.numDefinitionRefs;
+
+    next = refs.maybeGet(refsIndex) match {
+    | Some((offset, _)) -> offset
+    | _ -> -1
+    };
+
+    i = 0;
+    for (c in this.declarationText.getIter()) {
+      if (i == next) {
+        // Write out the symbol for the referenced object.
+        out.write(defs[refs[refsIndex].i1].symbol);
+        !refsIndex = refsIndex + 1;
+
+        !next = refs.maybeGet(refsIndex) match {
+        | Some((offset, _)) -> offset
+        | _ -> -1
+        }
+      };
+
+      out.writeChar(c);
+
+      !i = i + 1
+    }
+  }
+}
+
+// An object that builds up an AsmDef. You can append text,
+// references to other AsmDefs, and debug info references to it.
+mutable private base class AsmDefBuilder{
+  text: mutable TextOutputStream.StringTextOutputStream = mutable TextOutputStream.StringTextOutputStream{},
+  refs: mutable Vector<(Int, AsmDefID)> = mutable Vector[],
+  debug: mutable Vector<(Int, Pos, Bool)> = mutable Vector[],
+  declarationText: mutable TextOutputStream.StringTextOutputStream = mutable TextOutputStream.StringTextOutputStream{},
+  declarationRefs: mutable Vector<(Int, AsmDefID)> = mutable Vector[],
+  common: mutable AsmOutput,
+} extends AsmDefBase {
+  // Writes characters up to and including the next % format specifier,
+  // leaving any remaining characters.
+  mutable fun print<T: readonly AsmWritable>(val: T): void {
+    val.asmWrite(this)
+  }
+
+  readonly fun pos(): Pos {
+    this.common.pos
+  }
+
+  overridable mutable fun optinfo(): mutable OptimizerInfo {
+    this.die("Not in function, cannot get optinfo")
+  }
+
+  readonly fun env(): GlobalEnv {
+    this.common.env
+  }
+
+  readonly fun die(msg: String): _ {
+    this.pos().die(msg)
+  }
+
+  // Record the two visibility strings to use if private or globally visible.
+  mutable fun writeLinkage(internalLinkage: String = "internal "): void {
+    this.!linkageOffset = this.text.size();
+    this.!internalLinkage = internalLinkage;
+  }
+
+  mutable fun finish(): AsmDefID {
+    def = AsmDef{
+      id => this.id,
+      text => this.text.toString(),
+      refs => this.refs.toArray().concat(this.declarationRefs.toArray()),
+      debug => this.debug.toArray(),
+      numDefinitionRefs => this.refs.size(),
+      canShare => this.canShare,
+      forceExternal => this.forceExternal,
+      symbol => this.symbol,
+      symbolPrefix => this.symbolPrefix,
+      sharedSymbol => this.sharedSymbol,
+      typeString => this.typeString,
+      typeRef => this.typeRef,
+      declarationText => this.declarationText.toString(),
+      linkageOffset => this.linkageOffset,
+      internalLinkage => this.internalLinkage,
+    };
+    this.common.defs.set(def.id, def);
+    def.id
+  }
+
+  mutable fun writeDebug(pos: Pos, isDISubprogram: Bool): void {
+    this.debug.push((this.text.size(), pos, isDISubprogram))
+  }
+
+  mutable fun writeRef(ref: AsmDefID): void {
+    this.refs.push((this.text.size(), ref))
+  }
+
+  mutable fun writeDeclarationRef(ref: AsmDefID): void {
+    this.declarationRefs.push((this.declarationText.size(), ref))
+  }
+
+  mutable fun printUntilMaybeFormatChar(
+    fmt: mutable String.StringIterator,
+  ): ?Char {
+    result = (None() : ?Char);
+
+    prevWasPercent = false;
+    text = this.text;
+
+    while ({
+      fmt.next() match {
+      | None() ->
+        if (prevWasPercent) {
+          this.die("Format string ends with unescaped %")
+        };
+        false
+      | Some(c) ->
+        (prevWasPercent, c) match {
+        | (false, '%') ->
+          !prevWasPercent = true;
+          true
+        | (true, '%')
+        | (false, _) ->
+          text.writeChar(c);
+          !prevWasPercent = false;
+          true
+        | (true, _) ->
+          !result = Some(c);
+          false
+        }
+      }
+    }) void;
+
+    result
+  }
+
+  mutable fun printUntilFormatChar(fmt: mutable String.StringIterator): Char {
+    this.printUntilMaybeFormatChar(fmt).fromSome(
+      "Too many arguments for format string",
+    )
+  }
+
+  mutable fun writeQuotedIdentifier(id: String, number: Int = -1): void {
+    if (!needsQuotes(id)) {
+      this.print(id);
+      if (number >= 0) {
+        this.print(".%d" % number)
+      }
+    } else {
+      this.print(
+        "%r" %
+          (id +
+            if (number >= 0) {
+              "." + number
+            } else {
+              ""
+            }),
+      )
+    }
+  }
+}
+
+mutable class FunAsmDefBuilder{
+  optinfo_: mutable OptimizerInfo,
+  // A unique counter chosen to not interfere with any Block or Instr IDs.
+  mutable llvmSuffixCounter: Int = -1,
+} extends AsmDefBuilder {
+  // Return a new function-unique LLVM identifier.
+  mutable fun optinfo(): mutable OptimizerInfo {
+    this.optinfo_
+  }
+
+  mutable fun llvmIdentifier(prefixHint: String = ""): String {
+    (if (prefixHint.isEmpty()) {
+      "r"
+    } else {
+      prettyText(prefixHint) + "."
+    }) + this.llvmCounter()
+  }
+
+  mutable fun llvmCounter(): Int {
+    v = this.llvmSuffixCounter;
+    if (v < 0) {
+      this.die("Asking for unique LLVM identifier but it wasn't configured")
+    };
+    this.!llvmSuffixCounter = v + 1;
+    v
+  }
+}
+
+mutable class StructAsmDefBuilder extends AsmDefBuilder
+
+fun createAsmDefGraph(env: GlobalEnv): mutable AsmOutput.AsmDefIDToAsmDef {
+  common = AsmOutput::make{env};
+
+  // Create these immediately so later references can look them up.
+  common.writeGlobals();
+  _ = createStaticImage{
+    getField => env.vtables.fromSome().megaVTable.maybeGet,
+    common,
+    symbolNameHint => ".allVTables",
+    minByteAlignment => 2 * VTable.kFrozenMask,
+    id => Some(common.megaVTableImage),
+  };
+
+  for (f in env.sfuns) AsmOutput.llvmWriteFunction(f, common);
+
+  common.writeStaticData();
+
+  removeRedundantDefs(common.defs);
+
+  common.defs
+}
+
+// When we combine two AsmDefs, we store the "winner" in the slot for all
+// of loser's IDs. This function discards the losers and updates all
+// references to point to the winner.
+fun removeRedundantDefs(defs: mutable AsmOutput.AsmDefIDToAsmDef): void {
+  remap = mutable UnorderedMap[];
+
+  // Find any defs entries that map to something other than their own ID.
+  for (i in Range(0, defs.size())) {
+    id = AsmDefID(i);
+    defs.maybeGet(id) match {
+    | Some(def) ->
+      if (def.id != id) {
+        remap.set(id, def.id);
+        defs.remove(id)
+      }
+    | None() -> void
+    }
+  };
+
+  if (!remap.isEmpty()) {
+    for (def in defs) {
+      if (def.refs.any(q -> remap.containsKey(q.i1))) {
+        // Some input was remapped, so we need to update the refs.
+        defs.set(
+          def.id,
+          def with {
+            refs => def.refs.map(q ->
+              (q.i0, remap.maybeGet(q.i1).default(q.i1))
+            ),
+          },
+        )
+      }
+    }
+  }
+}
+
+// Are two AsmDefs indistguishable? For example, two functions with the
+// same assembly text and references to other isomorphic functions.
+private fun defsIsomorphic(
+  x: AsmDef,
+  y: AsmDef,
+  defs: mutable AsmOutput.AsmDefIDToAsmDef,
+  hashes: mutable Array<Int>,
+  assumedEqual: mutable UnorderedSet<(AsmDefID, AsmDefID)>,
+  knownNotEqual: mutable UnorderedSet<(AsmDefID, AsmDefID)>,
+): Bool {
+  // Each pair on the stack has distinct IDs, where the first is < the second.
+  // Each pair matches in text and number of refs.
+  stack = mutable Vector[];
+
+  assumedEqual.clear();
+
+  pushIfWorthComparing = (a, b) -> {
+    // Canonicalize based on what has already been merged.
+    !a = defs[a.id];
+    !b = defs[b.id];
+
+    if (a.id == b.id) {
+      true
+    } else if (
+      !a.canShare ||
+      !b.canShare ||
+      hashes[a.id.id] != hashes[b.id.id]
+    ) {
+      false
+      /*
+      // TODO: This prevents sharing of "copy down" methods, which is a big
+      // source of redundancy. Once that is fixed, consider restoring this.
+
+          } else if ((a.sharedSymbol, b.sharedSymbol) match {
+                     | (Some(aa), Some(bb)) -> aa != bb
+                     | _ -> false
+                     }) {
+            // For debuggable backtraces, only share two defs if they
+            // have the same sharedSymbol (typically different instantiations
+            // of the same generic), or if one of them doesn't care.
+            print_error_ln(`Declining to merge ${a.symbol}, ${b.symbol}`);
+            false
+      */
+    } else {
+      if (a.id > b.id) {
+        (!a, !b) = (b, a);
+      };
+
+      key = (a.id, b.id);
+      if (!assumedEqual.maybeInsert(key)) {
+        // Already in assumedEqual, do nothing.
+        true
+      } else if (knownNotEqual.contains(key)) {
+        false
+      } else if (a.text != b.text || a.refs.size() != b.refs.size()) {
+        false
+      } else {
+        stack.push((a, b));
+        true
+      }
+    }
+  };
+
+  if (!pushIfWorthComparing(x, y)) {
+    false
+  } else {
+    equal = true;
+
+    while ({
+      if (stack.isEmpty()) {
+        false
+      } else {
+        (a, b) = stack.pop();
+
+        index = -1;
+        if (
+          a.refs.all(ar -> {
+            !index = index + 1;
+            br = b.refs[index];
+            ar.i0 == br.i0 && pushIfWorthComparing(defs[ar.i1], defs[br.i1])
+          })
+        ) {
+          // All refs are not obviously different, so keep processing.
+          true
+        } else {
+          !equal = false;
+          knownNotEqual.insert((min(x.id, y.id), max(x.id, y.id)));
+          false
+        }
+      }
+    }) void;
+
+    equal
+  }
+}
+
+fun mergeIdenticalAsmDefs(defs: mutable AsmOutput.AsmDefIDToAsmDef): void {
+  hash1 = Array::mfill(defs.size(), 0);
+  hash2 = Array::mfill(defs.size(), 0);
+
+  // Seed hash1 with the "local" hash of each entry, consisting of the
+  // text and character offsets of any references.
+  for (def in defs) {
+    h = def.refs.foldl(
+      (acc, ref) -> Hashable.combine(acc, ref.i0.hash()),
+      def.text.hash(),
+    );
+    hash1.set(def.id.id, h)
+  };
+
+  // Munge together the hashes of neighbors up to 10 hops away
+  // (10 was chosen arbitrarily...feels "far enough").
+  for (_ in Range(0, 10)) {
+    for (def in defs) {
+      h = def.refs.foldl(
+        (acc, ref) -> Hashable.combine(acc, hash1[ref.i1.id]),
+        hash1[def.id.id],
+      );
+      hash2.set(def.id.id, h)
+    };
+    (!hash1, !hash2) = (hash2, hash1)
+  };
+
+  // This a scratch set cleared and reused over and over again.
+  assumedEqual = mutable UnorderedSet[];
+
+  // What we have already noticed are not equal to speed later checks.
+  knownNotEqual = mutable UnorderedSet[];
+
+  numVisited = 0;
+  numMerged = 0;
+
+  // Merge together anything identical.
+  perHash = mutable UnorderedMap<Int, mutable Vector<AsmDef>>[];
+  for (def in defs) {
+    !numVisited = numVisited + 1;
+
+    if (def.canShare) {
+      h = hash1[def.id.id];
+
+      perHash.maybeGet(h) match {
+      | None() -> perHash.set(h, mutable Vector[def])
+      | Some(old) ->
+        // Something else has the same hash, see if we get a match.
+        if (
+          !old.any(canonical -> {
+            if (
+              defsIsomorphic(
+                canonical,
+                def,
+                defs,
+                hash1,
+                assumedEqual,
+                knownNotEqual,
+              )
+            ) {
+              // Make sure canonical is using its "shared" symbol, if any.
+              canonical.sharedSymbol match {
+              | Some(sym) ->
+                if (sym != canonical.symbol) {
+                  // Back off to the less-specific shared symbol.
+                  defs.set(canonical.id, canonical with {symbol => sym})
+                }
+              | None() ->
+                def.sharedSymbol match {
+                | Some(sym) ->
+                  // "old" doesn't care about the shared symbol, but
+                  // "def" does, so use def's shared symbol.
+                  defs.set(
+                    canonical.id,
+                    canonical with {symbol => sym, sharedSymbol => Some(sym)},
+                  )
+                | None() -> void
+                }
+              };
+
+              // Mark "def" as replaced by "canonical".
+              defs.set(def.id, canonical);
+
+              !numMerged = numMerged + 1;
+
+              true
+            } else {
+              false
+            }
+          })
+        ) {
+          // Weird, we got a hash collision, but OK.
+          old.push(def)
+        }
+      }
+    }
+  };
+
+  if (kConfig.verbose) {
+    print_error_ln(`Merged ${numMerged} out of ${numVisited} defs.`)
+  };
+
+  removeRedundantDefs(defs)
+}
+
+fun assignFinalSymbols(defs: mutable AsmOutput.AsmDefIDToAsmDef): void {
+  symbolsTaken = (mutable UnorderedMap[] : mutable UnorderedMap<String, Int>);
+
+  sstr = mutable TextOutputStream.StringTextOutputStream{};
+
+  // First assign names to all the non-can-share symbols, because perhaps
+  // they need to have exactly that symbol, then handle the can-share.
+  for (i in Range(0, 2)) {
+    canShare = (i != 0);
+
+    for (def in defs) {
+      if (def.canShare == canShare) {
+        // Avoid goofy-looking symbols by replacing weird chars with '_'.
+        sym = if (!needsQuotes(def.symbol)) {
+          def.symbol
+        } else {
+          sstr.clear();
+          _ = def.symbol.foldl(
+            (first, c) -> {
+              ok = if (first) isLegalAsmIDHead(c) else isLegalAsmIDTail(c);
+              sstr.writeChar(
+                if (ok) {
+                  c
+                } else {
+                  '_'
+                },
+              );
+              false
+            },
+            true,
+          );
+          sstr.toString()
+        };
+
+        symbolsTaken.maybeGet(sym) match {
+        | None() -> symbolsTaken.set(sym, 1)
+        | Some(count) ->
+          while ({
+            newsym = sym + "." + count;
+            !count = count + 1;
+            if (symbolsTaken.containsKey(newsym)) {
+              // Weird, another symbol must have a dot in its name etc.
+              true
+            } else {
+              symbolsTaken.set(sym, count);
+              !sym = newsym;
+              false
+            }
+          }) void
+        };
+
+        defs.set(def.id, def with {symbol => sym});
+      }
+    }
+  }
+}
+
+// Assigns AsmDefs to files and returns an array of which file each
+// one ended up in (with non-definitions like typedefs having -1) and
+// a Bool that is true iff it can use internal linkage.
+private fun partitionOutputFiles(
+  real: readonly Vector<AsmDef>,
+  defs: readonly AsmOutput.AsmDefIDToAsmDef,
+  maxOutputFiles: Int,
+): Array<(Int, Bool)> {
+  computeComplexity = def -> {
+    if (def.isFunction()) {
+      // Every function takes extra work for LLVM, so assign each an
+      // additional fixed cost (total guess).
+      1000 + def.text.length() + def.refs.size() * 15
+    } else {
+      // Data is very cheap for LLVM to compile, so don't bother
+      // forcing it into multiple files. Let it naturally flow anywhere
+      // it's referenced.
+      0
+    }
+  };
+
+  // Figure out roughly how much to dump into each file.
+  totalComplexity = 0;
+  for (def in real) !totalComplexity = totalComplexity + computeComplexity(def);
+
+  // Even if we are asked to create a many files, don't bother creating
+  // tiny files due to general fixed compile/link overhead.
+  numFiles = max(1, min(totalComplexity / 50000, maxOutputFiles));
+  complexityPerFile = totalComplexity / numFiles;
+
+  // Track which file each ref is in (-1 means "not yet decided").
+  files = Array::mfill(defs.size(), -1);
+
+  // Find how many incoming references each ref has.
+  numRefsTo = Array::mfill(defs.size(), 0);
+  for (def in real) {
+    for (ref in def.refs) {
+      (_, target) = ref;
+      if (target != def.id) {
+        numRefsTo.set(target.id, numRefsTo[target.id] + 1)
+      }
+    }
+  };
+
+  currentFile = 0;
+  currentFileComplexity = 0;
+
+  // What file the first reference to an AsmDef ended up in. This is used to
+  // detect whether an AsmDef will be "static" if we emit it in the current
+  // file.
+  firstReferringFile = Array::mfill(defs.size(), -1);
+
+  deque = mutable Vector[];
+  dequeIndex = 0;
+
+  // Here we use a simple greedy algorithm to try to place AsmDefs in
+  // the same output file in a way that increases the number of them
+  // that are "internal" ("static" in C terms).
+  //
+  // As we pick a file for an AsmDef, if any AsmDef it references is now
+  // known to have all refs coming from the same file, emit it to the same
+  // file recursively, at least until the file "fills up".
+  for (tdef in real) {
+    if (files[tdef.id.id] < 0) {
+      deque.push(tdef);
+
+      while (dequeIndex != deque.size()) {
+        def = deque[dequeIndex];
+        !dequeIndex = dequeIndex + 1;
+
+        // "Slide over" the deque when it gets half empty.
+        if (dequeIndex >= max(10, deque.size().ushr(1))) {
+          deque.splice(0, dequeIndex, Array[]);
+          !dequeIndex = 0
+        };
+
+        index = def.id.id;
+        if (files[index] < 0) {
+          if (
+            currentFileComplexity >= complexityPerFile &&
+            currentFile + 1 < numFiles
+          ) {
+            // The file is full, so move on to the next file.
+            !currentFile = currentFile + 1;
+            !currentFileComplexity = 0;
+          };
+
+          // NOTE: We allow one "overshoot" per file. Because the per-file
+          // limit is rounded down, overshoots are inevitable.
+          !currentFileComplexity =
+            currentFileComplexity + computeComplexity(def);
+
+          // File not yet assigned, assign it to the current file.
+          files.set(index, currentFile);
+          // Try to dump any referenced object into the same file, if all
+          // of its referrers have been seen, and they are also in the
+          // current file.
+          for (ref in def.refs) {
+            refDef = defs[ref.i1];
+            ri = ref.i1.id;
+
+            if (refDef.hasDefinition() && files[ri] < 0) {
+              // Decrement the number of unemitted references.
+              numUnemittedReferences = numRefsTo[ri] - 1;
+              numRefsTo.set(ri, numUnemittedReferences);
+              invariant(numUnemittedReferences >= 0, "Ref count problem");
+
+              inSameFile = firstReferringFile[ri] match {
+              | first if (first < 0) ->
+                // This is the first reference.
+                firstReferringFile.set(ri, currentFile);
+                true
+              | first -> first == currentFile
+              };
+
+              if (inSameFile && numUnemittedReferences == 0) {
+                // All refs to this are from the same file, so it can
+                // be made "static". Greedily try to emit it soon
+                // (hopefully the file doesn't fill up before we get to it).
+                deque.push(refDef)
+              }
+            }
+          }
+        }
+      };
+    }
+  };
+
+  // Determine which defs are only referenced within one file,
+  // and can therefore use internal linkage.
+  isInternal = Array::mfill(defs.size(), true);
+  for (def in real) {
+    if (def.forceExternal) {
+      isInternal.set(def.id.id, false)
+    };
+
+    file = files[def.id.id];
+    for (ref in def.refs) {
+      ri = ref.i1.id;
+      if (files[ri] != file) {
+        isInternal.set(ri, false)
+      }
+    }
+  };
+
+  files.zip(isInternal)
+}
+
+fun writeOutputFiles(
+  defs: readonly AsmOutput.AsmDefIDToAsmDef,
+  inputFiles: Array<String>,
+): void {
+  outputs = kConfig.mainConfig.outputFiles;
+
+  // Complexity of each def to be emitted.
+  real = mutable Vector[];
+  for (def in defs) if (def.hasDefinition()) real.push(def);
+
+  // Put functions first, then sort in some canonical order.
+  real.sortBy(x ~>
+    Orderable.create(x, (a, b) ~>
+      (b.isFunction(), b.forceExternal, a.symbol, a.id).compare(
+        (a.isFunction(), a.forceExternal, b.symbol, b.id),
+      )
+    )
+  );
+
+  // Don't generate more output files than the user requested.
+  // Additionally, don't generate more than we have input files,
+  // because (at least on Mac) we need a distinct CU filename
+  // per output .ll file or the linker gets confused, and we use
+  // our input files as the set of CU file names to choose from.
+  maxOutputFiles = min(
+    kConfig.mainConfig.outputFiles.size(),
+    inputFiles.size(),
+  );
+
+  files = partitionOutputFiles(real, defs, maxOutputFiles);
+
+  sstr = mutable TextOutputStream.StringTextOutputStream{};
+  for (f in kConfig.mainConfig.preambleFiles) {
+    preamble = FileSystem.readTextFile(f);
+    sstr.write(preamble);
+    sstr.writeChar('\n')
+  };
+  preamble = sstr.toString();
+
+  emitted = Array::mfill(defs.size(), false);
+
+  stack = mutable Vector[];
+
+  // Emit all non-definition references first (e.g. typedefs).
+  maybePush = def -> {
+    if (!emitted[def.id.id]) {
+      emitted.set(def.id.id, true);
+      stack.push((def, 0));
+    }
+  };
+
+  outputs.eachWithIndex((fileIndex, path) -> {
+    sstr.clear();
+    sstr.write(preamble);
+
+    // Reset what has been emitted so far in this file.
+    for (i in Range(0, emitted.size())) emitted.set(i, false);
+
+    // Arbitrarily pick some unique input file as the CU for this output file.
+    metadata = AsmOutput.Metadata::create(defs, inputFiles[fileIndex]);
+
+    fileEmpty = true;
+
+    for (def in real) {
+      if (files[def.id.id].i0 == fileIndex) {
+        maybePush(def);
+
+        while (!stack.isEmpty()) {
+          (d, index) = stack.pop();
+
+          if (index < d.refs.size()) {
+            // Some reference is still not emitted, so do it first.
+            stack.push((d, index + 1));
+            maybePush(defs[d.refs[index].i1])
+          } else {
+            // All its refs have been visited already, we can emit this.
+            !fileEmpty = false;
+
+            if (!d.hasDefinition()) {
+              d.write(sstr, metadata, false)
+            } else if (files[d.id.id].i0 == fileIndex) {
+              d.write(sstr, metadata, files[def.id.id].i1)
+            } else {
+              d.writeDeclaration(sstr, defs)
+            }
+          }
+        }
+      }
+    };
+
+    contents = if (fileEmpty) {
+      ""
+    } else {
+      // Metadata Flags
+      sstr.write("!llvm.module.flags = !{");
+      sep = "";
+      for (v in metadata.moduleFlags) {
+        sstr.write(`${sep}!${v}`);
+        !sep = ", ";
+      };
+      sstr.write("}\n\n");
+
+      sstr.write("!llvm.dbg.cu = !{");
+      sstr.write(metadata.diCompileUnit);
+      sstr.write("}\n\n");
+
+      metadata.metadata.eachWithIndex((k, v) -> {
+        sstr.printf2("!%s = %s\n", k, v);
+      });
+
+      sstr.toString()
+    };
+
+    path match {
+    | "-" -> print_raw(contents)
+    | _ -> FileSystem.writeTextFile(path, contents)
+    }
+  })
+}
+
+// These versions don't compile yet because of no fall-throughs.
+
+// private fun isLegalAsmIDHead(c: Char): Bool {
+//   c match {
+//     |'$'|'-'|'_'|'.'
+//     |'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'
+//     |'N'|'O'|'P'|'Q'|'R'|'S'|'T'|'U'|'V'|'W'|'X'|'Y'|'Z'
+//     |'a'|'b'|'c'|'d'|'e'|'f'|'g'|'h'|'i'|'j'|'k'|'l'|'m'
+//     |'n'|'o'|'p'|'q'|'r'|'s'|'t'|'u'|'v'|'w'|'x'|'y'|'z' -> true
+//     | _ -> false
+//   }
+// }
+
+// private fun isLegalAsmIDTail(c: Char): Bool {
+//   c match {
+//     |'0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' -> true
+//     | _ -> isLegalAsmIDHead(c)
+//   }
+// }
+
+// Place this in front of all generated functions, mainly to avoid any
+// awkward conflicts with libc or whatever.
+private const funPrefix: String = "sk.";
+
+// This is the symbol that refers to the 'type info for skip::SkipException'
+// - used for catching Skip specific exceptions.
+private const skipExceptionTypeInfo: String = "_ZTIN4skip13SkipExceptionE";
+
+private fun isCharInSet(c: Char, hi: Int, lo: Int): Bool {
+  code = c.code();
+  if (code < 128) {
+    mask = if (code >= 64) {
+      hi
+    } else {
+      lo
+    };
+    mask.shr(code.and(63)).and(1) != 0
+  } else {
+    false
+  }
+}
+
+// Can this be the first character of an identifier, per LLVM rules?
+private fun isLegalAsmIDHead(c: Char): Bool {
+  // [-a-zA-Z$._]
+  isCharInSet(c, 0x07fffffe87fffffe, 0x0000601000000000)
+}
+
+// Can this be the second or later character of an identifier, per LLVM rules?
+private fun isLegalAsmIDTail(c: Char): Bool {
+  // [-a-zA-Z$._0-9]
+  isCharInSet(c, 0x07fffffe87fffffe, 0x03ff601000000000)
+}
+
+private fun needsQuotes(s: String): Bool {
+  si = s.getIter();
+  si.next() match {
+  | None() -> false
+  | Some(c) -> !isLegalAsmIDHead(c) || !si.all(isLegalAsmIDTail)
+  }
+}
+
+// This needs to be made reversible and deal correctly with name clashes.
+// See T22100866
+private fun mangle(name: String): String {
+  String::tabulate(name.length(), i -> {
+    name[i] match {
+    | '+' | '-' | '.' | ':' -> '_'
+    | '!' -> 'N'
+    | '=' -> 'E'
+    | '<' -> 'L'
+    | '>' -> 'G'
+    | c @ _ -> c
+    };
+  })
+}
+
+private const pad8: ConstantInt = kByteConstants[0];
+private const pad16: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt16,
+  value => 0,
+};
+private const pad32: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt32,
+  value => 0,
+};
+private const pad64: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt,
+  value => 0,
+};
+
+// Return an N-bit padding constant zero value.
+private fun getPad(bitSize: Int): ConstantInt {
+  bitSize match {
+  | 8 -> pad8
+  | 16 -> pad16
+  | 32 -> pad32
+  | 64 -> pad64
+  | _ -> invariant_violation("Impossible bit size " + bitSize)
+  }
+}
+
+private value class LLVMStructField(
+  typ: ScalarType,
+  // If 1, not an array, just typ; else a repeat count [arraySize x typ]
+  count: Int,
+) uses Hashable, Equality {}
+
+value class .StaticImageField(
+  value: Constant,
+
+  // NOTE: This is is a logical bit offset internally, but a physical
+  // offset when returned externally. See vtableLogicalToPhysicalBitOffset().
+  bitOffset: Int,
+) uses Hashable, Equality, Show {
+  fun toString(): String {
+    "<StaticImageField offset=" + this.bitOffset + ", value=" + this.value + ">"
+  }
+
+  fun endBitOffset(env: GlobalEnv): Int {
+    this.bitOffset + this.value.typ.getScalarType(env).bitSize
+  }
+}
+
+// Returns the largest power of two that divides evenly into n, but no
+// more than maxAlign. If n is zero, returns maxAlign.
+private fun computeAlignment(n: Int, maxAlign: Int): Int {
+  tmp = n.or(maxAlign);
+  tmp.and(-tmp);
+}
+
+// This takes a sequence of constant values and their bit offsets and
+// returns struct fields that has a few properties:
+//
+// - All alignment padding is explicit (no "struct holes").
+// - All values are 1-, 2-, 4- or 8 bytes. So incoming bit values get
+//   grouped into bytes or larger integers as needed, etc.
+private fun createStaticImageFields(
+  getField: Int ~> ?StaticImageField,
+  env: GlobalEnv,
+): Array<Constant> {
+  fields = mutable Vector<Constant>[];
+
+  // The index of the next field to emit.
+  i = 0;
+
+  // Current bit offset as we append. Always a multiple of 8.
+  bitOffset = 0;
+
+  // Utility function to extract the bit size of a given Constant.
+  valueBitSize = instr -> instr.typ.getScalarType(env).bitSize;
+
+  while ({
+    getField(i) match {
+    | None() -> false
+    | Some(StaticImageField(value, vbo)) ->
+      invariant(vbo >= bitOffset, "Bit offset ordering problem");
+
+      // Integers can tolerate shifting around within an entire int64, and
+      // we need that to handle arbitrary bitfields someday, but everything
+      // else should be padded out exactly to its starting offset.
+      isConstantInteger = value.constantInteger().isSome();
+      containingBitOffset = if (isConstantInteger) {
+        vbo.and(-64)
+      } else {
+        invariant(vbo.and(7) == 0, "Unexpectedly not byte aligned");
+        vbo
+      };
+
+      // Insert padding zeroes as needed to reach this field's start.
+      while (bitOffset < containingBitOffset) {
+        // Make sure the padding is aligned. If bitOffset is currently aligned
+        // mod 16 bits, we can't insert padding larger than int16, etc.
+        curAlign = computeAlignment(bitOffset, 64);
+        padBitSize = min(curAlign, containingBitOffset - bitOffset);
+        fields.push(getPad(padBitSize));
+        !bitOffset = bitOffset + padBitSize
+      };
+
+      if (!isConstantInteger) {
+        !i = i + 1
+      } else {
+        // Keep absorbing integer values into a larger integer value, e.g.
+        // a collection of adjacent 1-bit values can get grouped into an
+        // int8 or larger value, etc.
+        //
+        // But we must respect the alignment of the integers we
+        // are emitting. So if we are starting out on a block aligned mod
+        // 8 bits, only consume enough upcoming integer fields to fill out
+        // the rest of those 8 bits and emit an int8. And if aligned mod 16,
+        // only fill in at most 16 bits, etc., up to a maximum of 64.
+        endBitOffset = bitOffset + computeAlignment(bitOffset, 64);
+
+        firstIntegerFieldIndex = i;
+
+        // Integer value being built up.
+        intBits = 0;
+
+        while ({
+          getField(i) match {
+          | None() -> false
+          | Some(StaticImageField(nextValue, nextBitOffset)) ->
+            nextBitSize = valueBitSize(nextValue);
+
+            if (nextBitOffset + nextBitSize > endBitOffset) {
+              // This does not fit inside the biggest integer we can emit.
+              invariant(
+                nextBitOffset >= endBitOffset,
+                "Value spans an alignment boundary",
+              );
+              invariant(i > firstIntegerFieldIndex, "Failed to emit int");
+              false
+            } else {
+              nextValue.constantInteger() match {
+              | None() -> false
+              | Some(nextInt) ->
+                // Absorb another upcoming integer value (little endian).
+                low = zext(nextInt, nextBitSize);
+                !intBits = intBits.or(low.shl(nextBitOffset - bitOffset));
+                !i = i + 1;
+                true
+              }
+            }
+          }
+        }) void;
+
+        // At this point, 'i' refers to the first field yet to be processed.
+
+        // Our new value is at least this big.
+        latestEnd = getField(i - 1) match {
+        | Some(latest) -> latest.bitOffset + valueBitSize(latest.value)
+        | None() -> invariant_violation("field out of range")
+        };
+        minBitSize = latestEnd - bitOffset;
+
+        // Figure out what size field to use. If we have 19 bits,
+        // really that must become an LLVM i32, etc.
+        newBitSize = if (minBitSize <= 8) {
+          8
+        } else if (minBitSize <= 16) {
+          16
+        } else if (minBitSize <= 32) {
+          32
+        } else if (minBitSize <= 64) {
+          64
+        } else {
+          invariant_violation("Impossible bit size")
+        };
+
+        // Grow the integer to reduce padding entries before the next field
+        // when possible. For example, if we are emitting a 64-bit aligned
+        // int8, and the next field is a 64-bit aligned pointer, we can
+        // zero-extend the int8 to int64 rather than later inserting
+        // 56 bits of padding zeroes before the next field. Either works,
+        // of course, this is just more concise.
+        getField(i) match {
+        | None() -> void
+        | Some(StaticImageField(_, nextBitStart)) ->
+          while (
+            newBitSize < 64 &&
+            bitOffset + newBitSize * 2 <= nextBitStart
+          ) !newBitSize = newBitSize * 2
+        };
+
+        pad = getPad(newBitSize);
+        !value = if (intBits == 0) {
+          pad
+        } else {
+          // ConstantInts canonicalize their values by sign-extending.
+          pad with {value => sext(intBits, newBitSize)}
+        }
+      };
+
+      fields.push(value);
+
+      !bitOffset = bitOffset + valueBitSize(value);
+
+      true
+    }
+  }) void;
+
+  fields.toArray()
+}
+
+// Helper for createStaticImage.
+private fun createStaticImageAsmDef{
+  fields: Array<Constant>,
+  common: mutable AsmOutput,
+  symbolNameHint: String,
+  minByteAlignment: Int,
+  id: ?AsmDefID,
+}: AsmDefID {
+  env = common.env;
+
+  // The overall alignment must be good enough for all fields.
+  fieldBitAlignment = minByteAlignment * 8;
+  bitSize = 0;
+
+  for (field in fields) {
+    st = field.typ.getScalarType(env);
+    !fieldBitAlignment = max(fieldBitAlignment, st.bitAlignment);
+    !bitSize = bitSize + st.bitSize
+  };
+
+  // To minimize cache misses, we might as well align objects based on
+  // their size. So a 32-byte object should be aligned mod 32 since
+  // that wastes no space, a 48-byte object should be aligned mod
+  // 16, etc.
+  paddedBitSize = roundUp(bitSize, fieldBitAlignment);
+  bitAlignment = max(
+    fieldBitAlignment,
+    computeAlignment(paddedBitSize, 4096 * 8),
+  );
+
+  key = (bitAlignment, fields);
+  common.images.maybeGet(key) match {
+  | Some(old) ->
+    // If they demanded a certain ID, but an equivalent image already
+    // exists, just direct their ID to the existing image.
+    id match {
+    | Some(x) -> common.defs.set(x, common.defs[old])
+    | None() -> void
+    };
+    old
+  | _ ->
+    // Produce an array of LLVM field types.
+    typesBuf = mutable Vector[];
+
+    j = 0;
+    while (j < fields.size()) {
+      st = fields[j].typ.getScalarType(env);
+
+      // Count how many fields in a row have the same LLVM type name.
+      k = j;
+      while ({
+        !k = k + 1;
+        k < fields.size() && st == fields[k].typ.getScalarType(env)
+      }) void;
+
+      // Make an array for a run of 3 or more to keep the type concise.
+      count = if (k - j >= 3) {
+        k - j
+      } else {
+        1
+      };
+      typesBuf.push(LLVMStructField(st, count));
+      !j = j + count
+    };
+
+    types = typesBuf.toArray();
+
+    structType = common.uniqueStructType(types);
+
+    asm = mutable StructAsmDefBuilder{
+      id => id match {
+      | Some(x) -> x
+      | None() -> common.defs.allocID()
+      },
+      canShare => true,
+      symbol => symbolNameHint,
+      typeString => None(),
+      typeRef => Some(structType),
+      common,
+    };
+
+    // Handle circular references using a temporary placeholder.
+    // It's good enough to emit references to, and we'll replace it
+    // with the real asm.finish() later.
+    common.images.set(key, asm.finish());
+
+    // Create the declaration; it assumes "external" since we wouldn't
+    // use it if it's "internal".
+    asm.declarationText.writeChar('@');
+    asm.writeDeclarationRef(asm.id);
+    asm.declarationText.write(" = external local_unnamed_addr constant %");
+    asm.writeDeclarationRef(structType);
+    asm.declarationText.printf1(", align %s\n", bitAlignment / 8);
+
+    // Create the definition, with linkage alternatives.
+    asm.print("%n = " % asm);
+    asm.writeLinkage("private ");
+    asm.print("unnamed_addr constant %T {" % asm);
+
+    // Index into "values" array for the next field.
+    i = 0;
+
+    for (ft in types) {
+      if (i > 0) asm.print(',');
+      asm.print("\n  ");
+
+      scalarType = ft.typ;
+
+      if (ft.count != 1) {
+        // Use array notation.
+        asm.print("[%s x %s] [" % ft.count % scalarType.toString());
+
+        // As a readability hack try to dump ranges of integers on one line.
+        // TODO: Maybe also do this if they are all null, etc., or even
+        // see how long the line is.
+        newlines = (scalarType.kind != IntegerScalarKind());
+
+        (separator, nextSeparator, end) = if (newlines) {
+          ("\n    ", ",\n    ", "\n  ]")
+        } else {
+          (" ", ", ", " ]")
+        };
+
+        for (_ in Range(0, ft.count)) {
+          asm.print("%s%N" % separator % fields[i]);
+          !i = i + 1;
+          !separator = nextSeparator
+        };
+
+        asm.print(end)
+      } else {
+        asm.print("%N" % fields[i]);
+        !i = i + 1
+      }
+    };
+
+    asm.print("\n}, align %s\n" % (bitAlignment / 8));
+
+    asm
+      .pos()
+      .invariant(i == fields.size(), "Struct type did not consume all values");
+
+    asm.finish()
+  }
+}
+
+private fun createStaticImage{
+  getField: Int ~> ?StaticImageField,
+  common: mutable AsmOutput,
+  symbolNameHint: String = ".image",
+  minByteAlignment: Int = 1,
+  id: ?AsmDefID = None(),
+}: AsmDefID {
+  fields = createStaticImageFields(getField, common.env);
+  createStaticImageAsmDef{id, fields, common, symbolNameHint, minByteAlignment}
+}
+
+// Turns a String into some human-readable text for an LLVM symbol.
+fun prettyText(s: String): String {
+  limit = 30;
+
+  // LLVM does not strictly require this mangling, but WASM does.
+  mangle(
+    if (s.length() <= limit) {
+      s
+    } else {
+      s.sub(0, limit)
+    },
+  )
+}
+
+// Emits "zeroext" for types that need zero extension in the calling
+// convention. Someday we will probably need "signext" too.
+fun llvmWriteTypeCallAttribute(
+  asm: mutable AsmDefBuilder,
+  t: Type,
+  spaceBefore: Bool,
+  spaceAfter: Bool,
+): void {
+  t.maybeGetScalarType(asm.env()) match {
+  | Some(p) if (p.kind == IntegerScalarKind() && p.bitSize < 32) ->
+    if (spaceBefore) asm.print(' ');
+
+    // TODO: On x86-64 clang does not emit a zeroext for uint32_t,
+    // but does for smaller types. Is that an x86-specific decision?
+    asm.print("zeroext");
+
+    if (spaceAfter) asm.print(' ')
+  | _ -> void
+  }
+}
+
+fun llvmWriteTypeName(asm: mutable AsmDefBuilder, t: Type): void {
+  example = t.exampleSClass(asm.env());
+  example.maybeGetScalarType() match {
+  | Some(p) -> asm.print(p.llvmTypeName)
+  | None() ->
+    if (t == tVoid) {
+      asm.print("void")
+    } else if (example.isReturnTuple()) {
+      llvmWriteReturnTypeName(asm, example.fields.map(f -> f.typ))
+    } else {
+      asm.pos().die(`Do not know what LLVM type to use for ${t}`)
+    }
+  }
+}
+
+fun llvmWriteReturnTypeName(
+  asm: mutable AsmDefBuilder,
+  types: Array<Type>,
+  writeAttributes: Bool = true,
+): void {
+  types.size() match {
+  | 0 -> asm.print("void")
+  | 1 ->
+    if (writeAttributes) {
+      llvmWriteTypeCallAttribute(asm, types[0], false, true)
+    };
+    llvmWriteTypeName(asm, types[0])
+  | _ ->
+    asm.print("{");
+    types.eachWithIndex((i, t) -> {
+      if (i > 0) asm.print(", ");
+      llvmWriteTypeName(asm, t)
+    });
+    asm.print("}")
+  }
+}
+
+trait DIEntry extends TypeSafeID<Int>, AsmFormattable {
+  readonly fun toString(): String {
+    "!" + this.id
+  }
+  readonly fun asmFormat(asm: mutable AsmDefBuilder, _spec: Char): void {
+    asm.print("!%d" % this.id)
+  }
+}
+
+value class DIFile() uses DIEntry
+
+value class DICompileUnit() uses DIEntry {
+  const none: DICompileUnit = DICompileUnit(-1);
+}
+
+value class DISubprogram() uses DIEntry
+
+value class DILocation() uses DIEntry {
+  const none: DILocation = DILocation(-1);
+}
+
+private type Filename = String;
+private type Line = Int;
+private type Column = Int;
+private type InlinedAt = DILocation;
+
+// LLVM metadata memoization cache
+//
+// This class handles the metadata for LLVM output.  Note that in general when
+// llc complains about the !dbg metadata it will have already rewritten the
+// indexes internally and so the numbers won't match what we wrote.
+// So an error like this:
+//
+//   !dbg attachment points at wrong subprogram for function
+//   !105 = distinct !DISubprogram(name: "<generic_function:Vector::push>", scope: !3, file: !3, line: 78, type: !55, isLocal: false, isDefinition: true, isOptimized: false, unit: !2)
+//   void (i8*, i8*)* @"sk.Vector::push.q2"
+//     %r45 = getelementptr inbounds i8, i8* %this.0, i64 8, !dbg !84
+//
+// may have actually originally been written as (note the different !dbg label):
+//
+//     %r45 = getelementptr inbounds i8, i8* %this.0, i64 8, !dbg !56
+mutable class Metadata{
+  // List of LLVM metadata
+  metadata: mutable Vector<String> = mutable Vector[],
+
+  diFileCache: mutable UnorderedMap<Filename, DIFile> = mutable UnorderedMap[],
+
+  // TODO: Right now we only support a single generic subroutine type.  Once we
+  // fix FileRange so we know what function we're in then this should turn
+  // into a Map.
+  mutable diSubroutineTypeCache: Int = -1,
+
+  mutable diCompileUnit: DICompileUnit = DICompileUnit::none,
+
+  diSubprogramCache: mutable UnorderedMap<
+    (DIFile, AsmDefID),
+    DISubprogram,
+  > = mutable UnorderedMap[],
+
+  diLocationCache: mutable UnorderedMap<
+    (DISubprogram, Line, Column, InlinedAt),
+    DILocation,
+  > = mutable UnorderedMap[],
+
+  // !llvm.module.flags
+  // Values are indices for the desired flag (see addModuleIntFlag()).
+  moduleFlags: mutable Vector<Int> = mutable Vector[],
+
+  defs: readonly AsmDefIDToAsmDef,
+} {
+  static fun create(
+    defs: readonly AsmDefIDToAsmDef,
+    compilationUnit: String,
+  ): mutable Metadata {
+    metadata = mutable Metadata{defs};
+
+    // Reserve the slot for kEmptyBlockIndex since we may have already
+    // handed it out.
+    emptyBlockIndex = metadata.add(() -> "!{}");
+    invariant(
+      emptyBlockIndex == AsmOutput.Metadata::kEmptyBlockIndex,
+      "Did not get expected empty block index",
+    );
+
+    file = metadata.diFile(compilationUnit);
+    metadata.!diCompileUnit = DICompileUnit(
+      metadata.add(() -> {
+        `distinct !DICompileUnit(language: DW_LANG_C_plus_plus, ` +
+          `file: ${file}, emissionKind: LineTablesOnly)`
+      }),
+    );
+
+    metadata.addModuleIntFlag("Dwarf Version", 4);
+    metadata.addModuleIntFlag("Debug Info Version", 3);
+
+    metadata
+  }
+
+  mutable fun add(f: () -> String): Int {
+    idx = this.metadata.size();
+    this.metadata.push(f());
+    idx
+  }
+
+  // A DIFile represents a file.  We copy clang's method of emitting the source
+  // file as the name the user passed to the compiler and the directory as the
+  // $PWD.
+  mutable fun diFile(filename: String): DIFile {
+    this.diFileCache.getOrAdd(filename, () -> {
+      DIFile(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf2(
+            "!DIFile(filename: %r, directory: %r)",
+            filename,
+            getcwd(),
+          );
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  // DISubprogram for function definition and location scope.  Note that the
+  // DISubprogram must be unique for each function that gets written out.
+  mutable fun diSubprogram(funPos: FunPosBase): DISubprogram {
+    file = this.diFile(funPos.pos.filename);
+
+    // Canonicalize the SFunctionID to handle sharing.
+    origID = AsmDefID(funPos.id.id);
+    id = this.defs.maybeGet(origID) match {
+    | Some(x) -> x.id
+    | None() -> origID
+    };
+
+    key = (file, id);
+    this.diSubprogramCache.getOrAdd(key, () -> {
+      if (this.diSubroutineTypeCache == -1) {
+        emptyIdx = this.add(() -> "!{}");
+        this.!diSubroutineTypeCache = this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf1("!DISubroutineType(types: !%s)", emptyIdx);
+          str.toString()
+        });
+      };
+      DISubprogram(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf6(
+            "distinct !DISubprogram(name: %r, scope: %s, file: %s, line: %s, type: !%s, unit: %s)",
+            funPos.name,
+            file,
+            file,
+            funPos.pos.startPosition().line() + 1,
+            this.diSubroutineTypeCache,
+            this.diCompileUnit,
+          );
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  mutable fun diRawLocation(
+    funPos: FunPosBase,
+    pos: Pos,
+    inlinedAt: DILocation = DILocation::none,
+  ): DILocation {
+    scope = this.diSubprogram(funPos);
+    start = pos.startPosition();
+
+    // Correct 0-based internal convention to 1-based LLVM convention.
+    line = start.line() + 1;
+    col = start.column() + 1;
+
+    key = (scope, line, col, inlinedAt);
+    this.diLocationCache.getOrAdd(key, () -> {
+      DILocation(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf2("!DILocation(scope: %s, line: %s", scope, line);
+          if (col < 65536) str.printf1(", column: %s", col);
+          if (inlinedAt != DILocation::none) {
+            str.printf1(", inlinedAt: %s", inlinedAt)
+          };
+          str.write(")");
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  // Fetch a DILocation for a Pos given a specific function
+  // specialization.  DILocation tags MUST have a scope which matches up with
+  // the DISubprogram scope on their owning function or llc will complain about
+  // 'attachment points at wrong subprogram for function'.
+  mutable fun diLocation(pos: Pos, funPos: FunPosBase): DILocation {
+    pos match {
+    | ip @ InlinedPos _ ->
+      inlinedAt = this.diRawLocation(funPos, ip.inlinedAt);
+      this.diRawLocation(ip.origFun, ip, inlinedAt)
+    | _ -> this.diRawLocation(funPos, pos)
+    }
+  }
+
+  mutable fun addModuleIntFlag(key: String, value: Int): void {
+    this.moduleFlags.push(
+      this.add(() -> {
+        str = mutable TextOutputStream.StringTextOutputStream{};
+        str.printf2("!{i32 2, !%r, i32 %s}", key, value);
+        str.toString()
+      }),
+    )
+  }
+
+  // LLVM metadata index for !{}
+  const kEmptyBlockIndex: Int = 0;
+}
+
+/*FIXME: private*/
+mutable class .AsmOutput{
+  mutable env: GlobalEnv,
+
+  // Skip String -> LLVM expression.
+  strings: mutable UnorderedMap<
+    LongUTF8String,
+    AsmDefID,
+  > = mutable UnorderedMap[],
+
+  // Precomputed constants for byte values.
+  private mutable cachedByteConstants: Array<ConstantInt> = Array[],
+
+  // C String incl. '\0' if desired -> AsmDefID.
+  cstrings: mutable UnorderedMap<UTF8String, AsmDefID> = mutable UnorderedMap[],
+
+  images: mutable UnorderedMap<
+    (Int, Array<Constant>),
+    AsmDefID,
+  > = mutable UnorderedMap[],
+
+  structTypes: mutable UnorderedMap<
+    Array<LLVMStructField>,
+    AsmDefID,
+  > = mutable UnorderedMap[],
+
+  // The creationOrder of the last StaticImage object we emitted.
+  // We emit them in increasing creationOrder, and this lets us detect
+  // whether a particular StaticImage has already been "shipped".
+  mutable lastStaticImageEmitted: Int = -1,
+
+  // Pos of last resort, reset for each function.
+  mutable pos: Pos = FileRange.builtin,
+
+  // Function being emitted.
+  mutable maybeOptinfo: ?mutable OptimizerInfo = None(),
+
+  // Cached string for the LLVM type of the @skip.globals array.
+  private mutable globalsType: ?String = None(),
+
+  // Cached image for the mega vtable.
+  megaVTableImage: AsmDefID,
+
+  // Cached image for globals.
+  globalsImage: AsmDefID,
+
+  defs: mutable AsmDefIDToAsmDef,
+
+  // External functions for which we already have a declaration.
+  // Due to generics we may have multiple Functions internally that all map
+  // to the same external C++ function (when it is carefully designed to
+  // not care about the Tparams) and this combines them into one AsmDef
+  // since really they are the same function.
+  externs: mutable UnorderedMap<String, AsmDefID> = mutable UnorderedMap[],
+} {
+  static fun make{env: GlobalEnv}: mutable AsmOutput {
+    // Make new IDs from this.defs not overlap with SFunctionID.
+    defs = mutable AsmDefIDToAsmDef{pos => FileRange.builtin};
+    for (_ in Range(0, env.sfuns.size())) _ = defs.allocID();
+    mutable AsmOutput{
+      env,
+      defs,
+      megaVTableImage => defs.allocID(),
+      globalsImage => defs.allocID(),
+    };
+  }
+
+  mutable fun resetForNewFunction(pos: Pos): void {
+    this.!pos = pos
+  }
+
+  mutable fun doneWithFunction(): void {
+    this.!pos = FileRange.builtin
+  }
+
+  mutable fun uniqueStructType(fields: Array<LLVMStructField>): AsmDefID {
+    key = fields;
+    this.structTypes.maybeGet(key) match {
+    | Some(x) -> x
+    | None() ->
+      // Choose a default struct name based on the hash, so we tend to
+      // get reproducible names from run to run. We multiply to spread
+      // out the hash bits across the digits we choose to print.
+      sstr = mutable TextOutputStream.StringTextOutputStream{};
+      sstr.write("struct.");
+      numDigits = 12;
+      shift = 64 - (numDigits * 4);
+      sstr.writeHex(
+        (fields.hash() * 0xc4ceb9fe1a85ec53).ushr(shift),
+        numDigits,
+      );
+
+      asm = mutable StructAsmDefBuilder{
+        id => this.defs.allocID(),
+        canShare => true,
+        symbol => sstr.toString(),
+        symbolPrefix => "%",
+        common => this,
+        typeRef => None(),
+        typeString => None(),
+      };
+
+      // Insert into the table now to someday handle circular types.
+      this.structTypes.add(key, asm.id);
+
+      lineStart = 0;
+
+      asm.print("%n = type { " % asm);
+
+      fields.eachWithIndex((i, sf) -> {
+        if (i > 0) {
+          textSize = asm.text.size();
+          if (textSize - lineStart > 60) {
+            // Insert newlines occasionally for big types.
+            asm.print(",\n  ");
+            !lineStart = textSize + 2
+          } else {
+            asm.print(", ")
+          }
+        };
+        typeStr = sf.typ.toString();
+        if (sf.count == 1) {
+          asm.print(typeStr)
+        } else {
+          asm.print("[%s x %s]" % sf.count % typeStr)
+        }
+      });
+
+      asm.print(" }\n");
+
+      asm.finish()
+    }
+  }
+
+  // Produces an LLVM expression for a pointer to the first utf8 byte of
+  // a Skip LongString object.
+  mutable fun stringToLLVM(str: LongUTF8String): AsmDefID {
+    this.strings.getOrAdd(str, () -> {
+      len = str.utf8.size();
+      paddedLen = this.paddedStringSize(str);
+
+      createStaticImage{
+        getField => i ~> {
+          if (i >= paddedLen + 2) {
+            None()
+          } else {
+            Some(
+              i match {
+              | 0 ->
+                StaticImageField(
+                  // length
+                  ConstantInt{id => InstrID::none, typ => tInt32, value => len},
+                  0,
+                )
+              | 1 ->
+                StaticImageField(
+                  // hash
+                  ConstantInt{
+                    id => InstrID::none,
+                    typ => tInt32,
+                    value => str.runtimeHash,
+                  },
+                  32,
+                )
+              | n ->
+                // padded character data
+                utf8Index = n - 2;
+                StaticImageField(
+                  kByteConstants[str.utf8.maybeGet(utf8Index).default(0)],
+                  64 + utf8Index * 8,
+                )
+              },
+            )
+          }
+        },
+        common => this,
+        symbolNameHint => ".sstr." + prettyText(str.string),
+        minByteAlignment => 8,
+      }
+    })
+  }
+
+  mutable fun writeCStringRef(asm: mutable AsmDefBuilder, s: UTF8String): void {
+    id = this.cstrings.getOrAdd(s, () -> {
+      createStaticImage{
+        getField => i ~>
+          s.utf8.maybeGet(i).map(n ->
+            StaticImageField(kByteConstants[n], i * 8)
+          ),
+        common => this,
+        symbolNameHint => ".cstr." + prettyText(s.string),
+      }
+    });
+
+    asm.print("i8* bitcast (%N to i8*)" % id)
+  }
+
+  // As in the runtime, strings always take a multiple of 8 bytes
+  // and strings >= cstr_buffer_size must have a trailing '\0'.
+  private readonly fun paddedStringSize(s: LongUTF8String): Int {
+    size = s.utf8.size();
+
+    // WARNING! This must equal CSTR_BUFFER_SIZE in the runtime!
+    cstr_buffer_size = (80 - 8 + 1);
+
+    // Guarantee zero-padding for long enough strings.
+    if (size >= cstr_buffer_size && s.utf8[size - 1] != 0) {
+      !size = size + 1
+    };
+
+    (size + 7).and(-8)
+  }
+
+  // Interns a global static image of an object and returns an LLVM
+  // expression pointing just after the vtable.
+  mutable fun llvmWriteConstantObject(
+    asm: mutable AsmDefBuilder,
+    obj: ConstantObject,
+  ): void {
+    sc = obj.typ.exampleSClass(this.env);
+
+    vtable = ConstantMegaVTableMember{
+      id => InstrID::none,
+      typ => tNonGCPointer,
+      value => (this.env.vtables.fromSome().classByteOffsets[sc.id] +
+        VTable.kFrozenMask),
+    };
+
+    header = if (vtableByteSize == 8) {
+      Array[StaticImageField(vtable, 0)]
+    } else {
+      // All object pointers (right after vtable) are aligned mod 8.
+      Array[StaticImageField(pad32, 0), StaticImageField(vtable, 32)]
+    };
+
+    headerSize = header.size();
+    vtableField = header[headerSize - 1];
+    firstFieldBitOffset = vtableField.bitOffset + vtableByteSize * 8;
+
+    layout = sc.layout match {
+    | Some(l) -> l
+    | _ -> sc.pos.die("Missing layout for " + sc)
+    };
+
+    // Create a function that gets the Nth field of the image we are making.
+    getField = i ~> {
+      if (i.ult(headerSize)) {
+        Some(header[i])
+      } else if (i.ult(headerSize + obj.values.size())) {
+        l = layout[i - headerSize];
+        Some(
+          StaticImageField(
+            obj.values[sc.getFieldIndex(l.name, sc.pos)],
+            firstFieldBitOffset + l.bitOffset,
+          ),
+        )
+      } else if (i < 0) {
+        sc.pos.die("Attempt to get static image field with negative index " + i)
+      } else {
+        None()
+      }
+    };
+
+    image = createStaticImage{
+      getField,
+      common => this,
+      minByteAlignment => 8,
+      symbolNameHint => ".image." + prettyText(sc.toString()),
+    };
+
+    // Point to the first array slot (i.e. right after the vtable).
+    image.writeGetPointer(asm, firstFieldBitOffset / 8)
+  }
+
+  // Interns a global static image of an Array and emits an LLVM
+  // expression pointing just after the vtable.
+  mutable fun llvmWriteConstantArray(
+    asm: mutable AsmDefBuilder,
+    cfv: ConstantArray,
+  ): void {
+    sc = cfv.typ.exampleSClass(this.env);
+    logicalOrderedValues = cfv.values;
+    size = cfv.size;
+
+    sizeConst = ConstantInt{id => InstrID::none, typ => tInt32, value => size};
+
+    vtable = ConstantMegaVTableMember{
+      id => InstrID::none,
+      typ => tNonGCPointer,
+      value => (this.env.vtables.fromSome().classByteOffsets[sc.id] +
+        VTable.kFrozenMask),
+    };
+
+    header = if (vtableByteSize == 8) {
+      Array[
+        StaticImageField(pad32, 0),
+        StaticImageField(sizeConst, 32),
+        StaticImageField(vtable, 64),
+      ]
+    } else {
+      Array[StaticImageField(sizeConst, 0), StaticImageField(vtable, 32)]
+    };
+
+    headerSize = header.size();
+    vtableField = header[headerSize - 1];
+    firstSlotBitOffset = vtableField.bitOffset + vtableByteSize * 8;
+
+    // Create the values and layout for the array elements.
+    getField = if (logicalOrderedValues.isEmpty()) {
+      header.maybeGet
+    } else {
+      slotInfo = sc.arraySlot.fromSome("should be an array");
+
+      // Sort so we emit the fields in physical, not logical, order.
+      valsPerSlot = slotInfo.types.size();
+      pieceOrder = Array::fillBy(valsPerSlot, id).sortedBy(x ~>
+        slotInfo.bitOffsets[x]
+      );
+
+      // Create a function that gets the Nth field of the image we are making.
+      i ~> {
+        if (i.ult(headerSize)) {
+          Some(header[i])
+        } else if (i.ult(headerSize + logicalOrderedValues.size())) {
+          x = i - headerSize;
+          slotIndex = x / valsPerSlot;
+          pieceIndex = x % valsPerSlot;
+
+          permute = pieceOrder[pieceIndex];
+
+          Some(
+            StaticImageField(
+              logicalOrderedValues[slotIndex * valsPerSlot + permute],
+              (firstSlotBitOffset +
+                slotIndex * slotInfo.bitSize +
+                slotInfo.bitOffsets[permute]),
+            ),
+          )
+        } else if (i < 0) {
+          sc.pos.die(
+            "Attempt to get static image field with negative index " + i,
+          )
+        } else {
+          None()
+        }
+      }
+    };
+
+    image = createStaticImage{
+      getField,
+      common => this,
+      minByteAlignment => 8,
+      symbolNameHint => ".image." + prettyText(sc.toString()),
+    };
+
+    // Point to the first array slot (i.e. right after the vtable).
+    image.writeGetPointer(asm, firstSlotBitOffset / 8)
+  }
+
+  // Interns a global static image of an struct and emits an LLVM
+  // expression pointing to its first byte.
+  mutable fun llvmWriteConstantStruct(
+    asm: mutable AsmDefBuilder,
+    obj: ConstantStruct,
+  ): void {
+    image = createStaticImage{
+      getField => obj.values.maybeGet,
+      common => this,
+      minByteAlignment => obj.byteAlignment,
+      symbolNameHint => ".struct." + obj.hash().and(Int::max),
+    };
+
+    image.writeGetPointer(asm, 0)
+  }
+
+  private mutable fun writeExportsTable(): AsmDefID {
+    env = this.env;
+
+    exportedBuf = mutable Vector[];
+    for (f in env.sfuns) {
+      if (f.exportStyle.isExported()) {
+        exportedBuf.push(f)
+      }
+    };
+    exportedBuf.sortBy(x ~>
+      Orderable.create(x, (a, b) ~> (a.name, a.id).compare((b.name, b.id)))
+    );
+    exported = exportedBuf.toArray();
+
+    typeString = `[${exported.size() + 1} x %struct._FunctionSignature]`;
+
+    asm = mutable StructAsmDefBuilder{
+      id => this.defs.allocID(),
+      canShare => false,
+      symbol => ".plugin_exports",
+      common => this,
+      typeRef => None(),
+      typeString => Some(typeString),
+    };
+
+    asm.print("%n = internal constant %s [" % asm % typeString);
+
+    sep = "\n  ";
+    for (f in exported) {
+      pos = f.pos;
+      exportStyle = f.exportStyle match {
+      | e @ HhvmExport _ -> e
+      | _ -> invariant_violation("bad cast")
+      };
+
+      if (f.superpositions.size() != 1) {
+        pos.die(
+          "Cannot export function '" +
+            f +
+            "' because it does not " +
+            "have exactly one caller type (it has " +
+            f.superpositions.size() +
+            ")",
+        )
+      };
+
+      asm.print("%s%%struct._FunctionSignature { " % sep);
+      this.writeCStringRef(asm, UTF8String::make(exportStyle.name + "\0"));
+      !sep = ",\n  ";
+
+      // Write out the function pointer (possibly a type-converting wrapper).
+      asm.print(", void (...)* bitcast (%N to void (...)*)" % f);
+
+      // Write out the return type.
+      asm.print(", i8 ");
+      asm.print(exportStyle.wrapperReturnType.code());
+
+      // Write out the argument count.
+      asm.print(", i8 ");
+      if (exportStyle.wrapperParamTypes.size() > 255) {
+        pos.die(`Too many args for ${f}`)
+      };
+      asm.print(exportStyle.wrapperParamTypes.size());
+
+      // Write out a pointer to the argument types array (as a C string).
+      // Note that we don't actually want UTF8 encoding here, but all the
+      // parameter codes look like ASCII so it's harmless.
+      paramStr = String::fromChars(
+        exportStyle.wrapperParamTypes.map(p -> Char::fromCode(p.code())),
+      );
+
+      // We don't actually want to UTF8-encode raw param bytes, so we cheat
+      // just so we can reuse the cstring table mechanism.
+      asm.print(", ");
+      this.writeCStringRef(asm, UTF8String::make(paramStr));
+      asm.print(" }")
+    };
+
+    asm.print(sep);
+    asm.print("%struct._FunctionSignature zeroinitializer\n");
+    asm.print("], align 8\n");
+
+    asm.finish()
+  }
+
+  // TODO: This should become part of an AsmDef...
+  mutable fun llvmGlobalsType(): String {
+    this.globalsType match {
+    | Some(t) -> t
+    | None() ->
+      // Get the machine-generated class holding all the "const" globals.
+      globalsClass = tConstSingleton.sclass(this.env);
+
+      // The bit size is determined by the end of the last field.
+      layout = globalsClass.layout.fromSome();
+
+      numBits = layout.maybeLast().maybe(0, f -> f.bitOffset + f.typ.bitSize);
+
+      // Every object is a multiple of 8 bytes in size, so round up in case
+      // GetField wants to assume it.
+      numBytes = roundUp(numBits, 64) / 8;
+
+      t = "[" + numBytes + " x i8]";
+      this.!globalsType = Some(t);
+      t
+    }
+  }
+
+  mutable fun writeGlobals(): void {
+    asm = mutable StructAsmDefBuilder{
+      id => this.globalsImage,
+      canShare => false,
+      symbol => "skip.globals",
+      common => this,
+      typeString => Some(`${this.llvmGlobalsType()}*`),
+      typeRef => None(),
+    };
+
+    asm.declarationText.writeChar('@');
+    asm.writeDeclarationRef(asm.id);
+    asm.declarationText.printf1(
+      " = external global %s, align 64\n",
+      this.llvmGlobalsType(),
+    );
+
+    asm.print("%n = " % asm);
+    asm.writeLinkage();
+    asm.print("global %s zeroinitializer, align 64\n" % this.llvmGlobalsType());
+
+    _ = asm.finish()
+  }
+
+  private mutable fun writeInitializer(exportsTable: AsmDefID): void {
+    asm = mutable StructAsmDefBuilder{
+      id => this.defs.allocID(),
+      canShare => false,
+      forceExternal => true,
+      symbol => "SKIP_initializeSkip",
+      common => this,
+      typeString => Some("%struct._FunctionSignature* ()"),
+      typeRef => None(),
+    };
+
+    // Dump initializer call
+    asm.print("define ");
+    asm.writeLinkage();
+    asm.print("%%struct._FunctionSignature* %n() {\n" % asm);
+    asm.print(
+      "  call void %n()\n" %
+        this.env.getFunction(this.env.initializeAllConstsID, FileRange.builtin),
+    );
+
+    asm.print(
+      ("  ret %%struct._FunctionSignature* getelementptr inbounds " +
+        "(%T, %N, i64 0, i64 0)") %
+        exportsTable %
+        exportsTable,
+    );
+    asm.print("}\n\n");
+
+    _ = asm.finish()
+  }
+
+  mutable fun writeStaticData(): void {
+    exportsTable = this.writeExportsTable();
+
+    this.writeInitializer(exportsTable);
+  }
+}
+
+// Write a parenthesized, comma-separated list of arguments.
+private fun llvmWriteArgs(
+  asm: mutable AsmDefBuilder,
+  args: Array<InstrID>,
+): void {
+  asm.print("(");
+
+  sep = "";
+  for (input in args) {
+    asm.print("%s%N" % sep % input);
+    !sep = ", "
+  };
+
+  asm.print(")")
+}
+
+// Emit code for either Call or Invoke.
+private fun llvmWriteCall(
+  call: RawCallBase,
+  asm: mutable FunAsmDefBuilder,
+): void {
+  optinfo = asm.optinfo();
+
+  code = optinfo.getInstr(call.code);
+
+  codeTemp = if (code.isConstant()) {
+    ""
+  } else {
+    // We are calling a raw function pointer, which is not expressible as a
+    // Skip type. We need to cast this to the right LLVM function pointer
+    // type, which we infer from the parameters.
+    tmp = asm.llvmIdentifier("methodCode");
+
+    asm.print("  %%%s = bitcast %N to %t(" % tmp % code % call);
+    call.args.eachWithIndex((i, t) -> {
+      if (i > 0) asm.print(", ");
+      typ = optinfo.getInstr(t).typ;
+      llvmWriteTypeName(asm, typ)
+      // LLVM disallows attributes in the function type, which is weird --
+      // the calling convention is not part of the function type.
+      //   llvmWriteTypeCallAttribute(asm, typ, true, false);
+    });
+
+    asm.print(") *, %D\n" % call);
+
+    tmp
+  };
+
+  asm.print("  ");
+  if (call.typ != tVoid) {
+    asm.print("%n = " % call)
+  };
+
+  asm.print(
+    call match {
+    | RawCall _ -> "tail call"
+    | RawInvoke _ -> "invoke"
+    },
+  );
+
+  llvmWriteTypeCallAttribute(asm, call.typ, true, false);
+
+  // Write function.
+  asm.print(" %t " % call);
+  if (codeTemp == "") {
+    asm.print("%n" % code);
+  } else {
+    asm.print("%%%s" % codeTemp);
+  };
+  llvmWriteArgs(asm, call.args);
+
+  if (!call.returns) {
+    asm.print(" noreturn")
+  };
+
+  // List invoke successors (unless it's a call).
+  successors = call.getSuccessors();
+  if (!successors.isEmpty()) {
+    call.pos.invariant(successors.size() == 2, "Bad invoke");
+    asm.print(" to %N unwind %N" % successors[0].target % successors[1].target);
+  };
+
+  asm.print(", %D\n" % call)
+}
+
+private fun llvmWriteIntrinsicCall(
+  asm: mutable FunAsmDefBuilder,
+  instr: Stmt,
+  funName: String,
+  args: Array<InstrID>,
+): void {
+  asm.print("  ");
+  if (instr.typ != tVoid) {
+    asm.print("%n = " % instr);
+  };
+
+  asm.print("call %A%t @%s" % instr % instr % funName);
+  llvmWriteArgs(asm, args);
+  asm.print(", %D\n" % instr)
+}
+
+private fun llvmWriteNamedCall(
+  asm: mutable FunAsmDefBuilder,
+  call: NamedCall,
+): void {
+  optinfo = asm.optinfo();
+
+  // Cast arguments as needed.
+  castArgs = call.casts.mapWithIndex((i, cast) -> {
+    if (cast == "") {
+      ""
+    } else {
+      arg = optinfo.getInstr(call.args[i]);
+      castVar = asm.llvmIdentifier("%cast");
+      asm.print("  %s = bitcast %N to %s, %D\n" % castVar % arg % cast % call);
+      cast + " " + castVar
+    }
+  });
+
+  retSrc = "";
+  asm.print("  ");
+  if (call.typ != tVoid) {
+    if (call.llvmRetCast.isEmpty()) {
+      asm.print("%n" % call);
+    } else {
+      !retSrc = asm.llvmIdentifier();
+      asm.print(retSrc);
+    };
+    asm.print(" = ")
+  };
+
+  asm.print("call ");
+  if (call.llvmRetType.isEmpty()) {
+    asm.print("%A%t" % call % call)
+  } else {
+    asm.print(call.llvmRetType);
+  };
+  asm.print(" @%s(" % call.name);
+
+  call.args.eachWithIndex((i, input) -> {
+    if (i > 0) asm.print(", ");
+    arg = optinfo.getInstr(input);
+
+    castArgs.maybeGet(i) match {
+    | Some(castVar) if (castVar != "") -> asm.print(castVar)
+    | _ -> asm.print("%N" % arg)
+    }
+  });
+  asm.print("), %D\n" % call);
+
+  if (!call.llvmRetCast.isEmpty()) {
+    asm.print("  %n = %s %s, %D\n" % call % retSrc % call.llvmRetCast % call)
+  }
+}
+
+private fun llvmWriteVTableRef(
+  byteOffset: Int,
+  asm: mutable AsmDefBuilder,
+): void {
+  asm.common.megaVTableImage.writeGetPointer(asm, byteOffset)
+}
+
+private fun llvmWriteNameConstantString(
+  value: UTF8String,
+  asm: mutable AsmDefBuilder,
+): void {
+  value match {
+  | s @ ShortUTF8String _ -> asm.print("inttoptr (i64 %s to i8*)" % s.bits())
+  | s @ LongUTF8String _ ->
+    image = asm.common.stringToLLVM(s);
+    // Strings always point at the first character byte, which is 8
+    // bytes into the raw storage.
+    image.writeGetPointer(asm, 8)
+  }
+}
+
+private fun llvmWriteName(instr: Instr, asm: mutable AsmDefBuilder): void {
+  instr match {
+  | ConstantBool{value} -> asm.print(if (value) '1' else '0')
+  | ConstantChar{value} -> asm.print(value.code())
+  | ConstantCodeLabel _ ->
+    // Rather than create a special type just for blockaddress, just die
+    // here -- I expect these will only be emitted by code calling
+    // llvmWriteTypeAndName anyway.
+    asm.die("ConstantCodePointer only supports llvmWriteTypeAndName")
+  | cfv @ ConstantArray _ -> asm.common.llvmWriteConstantArray(asm, cfv)
+  | ConstantFloat{value} ->
+    text = value.toString();
+    if (
+      value.isNaN() ||
+      value == Float::inf ||
+      value == -Float::inf ||
+      text.contains("e")
+    ) {
+      // We need to use hex syntax on the raw IEEE value for special numbers.
+      // TODO: Should we just do this always? Do we trust host
+      // formatting for denorms?
+      asm.print("0x%x" % value.toBits())
+    } else {
+      asm.print(text)
+    }
+  | ConstantFun{value} ->
+    subf = asm.env().getFunction(value, asm.pos());
+    asm.print("%n" % subf)
+  | ConstantGlobalSingleton _ -> asm.writeRef(asm.common.globalsImage)
+  | ConstantInt{value} -> asm.print(value)
+  | ConstantMegaVTableMember{value} -> llvmWriteVTableRef(value, asm)
+  | ConstantPointer{value} ->
+    if (value == 0) {
+      asm.print("null")
+    } else {
+      asm.print("inttoptr (i%s %s to i8*)" % ptrBitSize % value)
+    }
+  | obj @ ConstantObject _ -> asm.common.llvmWriteConstantObject(asm, obj)
+  | ConstantString{value} -> llvmWriteNameConstantString(value, asm)
+  | struct @ ConstantStruct _ -> asm.common.llvmWriteConstantStruct(asm, struct)
+  | ConstantVoid _ -> asm.die("Cannot name void input value.")
+  | ConstantVTable{value, frozen_} ->
+    byteOffset = (
+      asm.env().vtables.fromSome().classByteOffsets[value] +
+      (if (frozen_) VTable.kFrozenMask else 0)
+    );
+    llvmWriteVTableRef(byteOffset, asm)
+
+  // TODO: More of these should just die, as they don't make sense.
+
+  | Alloca _
+  | BlockParam _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | CallFunction _
+  | CallMethod _
+  | Cast _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | FunParam _
+  | GetConst _
+  | GetField _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCtz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntSwitch _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | InvokeFunction _
+  | InvokeMethod _
+  | LandingPad _
+  | Load _
+  | LoadVTableEntry _
+  | LocalGC _
+  | NamedCall _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _
+  | RawCallBase _
+  | Reinterpret _
+  | SetField _
+  | SignExtend _
+  | Store _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | StringSwitch _
+  | Truncate _
+  | TupleExtract _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | ArrayUnsafeSet _
+  | With _
+  | ZeroExtend _ ->
+    if (instr.prettyName.isEmpty()) {
+      asm.print("%%r%s" % instr.idValue())
+    } else {
+      asm.print('%');
+      asm.writeQuotedIdentifier(instr.prettyName, instr.idValue())
+    }
+
+  | AsyncReturn{pos}
+  | GetCurrentAwaitable{pos}
+  | If{pos}
+  | IndirectJump{pos}
+  | Jump{pos}
+  | Return{pos}
+  | Suspend{pos}
+  | Throw{pos}
+  | TypeSwitch{pos}
+  | Unreachable{pos}
+  | Yield{pos}
+  | YieldBreak{pos} ->
+    pos.die("Asking for LLVM name for unexpected Instr " + instr)
+  }
+}
+
+private fun llvmWriteTypeAndName(
+  instr: Instr,
+  asm: mutable AsmDefBuilder,
+): void {
+  instr match {
+  | ConstantCodeLabel{function, tag, case} ->
+    f = asm.env().getFunction(function, FileRange.builtin);
+
+    if (
+      !f.blocks.any(b -> {
+        b.terminator() match {
+        | ijump @ IndirectJump{successors} if (tag == ijump.tag) ->
+          asm.print("i8* blockaddress(%n, " % f);
+          target = successors[case].target;
+          if (
+            !f.blocks.any(b2 -> {
+              if (b2.id == target) {
+                asm.print("%%%n" % b2);
+                true
+              } else {
+                false
+              }
+            })
+          ) {
+            f.die("Failed to find indirect branch block " + target)
+          };
+
+          asm.print(")");
+
+          // We found it, stop looping.
+          true
+        | _ -> false
+        }
+      })
+    ) {
+      // Weird -- it seems that the indirect jump that wanted this
+      // entry has been optimized away after the vtables were set up?
+      asm.print("i8* null")
+    }
+  | ConstantFun{value} ->
+    // Currently, anyone calling this function expects an i8* rather
+    // than a function type so we must introduce a cast.
+    subf = asm.env().getFunction(value, asm.pos());
+    asm.print("i8* bitcast (%N to i8*)" % subf)
+  | ConstantVoid _ -> asm.print("void")
+  | _ -> asm.print("%t %n" % instr % instr)
+  }
+}
+
+private fun llvmWriteCmp(
+  instr: IntBinOp,
+  asm: mutable FunAsmDefBuilder,
+  llvmOpcode: String,
+): void {
+  llvmWriteDefault(
+    instr,
+    asm,
+    "",
+    Some(asm ~> asm.print("icmp %s %t" % llvmOpcode % instr.lhs)),
+  )
+}
+
+private fun llvmWriteDefault(
+  instr: Stmt,
+  asm: mutable FunAsmDefBuilder,
+  opcode: String,
+  writeOpcode: ?mutable FunAsmDefBuilder ~> void = None(),
+): void {
+  asm.print("  ");
+  if (instr.typ != tVoid) {
+    asm.print("%n = " % instr);
+  };
+
+  writeOpcode match {
+  | Some(x) -> x(asm)
+  | None() -> asm.print(opcode)
+  };
+
+  sep = " ";
+  instr.visitNonBlockArgInputs(
+    input -> {
+      asm.print("%s%n" % sep % input);
+      !sep = ", ";
+    },
+    asm.optinfo(),
+  );
+
+  for (s in instr.getSuccessors()) {
+    asm.print("%s%N" % sep % s.target);
+    !sep = ", "
+  };
+
+  asm.print(", %D\n" % instr)
+}
+
+// Shared code for llvmWriteLoad and llvmWriteStore. This is a bit tricky
+// to handle accessing bitfields.
+//
+// Returns five values:
+//
+// - Name of an LLVM temp holding the base address
+// - The type of memory pointed to by the LLVM temp.
+// - A Bool that is true iff this is a bitfield case.
+// - A bit offset where the value starts after the base address
+//   (always zero for the non-bitfield case).
+// - The known byte alignment of the base address pointer.
+private fun llvmGetAddr(
+  instr: LoadOrStore,
+  loadType: ScalarType,
+  asm: mutable FunAsmDefBuilder,
+): (String, String, Bool, Int, Int) {
+  optinfo = asm.optinfo();
+  pos = instr.pos;
+
+  bo = instr.bitOffset;
+  bs = loadType.bitSize;
+
+  // Default values for the non-bitfield case; maybe overridden below.
+  loadTypeName = loadType.llvmTypeName;
+  firstByteOffset = bo.shr(3);
+
+  normal = (bs == 8 || bs == 16 || bs == 32 || bs == 64) && bo % 8 == 0;
+
+  if (!normal) {
+    // Some kind of bitfield.
+    lastByteOffset = (bo + bs - 1).shr(3);
+
+    numBytes = lastByteOffset - firstByteOffset + 1;
+
+    pos.invariant(numBytes <= 8, "Illegal bitfield");
+
+    // Expand to a 1-, 2-, 4- or 8-byte value we can load, trying to
+    // keep the address aligned if possible.
+    while (numBytes.and(numBytes - 1) != 0) {
+      // We are trying to do something like a 3 byte (or 1 bit or 21 bit,
+      // etc.) load. We need to turn that into a power-of-two-byte load,
+      // where the returned value contains the desired bits somewhere inside.
+      //
+      // The tricky part is that we need to load extra bytes, but without
+      // causing a SEGV by accessing unmapped memory. And we would prefer
+      // to access aligned memory when possible.
+      //
+      // So we have a choice here for how to widen the memory reference,
+      // by either adding one byte from the preceding address or one byte
+      // from the following address.
+      //
+      // If the loadOffset is less aligned than the containing memory block
+      // (e.g. we are loading 3 bytes starting 1-byte into a 4-byte aligned
+      // address), it is definitely safe to load from the earlier address,
+      // because any SEGV would have to cross that alignment boundary, and
+      // this won't. So prefer that, because it may make the load aligned.
+      //
+      // By the same reasoning, if the end address of the bytes we want to
+      // load won't cross an alignment boundary, it's definitely
+      // safe to read a following byte, so that is the second choice.
+      //
+      // The remaining case is where we want to load more bytes than our
+      // alignment indicates, e.g. load 3 bytes from 1-byte aligned memory.
+      // This could happen if we had an array of 3-byte values, for example.
+      // In that case we rely on our runtime knowledge that every object
+      // (including arrays) has some metadata preceding it, so it's always
+      // safe to load bytes before the base address if we have to.
+      if (
+        firstByteOffset % instr.addrByteAlignment != 0 ||
+        ((firstByteOffset + numBytes) % instr.addrByteAlignment) == 0
+      ) {
+        !firstByteOffset = firstByteOffset - 1;
+        !bo = bo + 8;
+      };
+
+      !numBytes = numBytes + 1
+    };
+
+    !loadTypeName = "i" + (numBytes * 8);
+  };
+
+  // Compute the raw address to be loaded.
+  rawAddr = asm.llvmIdentifier();
+  asm.print("  %%%s = getelementptr inbounds " % rawAddr);
+
+  optinfo.getInstr(instr.addr) match {
+  | g @ ConstantGlobalSingleton _ ->
+    globalsType = asm.common.llvmGlobalsType();
+    asm.print("%s, %s* @%n, i64 0" % globalsType % globalsType % g)
+  | base -> asm.print("i8, %N" % base)
+  };
+
+  asm.print(", i64 %s, %D\n" % firstByteOffset % instr);
+
+  // Bitcast it to the right type.
+  addr = asm.llvmIdentifier();
+  asm.print(
+    "  %%%s = bitcast i8* %%%s to %s*, %D\n" %
+      addr %
+      rawAddr %
+      loadTypeName %
+      instr,
+  );
+
+  // Compute what we know about the alignment, by taking the lowest bit that
+  // could possibly be set in the address.
+  memAlignment = computeAlignment(instr.addrByteAlignment, firstByteOffset);
+
+  (addr, loadTypeName, !normal, bo - firstByteOffset * 8, memAlignment)
+}
+
+// Emit LLVM code for a Load Instr.
+private fun llvmWriteLoad(load: Load, asm: mutable FunAsmDefBuilder): void {
+  // Get the raw type of what we are loading.
+  t = load.typ.getScalarType(asm.env());
+
+  (addr, loadTypeName, isBitfield, bitOffset, memByteAlignment) = llvmGetAddr(
+    load,
+    t,
+    asm,
+  );
+
+  if (!isBitfield) {
+    // Normal aligned load.
+    asm.print(
+      "  %n = load %s, %s* %%%s, align %s, %D\n" %
+        load %
+        t.llvmTypeName %
+        t.llvmTypeName %
+        addr %
+        memByteAlignment %
+        load,
+    )
+  } else {
+    // Load the bits.
+    memValueTmp = asm.llvmIdentifier();
+    asm.print(
+      "  %%%s = load %s, %s* %%%s, align %s" %
+        memValueTmp %
+        loadTypeName %
+        loadTypeName %
+        addr %
+        memByteAlignment,
+    );
+
+    if (load.invariant) {
+      // Reading permanently immutable memory like a vtable.
+      asm.print(", !invariant.load !" + Metadata::kEmptyBlockIndex)
+    };
+
+    asm.print(", %D\n" % load);
+
+    shifted = if (bitOffset == 0) {
+      memValueTmp
+    } else {
+      tmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = lshr %s %%%s, %s, %D\n" %
+          tmp %
+          loadTypeName %
+          memValueTmp %
+          bitOffset %
+          load,
+      );
+      tmp
+    };
+
+    asm.print(
+      "  %n = trunc %s %%%s to %s, %D\n" %
+        load %
+        loadTypeName %
+        shifted %
+        t.llvmTypeName %
+        load,
+    )
+  }
+}
+
+// Emit LLVM code for a Store Instr.
+private fun llvmWriteStore(
+  store: Store,
+  orig: Instr,
+  asm: mutable FunAsmDefBuilder,
+): void {
+  optinfo = asm.optinfo();
+  pos = store.pos;
+
+  // Get the raw type of what we are storing.
+  storeValue = optinfo.getInstr(store.value);
+  t = storeValue.typ.getScalarType(asm.env());
+
+  (addr, memTypeName, isBitfield, bitOffset, memByteAlignment) = llvmGetAddr(
+    store,
+    t,
+    asm,
+  );
+
+  if (!isBitfield) {
+    if (kConfig.mainConfig.asan) {
+      tmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = bitcast %s* %%%s to i8*, %D\n" %
+          tmp %
+          memTypeName %
+          addr %
+          pos,
+      );
+      asm.print(
+        "  call void @SKIP_Obstack_verifyStore(i8* %%%s), %D\n" % tmp % pos,
+      );
+    };
+
+    // Normal aligned store.
+    //
+    // gcpointer values stored to obstack memory use write barrier.
+    // non-pointers, and pointers stored elsewhere, stack use plain store.
+    // NB: for completeness, a wb for initializing stores might be needed
+    // for refcounting, but we're unlikely to ever need it.
+    // Use value ScalarType as a proxy for field type, which was lowered away.
+    (orig, t.kind, storeValue.isConstant()) match {
+    | (ObstackStore _, GCPointerScalarKind _, false)
+    | (ObstackStore _, HhvmHandleScalarKind _, false)
+    | (ArrayUnsafeSet _, GCPointerScalarKind _, false)
+    | (ArrayUnsafeSet _, HhvmHandleScalarKind _, false) ->
+      asm.print(
+        "  call void @%s(%s* %%%s, %N), %D\n" %
+          orig match {
+          | ObstackStore _ -> "SKIP_Obstack_store"
+          | ArrayUnsafeSet _ -> "SKIP_Obstack_vectorUnsafeSet"
+          | _ -> ""
+          } %
+          memTypeName %
+          addr %
+          storeValue %
+          pos,
+      )
+    | (_, _, _) ->
+      asm.print(
+        "  store %N, %s* %%%s, align %s, %D\n" %
+          storeValue %
+          t.llvmTypeName %
+          addr %
+          memByteAlignment %
+          pos,
+      )
+    }
+  } else {
+    // Load the bits.
+    memValueTmp = asm.llvmIdentifier();
+    asm.print(
+      "  %%%s = load %s, %s* %%%s, align %s, %D\n" %
+        memValueTmp %
+        memTypeName %
+        memTypeName %
+        addr %
+        memByteAlignment %
+        pos,
+    );
+
+    mask = (1.shl(t.bitSize) - 1);
+
+    knownBits = storeValue match {
+    | ConstantInt{value} -> Some(value.and(mask))
+    | ConstantBool{value} ->
+      Some(
+        if (value) {
+          1
+        } else {
+          0
+        },
+      )
+    | _ -> None()
+    };
+
+    // AND out old bits, unless we are forcibly setting the bits to 1.
+    clearedBitsTmp = if (knownBits.default(0) == mask) {
+      // We are setting all the bits to one, so don't mask out.
+      memValueTmp
+    } else {
+      tmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = and %s %%%s, %s, %D\n" %
+          tmp %
+          memTypeName %
+          memValueTmp %
+          mask.shl(bitOffset).not() %
+          pos,
+      );
+      tmp
+    };
+
+    // OR in new bits, unless we are forcibly setting the bits to 0.
+    setBitsTmp = knownBits match {
+    | Some(0) -> clearedBitsTmp
+    | Some(n) ->
+      tmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = or %s %%%s, %s, %D\n" %
+          tmp %
+          memTypeName %
+          clearedBitsTmp %
+          n.shl(bitOffset) %
+          pos,
+      );
+      tmp
+    | None() ->
+      // Zero-extend the bits to be inserted.
+      zextTmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = zext %N to %s, %D\n" %
+          zextTmp %
+          storeValue %
+          memTypeName %
+          pos,
+      );
+
+      // Left shift into place.
+      shifted = if (bitOffset == 0) {
+        zextTmp
+      } else {
+        tmp = asm.llvmIdentifier();
+        asm.print(
+          "  %%%s = shl nuw %s %%%s, %s, %D\n" %
+            tmp %
+            memTypeName %
+            zextTmp %
+            bitOffset %
+            pos,
+        );
+        tmp
+      };
+
+      // OR into position.
+      tmp = asm.llvmIdentifier();
+      asm.print(
+        "  %%%s = or %s %%%s, %%%s, %D\n" %
+          tmp %
+          memTypeName %
+          clearedBitsTmp %
+          shifted %
+          pos,
+      );
+
+      tmp
+    };
+
+    // Store back the final bits.
+    asm.print(
+      "  store %s %%%s, %s* %%%s, align %s, %D\n" %
+        memTypeName %
+        setBitsTmp %
+        memTypeName %
+        addr %
+        memByteAlignment %
+        pos,
+    )
+  }
+}
+
+// Compute the address that starts a given array slot.
+private fun llvmComputeArrayAddress(
+  pos: Pos,
+  vecID: InstrID,
+  indexID: InstrID,
+  asm: mutable FunAsmDefBuilder,
+): (InstrID, ArraySlotInfo, Int, Int) {
+  optinfo = asm.optinfo();
+
+  vec = optinfo.getInstr(vecID);
+  vecType = vec.typ;
+  slotInfo = vecType.exampleSClass(asm.env()).getArraySlotInfo(pos);
+
+  index = optinfo.getInstr(indexID);
+
+  index.constantInteger() match {
+  | Some(n) ->
+    if (n < 0 || n >= (Int::max / 4) / slotInfo.bitSize) {
+      // Rather than generate bad assembly for a crazy array index
+      // that's irrelevant because it would fail its runtime bounds check,
+      // just generate asm code for index 0.
+      !n = 0
+    };
+
+    // Compile-time constant index, just multiply it out now.
+    bitOffset = n * slotInfo.bitSize;
+    byteAlign = computeAlignment(bitOffset, 64) / 8;
+    (vecID, slotInfo, bitOffset, byteAlign)
+  | None() ->
+    multmp = asm.llvmIdentifier("scaled_vec_index");
+    asm.print(
+      "  %%%s = mul nsw nuw %N, %s, %D\n" %
+        multmp %
+        index %
+        (slotInfo.bitSize / 8) %
+        pos,
+    );
+
+    // As a big hack, make a fake non-emitted Instr, which we return
+    // so that the caller can reuse llvmWriteLoad or llvmWriteStore as if
+    // the address had been computed by a real Instr.
+    //
+    // TODO: Clean this up by refactoring load/store emitters.
+    fakeAddrInstr = BytePointerAdd{
+      id => InstrID(asm.llvmCounter()),
+      typ => tNonGCPointer,
+      pos,
+      addr => InstrID::none,
+      offset => InstrID::none,
+      prettyName => "vec_slot_addr",
+    };
+    optinfo.idToInstr.insert(fakeAddrInstr);
+
+    asm.print(
+      "  %n = getelementptr inbounds i8, %N, i64 %%%s, %D\n" %
+        fakeAddrInstr %
+        vec %
+        multmp %
+        pos,
+    );
+
+    byteAlign = computeAlignment(slotInfo.bitSize, 64) / 8;
+
+    (fakeAddrInstr.id, slotInfo, 0, byteAlign)
+  }
+}
+
+private fun llvmWriteSkipLandingPad(
+  asm: mutable FunAsmDefBuilder,
+  pos: Pos,
+  writeResume: () -> void,
+  writeExcPtr: () -> void,
+): void {
+  excPair = asm.llvmIdentifier("excpair");
+  asm.print(
+    ("  %%%s = landingpad { i8*, i32 }\n" +
+      "          catch i8* bitcast ({ i8*, i8*, i8* }* " +
+      "@%s to i8*), %D\n") %
+      excPair %
+      skipExceptionTypeInfo %
+      pos,
+  );
+
+  typeID = asm.llvmIdentifier("caught_type_id");
+  asm.print(
+    "  %%%s = extractvalue { i8*, i32 } %%%s, 1, %D\n" % typeID % excPair % pos,
+  );
+
+  expectedID = asm.llvmIdentifier("expected_type_id");
+  asm.print(
+    ("  %%%s = tail call i32 @llvm.eh.typeid.for(i8* nonnull " +
+      "bitcast ({ i8*, i8*, i8* }* @%s to i8*)) " +
+      "nounwind, %D\n") %
+      expectedID %
+      skipExceptionTypeInfo %
+      pos,
+  );
+
+  eq = asm.llvmIdentifier("eq_type_id");
+  asm.print(
+    "  %%%s = icmp eq i32 %%%s, %%%s, %D\n" % eq % typeID % expectedID % pos,
+  );
+
+  yes = asm.llvmIdentifier("catch");
+  no = asm.llvmIdentifier("no_catch");
+
+  // See if this is a SkipException.
+  asm.print("  br i1 %%%s, label %%%s, label %%%s, %D\n" % eq % yes % no % pos);
+
+  // If not, just "resume".
+  asm.print("%s:\n" % no);
+  writeResume();
+  asm.print("  resume { i8*, i32 } %%%s, %D\n" % excPair % pos);
+
+  // This is the exception we wanted.
+  asm.print("%s:\n" % yes);
+
+  // Grab the C++ exception.
+  cpp1 = asm.llvmIdentifier("");
+  asm.print(
+    "  %%%s = extractvalue { i8*, i32 } %%%s, 0, %D\n" % cpp1 % excPair % pos,
+  );
+
+  cppExc = asm.llvmIdentifier("cpp_exc");
+  asm.print(
+    ("  %%%s = tail call i8* @__cxa_begin_catch(i8* %%%s) " +
+      "nounwind, %D\n") %
+      cppExc %
+      cpp1 %
+      pos,
+  );
+
+  // From that, load the m_skipException field, assumed to be 8 bytes in
+  // (no easy way to check this here...)
+  addr1 = asm.llvmIdentifier("exc_field_addr1");
+  asm.print(
+    "  %%%s = getelementptr inbounds i8, i8* %%%s, i64 8, %D\n" %
+      addr1 %
+      cppExc %
+      pos,
+  );
+  addr2 = asm.llvmIdentifier("exc_field_addr2");
+  asm.print("  %%%s = bitcast i8* %%%s to i8**, %D\n" % addr2 % addr1 % pos);
+
+  asm.print("  ");
+  writeExcPtr();
+  asm.print(" = load i8*, i8** %%%s, align 8, %D\n" % addr2 % pos);
+
+  asm.print("  tail call void @__cxa_end_catch(), %D\n" % pos);
+}
+
+private fun llvmWriteLandingPad(
+  land: LandingPad,
+  asm: mutable FunAsmDefBuilder,
+): void {
+  llvmWriteSkipLandingPad(
+    asm,
+    land.pos,
+    () -> {
+      void
+    },
+    () -> {
+      asm.print("%n" % land)
+    },
+  );
+
+  // Emit a jump to the catch block.
+  asm.print("  br %N, %D\n" % land.successors[0].target % land)
+}
+
+private fun llvmWriteReturn(
+  asm: mutable FunAsmDefBuilder,
+  instr: Stmt,
+  values: Array<InstrID>,
+): void {
+  optinfo = asm.optinfo();
+
+  values.size() match {
+  | 0 -> asm.print("  ret void")
+  | 1 -> asm.print("  ret %N" % values[0])
+  | _ ->
+    // Return a compound value as a struct.
+
+    returnTypes = values.map(v -> optinfo.getInstr(v).typ);
+
+    // NOTE: You can't seem to use {...} syntax to construct
+    // a struct containing any non-constants, so this uses
+    // insertvalue to build one up one field at a time.
+
+    prev = "undef";
+    values.eachWithIndex((i, v) -> {
+      tuple = asm.llvmIdentifier("compound_ret_" + i);
+      asm.print("  %%%s = insertvalue " % tuple);
+      llvmWriteReturnTypeName(asm, returnTypes);
+      asm.print(" %s, %N, %s, %D\n" % prev % v % i % instr);
+      !prev = "%" + tuple
+    });
+
+    asm.print("  ret ");
+    llvmWriteReturnTypeName(asm, returnTypes);
+    asm.print(" %s" % prev)
+  };
+  asm.print(", %D\n" % instr)
+}
+
+private fun llvmWriteTruncateOrExtend(
+  instr: TruncateOrExtend,
+  op: String,
+  asm: mutable FunAsmDefBuilder,
+): void {
+  asm.print(
+    "  %n = %s %N to %t, %D\n" % instr % op % instr.value % instr % instr,
+  )
+}
+
+private fun llvmWrite(instr: Stmt, asm: mutable FunAsmDefBuilder): void {
+  optinfo = asm.optinfo();
+
+  common = asm.common;
+  oldPos = common.pos;
+  common.!pos = instr.pos;
+
+  instr match {
+  | Alloca{byteSize, byteAlignment, zero} ->
+    tmp = asm.llvmIdentifier("%alloca");
+    t = "[" + byteSize + " x i8]";
+    asm.print(
+      "  %s = alloca %s, align %s, %D\n" % tmp % t % byteAlignment % instr,
+    );
+    asm.print(
+      "  %n = getelementptr inbounds %s, %s* %s, i64 0, i64 0, %D\n" %
+        instr %
+        t %
+        t %
+        tmp %
+        instr,
+    );
+    if (zero) {
+      // call wrapper for llvm.memset. we know alignment=8, volatile=false
+      asm.print(
+        "  call void @SKIP_llvm_memset(%N, i8 0, i64 %s), %D\n" %
+          instr %
+          byteSize %
+          instr,
+      )
+    }
+  | BytePointerAdd{addr, offset} ->
+    asm.print(
+      "  %n = getelementptr inbounds i8, i8* %n, %N, %D\n" %
+        instr %
+        addr %
+        offset %
+        instr,
+    )
+  | c @ RawCallBase _ -> llvmWriteCall(c, asm)
+  | c @ CallBase _ -> c.pos.die(c.opname() + " should have been lowered away")
+  | Cast{value} ->
+    asm.print("  %n = bitcast %N" % instr % value);
+    prim = instr.typ.getScalarType(asm.env());
+    asm.print(" to %s, %D\n" % prim.llvmTypeName % instr)
+  | FloatBits{value} ->
+    asm.print("  %n = bitcast double %n to i64, %D\n" % instr % value % instr)
+  | FloatToInt{value} ->
+    asm.print("  %n = fptosi double %n to i64, %D\n" % instr % value % instr)
+  | FloatToString{value} ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_Float_toString", Array[value])
+  | IntClz{value} ->
+    llvmWriteIntrinsicCall(
+      asm,
+      instr,
+      "llvm.ctlz.i64",
+      Array[
+        value,
+        optinfo.getConstant(
+          ConstantBool{id => optinfo.iid(), typ => tBool, value => false},
+        ).id,
+      ],
+    )
+  | IntCtz{value} ->
+    llvmWriteIntrinsicCall(
+      asm,
+      instr,
+      "llvm.cttz.i64",
+      Array[
+        value,
+        optinfo.getConstant(
+          ConstantBool{id => optinfo.iid(), typ => tBool, value => false},
+        ).id,
+      ],
+    )
+  | IntPopcount{value} ->
+    llvmWriteIntrinsicCall(asm, instr, "llvm.ctpop.i64", Array[value])
+  | IntToFloat{value} ->
+    asm.print("  %n = sitofp i64 %n to double, %D\n" % instr % value % instr)
+  | IntToString{value} ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_Int_toString", Array[value])
+  | IntSwitch{value, cases, successors} ->
+    asm.print("  switch ");
+
+    // Switch value and default case.
+    valueInstr = optinfo.getInstr(value);
+    asm.print("%N, %N" % valueInstr % successors[0].target);
+
+    // Non-default cases.
+    asm.print(" [");
+    cases.eachWithIndex((i, case) -> {
+      asm.print(
+        "\n    %t %s, %N" % valueInstr % case % successors[i + 1].target,
+      );
+    });
+    asm.print(" ]\n")
+  | Intern{value} ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_intern", Array[value])
+  | LoadVTableEntry{id, typ, pos, vtable, offset} ->
+    // Now that we know the bit offset where this value ended up, create
+    // a Load and let it handle the code generation mechanics.
+    vtableInfo = asm.env().vtables.fromSome();
+    load = Load{
+      id,
+      typ,
+      pos,
+      addrByteAlignment => 8,
+      addr => vtable,
+      bitOffset => vtableInfo.vtableBitOffsets[offset.id],
+      canCSE => true,
+      invariant => true,
+    };
+    llvmWriteLoad(load, asm)
+  | Freeze{value} ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_Obstack_freeze", Array[value])
+  | call @ NamedCall _ -> llvmWriteNamedCall(asm, call)
+  | ObstackAlloc{byteSize, pinned, zero} ->
+    llvmWriteIntrinsicCall(
+      asm,
+      instr,
+      if (pinned) {
+        if (zero) "SKIP_Obstack_calloc_pinned" else "SKIP_Obstack_alloc_pinned"
+      } else {
+        if (zero) "SKIP_Obstack_calloc" else "SKIP_Obstack_alloc"
+      },
+      Array[byteSize],
+    )
+  | ObstackNote _ ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_Obstack_note_inl", Array[])
+  | ObstackShallowClone{value} ->
+    llvmWriteIntrinsicCall(
+      asm,
+      instr,
+      "SKIP_Obstack_shallowClone",
+      Array[value],
+    )
+  | Reinterpret{value} ->
+    src = optinfo.getInstr(value);
+    srcPrim = src.typ.getScalarType(asm.env());
+    dstPrim = instr.typ.getScalarType(asm.env());
+
+    opcode = if (srcPrim.isLlvmPointer() == dstPrim.isLlvmPointer()) {
+      "bitcast"
+    } else if (srcPrim.isLlvmPointer()) {
+      "ptrtoint"
+    } else {
+      "inttoptr"
+    };
+
+    asm.print(
+      "  %n = %s %N to %s, %D\n" %
+        instr %
+        opcode %
+        src %
+        dstPrim.llvmTypeName %
+        instr,
+    )
+  | x @ Return{values} -> llvmWriteReturn(asm, x, values)
+  | StringCmp{lhs, rhs} ->
+    llvmWriteIntrinsicCall(asm, instr, "SKIP_String_cmp", Array[lhs, rhs])
+  | StringCmpEq{lhs, rhs} ->
+    done = optinfo.getInstr(rhs) match {
+    | ConstantString{value} ->
+      value match {
+      | short @ ShortUTF8String _ ->
+        // x == "foo", where "foo" is "short", turns into a simple
+        // numerical comparison against foo's constant bit pattern.
+        asm.print(
+          "  %n = icmp eq %N, inttoptr (i64 %s to i8*), %D\n" %
+            instr %
+            lhs %
+            short.bits() %
+            instr,
+        );
+        true
+      | _ -> false
+      }
+    | _ -> false
+    };
+
+    if (!done) {
+      llvmWriteIntrinsicCall(asm, instr, "SKIP_String_eq", Array[lhs, rhs])
+    }
+  | v @ StringConcat{args} ->
+    // The runtime provides special versions for 2, 3 or 4 arguments.
+    varargs = v.args.size() < 2 || v.args.size() > 4;
+
+    suffix = if (!varargs) {
+      v.args.size().toString()
+    } else {
+      ""
+    };
+    runtimeFunName = "SKIP_String_concat" + suffix;
+
+    if (!varargs) {
+      // Call specialized versions for smaller numbers of strings.
+      // (Even if not optimized in the runtime, these compile to
+      // fewer bytes).
+      llvmWriteIntrinsicCall(asm, v, runtimeFunName, args)
+    } else {
+      // Allocate a stack array to hold the arguments.
+      bufType = "[" + args.size() + " x i8*]";
+      bufVar = asm.llvmIdentifier("%strcat.args");
+      asm.print(
+        "  %s = alloca %s, align %s, %D\n" %
+          bufVar %
+          bufType %
+          stackAlignStr %
+          instr,
+      );
+
+      // Tell LLVM its lifetime starts here.
+      lifetimeVar = asm.llvmIdentifier("%strcat.lifetime_arg");
+      asm.print(
+        "  %s = bitcast %s* %s to i8*, %D\n" %
+          lifetimeVar %
+          bufType %
+          bufVar %
+          instr,
+      );
+      lifetimeArgs = (
+        "(i64 " +
+        (ptrByteSize * args.size()) +
+        ", i8* " +
+        lifetimeVar +
+        ")"
+      );
+      asm.print(
+        "  call void @llvm.lifetime.start%s, %D\n" % lifetimeArgs % instr,
+      );
+
+      // Store the strings to concatenate into the stack array.
+      bufferStartAddress = "null";
+      args.eachWithIndex((i, arg) -> {
+        refVar = asm.llvmIdentifier("%strcat.ref");
+
+        if (i == 0) {
+          !bufferStartAddress = refVar
+        };
+
+        asm.print(
+          "  %s = getelementptr inbounds %s, %s* %s, i64 0, i64 %s, %D\n" %
+            refVar %
+            bufType %
+            bufType %
+            bufVar %
+            i %
+            instr,
+        );
+        // Could use StackStore wb for completeness, but it's unlikely to
+        // ever be worth the cost, assuming stack access is hottest kind.
+        asm.print("  store %N, i8** %s, align 8, %D\n" % arg % refVar % instr)
+      });
+
+      // Call the runtime.
+      asm.print(
+        "  %n = call i8* @%s(i8** %s, i64 %s), %D\n" %
+          instr %
+          runtimeFunName %
+          bufferStartAddress %
+          args.size() %
+          instr,
+      );
+
+      // End the stack array lifetime.
+      asm.print("  call void @llvm.lifetime.end%s, %D\n" % lifetimeArgs % instr)
+    }
+  | x @ StringHash{value} ->
+    llvmWriteIntrinsicCall(asm, x, "SKIP_String_hash_inl", Array[value])
+  | v @ StringSwitch{value, successors} ->
+    // Switching on strings is fast but fairly complicated.
+    //
+    // If any of the case statements are short strings, we do an integer
+    // switch on the String's raw bit pattern to see which case
+    // it matches. If it matches any, we are done.
+    //
+    // If it doesn't match any short string, then we check to see if it's
+    // a long string. If not, go to he default case, Otherwise, do an
+    // integer swtich on the 64-bit size+hash header to see which string
+    // might match. For each case we then do an actual string equality check
+    // to make sure it's the string we were looking for, handling collisions
+    // where multiple case statements have the same header.
+
+    defaultBlock = optinfo.getBlock(successors[0].target);
+
+    // Partition the case statements into short and long strings.
+    shortCases = mutable Vector<(Int, ShortUTF8String)>[];
+    longCases = mutable Vector<(Int, LongUTF8String)>[];
+    for (i in Range(0, v.cases.size())) {
+      v.getCase(i, optinfo) match {
+      | s @ ShortUTF8String _ -> shortCases.push((i, s))
+      | s @ LongUTF8String _ -> longCases.push((i, s))
+      }
+    };
+
+    longLabel = "";
+
+    // Get raw bits from the string.
+    valueInstr = optinfo.getInstr(value);
+    bits = asm.llvmIdentifier("%stringswitch.bits");
+    asm.print("  %s = ptrtoint %N to i64, %D\n" % bits % valueInstr % instr);
+
+    if (!shortCases.isEmpty()) {
+      asm.print("  switch i64 %s, " % bits);
+
+      // Write out default case.
+      if (longCases.isEmpty()) {
+        // No long strings, so jump to normal default case.
+        asm.print("%N" % defaultBlock)
+      } else {
+        // Emit a new block to check for long strings.
+        !longLabel = asm.llvmIdentifier("stringswitch.checklong");
+        asm.print("label %%%s" % longLabel)
+      };
+
+      // Non-default cases.
+      asm.print(" [");
+      for (case in shortCases) {
+        (c, str) = case;
+        asm.print("\n    i64 %s, %N" % str.bits() % successors[c + 1].target)
+      };
+      asm.print(" ]\n")
+    };
+
+    if (!longCases.isEmpty()) {
+      // Handle long string cases.
+
+      if (longLabel != "") {
+        // Add label for short default case to jump to if needed.
+        asm.print("%s:\n" % longLabel)
+      };
+
+      // If the string is short, jump to the default case.
+      if (UTF8String::useShortStrings()) {
+        isShort = asm.llvmIdentifier("%stringswitch.isShort");
+        asm.print("  %s = icmp slt i64 %s, 0, %D\n" % isShort % bits % instr);
+        asm.print("  br i1 %s, %N" % isShort % defaultBlock);
+        isLongLabel = asm.llvmIdentifier("stringswitch.islong");
+        asm.print(", label %%%s, %D\n" % isLongLabel % instr);
+        asm.print("%s:\n" % isLongLabel)
+      };
+
+      // Due to T17433959 we need to ignore the high hash bit,
+      // so we left-shift it out.
+      highHashShift = if (targetIsWasm()) 0 else 1;
+
+      // Map each long string header word to an array of case indices
+      // that have that value.
+      buckets: SortedMap<Int, Array<(Int, LongUTF8String)>> = longCases.foldl(
+        (acc, case) -> {
+          (_, str) = case;
+          hash = str.runtimeHash;
+          header = hash.shl(32).or(str.utf8.size());
+          masked = header.shl(highHashShift);
+          acc.setWith(masked, Array[case], (old, v) -> {
+            old.concat(v)
+          })
+        },
+        SortedMap::create(),
+      );
+
+      // It's a long string, so load the long string header.
+      rawHdrPtr = asm.llvmIdentifier("%stringswitch.rawhdrptr");
+      asm.print(
+        "  %s = getelementptr inbounds i8, %N, i64 -8, %D\n" %
+          rawHdrPtr %
+          valueInstr %
+          instr,
+      );
+      hdrPtr = asm.llvmIdentifier("%stringswitch.hdrptr");
+      asm.print(
+        "  %s = bitcast i8* %s to i64*, %D\n" % hdrPtr % rawHdrPtr % instr,
+      );
+      unmaskedHdr = asm.llvmIdentifier("%stringswitch.unmasked_hdr");
+      asm.print(
+        "  %s = load i64, i64* %s, align 8, %D\n" %
+          unmaskedHdr %
+          hdrPtr %
+          instr,
+      );
+      hdr = asm.llvmIdentifier("%stringswitch.hdr");
+      asm.print(
+        "  %s = shl i64 %s, %s, %D\n" %
+          hdr %
+          unmaskedHdr %
+          highHashShift %
+          instr,
+      );
+
+      // Write out the long string switch statement.
+      asm.print("  switch i64 %s, %N [" % hdr % defaultBlock);
+
+      bucketLabels = buckets.map((hash, vals) -> {
+        asm.llvmIdentifier(
+          "longstringcase_" +
+            (if (vals.size() == 1) {
+              vals[0].i1.string
+            } else {
+              hash.toString()
+            }),
+        )
+      });
+
+      buckets.each((hash, _) -> {
+        asm.print("\n    i64 %s, label %%" % hash);
+        asm.writeQuotedIdentifier(bucketLabels[hash])
+      });
+      asm.print(" ]\n");
+
+      // Write out the long string switch cases.
+      buckets.each((hash, cases) -> {
+        label = bucketLabels[hash];
+
+        cases.eachWithIndex((i, case) -> {
+          (c, _str) = case;
+          asm.writeQuotedIdentifier(label);
+          asm.print(":\n");
+
+          cmpVar = asm.llvmIdentifier("%longstringcase_eq");
+          asm.print(
+            "  %s = call i1 @SKIP_String_eq(%N, %N), %D\n" %
+              cmpVar %
+              valueInstr %
+              v.cases[c] %
+              instr,
+          );
+
+          // Here's where we go if the string is equal.
+          asm.print("  br i1 %s, %N, " % cmpVar % successors[c + 1].target);
+
+          // Here's where we go if it's not.
+          if (i + 1 < cases.size()) {
+            // We have a hash collision, jump to the next collider.
+            !label = asm.llvmIdentifier("longstringcase");
+            asm.print("label %%%s" % label)
+          } else {
+            // None else to try, jump to default case.
+            asm.print("%N" % defaultBlock)
+          };
+          asm.print("\n")
+        })
+      })
+    }
+  | TupleExtract{obj, index} ->
+    asm.print("  %n = extractvalue %N, %s, %D\n" % instr % obj % index % instr)
+
+  | t @ SignExtend _ -> llvmWriteTruncateOrExtend(t, "sext", asm)
+  | t @ Truncate _ -> llvmWriteTruncateOrExtend(t, "trunc", asm)
+  | t @ ZeroExtend _ -> llvmWriteTruncateOrExtend(t, "zext", asm)
+
+  | BoolCmpEq _ -> llvmWriteDefault(instr, asm, "icmp eq i1")
+  | BoolCmpNe _ -> llvmWriteDefault(instr, asm, "icmp ne i1")
+  | BoolCmpLe _ -> llvmWriteDefault(instr, asm, "icmp ule i1")
+  | BoolCmpLt _ -> llvmWriteDefault(instr, asm, "icmp ult i1")
+  | FloatAdd _ -> llvmWriteDefault(instr, asm, "fadd double")
+  | FloatCmpEq _ -> llvmWriteDefault(instr, asm, "fcmp oeq double")
+  | FloatCmpLe _ -> llvmWriteDefault(instr, asm, "fcmp ole double")
+  | FloatCmpLt _ -> llvmWriteDefault(instr, asm, "fcmp olt double")
+  | FloatCmpNe _ -> llvmWriteDefault(instr, asm, "fcmp une double")
+  | FloatDiv _ -> llvmWriteDefault(instr, asm, "fdiv double")
+  | FloatMul _ -> llvmWriteDefault(instr, asm, "fmul double")
+  | FloatSub _ -> llvmWriteDefault(instr, asm, "fsub double")
+  | x @ Load _ -> llvmWriteLoad(x, asm)
+  | If _ -> llvmWriteDefault(instr, asm, "br i1")
+  | IndirectJump{label, successors} ->
+    asm.print("  indirectbr %N, [" % label);
+    successors.eachWithIndex((i, s) -> {
+      if (i > 0) asm.print(", ");
+      asm.print("%N" % s.target)
+    });
+    asm.print(" ], %D\n" % instr)
+  | IntAdd _ -> llvmWriteDefault(instr, asm, "add i64")
+  | IntAnd _ -> llvmWriteDefault(instr, asm, "and i64")
+  | cmp @ IntCmpEq _ -> llvmWriteCmp(cmp, asm, "eq")
+  | cmp @ IntCmpLe _ -> llvmWriteCmp(cmp, asm, "sle")
+  | cmp @ IntCmpLt _ -> llvmWriteCmp(cmp, asm, "slt")
+  | cmp @ IntCmpNe _ -> llvmWriteCmp(cmp, asm, "ne")
+  | cmp @ IntCmpUle _ -> llvmWriteCmp(cmp, asm, "ule")
+  | cmp @ IntCmpUlt _ -> llvmWriteCmp(cmp, asm, "ult")
+  | IntDiv _ -> llvmWriteDefault(instr, asm, "sdiv i64")
+  | IntMul _ -> llvmWriteDefault(instr, asm, "mul i64")
+  | IntOr _ -> llvmWriteDefault(instr, asm, "or i64")
+  | IntRem _ -> llvmWriteDefault(instr, asm, "srem i64")
+  | IntSll _ -> llvmWriteDefault(instr, asm, "shl i64")
+  | IntSra _ -> llvmWriteDefault(instr, asm, "ashr i64")
+  | IntSrl _ -> llvmWriteDefault(instr, asm, "lshr i64")
+  | IntSub _ -> llvmWriteDefault(instr, asm, "sub i64")
+  | IntXor _ -> llvmWriteDefault(instr, asm, "xor i64")
+  | Jump _ -> llvmWriteDefault(instr, asm, "br")
+  | land @ LandingPad _ -> llvmWriteLandingPad(land, asm)
+  | x @ Store _ -> llvmWriteStore(x, x, asm)
+  | x @ Throw{exception => e} ->
+    llvmWriteIntrinsicCall(asm, x, "SKIP_throw", Array[e]);
+    asm.print("  unreachable, %D\n" % x)
+  | Unreachable{why} ->
+    if (!kConfig.release) {
+      asm.print("  call void @SKIP_unreachableWithExplanation(");
+      asm.common.writeCStringRef(asm, UTF8String::make(why + "\0"));
+      asm.print("), %D\n" % instr)
+    } else {
+      asm.print("  call void @SKIP_unreachable(), %D\n" % instr)
+    };
+    asm.print("  unreachable, %D\n" % instr)
+  | ArrayUnsafeGet{id, typ, pos, obj, index, tupleIndex} ->
+    (addr, info, extraBitOffset, addrByteAlignment) = llvmComputeArrayAddress(
+      instr.pos,
+      obj,
+      index,
+      asm,
+    );
+
+    // Dummy up a fake Load instruction and let it do the heavy lifting.
+    fakeLoad = Load{
+      id,
+      typ,
+      pos,
+      addr,
+      bitOffset => info.bitOffsets[max(tupleIndex, 0)] + extraBitOffset,
+      addrByteAlignment,
+      canCSE => optinfo.getInstr(obj).typ.isDeepFrozen(),
+    };
+
+    llvmWriteLoad(fakeLoad, asm)
+
+  | x @ ArrayUnsafeSet{id, typ, pos, obj, index, tupleIndex, value} ->
+    (addr, info, extraBitOffset, addrByteAlignment) = llvmComputeArrayAddress(
+      instr.pos,
+      obj,
+      index,
+      asm,
+    );
+
+    // Dummy up a fake Store instruction and let it do the heavy lifting.
+    fakeStore = ObstackStore{
+      id,
+      typ,
+      pos,
+      addr,
+      bitOffset => info.bitOffsets[max(tupleIndex, 0)] + extraBitOffset,
+      addrByteAlignment,
+      value,
+    };
+
+    llvmWriteStore(fakeStore, x, asm)
+
+  | AsyncReturn _
+  | GetConst _
+  | GetCurrentAwaitable _
+  | GetField _
+  | LocalGC _
+  | ObstackUsage _
+  | Object _
+  | SetField _
+  | Suspend _
+  | TypeSwitch _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | With _
+  | Yield _
+  | YieldBreak _ ->
+    instr.pos.die(instr.opname() + " should have been lowered away.")
+  };
+
+  common.!pos = oldPos
+}
+
+private fun llvmWriteBlockName(b: Block, asm: mutable AsmDefBuilder): void {
+  if (b.prettyName.isEmpty()) {
+    asm.print("b%s" % b.idValue())
+  } else {
+    asm.writeQuotedIdentifier("b" + b.idValue() + "." + b.prettyName)
+  }
+}
+
+private fun llvmWriteBlock(b: Block, asm: mutable FunAsmDefBuilder): void {
+  optinfo = asm.optinfo();
+
+  asm.print("%n:\n" % b);
+
+  // Each block parameter turns into a phi node.
+  predecessors = optinfo.getPredecessors(b.id);
+  for (p in b.params) {
+    asm.print("  %n = phi %t" % p % p);
+    sep = " ";
+    for (x in predecessors.zip(p.inputsAsArray(optinfo))) {
+      (predID, input) = x;
+      asm.print("%s[ %n, %%%n ]" % sep % input % predID);
+      !sep = ", ";
+    };
+    asm.print(", %D\n" % p)
+  };
+
+  // Now dump out the main instructions.
+  for (i in b.instrs) {
+    llvmWrite(i, asm)
+  }
+}
+
+// See docs for insertTrampolineBlocks
+private fun needsTrampolineBlock(b: Block): Bool {
+  term = b.terminator();
+  successors = term.successors;
+
+  successors.any(succ -> !succ.args.isEmpty()) &&
+    (term match {
+    | LandingPad _
+    | StringSwitch _ ->
+      true
+    | _ ->
+      // See if we ever jump to the same target multiple times.
+      seen = UnorderedSet::mcreate(successors.size());
+      !successors.all(t -> seen.maybeInsert(t.target))
+    })
+}
+
+// In our SSA form one block may branch to another block twice, passing
+// different parameters on each edge. LLVM uses phi nodes, which require
+// a small representation change to implement this.
+//
+// Each set of different inputs to a block requires a different predecessor
+// block so the phi node can latch a different set of values. So if we detect
+// one block jumping to another twice, we introduce dummy
+// "jump" trampoline blocks only to make the phi node correct.
+//
+// Also, we have a few instructions that create new basic blocks during
+// LLVM emission. That changes the LLVM predecessor block for the phis, but
+// we don't know that. So any block containing one of these instructions
+// just blindly forces trampolines for all successors that take parameters.
+// Those trampolines take no block params, so won't create phi nodes, and
+// won't care that their predecessor changes.
+//
+// NOTE: This will create somewhat more trampoline blocks than necessary,
+// but LLVM will easily clean them up so that's OK.
+private fun insertTrampolineBlocks(f: Function): Function {
+  optinfo = OptimizerInfo::make(f);
+  blocksBuf = mutable Vector[];
+
+  // Remember all trampoline blocks we have already made. Each takes
+  // zero BlockParams.
+  allTrampolines = mutable UnorderedMap[];
+
+  for (b in f.blocks) {
+    if (!needsTrampolineBlock(b)) {
+      blocksBuf.push(b)
+    } else {
+      terminator = b.terminator();
+      pos = terminator.pos;
+
+      trampolinesBuf = mutable Vector[];
+
+      newSuccessors = b.successors().map(succ -> {
+        allTrampolines.maybeGet(succ) match {
+        | Some(t) -> BlockSuccessor(t)
+        | None() ->
+          // Create a trampoline block.
+          jump = Jump{
+            id => optinfo.iid(),
+            typ => tVoid,
+            pos,
+            successors => Array[succ],
+          };
+          optinfo.idToInstr.insert(jump);
+
+          tramp = Block{
+            id => optinfo.idToBlock.allocID(),
+            params => Array[],
+            prettyName => "trampoline",
+            instrs => Array[jump],
+            pos,
+          };
+          optinfo.idToBlock.insert(tramp);
+
+          // Remember this block.
+          trampolinesBuf.push(tramp);
+          allTrampolines.set(succ, tramp.id);
+
+          BlockSuccessor(tramp.id)
+        }
+      });
+
+      // Create the new instrs; same as old, but with new successors.
+      first = b.instrs.slice(0, b.instrs.size() - 1);
+      last = Array[terminator with {successors => newSuccessors}];
+      newInstrs = first.concat(last);
+
+      blocksBuf.push(b with {instrs => newInstrs});
+
+      // Place any new trampolines only after this block (e.g. we wouldn't
+      // want them before the entry block!)
+      trampolinesBuf.each(blocksBuf.push)
+    }
+  };
+
+  f with {blocks => blocksBuf.toArray()}
+}
+
+// See insertTrampolineBlocks().
+fun maybeInsertTrampolineBlocks(f: Function): Function {
+  if (f.blocks.any(needsTrampolineBlock)) {
+    insertTrampolineBlocks(f)
+  } else {
+    f
+  }
+}
+
+fun llvmWriteFunctionDefinition(
+  f: Function,
+  symbol: String,
+  common: mutable AsmOutput,
+): void {
+  pos = f.pos;
+
+  common.resetForNewFunction(pos);
+
+  externallyVisible = f.isDisasm || cppIsExported(f.name, f.annotations, pos);
+
+  disasm = (
+    (f.isDisasm || kConfig.mainConfig.disasmAll) &&
+    !f.superpositions.isEmpty()
+  );
+
+  forceExternal = externallyVisible || disasm;
+
+  optinfo = OptimizerInfo::make(f);
+
+  asm = mutable FunAsmDefBuilder{
+    id => f.getAsmDefID(),
+    canShare => !forceExternal,
+    forceExternal,
+    symbol => symbol,
+    sharedSymbol => Some(f.gfunction.id),
+    common,
+    typeString => None(),
+    typeRef => None(),
+    optinfo_ => optinfo,
+    llvmSuffixCounter => max(
+      optinfo.idToInstr.size(),
+      optinfo.idToBlock.size(),
+    ),
+  };
+
+  if (disasm) {
+    // Name everyone who shares this function.
+    // TODO: We should display Foo<X>::bar<Y>, not Foo::bar<X, Y>.
+    for (superposition in f.superpositions) {
+      name = f.gfunction.id;
+      targs = superposition.cls.id.concat(superposition.method.id);
+      if (!targs.isEmpty()) {
+        !name = name + "<" + targs.join(", ") + ">"
+      };
+      asm.print(";;; @disasm_function: (%r" % name);
+
+      if (pos.filename != FileRange.builtin.filename) {
+        start = pos.startPosition();
+        asm.print(
+          ", %r, %s, %s" %
+            pos.filename %
+            (start.line() + 1) %
+            (start.column() + 1),
+        )
+      };
+
+      asm.print(")\n")
+    };
+  };
+
+  asm.print("define ");
+  asm.writeLinkage();
+  defineEndOffset = asm.text.size();
+
+  llvmWriteReturnTypeName(asm, f.funType.returnType);
+  asm.print(" %n(" % f);
+  writeFunParams(f, asm);
+  asm.print(")");
+
+  if (!f.isDisasm && !cppIsExported(f.name, f.annotations, pos)) {
+    asm.print(" unnamed_addr")
+  };
+
+  if (annotationsContain(f.annotations, "@no_inline", pos)) {
+    asm.print(" noinline")
+  };
+
+  f.status match {
+  | OptDone{returns, canThrow} ->
+    if (!returns) {
+      asm.print(" noreturn")
+    };
+    if (!canThrow) {
+      asm.print(" nounwind")
+    }
+  | OptPartial _ -> void
+  };
+
+  // Gross hack to turn the definition info above into a declaration.
+  asm.declarationText.write("declare external ");
+  refOffsetDelta = asm.declarationText.size() - defineEndOffset;
+  for (ref in asm.refs) {
+    asm.declarationRefs.push((ref.i0 + refOffsetDelta, ref.i1))
+  };
+  asm.declarationText.write(asm.text.toString().substring(defineEndOffset));
+  asm.declarationText.writeChar('\n');
+
+  asm.print(
+    (" uwtable personality i8* bitcast " +
+      "(i32 (...)* @__gxx_personality_v0 to i8*) %D {\n") % f,
+  );
+
+  for (b in f.blocks) llvmWriteBlock(b, asm);
+  asm.print("}\n");
+
+  if (disasm) {
+    asm.print(";;; @disasm_symbol: \"");
+    // Use writeRef directly so we get the symbol without a leading "@".
+    asm.writeRef(f.getAsmDefID());
+    asm.print("\"\n");
+  };
+
+  _ = asm.finish();
+
+  common.doneWithFunction()
+}
+
+fun llvmWriteFunctionDeclaration(
+  f: Function,
+  symbol: String,
+  common: mutable AsmOutput,
+): void {
+  asmDefID = f.getAsmDefID();
+
+  common.externs.maybeGet(symbol) match {
+  | Some(old) -> common.defs.set(asmDefID, common.defs[old])
+  | None() ->
+    asm = mutable StructAsmDefBuilder{
+      id => asmDefID,
+      canShare => false,
+      symbol,
+      common,
+      typeString => None(),
+      typeRef => None(),
+    };
+    common.externs.set(symbol, asmDefID);
+    if (
+      annotationsContainParam(f.annotations, "@cpp_extern", f.pos).isSome() ||
+      Hhvm.isExternAnnotation(f.annotations, f.pos)
+    ) {
+      // Assume that any function that isn't explicitly declared as
+      // @cpp_runtime or @hhvm_extern is declared in the preamble.
+      // OuterIstToIR checks that user-defined native functions have
+      // @cpp_extern, @cpp_runtime or @hhvm_extern.
+      asm.print("declare ");
+      if (f.funType.returnType.size() == 1) {
+        llvmWriteTypeCallAttribute(asm, f.funType.returnType[0], false, true)
+      };
+      llvmWriteReturnTypeName(asm, f.funType.returnType);
+      asm.print(" %n(" % asm);
+      writeFunParams(f, asm);
+      asm.print(")\n")
+      // TODO: Shouldn't we insert nounwind, noreturn, etc.?
+    };
+
+    _ = asm.finish()
+  }
+}
+
+fun llvmWriteFunction(f: Function, common: mutable AsmOutput): void {
+  symbol = cppExternalName(f) match {
+  | Some(extName) -> extName
+  | None() ->
+    name = f.gfunction.id;
+    if (f.hasImplementation()) {
+      funPrefix + mangle(name)
+    } else {
+      !name = name.replace("::.ConcreteMetaImpl::", "::");
+      "SKIP_" + mangle(name)
+    }
+  };
+
+  if (f.hasImplementation()) {
+    llvmWriteFunctionDefinition(f, symbol, common)
+  } else {
+    llvmWriteFunctionDeclaration(f, symbol, common)
+  }
+}
+
+fun writeFunParams(f: Function, asm: mutable AsmDefBuilder): void {
+  f.params.eachWithIndex((i, p) -> {
+    asm.print("%s%t %A%n" % (if (i > 0) ", " else "") % p % p % p)
+  })
+}
+
+private fun writeBlacklist(
+  sep: String,
+  blacklist: Array<SFunctionID>,
+  asm: mutable AsmDefBuilder,
+): String {
+  if (!blacklist.isEmpty()) {
+    asm.print("%sblacklist=(" % sep);
+    !sep = ", ";
+
+    blacklist.eachWithIndex((i, b) -> {
+      if (i > 0) asm.print(", ");
+      asm.print(b.toString())
+    });
+    asm.print(")")
+  };
+
+  sep
+}
+
+fun cppExternalName(f: Function): ?String {
+  pos = f.pos;
+
+  annotationsContainParam(f.annotations, "@cpp_export", pos) match {
+  | r @ Some(s) if (!s.isEmpty()) -> return r
+  | _ -> void
+  };
+
+  annotationsContainParam(f.annotations, "@cpp_extern", pos) match {
+  | r @ Some(s) if (!s.isEmpty()) -> return r
+  | _ -> void
+  };
+
+  annotationsContainParam(f.annotations, "@cpp_runtime", pos) match {
+  | r @ Some(s) if (!s.isEmpty()) -> return r
+  | _ -> void
+  };
+
+  // Check for --export-function-as.
+  kConfig.mainConfig.exportedAsFunctions.maybeGet(f.gfunction.id) match {
+  | Some(s) if (!s.isEmpty()) -> Some(s)
+  | _ -> None()
+  }
+}
+
+fun cppIsExported(funName: String, annotations: SSet, pos: Pos): Bool {
+  annotationsContainParam(annotations, "@cpp_export", pos).isSome() ||
+    kConfig.mainConfig.exportedAsFunctions.containsKey(funName)
+}
+
+fun cppIsImported(funInfo: FunInfoCommon, pos: Pos): Bool {
+  annotationsContainParam(funInfo.annotations, "@cpp_runtime", pos).isSome() ||
+    annotationsContainParam(funInfo.annotations, "@cpp_extern", pos).isSome() ||
+    Hhvm.isExternAnnotation(funInfo.annotations, pos)
+}

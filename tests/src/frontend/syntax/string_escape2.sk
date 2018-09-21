@@ -1,0 +1,12 @@
+fun main(): void {
+  ('\U0001F602').toString().chars().each(ch ~>
+    print_string(ch.code().toString())
+  );
+  print_string("");
+  (('\U0001F602').toString() + "\n").chars().each(ch ~>
+    print_string(ch.code().toString())
+  );
+  print_string("");
+  ("\U0001F602").chars().each(ch ~> print_string(ch.code().toString()));
+  void
+}

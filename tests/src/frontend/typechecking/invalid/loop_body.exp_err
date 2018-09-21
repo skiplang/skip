@@ -1,0 +1,96 @@
+File "./typechecking/invalid/loop_body.sk", line 2, characters 15-61:
+Invalid loop body. The body of loops is discarded so it must have type 'void'
+If you want the loop to have result, use 'break'
+1 | fun no1(): void {
+2 |   _: String = while (false) "is this how it works?" else "no"
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/loop_body.sk", line 2, characters 29-51:
+The type: String
+1 | fun no1(): void {
+2 |   _: String = while (false) "is this how it works?" else "no"
+  |                             ^^^^^^^^^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/loop_body.sk", line 2, characters 29-51:
+Is not a subtype of: void
+1 | fun no1(): void {
+2 |   _: String = while (false) "is this how it works?" else "no"
+  |                             ^^^^^^^^^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/loop_body.sk", line 6, characters 15-63:
+Invalid loop body. The body of loops is discarded so it must have type 'void'
+If you want the loop to have result, use 'break'
+4 |
+5 | fun no2(): void {
+6 |   _: String = do "is this how it works?" while (true) else "no"
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/loop_body.sk", line 6, characters 18-40:
+The type: String
+4 |
+5 | fun no2(): void {
+6 |   _: String = do "is this how it works?" while (true) else "no"
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/loop_body.sk", line 6, characters 18-40:
+Is not a subtype of: void
+4 |
+5 | fun no2(): void {
+6 |   _: String = do "is this how it works?" while (true) else "no"
+  |                  ^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/loop_body.sk", line 10, characters 35-57:
+Invalid loop body. The body of loops is discarded so it must have type 'void'
+If you want the loop to have result, use 'break'
+ 8 |
+ 9 | fun no3(): void {
+10 |   _: String = for (_ in Vector[]) "is this how it works?" else "no"
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/loop_body.sk", line 10, characters 35-57:
+The type: String
+ 8 |
+ 9 | fun no3(): void {
+10 |   _: String = for (_ in Vector[]) "is this how it works?" else "no"
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/loop_body.sk", line 10, characters 35-57:
+Is not a subtype of: void
+ 8 |
+ 9 | fun no3(): void {
+10 |   _: String = for (_ in Vector[]) "is this how it works?" else "no"
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/loop_body.sk", line 14, characters 15-45:
+Invalid loop body. The body of loops is discarded so it must have type 'void'
+If you want the loop to have result, use 'break'
+12 |
+13 | fun no4(): void {
+14 |   _: String = loop "is this how it works? no";
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 | }
+
+File "./typechecking/invalid/loop_body.sk", line 14, characters 20-45:
+The type: String
+12 |
+13 | fun no4(): void {
+14 |   _: String = loop "is this how it works? no";
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 | }
+
+File "./typechecking/invalid/loop_body.sk", line 14, characters 20-45:
+Is not a subtype of: void
+12 |
+13 | fun no4(): void {
+14 |   _: String = loop "is this how it works? no";
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 | }

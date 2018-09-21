@@ -1,0 +1,25 @@
+fun main(): String {
+  if (
+    Bar().isBar() &&
+    !Bar().isBaz() &&
+    getBarAsBar_().isBar() &&
+    !getBarAsBar_().isBaz() &&
+    !Baz().isBar() &&
+    Baz().isBaz()
+  ) {
+    "Pass\n"
+  } else {
+    "Fail"
+  };
+
+  a =
+    "\a\b\e\f\n\r\t\v\\\'\"\0\n" +
+    "\x48\x65\x6c\x6c\x6f\x20\x77\x6f\x72\x6c\x64\x21\n" * 10 +
+    "\u00AF\\_(\u30C4)_/\u00AF\n" +
+    "\U0001F602\n";
+
+  computedDescriptionLines =
+    showConfirm && descriptionLinesConfirming ||
+    focused && !loading && descriptionLinesFocused ||
+    descriptionLines
+}

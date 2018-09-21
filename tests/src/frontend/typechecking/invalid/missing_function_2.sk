@@ -1,0 +1,10 @@
+base class Bar
+class Foo() extends Bar uses Show {
+  fun toString(): String {
+    "Foo"
+  }
+}
+
+fun main(): void {
+  print_raw((Foo()).wut())
+}

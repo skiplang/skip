@@ -1,0 +1,15 @@
+base class Foo final {x: String} {
+  fun new(): this {
+    static{x => "Pass\n"}
+  }
+}
+
+class Bar extends Foo
+
+fun newFoo(): Foo {
+  Bar{x => "Unused"}
+}
+
+fun main(): void {
+  print_raw(newFoo().new().x)
+}

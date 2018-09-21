@@ -1,0 +1,11 @@
+mutable class Bar(mutable baz: String)
+
+fun shouldFail(): String {
+  nope = () -> mutable Bar("NiceTry");
+  bar = Bar("Wut");
+
+  bar match {
+  | _ if (nope().baz == "NiceTry") -> "BOOOOM\n"
+  | _ -> "Fail\n"
+  }
+}

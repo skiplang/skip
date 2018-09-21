@@ -1,0 +1,12 @@
+File "./expand/invalid/extension_class3.sk", line 3, characters 17-17:
+Incompatible extension
+1 | base class A
+2 |
+3 | extension class A()
+  |                 ^
+
+File "./expand/invalid/extension_class3.sk", line 1, characters 12-12:
+The class kinds are incompatible
+1 | base class A
+  |            ^
+2 |

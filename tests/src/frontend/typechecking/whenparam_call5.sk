@@ -1,0 +1,19 @@
+trait Foo1
+trait Foo2
+
+class Bar() uses Foo1, Foo2
+
+class Container_<T: Foo1>(x: T) {
+  fun get[T: Foo2](): T {
+    this.x
+  }
+}
+
+fun getFoo1Foo2<T: Foo1 & Foo2>(x: T): T {
+  Container_(x).get()
+}
+
+fun main(): void {
+  _ = getFoo1Foo2(Bar());
+  print_string("Pass")
+}

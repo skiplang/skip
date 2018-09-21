@@ -1,0 +1,21 @@
+File "./typechecking/invalid/mutable_class_2.sk", line 4, characters 8-20:
+Invalid mutable instantiation
+2 |
+3 | fun main(): void {
+4 |   _f = mutable Foo();
+  |        ^^^^^^^^^^^^^
+5 |   print_raw("No")
+
+File "./typechecking/invalid/mutable_class_2.sk", line 4, characters 8-20:
+Foo has no mutable fields, field values, or methods
+2 |
+3 | fun main(): void {
+4 |   _f = mutable Foo();
+  |        ^^^^^^^^^^^^^
+5 |   print_raw("No")
+
+File "./typechecking/invalid/mutable_class_2.sk", line 1, characters 7-9:
+It is defined here
+1 | class Foo()
+  |       ^^^
+2 |

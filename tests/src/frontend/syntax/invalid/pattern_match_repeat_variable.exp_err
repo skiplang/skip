@@ -1,0 +1,15 @@
+File "./syntax/invalid/pattern_match_repeat_variable.sk", line 6, characters 14-14:
+Name already bound: x
+4 |   print_raw(
+5 |     Foo(42, "Fail") match {
+6 |     | Foo(x, x) -> x
+  |              ^
+7 |     },
+
+File "./syntax/invalid/pattern_match_repeat_variable.sk", line 6, characters 11-11:
+Previously here
+4 |   print_raw(
+5 |     Foo(42, "Fail") match {
+6 |     | Foo(x, x) -> x
+  |           ^
+7 |     },

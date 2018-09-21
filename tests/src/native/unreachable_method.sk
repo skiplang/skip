@@ -1,0 +1,34 @@
+// This test is legal but after inlining it generates a call to a
+// method on an instance of "B". Since "B" has no concrete subclasses
+// this code is unreachable, but this is not realized until inlining is done.
+//
+// We had a bug where the code for multivalue return to an impossible method
+// would fail the verifier.
+
+base class A {
+  fun someMethod(): (Int, Int);
+}
+
+base class B extends A
+
+class C() extends A {
+  fun someMethod(): (Int, Int) {
+    (37, 38)
+  }
+}
+
+fun doCall(a: A): (Int, Int) {
+  a.someMethod()
+}
+
+@no_inline
+fun bad(b: ?B): (Int, Int) {
+  b match {
+  | Some(bv) -> doCall(bv)
+  | None() -> (98, 99)
+  }
+}
+
+fun main(): void {
+  print_raw(bad(None()).i0.toString() + "\n")
+}

@@ -1,0 +1,10 @@
+fun main(): void {
+  i: I = C();
+  // This line can loop forever in join
+  _ = if (true) i else C();
+  print_string("Pass")
+}
+
+base class P<+T> final ()
+base class I extends P<this>
+class C extends I

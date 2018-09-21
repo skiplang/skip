@@ -1,0 +1,21 @@
+base class P {
+  type T: Test.MixedScalar default Test.MixedInt;
+  fun getT(): this::T;
+
+  fun foo(): void {
+    this.getT() match {
+    | Test.MixedInt _ -> void
+    | Test.MixedScalar _ -> void
+    }
+  }
+}
+
+class C() extends P {
+  fun getT(): this::T {
+    Test.MixedInt(42)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

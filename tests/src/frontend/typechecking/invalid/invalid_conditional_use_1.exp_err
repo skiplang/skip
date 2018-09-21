@@ -1,0 +1,23 @@
+File "./typechecking/invalid/invalid_conditional_use_1.sk", line 18, characters 3-12:
+Constraint not satisfied
+16 |
+17 | fun main(): void {
+18 |   print_show(MyVector(Vector[X(), Y()]))
+   |   ^^^^^^^^^^
+19 | }
+
+File "./typechecking/invalid/invalid_conditional_use_1.sk", line 18, characters 14-39:
+The type: MyVector<P>
+16 |
+17 | fun main(): void {
+18 |   print_show(MyVector(Vector[X(), Y()]))
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 | }
+
+File "./typechecking/invalid/invalid_conditional_use_1.sk", line 7, characters 19-22:
+Is not a subtype of: Show
+5 | }
+6 |
+7 | fun print_show<T: Show>(x: T): void {
+  |                   ^^^^
+8 |   print_string(x.toString())

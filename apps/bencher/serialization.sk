@@ -1,0 +1,194 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SerializationBenchmark;
+
+const VEC: Vector<Int> = Range(0, 10000).collect(Vector);
+const MAP: Map<String, Serialization.TestRecord> = Range(0, 1000).map((x) ->
+  (
+    x.toString(),
+    Serialization.TestRecord{str => x.toString(), int => x, opt => false},
+  )
+).collect(Map);
+
+@gc
+untracked fun benchVector(): void {
+  print_string("benchmarking Vector serialization...");
+  impls = Map["usingAPI" => usingAPIVector, "withoutAPI" => withoutAPIVector];
+  iters = 100;
+  rounds = 10;
+  results = mutable Vector[];
+  for (name => fn in impls) {
+    times = Vector::mcreate(rounds);
+    for (_ in Range(0, rounds)) {
+      result = Vector[];
+      profile_start();
+      for (_ in Range(0, iters)) {
+        !result = fn(VEC);
+      };
+      times.push(profile_stop());
+      invariant(result == VEC);
+    };
+    results.push((name, times.min().fromSome()));
+  };
+  results.sortBy(item ~> item.i1);
+  for ((name, time) in results) {
+    print_string(`${name.padLeft(16)}: ${time}`);
+  }
+}
+
+@gc
+untracked fun benchMapOfStringToRecord(): void {
+  print_string("benchmarking Map of String to Record serialization...");
+  impls = Map[
+    "usingAPI" => usingAPIMapOfStringToRecord,
+    "withoutAPI" => withoutAPIMapOfStringToRecord,
+  ];
+  iters = 100;
+  rounds = 10;
+  results = mutable Vector[];
+  for (name => fn in impls) {
+    times = Vector::mcreate(rounds);
+    for (_ in Range(0, rounds)) {
+      result = Map[];
+      profile_start();
+      for (_ in Range(0, iters)) {
+        !result = fn(MAP);
+      };
+      times.push(profile_stop());
+      invariant(result == MAP);
+    };
+    results.push((name, times.min().fromSome()));
+  };
+  results.sortBy(item ~> item.i1);
+  for ((name, time) in results) {
+    print_string(`${name.padLeft(16)}: ${time}`);
+  }
+}
+
+@bench
+fun benchVectorWithAPI(bencher: Bencher): Bencher.BenchmarkStats {
+  result = Vector[];
+  bencher.bench{
+    run => () -> {
+      !result = usingAPIVector(VEC);
+    },
+    afterEach => () -> {
+      invariant(result == VEC);
+    },
+  }
+}
+
+@bench
+fun benchVectorWithoutAPI(bencher: Bencher): Bencher.BenchmarkStats {
+  result = Vector[];
+  bencher.bench{
+    run => () -> {
+      !result = withoutAPIVector(VEC);
+    },
+    afterEach => () -> {
+      invariant(result == VEC);
+    },
+  }
+}
+
+@bench
+fun benchMapWithAPI(bencher: Bencher): Bencher.BenchmarkStats {
+  result = Map[];
+  bencher.bench{
+    run => () -> {
+      !result = usingAPIMapOfStringToRecord(MAP);
+    },
+    afterEach => () -> {
+      invariant(result == MAP);
+    },
+  }
+}
+
+@bench
+fun benchMapWithoutAPI(bencher: Bencher): Bencher.BenchmarkStats {
+  result = Map[];
+  bencher.bench{
+    run => () -> {
+      !result = withoutAPIMapOfStringToRecord(MAP);
+    },
+    afterEach => () -> {
+      invariant(result == MAP);
+    },
+  }
+}
+
+@gc
+@debug
+@no_inline
+fun usingAPIVector(vec: Vector<Int>): Vector<Int> {
+  itemClass = Vector::meta(Int::meta);
+  result1 = JSON.serialize(vec, itemClass);
+  result2 = JSON.deserialize(result1.fromSuccess(), itemClass);
+  result2.fromSuccess()
+}
+
+@gc
+@debug
+@no_inline
+fun withoutAPIVector(vec: Vector<Int>): Vector<Int> {
+  result = JSON.decode(JSON.Array(vec.map((x) -> JSON.IntNumber(x))).encode());
+  result.expectVector().map((x) -> x.expectInt())
+}
+
+@gc
+@debug
+@no_inline
+fun usingAPIMapOfStringToRecord(
+  map: Map<String, Serialization.TestRecord>,
+): Map<String, Serialization.TestRecord> {
+  itemClass = Map::meta(String::meta, Serialization.TestRecord::meta);
+  result1 = JSON.serialize(map, itemClass);
+  result2 = JSON.deserialize(result1.fromSuccess(), itemClass);
+  result2.fromSuccess()
+}
+
+@gc
+@debug
+@no_inline
+fun withoutAPIMapOfStringToRecord(
+  map: Map<String, Serialization.TestRecord>,
+): Map<String, Serialization.TestRecord> {
+  result = JSON.decode(
+    JSON.Object(map.map((_, x) -> toJsonTestRecord(x))).encode(),
+  );
+  result.expectMap().map((_, x) -> fromJsonTestRecord(x))
+}
+
+@gc
+fun toJsonTestRecord(val: Serialization.TestRecord): JSON.Value {
+  JSON.Object(
+    Map[
+      "str" => JSON.String(val.str),
+      "int" => JSON.IntNumber(val.int),
+      "opt" => JSON.Bool(val.opt),
+    ],
+  )
+}
+
+@gc
+fun fromJsonTestRecord(val: JSON.Value): Serialization.TestRecord {
+  map = val.expectMap();
+  Serialization.TestRecord{
+    str => map["str"].expectString(),
+    int => map["int"].expectInt(),
+    opt => map["opt"].expectBool(),
+  }
+}
+
+module end;
+
+@gc
+untracked fun main(): void {
+  SerializationBenchmark.benchVector();
+  SerializationBenchmark.benchMapOfStringToRecord();
+}

@@ -1,0 +1,5562 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias I = OuterIst;
+
+module alias SLO = SkipLowerOuterIst;
+
+module OuterIstToIR;
+
+private fun isTdefault(t: I.Type): Bool {
+  t.ty is I.Tdefault _
+}
+
+// The magic fields in Awaitable::continuation that indicate "fulfilled".
+// WARNING: These must match their C++ equivalents.
+private const kAwaitableValueMarker: Int = -1;
+private const kAwaitableExceptionMarker: Int = -3;
+
+// We compile "return" as assigning to this temp then jumping to a shared
+// physical return.
+private const kImplicitReturnVariableName: String = "returnvalue!!";
+
+private const kLocalVarType: FrontEndLazyGClass = intern(
+  FrontEndLazyGClass("Runtime.LocalVariable"),
+);
+
+// Wrap optional arguments in Tdefault per front end convention.
+private fun defaultifyParamType(p: I.Parameter): I.Type {
+  t = p.type;
+  invariant(!isTdefault(t), "Unexpected Tdefault");
+  if (p.value.isSome()) {
+    I.Type(t.pos, I.Tdefault(t))
+  } else {
+    t
+  }
+}
+
+// Given Parameters, extract their types. Optional arguments get their
+// types wrapped in Tdefault per the front end's convention.
+fun paramTypes(params: Parameters<I.Parameter>): Parameters<I.Type> {
+  params.map(defaultifyParamType);
+}
+
+// Return the fields for a class, if any.
+private fun getFields(cd: I.ClassDef, pos: FileRange): Parameters<I.Parameter> {
+  // For a class marked with @hhvm_import we replace any class fields with a
+  // single proxyPointer:Runtime.HhvmHandle.
+  if (
+    Hhvm.isImportAnnotation(cd.annotations, pos) ||
+    Hhvm.isArrayAnnotation(cd.annotations, pos) ||
+    Hhvm.isShapeAnnotation(cd.annotations, pos)
+  ) {
+    Named(
+      UMap[
+        (pos, "proxyPointer") => I.Parameter{
+          annotations => SSet[],
+          visibility => (pos, I.VProtected()),
+          name => I.Name(pos, "proxyPointer"),
+          type => I.Type(
+            pos,
+            I.Tmutable(
+              I.Type(pos, I.Tapply(I.Name(pos, "Runtime.HhvmHandle"), Array[])),
+            ),
+          ),
+          mutable_ => None(),
+          value => None(),
+          frozen_ => SkipOuterIstUtils.const_binding_info,
+          index => 0,
+        },
+      ],
+    )
+  } else {
+    cd.params match {
+    | Some(cp) -> cp.params
+    | None() -> Positional::create()
+    }
+  }
+}
+
+// Do the given outgoing arguments contain any default args?
+private fun hasDefaultArg(args: Parameters<I.Expr>): Bool {
+  args.foldl((acc, e) -> acc || (e is I.Expr(_, _, I.DefaultArg())), false)
+}
+
+private fun computeNumOptionalFlagInts(numOptional: Int, useMask: Bool): Int {
+  if (numOptional == 0) {
+    0
+  } else if (!useMask) {
+    // Use a counter rather than a bitmask. A single word always suffices.
+    1
+  } else {
+    // Pass a separate bit mask per 64 optional arguments.
+    roundUp(numOptional, 64) / 64
+  }
+}
+
+private fun unreachableFrontEndStmt(pos: FileRange): I.Stmt {
+  tvoid = I.Type(pos, I.Tapply(I.Name(pos, "Void"), Array[]));
+  I.SingleExpr(I.Expr(tvoid, pos, I.Unreachable()))
+}
+
+// Magic name for codegened "inspect" methods. This cannot conflict
+// with user code.
+private const kInspectMethodName: String = ".inspect";
+
+// Magic name for codegened "getClass" methods. These handle class(x).
+private const kGetClassMethodName: String = ".getClass";
+
+private const kFrozenFactoryName: String = ".frozenFactory";
+private const kMutableFactoryName: String = ".mutableFactory";
+
+// Prefix before parameter names for compiler-generated arguments holding
+// bit masks or counts indicating which optional arguments were supplied
+// by the caller.
+private const kOptSuppliedPrefix: String = "optional.supplied.";
+
+private fun insertOptionalFlags(
+  params: Array<I.Parameter>,
+  numOptional: Int,
+  useMask: Bool,
+  pos: FileRange,
+): Array<ParameterInfo> {
+  numRequired = params.size() - numOptional;
+  numFlagInts = computeNumOptionalFlagInts(numOptional, useMask);
+
+  Array::fillBy(params.size() + numFlagInts, i -> {
+    if (i < numRequired) {
+      ParameterInfo::make(params[i])
+    } else if (i < numRequired + numFlagInts) {
+      ParameterInfo{
+        name => kOptSuppliedPrefix + (i - numRequired).toString(),
+        value => None(),
+        info => SkipOuterIstUtils.const_binding_info,
+        index => -1,
+        pos,
+      }
+    } else {
+      ParameterInfo::make(params[i - numFlagInts])
+    }
+  })
+}
+
+// Discard named parameter names and produce an array of the values
+// in calling-convention order for calling a function of the given type.
+//
+// The calling convention:
+// - For positional arguments, the original order is preserved. This means
+//   any optional arguments are at the end.
+// - For named arguments, required arguments come first, followed by optional.
+//   Within each set the arguments are sorted lexicographically by argument
+//   name.
+//
+// For convenience this function also returns the number of optional arguments,
+// and whether to use the "bitmask" or "count" calling convention for
+// optional arguments.
+private fun flattenParams<T>(
+  params: Parameters<T>,
+  expectedTypes: Parameters<I.Type>,
+): (Array<T>, Int, Bool) {
+  expectedTypes match {
+  | Positional(funArgs) ->
+    params match {
+    | Positional(pArgs) ->
+      // Count how many of those arguments are optional.
+      numOpt = funArgs.foldl(
+        (acc, t) -> acc + (if (isTdefault(t)) 1 else 0),
+        0,
+      );
+      (pArgs.collect(Array), numOpt, numOpt <= 1)
+    | Named _ -> invariant_violation("Positional/named mismatch.")
+    }
+  | Named(funArgs) ->
+    params match {
+    | Positional _ -> invariant_violation("Positional/named mismatch.")
+    | Named(pArgs) ->
+      invariant(funArgs.size() == pArgs.size(), "Arg count mismatch");
+
+      required = mutable Vector<T>[];
+      optional = mutable Vector<T>[];
+
+      funArgsVec = funArgs.collect(Array);
+      pArgsVec = pArgs.collect(Array);
+      funArgsVec.eachWithIndex((i, t) -> {
+        (if (isTdefault(t)) optional else required).push(pArgsVec[i])
+      });
+
+      // Append all the optionals after the required.
+      optional.each(required.push);
+
+      (required.toArray(), optional.size(), true)
+    }
+  }
+}
+
+private fun isMutableType(tt: I.Type): Bool {
+  tt.ty match {
+  | I.Tmutable _ -> true
+  | I.Tdefault(x) -> isMutableType(x)
+  | I.Tany _
+  | I.Tapply _
+  | I.TsetElt _
+  | I.Treadonly _
+  | I.Tfun _ ->
+    false
+  | I.Tparam _
+  | I.Tnamed _ ->
+    tt.pos.die("isMutableType cannot handle this case")
+  }
+}
+
+private fun getLineStr(pos: FileRange): String {
+  (pos.start().line() + 1).toString()
+}
+
+mutable private class JumpBlockInfo{
+  pos: FileRange,
+  name: String,
+  stmt: I.Stmt,
+  block: mutable GBlock,
+}
+
+// A subset of OuterIst.Parameter. Sometimes we make these synthetically
+// and don't actually have the "type" that OuterIst.Parameter needs,
+// so it's cleaner just to use this subset.
+class ParameterInfo{
+  name: String,
+  value: ?I.Initializer,
+  info: I.BindingInfo,
+  index: Int,
+  pos: FileRange,
+} {
+  static fun make(p: I.Parameter): ParameterInfo {
+    ParameterInfo{
+      name => p.name.id,
+      value => p.value,
+      info => p.frozen_,
+      index => p.index,
+      pos => p.name.pos,
+    }
+  }
+
+  fun getInit(): I.Initializer {
+    this.value match {
+    | None() -> this.pos.die(`no initializer`)
+    | Some(init) -> init
+    }
+  }
+}
+
+// A GFunction which may or may not be compiled to GIR yet.
+base class LazyGFun{} uses Hashable, Orderable, Show {
+  fun compile(converter: Converter): GFunction;
+
+  fun gname(): GFunctionName;
+
+  macro fun toString(): String {
+    `<${#thisClassName} ${this.gname().id}>`
+  }
+
+  fun hash(): Int {
+    this.gname().hash()
+  }
+
+  fun ==(other: LazyGFun): Bool {
+    this.gname() == other.gname()
+  }
+
+  fun compare(other: LazyGFun): Order {
+    this.gname().compare(other.gname())
+  }
+}
+
+// A GFunction which has already been compiled to GIR.
+class DoneLazyGFun{function: GFunction} extends LazyGFun {
+  fun gname(): GFunctionName {
+    this.function.funInfo.gfunction
+  }
+
+  fun compile(_converter: Converter): GFunction {
+    this.function
+  }
+}
+
+// A lazy fun that compiles the given function from the front end.
+class FrontEndLazyGFun{frontEndName: String} extends LazyGFun {
+  fun gname(): GFunctionName {
+    GFunctionName(this.frontEndName)
+  }
+
+  fun compile(converter: Converter): GFunction {
+    funDef = converter.program.fun_defs.getOrCrash(this.frontEndName);
+    converter.getGFunction(converter.convertFunDef(funDef))
+  }
+}
+
+base class FunInfoLazyGFun{
+  funInfo: GFunInfo,
+  params: Array<ParameterInfo>,
+} extends LazyGFun {
+  fun gname(): GFunctionName {
+    this.funInfo.gfunction
+  }
+}
+
+class NativeLazyGFun{} extends FunInfoLazyGFun {
+  // Make a no-implementation function.
+  fun compile(_converter: Converter): GFunction {
+    funInfo = this.funInfo;
+    GFunction{
+      funInfo,
+      params => this.params.mapWithIndex((i, p) ->
+        GFunParam{
+          id => GInstrID(i),
+          typ => funInfo.funType.params[i],
+          pos => funInfo.pos,
+          prettyName => p.name,
+        }
+      ),
+      blocks => Array[],
+    }
+  }
+}
+
+base class ConcreteLazyGFun{
+  useOptionalMask: Bool = true,
+  captured: Array<GField> = Array[],
+} extends FunInfoLazyGFun {
+  overridable fun compile(converter: Converter): GFunction {
+    emitter = OuterIstEmitter::make(converter, this);
+
+    emitter.emitPreamble();
+
+    this.emitBody(emitter);
+
+    emitter.terminateExistingBlock();
+
+    GFunction{
+      funInfo => emitter.funInfo,
+      params => emitter.params,
+      blocks => Array::fillBy(emitter.blocks.size(), i ->
+        freeze(emitter.blocks[i])
+      ),
+    }
+  }
+
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void;
+
+  overridable fun getParams(Converter): Array<ParameterInfo> {
+    this.params
+  }
+
+  overridable fun returnTempType(): GType {
+    this.funInfo.funType.returnType
+  }
+
+  // Emit the final Return for the function. This hook gives LazyGFuns
+  // a chance to emit some extra code at the return site, or change
+  // the return value.
+  overridable fun emitReturn(
+    emitter: mutable OuterIstEmitter,
+    value: GInstr,
+    pos: FileRange,
+  ): void {
+    _ = emitter.emitInstr(GReturn{pos, value})
+  }
+}
+
+class InspectLazyGFun extends ConcreteLazyGFun {
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    emitter.emitBindParameters();
+
+    // The "this" object for this inspect method.
+    obj = emitter.params[0];
+
+    pos = emitter.funInfo.pos;
+    clsID = obj.typ.asGTapply(pos).generic;
+    cls = emitter.converter.getGClass(clsID, pos);
+    if (!cls.kind.isFinal()) {
+      pos.die(`inspect method only valid for concrete classes, not ${obj.typ}`)
+    };
+
+    returnValue = cls.methods.maybeGet("inspect").flatMap(def ->
+      // NOTE: This "if" cannot be folded into a match pattern because it
+      // has a mutable parameter.
+      if (
+        !this.isLegalInspectSignature(
+          cls,
+          emitter.converter.getGFunction(def.function.fromSome()(clsID)),
+          emitter.converter,
+        )
+      ) {
+        None()
+      } else {
+        // The user wrote their own "inspect" method, just call it.
+        Some(
+          emitter.emitInstr(
+            GCallMethod{
+              typ => gtInspect,
+              pos,
+              method => "inspect",
+              args => Array[obj],
+              source => clsID,
+            },
+          ),
+        )
+      }
+    ) match {
+    | Some(x) -> x
+    | None() ->
+      pairType = GTapply(
+        FrontEndLazyGClass("Tuple2"),
+        DeepFrozen(),
+        Array[gtString, gtInspect],
+      );
+
+      isLambda = cls.isLambda || cls.isMemoizeThunk;
+
+      // Remove any confusing "!123" suffix for renamed captured variables.
+      computeDisplayName = n ~> {
+        if (isLambda) {
+          n.split("!")[0]
+        } else {
+          n
+        }
+      };
+
+      sortedFields = if (cls.constructorParametersNamed) {
+        cls.fields.sortedBy(a ~> computeDisplayName(a.name))
+      } else {
+        cls.fields
+      };
+
+      // Create an array by calling inspect on all the fields.
+      fields = sortedFields.map(gf -> {
+        rawField = emitter.emitInstr(
+          GGetField{typ => gf.typ, pos, obj, field => gf.name},
+        );
+
+        (origDisplayName, captureKind) = parseClosureFieldName(gf);
+
+        field = captureKind match {
+        | CCByRef() ->
+          // Read the capture-by-ref value out of the LocalVariable<T> cell.
+          // The type of the result is whatever T is.
+          emitter.emitInstr(
+            GGetField{
+              typ => rawField.getType().asGTapply(pos).targs[0],
+              pos,
+              obj => rawField,
+              field => "value",
+            },
+          )
+        | _ -> rawField
+        };
+
+        displayName = computeDisplayName(origDisplayName);
+
+        inspVal = emitter.emitInstr(
+          GCallFunction{
+            typ => gtInspect,
+            pos,
+            name => FrontEndLazyGFun{frontEndName => "inspect"},
+            args => Array[field],
+            targs => Array[field.getType()],
+          },
+        );
+
+        if (cls.constructorParametersNamed) {
+          // Produce a (String, Inspect) pair.
+          emitter.emitInstr(
+            GObject{
+              typ => pairType,
+              pos,
+              args => Array[
+                emitter.constantString(UTF8String::make(displayName)),
+                inspVal,
+              ],
+            },
+          )
+        } else {
+          inspVal
+        }
+      });
+
+      // Create an Array of the inspected field values.
+      inspectedFields = emitter.emitInstr(
+        GEArray{
+          typ => GTapply(
+            FrontEndLazyGClass("Array"),
+            DeepFrozen(),
+            Array[
+              if (cls.constructorParametersNamed) {
+                pairType
+              } else {
+                gtInspect
+              },
+            ],
+          ),
+          pos,
+          args => fields,
+        },
+      );
+
+      clsName = cls.name.id;
+      typeName = if (isLambda) {
+        "Captured"
+      } else if (clsName.endsWith(concreteMetaImplSuffix)) {
+        "Concrete<" + clsName.splitLast(concreteMetaImplSuffix).i0 + ">"
+      } else if (clsName.endsWith(baseMetaImplSuffix)) {
+        "Base<" + clsName.splitLast(baseMetaImplSuffix).i0 + ">"
+      } else {
+        clsName
+      };
+
+      inspectType = FrontEndLazyGClass(
+        if (cls.constructorParametersNamed) {
+          "InspectObject"
+        } else {
+          "InspectCall"
+        },
+      );
+
+      inspectResult = emitter.emitInstr(
+        GObject{
+          typ => GTapply(inspectType, DeepFrozen()),
+          pos,
+          args => Array[
+            emitter.constantString(UTF8String::make(typeName)),
+            inspectedFields,
+          ],
+        },
+      );
+
+      if (!isLambda) {
+        inspectResult
+      } else {
+        // Create an Inspect object corresponding to a fake "Lambda" object
+        // with "source" and "captured" fields.
+        sourceString = emitter.emitInstr(
+          GObject{
+            typ => GTapply(FrontEndLazyGClass("InspectString"), DeepFrozen()),
+            pos,
+            args => Array[
+              emitter.constantString(UTF8String::make(pos.toString())),
+            ],
+          },
+        );
+
+        sourcePair = emitter.emitInstr(
+          GObject{
+            typ => pairType,
+            pos,
+            args => Array[
+              emitter.constantString(UTF8String::make("source")),
+              sourceString,
+            ],
+          },
+        );
+
+        capturedPair = emitter.emitInstr(
+          GObject{
+            typ => pairType,
+            pos,
+            args => Array[
+              emitter.constantString(UTF8String::make("captured")),
+              inspectResult,
+            ],
+          },
+        );
+
+        // Produce something like:
+        // Lambda{source => "file:line", captured => Captured{a => 3}}
+        fakeLambdaFields = emitter.emitInstr(
+          GEArray{
+            typ => GTapply(
+              FrontEndLazyGClass("Array"),
+              DeepFrozen(),
+              Array[pairType],
+            ),
+            pos,
+            args => Array[sourcePair, capturedPair],
+          },
+        );
+
+        emitter.emitInstr(
+          GObject{
+            typ => GTapply(FrontEndLazyGClass("InspectObject"), DeepFrozen()),
+            pos,
+            args => Array[
+              emitter.constantString(UTF8String::make("Lambda")),
+              fakeLambdaFields,
+            ],
+          },
+        )
+      }
+    };
+
+    // This is the only Return, no need for emitReturn.
+    _ = emitter.emitInstr(GReturn{pos, value => returnValue})
+  }
+
+  // When the user writes an "inspect" method, we should call it rather
+  // than using the default. But, until we check this properly with a trait,
+  // if they happen to make a method called "inspect" with the wrong signature
+  // we'll just ignore it.
+  private fun isLegalInspectSignature(
+    cls: GClass,
+    f: GFunction,
+    converter: Converter,
+  ): Bool {
+    funInfo = f.funInfo;
+
+    // Look for: fun inspect(): Inspect
+    funInfo.tparams.size() == cls.tparams.size() &&
+      funInfo.funType.params.size() == 1 &&
+      (funInfo.funType.returnType == gtInspect ||
+        (funInfo.funType.returnType match {
+        | GTapply(generic, _, _) ->
+          gc = converter.getGClass(generic, funInfo.pos);
+          gc.extends_.contains(gtInspect)
+        | _ -> false
+        }))
+  }
+}
+
+class GetClassLazyGFun extends ConcreteLazyGFun {
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    pos = emitter.funInfo.pos;
+
+    value = emitter.emitInstr(
+      GObject{typ => this.funInfo.funType.returnType, pos, args => Array[]},
+    );
+
+    // This is the only Return, no need for emitReturn.
+    _ = emitter.emitInstr(GReturn{pos, value})
+  }
+}
+
+// Lazy functions with either a backing definition or a handbuilt body.
+base class BodyProvidingLazyGFun{} extends ConcreteLazyGFun {
+  fun getBody(converter: Converter): I.Stmt;
+
+  overridable protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    emitter.emitBindParameters();
+    emitter.emitStmt(this.getBody(emitter.converter));
+  }
+}
+
+base class BodyLazyGFun{body: I.Stmt} extends BodyProvidingLazyGFun {
+  children =
+  | NormalLazyGFun
+  | ConstLazyGFun{constName: ConstID}
+
+  fun getBody(_: Converter): I.Stmt {
+    this.body
+  }
+}
+
+// A CustomLazyGFun is given a lambda to emit the body for one-off custom
+// function emitters.
+class CustomLazyGFun{
+  emitBodyHelper: mutable OuterIstEmitter ~> void,
+} extends ConcreteLazyGFun {
+  protected fun emitBody(e: mutable OuterIstEmitter): void {
+    this.emitBodyHelper(e)
+  }
+}
+
+class MemoizeThunkLazyGFun{
+  capturedParams: Array<ParameterInfo>,
+} extends BodyLazyGFun {
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    // Create a separate async function for the body.
+    funInfo = this.funInfo;
+    pos = funInfo.pos;
+
+    thisObj = emitter.params[0];
+    fields = emitter.converter.getGClass(
+      thisObj.getType().asGTapply(pos).generic,
+      pos,
+    ).fields;
+
+    bodyFunInfo = funInfo with {
+      gfunction => GFunctionName(funInfo.gfunction.id + "::.body"),
+      funType => funInfo.funType with {params => fields.map(f -> f.typ)},
+      isAsync => true,
+    };
+
+    bodyLazy = AsyncCoroutineLazyGFun{
+      funInfo => bodyFunInfo,
+      params => this.capturedParams,
+      useOptionalMask => this.useOptionalMask,
+      bodyProvider => this with {params => this.capturedParams},
+    };
+
+    call = emitter.emitCallFunction(
+      bodyLazy,
+      fields.map(f ->
+        emitter.emitInstr(
+          GGetField{typ => f.typ, pos, obj => thisObj, field => f.name},
+        )
+      ),
+      funInfo.tparams,
+      bodyFunInfo.funType.returnType,
+      pos,
+    );
+
+    _ = emitter.emitInstr(GReturn{pos, value => call})
+  }
+}
+
+// The underlying runtime memoizer function looks like this:
+//
+//    native fun SKIP_memoize<T>(
+//      callerAwaitable: mutable MemoReturnAwaitable<T>,
+//      func: () ~> mutable Awaitable<T>
+//    ): void;
+//
+// You'll notice there are two Awaitables here: one supplied by the caller,
+// and one returned by the lambda. They are different, because they may
+// end up in different "address spaces". Special runtime machinery hooks them
+// together as needed, so when the inner Awaitable gets fulfilled the
+// other one gets updated and "woken up".
+//
+// func is not literally a lambda, it's actually a MemoizeThunk object,
+// but it's basically the same thing.
+//
+// There are two cases for memoized functions, corresponding to whether
+// they are also async:
+//
+// 1)
+//
+//   memoized async fun foo(arg1: A, arg2: B): ^X { body }
+//
+// becomes:
+//
+//   fun foo(arg1: A, arg2: B): ^X {
+//     ret = mutable MemoReturnAwaitable<X>();
+//     SKIP_memoize(ret, () ~> async { body });
+//     ret
+//   }
+//
+//
+// 2)
+//
+//   memoized fun foo(arg1: A, arg2: B): X { body }
+//
+// becomes the same thing, but ending with an awaitSynchronously:
+//
+//   fun foo(arg1: A, arg2: B): X {
+//     ret = mutable MemoReturnAwaitable<X>();
+//     SKIP_memoize(ret, () ~> async { body });
+//     awaitSynchronously(ret)
+//   }
+//
+// There are two ways in which this transformation isn't quite as simple
+// as it appears.
+//
+// 1) If 'body' modifies any of the parameters, we would normally
+//    allocate them in LocalVariable cells because they are captured by a
+//    lambda. But we don't want that in this case, because they are ONLY
+//    accessed by the lambda, and we can't tolerate interning mutable
+//    LocalVariables holding locals. So instead, the lambda (really, a
+//    MemoizeThunk) captures them by value, loads them into locals on
+//    and can update those all it wants.
+//
+// 2) If any of the parameters are optional, we want to evaluate
+//    the default value inside the lambda, rather than in the outer function
+//    (foo in this example). We need to do this for correctness, because for
+//    an async function the default value could legally do an "await", which
+//    we can only do inside the transformed lambda. Additionally, the default
+//    value may require a great deal of work to compute, and we wanta to hide
+//    that inside the memoized code.
+//
+//    The downside is that explicitly passing a value equal to the
+//    default will yield a different memoization key.  We could reduce
+//    that risk by evaluating some fast, side-effect-free defaults in
+//    the outer function, e.g. literals like "false", but we don't yet.
+//
+class MemoizeLazyGFun{
+  bodyProvider: BodyProvidingLazyGFun,
+} extends ConcreteLazyGFun {
+  fun getParams(converter: Converter): Array<ParameterInfo> {
+    this.bodyProvider.getParams(converter)
+  }
+
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    funInfo = this.funInfo;
+    tparams = funInfo.tparams;
+    converter = emitter.converter;
+    pos = funInfo.pos;
+
+    // Capture all the original used parameters, including any "supplied" flags.
+    // We capture even unused optional parameters, both to avoid messing
+    // up the numbering we use to assign them default values, and because
+    // those initial values could throw, so we always need to evaluate them.
+    //
+    // We could do a little better here, but it's not clear how important it is:
+    //
+    // 1) Supply any "trivial" default value, such as "false", in the caller,
+    //    so that implicitly or explicitly passing that default both produce
+    //    the same memoization key.
+    //
+    // 2) For an unused optional argument with a maybe-throwing default value,
+    //    pass in a flag saying whether the default needs to be evaluated,
+    //    but don't pass in a value.
+    capturedVec = mutable Vector[];
+    this.getParams(converter).eachWithIndex((i, p) -> {
+      updated = p.info.updated || p.value.isSome();
+
+      if (updated || p.info.read) {
+        capturedVec.push(
+          (
+            emitter.params[i],
+            p with {index => if (p.index >= 0) i else p.index},
+            GField{
+              name => (if (updated) "captured_memoref:" else "captured:") +
+                p.name,
+              typ => emitter.params[i].getType(),
+              isAssignable => false,
+              pos => p.pos,
+              index => i,
+            },
+          ),
+        )
+      }
+    });
+    captured = capturedVec.toArray();
+
+    fields = captured.map(x -> x.i2);
+
+    underlyingType = if (funInfo.isAsync) {
+      extractAwaitableType(funInfo.funType.returnType, pos)
+    } else {
+      funInfo.funType.returnType
+    };
+
+    thunkClassname = GClassName(funInfo.gfunction.id + "::MemoKey");
+
+    bodyProvider = this.bodyProvider;
+    useOptionalMask = this.useOptionalMask;
+
+    callMethod = GMethodDef{
+      function => Some(receiver ~> {
+        callMethodFunInfo = GFunInfo{
+          gfunction => GFunctionName(thunkClassname.id + "::call"),
+          pos,
+          tparams,
+          funType => GFunType{
+            isMutable => false,
+            isTracked => funInfo.funType.isTracked,
+            params => Array[GTapply(receiver, DeepFrozen(), tparams)],
+            returnType => GTapply(
+              FrontEndLazyGClass("Awaitable"),
+              Mutable(),
+              Array[underlyingType],
+            ),
+          },
+          className => Some(thunkClassname),
+          // The C++ runtime calls this method using the vtable,
+          // so we need to ensure it's not devirtualized, because if we see
+          // no virtual calls to this method we won't put it in the vtable.
+          annotations => SSet["@cpp_virtual"],
+        };
+
+        MemoizeThunkLazyGFun{
+          funInfo => callMethodFunInfo,
+          params => Array[
+            ParameterInfo{
+              name => "this",
+              value => None(),
+              info => SkipOuterIstUtils.const_binding_info,
+              index => 0,
+              pos,
+            },
+          ],
+          capturedParams => captured.map(x -> x.i1),
+          body => bodyProvider.getBody(converter),
+          useOptionalMask,
+        }
+      }),
+      tparams => Array[],
+      pos,
+    };
+
+    thunkClass = converter.finishGClass(
+      GClass{
+        name => thunkClassname,
+        tparams,
+        variances => Array::fill(tparams.size(), I.Vnone()),
+        isMutable => false,
+        isMemoizeThunk => true, // TODO: Delete?
+        fieldsFinal => true,
+        fields,
+        kind => KClass(),
+        extends_ => Array[
+          GTapply(
+            FrontEndLazyGClass("Awaitable.MemoizeThunkBase"),
+            DeepFrozen(),
+          ),
+        ],
+        methods => UnorderedMap["call" => callMethod],
+        pos,
+      },
+      false,
+    );
+
+    thunkType = GTapply(LiteralLazyGClass(thunkClass), DeepFrozen(), tparams);
+
+    // Allocate the thunk
+    thunk = emitter.emitInstr(
+      GObject{
+        typ => thunkType,
+        pos,
+        prettyName => "memo_thunk",
+        args => captured.map(x -> x.i0),
+      },
+    );
+
+    // Allocate an MemoReturnAwaitable<T> to hold the answer. All fields
+    // start out as zeroed bits.
+    memoReturnType = GTapply(
+      FrontEndLazyGClass("Awaitable.MemoReturnAwaitable"),
+      Mutable(),
+      Array[underlyingType],
+    );
+    memoReturnGClass = converter.getGClass(memoReturnType.generic, pos);
+    tparamEnv = makeGTypeMap(
+      memoReturnGClass.tparams,
+      Array[underlyingType],
+      pos,
+    );
+    memoReturn = emitter.emitInstr(
+      GObject{
+        typ => memoReturnType,
+        pos,
+        prettyName => "memo_return",
+        args => memoReturnGClass.fields.map(field ->
+          emitter.constantZero(field.typ.applyTparams(tparamEnv))
+        ),
+      },
+    );
+
+    _ = emitter.emitCallFunction(
+      FrontEndLazyGFun{frontEndName => "Awaitable.memoizeCall"},
+      Array[memoReturn, thunk],
+      Array[],
+      gtVoid,
+      pos,
+    );
+
+    retVal = if (this.funInfo.isAsync) {
+      // We are no longer an async function per se (no await, coroutine etc.)
+      emitter.!funInfo = emitter.funInfo with {isAsync => false};
+      memoReturn
+    } else {
+      emitter.emitCallFunction(
+        FrontEndLazyGFun{frontEndName => "awaitSynchronously"},
+        Array[memoReturn],
+        Array[underlyingType],
+        underlyingType,
+        pos,
+      )
+    };
+
+    _ = emitter.emitReturn(retVal, pos)
+  }
+}
+
+// Extract the T from Awaitable<T>.
+private fun extractAwaitableType(gt: GType, pos: Pos): GType {
+  gta = gt.asGTapply(pos);
+  if (gta.generic != FrontEndLazyGClass("Awaitable")) {
+    pos.die(`Expected Awaitable, not ${gt}`)
+  };
+  gta.targs[0]
+}
+
+class AsyncCoroutineLazyGFun{
+  bodyProvider: BodyProvidingLazyGFun,
+} extends ConcreteLazyGFun {
+  fun returnTempType(): GType {
+    extractAwaitableType(this.funInfo.funType.returnType, this.funInfo.pos)
+  }
+
+  fun getParams(converter: Converter): Array<ParameterInfo> {
+    this.bodyProvider.getParams(converter)
+  }
+
+  // Return the Awaitable object for the current async function.
+  // We don't actually have the object yet -- that gets created later,
+  // by LowerCoroutine. So we create a placeholder now that LowerCoroutine
+  // will replace.
+  private fun getAwaitable(
+    emitter: mutable OuterIstEmitter,
+    pos: FileRange,
+  ): GInstr {
+    emitter.emitInstr(
+      GGetCurrentAwaitable{
+        pos,
+        typ => this.funInfo.funType.returnType,
+        prettyName => "awaitable",
+      },
+    )
+  }
+
+  protected fun emitBody(emitter: mutable OuterIstEmitter): void {
+    emitter.emitBindParameters();
+
+    pos = this.funInfo.pos;
+
+    excVar = "async:excvar";
+    excType = I.Type(pos, I.Tapply(I.Name(pos, "Exception"), Array[]));
+    excInfo = SkipOuterIstUtils.nonconst_binding_info;
+
+    emitter.emitTry(
+      this.bodyProvider.getBody(emitter.converter),
+      () -> {
+        _ = emitter.emitCallFunction(
+          FrontEndLazyGFun{frontEndName => "Awaitable.awaitableThrow"},
+          Array[this.getAwaitable(emitter, pos), emitter.getLocal(excVar, pos)],
+          Array[],
+          gtVoid,
+          pos,
+        );
+        _ = emitter.emitInstr(GAsyncReturn{pos})
+      },
+      I.Binding(excType, I.Name(pos, excVar), excInfo),
+      pos,
+    )
+  }
+
+  fun emitReturn(
+    emitter: mutable OuterIstEmitter,
+    value: GInstr,
+    pos: FileRange,
+  ): void {
+    awaitable = this.getAwaitable(emitter, pos);
+
+    _ = emitter.emitCallFunction(
+      FrontEndLazyGFun{frontEndName => "Awaitable.awaitableSetValue"},
+      Array[awaitable, value],
+      Array[this.returnTempType()],
+      gtVoid,
+      pos,
+    );
+
+    _ = emitter.emitCallFunction(
+      FrontEndLazyGFun{
+        frontEndName => "Awaitable.awaitableNotifyWaitersValueIsReady",
+      },
+      Array[awaitable],
+      Array[],
+      gtVoid,
+      pos,
+    );
+
+    _ = emitter.emitInstr(GAsyncReturn{pos})
+  }
+}
+
+// functions and methods backed by an OuterIst def
+class DefLazyGFun{def: I.CallableDef} extends BodyProvidingLazyGFun {
+  static fun make{
+    funInfo: GFunInfo,
+    def: I.CallableDef,
+    params: Array<ParameterInfo>,
+    useOptionalMask: Bool,
+  }: LazyGFun {
+    d = DefLazyGFun{funInfo, def, params, useOptionalMask};
+    if (funInfo.isMemoized) {
+      MemoizeLazyGFun{funInfo, params, useOptionalMask, bodyProvider => d}
+    } else if (funInfo.isAsync) {
+      AsyncCoroutineLazyGFun{
+        funInfo,
+        params,
+        useOptionalMask,
+        bodyProvider => d,
+      }
+    } else {
+      d
+    }
+  }
+
+  fun getBody(converter: Converter): I.Stmt {
+    getLoweredDef(converter.program, this.def).getBody().asOuter()
+  }
+
+  // get our lowered def, and patch our params array with the fresh info.
+  // (For simplicity we just do this every time getParams() is called,
+  // on the assumption it's usually called just once)
+  fun getParams(converter: Converter): Array<ParameterInfo> {
+    def = getLoweredDef(converter.program, this.def);
+    defParams = def.getParams();
+    this.params.map(p -> {
+      if (p.index < 0) {
+        def match {
+        | (md @ I.MethodDef _) if (p.name == md.implicit_param.name.id) ->
+          p with {info => md.implicit_param.info}
+        | _ -> p
+        }
+      } else {
+        defp = defParams match {
+        | Positional(l) ->
+          // param.index is not always reliable (e.g. for inherited fields)
+          l.find(defp -> defp.name.id == p.name) match {
+          | None() -> p.pos.die(`positional param def not found`)
+          | Some(defp) -> defp
+          }
+        | Named(m) ->
+          m.maybeGetNoPos(p.name) match {
+          | None() -> p.pos.die(`named param def not found`)
+          | Some(defp) -> defp
+          }
+        };
+        p with {info => defp.frozen_, value => defp.value}
+      }
+    })
+  }
+}
+
+// What does the raw field in a closure field hold?
+private base class ClosureCaptureKind {
+  children =
+  | CCNotCaptured()
+  // A simple by-value capture.
+  | CCByValue()
+  // A mutable LocalVariable<T> representing a local variable of type T.
+  // This LocalVariable may be read and written by this closure and others.
+  | CCByRef()
+}
+
+// Parse the name of a field in a closure into the name of the local
+// variable it represents, and whether that variable was captured by reference.
+private fun parseClosureFieldName(field: GField): (String, ClosureCaptureKind) {
+  name = field.name;
+  if (name.startsWith("captured_ref:")) {
+    (name.split("captured_ref:")[1], CCByRef())
+  } else if (name.startsWith("captured:")) {
+    (name.split("captured:")[1], CCByValue())
+  } else {
+    (name, CCNotCaptured())
+  }
+}
+
+private memoized fun memoizedGetLoweredDef(
+  program: I.Program,
+  def: I.CallableDef,
+): I.CallableDef {
+  lowered = def.lower(program);
+  if (shouldDebugSymbol(def.getName())) {
+    debug(def.getName() + " unlowered");
+    debug(def);
+    debug(def.getName() + " lowered");
+    debug(lowered);
+  };
+  lowered
+}
+
+private fun getLoweredDef(
+  program: I.Program,
+  def: I.CallableDef,
+): I.CallableDef {
+  if (def.isLowered()) {
+    def
+  } else {
+    memoizedGetLoweredDef(program, def)
+  }
+}
+
+fun makeGFunTypeWithFlags{
+  paramTypes: Array<GType>,
+  numOptional: Int,
+  returnType: GType,
+  isMutable: Bool,
+  isTracked: Bool,
+  useOptionalMask: Bool = true,
+}: GFunType {
+  numFlagInts = computeNumOptionalFlagInts(numOptional, useOptionalMask);
+
+  paramsWithFlags = if (numFlagInts == 0) {
+    paramTypes
+  } else {
+    // Splice in the Int flags for optional args in between the
+    // mandatory args and the optional ones.
+    (paramTypes
+      .slice(0, paramTypes.size() - numOptional)
+      .concat(
+        Array::fill(numFlagInts, gtInt).concat(
+          paramTypes.slice(paramTypes.size() - numOptional, paramTypes.size()),
+        ),
+      ))
+  };
+
+  GFunType{isMutable, isTracked, params => paramsWithFlags, returnType}
+}
+
+// Manages the overall conversion from OuterIst to IR.
+value class Converter(program: I.Program) {
+  // Every class gets a codegen'd method to help with "inspect". Although
+  // we create the stubs eagerly for simplicity, like all methods they are
+  // only actually compiled on demand.
+  private fun createInspectMethod(gclass: GClass): ?(String, GMethodDef) {
+    pos = gclass.pos;
+
+    function = if (!gclass.kind.isFinal()) {
+      None()
+    } else {
+      // Copy this into a local so we don't capture all of gclass.
+      tparams = gclass.tparams;
+
+      Some(receiver ~> {
+        className = receiver.name();
+
+        funInfo = GFunInfo{
+          gfunction => GFunctionName(className.id + "::" + kInspectMethodName),
+          pos,
+          tparams,
+          annotations => SSet["@no_inline"],
+          funType => makeGFunTypeWithFlags{
+            paramTypes => Array[GTapply(receiver, Readonly(), tparams)],
+            numOptional => 0,
+            returnType => gtInspect,
+            isMutable => false,
+            isTracked => true,
+          },
+          className => Some(className),
+        };
+
+        InspectLazyGFun{
+          funInfo,
+          params => Array[
+            ParameterInfo{
+              name => "this",
+              value => None(),
+              info => SkipOuterIstUtils.const_binding_info,
+              index => 0,
+              pos,
+            },
+          ],
+        }
+      })
+    };
+
+    Some((kInspectMethodName, GMethodDef{function, tparams => Array[], pos}))
+  }
+
+  // For each KClass X we create a ".getClass" method that returns Concrete<X>.
+  // This allows us to implement the "class(x)" language feature via a virtual
+  // method call.
+  private fun createGetClassMethod(gclass: GClass): ?(String, GMethodDef) {
+    pos = gclass.pos;
+
+    function = if (!gclass.kind.isFinal() || !gclass.hasMeta) {
+      None()
+    } else {
+      // Copy this into a local so we don't capture all of gclass.
+      tparams = gclass.tparams;
+
+      Some(receiver ~> {
+        className = receiver.name();
+
+        returnType = GTapply(
+          ConcreteMetaImplLazyGClass(receiver),
+          DeepFrozen(),
+          tparams,
+        );
+
+        funInfo = GFunInfo{
+          gfunction => GFunctionName(className.id + "::" + kGetClassMethodName),
+          pos,
+          tparams,
+          funType => makeGFunTypeWithFlags{
+            paramTypes => Array[GTapply(receiver, Readonly(), tparams)],
+            numOptional => 0,
+            returnType,
+            isMutable => false,
+            isTracked => true,
+          },
+          className => Some(className),
+        };
+
+        GetClassLazyGFun{
+          funInfo,
+          params => Array[
+            ParameterInfo{
+              name => "this",
+              value => None(),
+              info => SkipOuterIstUtils.const_binding_info,
+              index => 0,
+              pos,
+            },
+          ],
+        }
+      })
+    };
+
+    Some((kGetClassMethodName, GMethodDef{function, tparams => Array[], pos}))
+  }
+
+  fun finishGClass(orig: GClass, addInspect: Bool = true): GClass {
+    extraMethods = Vector::mcreate(2);
+
+    if (addInspect) {
+      this.createInspectMethod(orig) match {
+      | Some(x) -> extraMethods.push(x)
+      | None() -> void
+      }
+    };
+
+    this.createGetClassMethod(orig) match {
+    | Some(x) -> extraMethods.push(x)
+    | None() -> void
+    };
+
+    gclass = if (extraMethods.isEmpty()) {
+      orig
+    } else {
+      newMethods = orig.methods.clone(extraMethods.size());
+      for (x in extraMethods) {
+        newMethods.set(x.i0, x.i1)
+      };
+      orig with {methods => freeze(newMethods)}
+    };
+
+    isCppExport = annotationsContainParam(
+      orig.annotations,
+      "@cpp_export",
+      gclass.pos,
+    ).isSome();
+
+    // Convert some KClass to KValue when it's legal and free. So a class
+    // with no base classes containing only a single unassignable pointer
+    // to another class might as well just be a value class, to save one
+    // level of indirection.
+    if (
+      gclass.kind.isKClass() &&
+      gclass.extends_.isEmpty() &&
+      !gclass.isNative &&
+      !isCppExport &&
+      (gclass.fields.isEmpty() ||
+        (gclass.fields.size() == 1 &&
+          !gclass.fields[0].isAssignable &&
+          (gclass.fields[0].typ match {
+          | GTapply(subgid, _, _) ->
+            this.scalarizesToNoMoreThanOneScalar(subgid, gclass.pos)
+          | _ -> false
+          })))
+    ) {
+      !gclass = gclass with {kind => KValue()};
+    };
+
+    // Make sure we have created GClasses for all base classes.
+    for (ta in gclass.extends_) _ = this.getGClass(ta.generic, gclass.pos);
+
+    // So these can be more quickly looked up as memoization keys.
+    intern(gclass)
+  }
+
+  memoized fun getGFunction(lazy: LazyGFun): GFunction {
+    lazy.compile(this)
+  }
+
+  // Returns the GClassKind, if known.
+  fun getGClassKind(ref: LazyGClass): GClassKind {
+    ref match {
+    | LiteralLazyGClass(cls) -> cls.kind
+    | FrontEndLazyGClass(nameStr) ->
+      this.program.class_defs.maybeGetNoPos(nameStr) match {
+      | Some(x) -> this.convertClassKind(x)
+      | None() ->
+        invariant_violation(
+          `Could not find type ${nameStr} in the front end classes`,
+        )
+      }
+    | BaseMetaLazyGClass _
+    | ClassMetaLazyGClass _
+    | ConcreteMetaLazyGClass _
+    | ClosureBaseLazyGClass _ ->
+      KBase()
+    | BaseMetaImplLazyGClass _
+    | ConcreteMetaImplLazyGClass _
+    | MetaMetaLazyGClass _ ->
+      KClass()
+    | ReturnTupleLazyGClass _ -> KValue()
+    }
+  }
+
+  fun getGClass(gid: LazyGClass, pos: Pos): GClass {
+    gid match {
+    | LiteralLazyGClass(cls) -> cls
+    | _ ->
+      // Don't clutter the underlying memoized function with a Pos argument.
+      try {
+        this.getGClassImpl(gid)
+      } catch {
+      | e @ Exception _ -> pos.die(e.getMessage())
+      }
+    }
+  }
+
+  private memoized fun getGClassImpl(gid: LazyGClass): GClass {
+    gid match {
+    | LiteralLazyGClass(cls) -> cls
+    | name @ FrontEndLazyGClass _ ->
+      this.program.class_defs.maybeGetRaw(name.id) match {
+      | Some((classPos, classDef)) ->
+        this.convertClassDef(classDef, name, classPos)
+      | None() -> invariant_violation(`Unable to find class '${name.id}'`)
+      }
+    | meta @ BaseMetaLazyGClass _ -> this.createBaseMeta(meta)
+    | meta @ BaseMetaImplLazyGClass _ -> this.createBaseMetaImpl(meta)
+    | meta @ ClassMetaLazyGClass _ -> this.createClassMeta(meta)
+    | meta @ ConcreteMetaLazyGClass _ -> this.createConcreteMeta(meta)
+    | meta @ ConcreteMetaImplLazyGClass _ -> this.createConcreteMetaImpl(meta)
+    | c @ ClosureBaseLazyGClass _ -> this.createClosureBaseClass(c)
+    | MetaMetaLazyGClass _ -> this.createMetaMeta()
+    | rt @ ReturnTupleLazyGClass(arity) ->
+      this.createReturnTuple(rt.name(), arity)
+    }
+  }
+
+  fun getMetaClass(lazyGClass: LazyGClass, g: ?GClass = None()): LazyGClass {
+    gc = g match {
+    | Some(x) -> x
+    | None() -> this.getGClassImpl(lazyGClass)
+    };
+
+    if (!gc.hasMeta) {
+      MetaMetaLazyGClass()
+    } else if (gc.kind.isBaseClass()) {
+      BaseMetaImplLazyGClass(lazyGClass)
+    } else {
+      ConcreteMetaImplLazyGClass(lazyGClass)
+    }
+  }
+
+  fun allocTparams(prefix: String, count: Int): Array<GTparam> {
+    Array::fillBy(count, i -> {
+      name = "T" + i;
+      GTparam(prefix + name, name)
+    })
+  }
+
+  private fun createReturnTuple(name: GClassName, arity: Int): GClass {
+    pos = FileRange.builtin;
+
+    tparams = this.allocTparams("<class>" + name.id, arity);
+
+    this.finishGClass(
+      GClass{
+        name,
+        tparams,
+        variances => Array::fill(arity, I.Vplus()),
+        isMutable => false,
+        fieldsFinal => true,
+        hasMeta => false,
+        isReturnTuple => true,
+        kind => KValue(),
+        fields => tparams.mapWithIndex((i, typ) ->
+          GField{name => `i${i}`, typ, isAssignable => false, pos, index => i}
+        ),
+        pos,
+      },
+      false,
+    )
+  }
+
+  // When you do class(class(class(...(x)))) it quickly ends up in
+  // a class that is its own metaclass. You can't do anything interesting
+  // with this class but it needs to exist.
+  private fun createMetaMeta(): GClass {
+    this.finishGClass(
+      GClass{
+        name => GClassName("<builtin>.MetaMeta"),
+        tparams => Array[],
+        variances => Array[],
+        pos => FileRange.builtin,
+        isMutable => false,
+        fieldsFinal => true,
+        kind => KClass(),
+      },
+    )
+  }
+
+  // given an array of GTapply, return an array containing each original
+  // along with the GTapplys it extends, applied to the original's targs.
+  // (We can assume this targ congruence for closure classes.)
+  // Note: not transitive - we depend on being called on parents before kids.
+  fun flattenClosureClassExtends(
+    extends_: Array<GTapply>,
+    pos: FileRange,
+  ): Array<GTapply> {
+    flat = mutable Map[];
+    addExtend = gta -> flat.maybeSet(gta.generic, gta);
+    for (parent in extends_) {
+      if (addExtend(parent)) {
+        parentClass = this.getGClass(parent.generic, pos);
+        for (grandParent in parentClass.extends_) {
+          _ = addExtend(grandParent with {targs => parent.targs})
+        }
+      }
+    };
+    flat.values().collect(Array)
+  }
+
+  // Create a class somewhere in a closure class hierarchy.
+  fun createClosureClass(
+    className: GClassName,
+    callMethodType: GFunType,
+    tparams: Array<GTparam>,
+    variances: Array<I.Variance>,
+    kind: ClassKind,
+    extends_: Array<GTapply>,
+    yields: Bool,
+    pos: FileRange,
+    generateBody: ?(GFunInfo ~> LazyGFun),
+    fields: Array<GField> = Array[],
+  ): GClass {
+    // Let the caller produce optional code for this.
+    methods = UnorderedMap[
+      "call" => GMethodDef{
+        function => generateBody.map(bodyFunc ~>
+          receiver ~> {
+            thisType: GType = GTapply(
+              receiver,
+              Mutability::fromFlag(callMethodType.isMutable),
+              tparams,
+            );
+
+            callFunType = callMethodType with {
+              params => Array[thisType].concat(callMethodType.params),
+            };
+
+            funInfo = GFunInfo{
+              gfunction => GFunctionName(className.id + "::call"),
+              pos,
+              tparams,
+              annotations => SSet["@always_inline"],
+              funType => callFunType,
+              className => Some(className),
+              isGenerator => yields,
+            };
+
+            bodyFunc(funInfo)
+          }
+        ),
+        tparams => Array[],
+        pos,
+      },
+    ];
+
+    // Create the actual generic class for this closure.
+    this.finishGClass(
+      GClass{
+        name => className,
+        tparams,
+        variances,
+        pos,
+        kind,
+        isMutable => callMethodType.isMutable,
+        isLambda => true,
+        fieldsFinal => kind.isFinal(),
+        constructorParametersNamed => true,
+        extends_ => this.flattenClosureClassExtends(extends_, pos),
+        methods,
+        fields,
+      },
+    )
+  }
+
+  fun getClosureBaseClass(t: GFunType): GTapply {
+    GTapply(
+      ClosureBaseLazyGClass(t.params.size(), t.isMutable, t.isTracked),
+      Mutability::fromFlag(t.isMutable),
+      Array[t.returnType].concat(t.params),
+    )
+  }
+
+  // Closures are desugared to objects with a "call()" method. This creates
+  // the base class to use for all closures with a particular function type.
+  private fun createClosureBaseClass(cb: ClosureBaseLazyGClass): GClass {
+    // We model the fact that a "pure" ("~>") lambda can be cast to an
+    // "impure" ("->") one by making impure be a base class of pure.
+    // Similarly we make untracked a base class of tracked. That gives us
+    // this base class inheritance diamond:
+    //
+    //                 (mutable, untracked) closure
+    //                             |
+    //                       ______|_______
+    //                       |            |
+    //                       |            |
+    //  (frozen, untracked) closure    (mutable, tracked) closure
+    //                       |            |
+    //                       |____________|
+    //                             |
+    //                    (frozen, tracked) closure
+    //
+    // This sort of inheritance is not legal in Skip due to mutability
+    // differences, but it's actually safe given the limited way closures
+    // can be used, so we allow it in the back end.
+    //
+    // Modeling inheritance more accurately this way makes closures not
+    // be a special case for method invocation, specialization, vtable
+    // layout, IR verification, etc.
+
+    // For base classes, the return type and parameters are all GTparams.
+    tparams = this.allocTparams(`<class>${cb.nameStr()}:`, 1 + cb.numParams);
+
+    // If not mutable, create a base class that is.
+    parent1 = if (cb.isMutable) {
+      Array[]
+    } else {
+      Array[GTapply(cb with {isMutable => true}, DeepFrozen(), tparams)]
+    };
+
+    // If tracked, create a base class that isn't.
+    parent2 = if (!cb.isTracked) {
+      Array[]
+    } else {
+      Array[GTapply(cb with {isTracked => false}, DeepFrozen(), tparams)]
+    };
+
+    // For base classes, the return type and parameters are all GTparams.
+    mtype = GFunType{
+      isMutable => cb.isMutable,
+      isTracked => cb.isTracked,
+      params => tparams.drop(1),
+      returnType => tparams[0],
+    };
+
+    pos = FileRange.builtin;
+
+    this.createClosureClass(
+      cb.name(),
+      mtype,
+      tparams,
+      Array::fillBy(tparams.size(), i -> {
+        // Return values are covariant, parameters are contravariant.
+        if (i == 0) {
+          I.Vplus()
+        } else {
+          I.Vminus()
+        }
+      }),
+      KBase(),
+      this.flattenClosureClassExtends(parent1.concat(parent2), pos),
+      false,
+      pos,
+      None(),
+    )
+  }
+
+  // Return the fields for a class, if any,
+  // with lowered OuterIst in their default initializers
+  private fun getLoweredFields(cd: I.ClassDef): Parameters<I.Parameter> {
+    cd.params match {
+    | Some(cp) -> SLO.class_params(cp, this.program).params
+    | None() -> Positional::create()
+    }
+  }
+
+  private fun createFactory(
+    returnsMutable: Bool,
+    isAbstract: Bool,
+    frontEndGClass: I.ClassDef,
+    pos: FileRange,
+  ): I.MethodDef {
+    frontEndFields = this.getLoweredFields(frontEndGClass);
+
+    frontEndTparams = frontEndGClass.tparams.map(tp -> {
+      I.Type(pos, I.Tparam(tp.var, tp.id, tp.name, None()))
+    });
+
+    // Forward the factory parameters to Object.
+    frontEndArgExprs = frontEndFields.map(p -> {
+      fieldPos = p.name.pos;
+      I.Expr(p.type, fieldPos, I.Local(p.name))
+    });
+
+    objType = I.Type(pos, (I.Tapply(frontEndGClass.name, frontEndTparams)));
+    staticType = I.Type(pos, I.Tapply(I.Name(pos, "Concrete"), Array[objType]));
+
+    // We'll make the factory return a mutable object and let the caller
+    // decide if they want to freeze it.
+    returnType = if (returnsMutable) {
+      I.Type(pos, I.Tmutable(objType))
+    } else {
+      objType
+    };
+
+    body = if (isAbstract) {
+      None()
+    } else {
+      makeObj = I.Object(
+        frontEndGClass.name,
+        frontEndTparams,
+        frontEndArgExprs,
+      );
+      Some(I.OuterBody(I.Return(I.Expr(returnType, pos, makeObj))))
+    };
+
+    factoryName = if (returnsMutable) {
+      kMutableFactoryName
+    } else {
+      kFrozenFactoryName
+    };
+
+    I.MethodDef{
+      name => I.Name(pos, factoryName),
+      body,
+      visibility => (pos, I.VPublic()),
+      annotations => SSet[],
+      overridable_ => None(),
+      memoized_ => None(),
+      async_ => None(),
+      kind => SkipNamedAst.FKStatic(pos),
+      native_ => None(),
+      untracked_ => None(),
+      whenparams => Array[],
+      tparams => Array[],
+      params => frontEndFields,
+      return_ => returnType,
+      // TODO: This is wrong, it really should be inherited from whichever
+      // base class first made the fields "final".
+      from_ => frontEndGClass.name,
+      source => frontEndGClass.name,
+      met_class => frontEndGClass.name,
+      implicit_param => I.Binding(
+        staticType,
+        I.Name(pos, "static"),
+        SkipOuterIstUtils.const_binding_info,
+      ),
+      generic_mapping => SortedMap[],
+      yields => None(),
+    }
+  }
+
+  private fun getStaticMethods(
+    gc: GClass,
+    name: LazyGClass,
+  ): mutable UnorderedMap<String, GMethodDef> {
+    // For magic codegen classes we'll check the parent class to find
+    // static methods, since the front end couldn't "inherit" them for us.
+    // This shouldn't come up often, if ever.
+    orig = gc;
+    while (!gc.isFrontEndClass) {
+      if (gc.extends_.size() != 1) {
+        return mutable UnorderedMap[]
+      };
+      !gc = this.getGClassImpl(gc.extends_[0].generic);
+    };
+
+    if (gc.tparams.size() != orig.tparams.size()) {
+      // This case is too hard, give up.
+      return mutable UnorderedMap[]
+    };
+
+    // Get the front end methods.
+    cd = this.program.class_defs.maybeGetNoPos(gc.name.id) match {
+    | Some(x) -> x
+    | None() -> gc.pos.die(`Unable to find class ${gc.name.id} in front end`)
+    };
+    fem = this.getFrontEndStaticMethods(cd);
+
+    methods = UnorderedMap::mcreate(fem.size());
+    phys = name.name();
+    fem.each(md -> {
+      (mname, mf) = this.convertMethodDef(md, phys, orig.name, gc.tparams);
+      methods.add(mname, mf)
+    });
+
+    methods
+  }
+
+  // TODO: T31411692: Memoize this.
+  private fun getFrontEndStaticMethods(cd: I.ClassDef): Array<I.MethodDef> {
+    methods = Vector::mcreateFromIterator(
+      cd.methods.values().filter(md -> md.kind is SkipNamedAst.FKStatic _),
+    );
+
+    // Yields the I.Binding for the implicit "static" parameter.
+    staticThisBinding = methodPos -> {
+      // e.g. For Foo<X>, yields Concrete<Foo<X>> or Base<Foo<X>>.
+      staticThisType = I.Type(
+        methodPos,
+        I.Tapply(
+          I.Name(methodPos, if (cd.kind is I.KClass()) "Concrete" else "Base"),
+          Array[
+            I.Type(
+              methodPos,
+              I.Tapply(
+                cd.name,
+                cd.tparams.map(tp ->
+                  I.Type(
+                    methodPos,
+                    (I.Tparam(tp.var, tp.id, tp.name, None()) : I.Type_),
+                  )
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      // This is an I.Binding.
+      I.Binding(
+        staticThisType,
+        I.Name(methodPos, "static"),
+        SkipOuterIstUtils.const_binding_info,
+      )
+    };
+
+    // Each class const turns into a static method that retrieves an
+    // actual static const value, so that overriding works.
+    for (constKey => constDef in cd.consts) {
+      (constPos, constName) = constKey;
+
+      realConstName = cd.name.id + "::" + constName;
+
+      // Generate a static method that reads a global const.
+      getterName = "getConst:" + constName;
+      methods.push(
+        I.MethodDef{
+          name => I.Name(constPos, getterName),
+          body => constDef.value.map(_ ->
+            I.OuterBody(
+              I.Return(
+                I.Expr(
+                  constDef.type,
+                  constPos,
+                  I.Const(I.Name(constPos, realConstName)),
+                ),
+              ),
+            )
+          ),
+          annotations => SSet[],
+          async_ => None(),
+          met_class => cd.name,
+          from_ => constDef.from_.default(cd.name),
+          implicit_param => staticThisBinding(constPos),
+          overridable_ => None(),
+          memoized_ => None(),
+          native_ => None(),
+          params => Positional::create(),
+          return_ => constDef.type,
+          source => constDef.source.default(cd.name),
+          kind => SkipNamedAst.FKStatic(constPos),
+          tparams => Array[],
+          untracked_ => None(),
+          visibility => constDef.visibility,
+          whenparams => Array[],
+          generic_mapping => SortedMap[],
+          yields => None(),
+        },
+      )
+    };
+
+    methods.toArray()
+  }
+
+  // Skip supports overridable static methods. In order to avoid the back end
+  // needing additional method dispatch and optimization mechanisms for static
+  // methods, static method calls are compiled into normal method calls on
+  // "metaclass singleton" objects created by the back end.
+  //
+  // During IR creation we begin by creating, for each (non-type) class C,
+  // - a metaclass for C: a new class definition which hosts all of C's
+  //   static methods as normal (instance) methods
+  // - a singleton instance of C's metaclass.
+  //
+  // Normal method dispatch among these metaclass instances produces the same
+  // observed behavior as overridable static methods, but look like normal
+  // method calls to the back end.
+  //
+  // Beyond the one metaclass for each front end class, we also create
+  // additional metaclasses to model inheritance relationships among the
+  // front-end Base<T>, Concrete<T> and Class<T> metaclasses.
+  //
+  // The Skip operation class(obj) maps an object to its metaclass singleton
+  // at runtime.  If obj has a final type at compile time (e.g., including all
+  // value class types), then the metaclass singleton is known at compile time
+  // and can be returned directly.  For values with non-final class types, the
+  // singleton's pointer is loaded from the object's vtable.
+  //
+  // The mapping from Base<T>, Concrete<T> and Class<T> to their corresponding
+  // back end types is a bit tricky to implement, but fast at runtime. We
+  // need a class hierarchy with the same inheritance properties that the
+  // front end class types have, but with usable vtables for method dispatch.
+  //
+  // Suppose we have this simple inheritance hierarchy:
+  //
+  //         A
+  //         |
+  //         |
+  //         B
+  //         |
+  //         |
+  //         C
+  //
+  // A, B are base classes and C is concrete.
+  //
+  // The corresponding metaclass hierarchy in the back end looks like:
+  //
+  //                    A::.ClassMeta
+  //                        |
+  //         _______________|_____________
+  //         |              |             |
+  //  A::.ConcreteMeta      |          A::.BaseMeta
+  //         |              |             |    |
+  //         |              |             |    |
+  //         |          B::.ClassMeta     |  A::.BaseMetaImpl
+  //         |              |             |
+  //         |______________|_____________|
+  //         |                            |
+  //         |                            |
+  //  B::.ConcreteMeta                  B::.BaseMeta
+  //         |                                 |
+  //         |                                 |
+  //         |                               B::.BaseMetaImpl
+  //  C::.ConcreteMetaImpl
+  //
+  //
+  // Note that the "::." is actually part of a mangled class name, and present
+  // to ensure the user cannot make a class with these names. That text really
+  // is part of the class name, these are not static members of anything.
+  //
+  // Static methods for concrete class K are implemented as normal methods
+  // on K::ConcreteMetaImpl. Static methods for base class J
+  // are implemented on J::ClassMeta, so they can be inherited by both
+  // base and concrete subclasses.
+  //
+  // As with front end types, only base classes can have subclasses.
+  // For base classes, we need the T::BaseMetaImpl to host the metaclass
+  // singleton corresponding to Base<T>, but we need T::BaseMeta, a
+  // non-concrete class to model the inheritance relationship between B
+  // and its (base) subclasses.
+  //
+  // There is exactly one concrete metaclass for each front end class (base
+  // or concrete). In this example, A has A::BaseMetaImpl, B has
+  // B::BaseMetaImpl, and C has C::ConcreteMetaImpl. This is the type of
+  // the metaclass singleton for each class.
+  //
+  // The rest of the hierarchy described above exist to preserve the
+  // inheritance relationships between the front-end metaclasses (Concrete<T>,
+  // Base<T>, Class<T>).
+  //
+  // Front end types get mapped into this hierarchy as follows:
+  //
+  // Concrete<T> --> T::ConcreteMeta if T is a base class, else
+  //                 T::ConcreteMetaImpl
+  // Base<T>     --> T::BaseMeta, except that class literals are T::BaseMetaImpl
+  // Class<T>    --> T::ClassMeta if T is a base class, else T::ConcreteMetaImpl
+  //
+  // If the front end types (A, B, C) are generic, then so are the metatypes,
+  // taking the same type parameters.
+  //
+  // The Concrete, Base and Class types are removed from the hierarchy, although
+  // they could easily be added back in.
+  //
+  // ConcreteMeta types can also be used to create object instances of runtime
+  // types under certain constraints imposed by the front end (where we know
+  // exactly what the fields are). The back end use this by giving each
+  // ConcreteMeta instance a pointer to the vtable for that type.
+  //
+  // TODO: Where do we put abstract static methods? We would like to inherit
+  // them normally, but we need BaseMetaImpl classes to not inherit any that
+  // they don't implement (those methods would not be callable by the front
+  // end). But it's not enough to only put those only in the ConcreteMeta
+  // hierarchy, since some BaseMeta class could provide an implmentation.
+  private fun createBaseMeta(name: BaseMetaLazyGClass): GClass {
+    cls = name.cls;
+    gc = this.getGClassImpl(cls);
+
+    // Note: in keeping with current front-end policy, here we copy methods
+    // down from B::.ClassMeta to its "local" sub-metaclasses.
+    // TODO supplement (or replace) with a copydown post-processing pass
+    // that propagates static methods to the full metaclass hierarchy.
+
+    this.finishGClass(
+      GClass{
+        name => name.name(),
+        tparams => gc.tparams,
+        variances => gc.variances,
+        pos => gc.pos,
+        isMutable => false,
+        fieldsFinal => true,
+        kind => KBase(),
+        extends_ => {
+          Array[
+            GTapply(ClassMetaLazyGClass(cls), DeepFrozen(), gc.tparams),
+          ].concat(
+            gc.extends_.map(t -> {
+              GTapply(BaseMetaLazyGClass(t.generic), DeepFrozen(), t.targs)
+            }),
+          )
+        },
+        methods => freeze(this.getStaticMethods(gc, name)),
+      },
+    )
+  }
+
+  private fun createBaseMetaImpl(name: BaseMetaImplLazyGClass): GClass {
+    cls = name.cls;
+    gc = this.getGClassImpl(cls);
+
+    this.finishGClass(
+      GClass{
+        name => name.name(),
+        tparams => gc.tparams,
+        variances => gc.variances,
+        pos => gc.pos,
+        isMutable => false,
+        fieldsFinal => true,
+        kind => KClass(),
+        extends_ => Array[
+          GTapply(BaseMetaLazyGClass(cls), DeepFrozen(), gc.tparams),
+        ],
+        methods => freeze(this.getStaticMethods(gc, name)),
+      },
+    )
+  }
+
+  private fun createClassMeta(name: ClassMetaLazyGClass): GClass {
+    gc = this.getGClassImpl(name.cls);
+
+    this.finishGClass(
+      GClass{
+        name => name.name(),
+        tparams => gc.tparams,
+        variances => gc.variances,
+        pos => gc.pos,
+        isMutable => false,
+        fieldsFinal => false,
+        kind => KBase(),
+        extends_ => gc.extends_.map(t -> {
+          GTapply(ClassMetaLazyGClass(t.generic), DeepFrozen(), t.targs)
+        }),
+        methods => freeze(this.getStaticMethods(gc, name)),
+      },
+    )
+  }
+
+  private fun createConcreteMeta(name: ConcreteMetaLazyGClass): GClass {
+    gc = this.getGClassImpl(name.cls);
+    pos = gc.pos;
+
+    methods = this.getStaticMethods(gc, name);
+
+    if (gc.isFrontEndClass && gc.fieldsFinal) {
+      // Create abstract declarations for the factories.
+      fegc = this.program.class_defs.getOrCrash(gc.name.id);
+      for (factoryIndex in Range(0, 2)) {
+        factoryIsMutable = (factoryIndex == 0);
+        factory = this.createFactory(factoryIsMutable, true, fegc, pos);
+        (mname, mf) = this.convertMethodDef(
+          factory,
+          name.name(),
+          gc.name,
+          gc.tparams,
+        );
+        methods.add(mname, mf)
+      }
+    };
+
+    this.finishGClass(
+      GClass{
+        name => name.name(),
+        tparams => gc.tparams,
+        variances => gc.variances,
+        pos,
+        isMutable => false,
+        fieldsFinal => false,
+        kind => KBase(),
+        extends_ => {
+          Array[
+            GTapply(ClassMetaLazyGClass(name.cls), DeepFrozen(), gc.tparams),
+          ].concat(
+            gc.extends_.map(t -> {
+              GTapply(ClassMetaLazyGClass(t.generic), DeepFrozen(), t.targs)
+            }),
+          )
+        },
+        methods => freeze(methods),
+      },
+    )
+  }
+
+  private fun createConcreteMetaImpl(name: ConcreteMetaImplLazyGClass): GClass {
+    gc = this.getGClassImpl(name.cls);
+    pos = gc.pos;
+
+    this.finishGClass(
+      GClass{
+        name => name.name(),
+        tparams => gc.tparams,
+        variances => gc.variances,
+        pos,
+        isMutable => false,
+        isNative => true,
+        fieldsFinal => true,
+        kind => KClass(),
+        extends_ => gc.extends_.map(t -> {
+          GTapply(ConcreteMetaLazyGClass(t.generic), DeepFrozen(), t.targs)
+        }),
+        methods => {
+          m = this.getStaticMethods(gc, name);
+
+          if (gc.isFrontEndClass && gc.fieldsFinal) {
+            // Create factories.
+            fegc = this.program.class_defs.getOrCrash(gc.name.id);
+            for (factoryIndex in Range(0, 2)) {
+              factoryIsMutable = (factoryIndex == 0);
+              factory = this.createFactory(factoryIsMutable, false, fegc, pos);
+              (mname, mf) = this.convertMethodDef(
+                factory,
+                name.name(),
+                gc.name,
+                gc.tparams,
+              );
+              m.add(mname, mf)
+            }
+          };
+
+          freeze(m)
+        },
+      },
+    )
+  }
+
+  fun asTfun(typ: I.Type): I.Tfun {
+    typ.ty match {
+    | t @ I.Tfun _ -> t
+    | _ ->
+      typ.pos.die("Expected function type but got " + this.convertType(typ))
+    }
+  }
+
+  fun makeGFunType{
+    paramTypes: Parameters<I.Type>,
+    returnType: I.Type,
+    isMutable: Bool,
+    isTracked: Bool,
+  }: GFunType {
+    (flatParams, numOptional, useOptionalMask) = flattenParams(
+      paramTypes,
+      paramTypes,
+    );
+    makeGFunTypeWithFlags{
+      paramTypes => this.convertTypes(flatParams),
+      numOptional,
+      useOptionalMask,
+      returnType => this.convertType(returnType),
+      isMutable,
+      isTracked,
+    }
+  }
+
+  // Convert a GFunType without creating the usual closure wrapper class type.
+  fun convertRawTfun(f: I.Tfun): GFunType {
+    isMutable = f.modifiers.purity match {
+    | I.Fpure() -> false
+    | I.Fmutable() -> true
+    };
+    isTracked = f.modifiers.tracking match {
+    | I.Ftracked() -> true
+    | I.Funtracked() -> false
+    };
+
+    this.makeGFunType{
+      paramTypes => f.params,
+      returnType => f.returnType,
+      isMutable,
+      isTracked,
+    }
+  }
+
+  private fun convertTapply(
+    name: String,
+    types: Array<I.Type>,
+    mutability: Mutability,
+  ): GType {
+    GTapply(
+      FrontEndLazyGClass(name),
+      mutability,
+      types.map(t -> this.convertType(t)),
+    )
+  }
+
+  // Convert an OuterIst type to an IR type.
+  fun convertType(in_: I.Type, mutability: Mutability = DeepFrozen()): GType {
+    mustBeFrozen = true;
+    ret = in_.ty match {
+    | I.Tany() -> gtAny
+    | I.Tapply(name, typesList) ->
+      invariant(name.id != "void", "ICE void should be Void");
+      !mustBeFrozen = false;
+      this.convertTapply(name.id, typesList, mutability)
+    | I.TsetElt(tparamsMap, name, typesList) ->
+      !mustBeFrozen = false;
+
+      tapply = this.convertTapply(name.id, typesList, mutability);
+
+      // This back end does not care about traits, so throw them away.
+      isTrait = tapply match {
+      | GTapply(FrontEndLazyGClass(id), _, _) ->
+        this.program.class_defs.getOrCrash(id).kind is I.KTrait _
+      | GTapply _
+      | GTparam _ ->
+        false
+      };
+
+      if (!isTrait) {
+        tapply
+      } else {
+        if (tparamsMap.size() != 1) {
+          in_.pos.die(
+            `Do not know how to convert type TsetElt to a GType ` +
+              `because the upper bound is a trait, and there are ` +
+              `${tparamsMap.size()} tparams`,
+          )
+        };
+        (pid, pname) = tparamsMap.items().next().fromSome();
+        GTparam(pid, pname)
+      }
+    | f @ I.Tfun _ -> this.getClosureBaseClass(this.convertRawTfun(f))
+    | I.Tparam(v, id, name, typ2) ->
+      tylist = typ2 match {
+      | None() -> List::create()
+      | Some(ty_cstr) -> List[ty_cstr]
+      };
+      this.convertTypeParameter(I.TypeParameter(v, id, name, tylist))
+    | I.Tmutable(t) -> this.convertType(t, Mutable())
+    | I.Treadonly(t) -> this.convertType(t, Readonly())
+    | I.Tnamed(_, typ2) ->
+      !mustBeFrozen = false;
+      this.convertType(typ2, mutability)
+    | I.Tdefault(ty) -> this.convertType(ty)
+    };
+
+    if (mustBeFrozen && mutability != DeepFrozen()) {
+      in_.pos.die(`Mutability override for ${ret} unexpected here.`)
+    };
+
+    ret
+  }
+
+  fun convertTypes<T: Sequence<I.Type>>(types: T): Array<GType> {
+    types.collect(Array).map(t -> this.convertType(t))
+  }
+
+  fun convertTypeParameter(in_: I.TypeParameter): GTparam {
+    GTparam(in_.id, in_.name.id)
+  }
+
+  fun convertTypeParameters<T: Sequence<I.TypeParameter>>(
+    tparams: T,
+  ): Array<GTparam> {
+    tparams.collect(Array).map(this.convertTypeParameter)
+  }
+
+  fun convertFields(fields: Array<I.Parameter>): Array<GField> {
+    fields.map(f -> {
+      typ = this.convertType(f.type);
+      GField{
+        pos => f.name.pos,
+        name => f.name.id,
+        typ,
+        isAssignable => f.mutable_.isSome(),
+        index => f.index,
+      }
+    })
+  }
+
+  fun convertExtends(
+    in_: I.ClassDef,
+    parentMutability: Mutability,
+  ): Array<GTapply> {
+    in_.extends_.items().collect(Array).map(kv -> {
+      ((_, name), parentInfo) = kv;
+      GTapply(
+        FrontEndLazyGClass(name),
+        parentMutability,
+        this.convertTypes(parentInfo.targs),
+      )
+    })
+  }
+
+  private fun convertClassKind(cd: I.ClassDef): GClassKind {
+    (cd.kind, cd.value) match {
+    | (I.KClass(), Some _) -> KValue()
+    | (I.KClass(), None()) -> KClass()
+    | (I.KBase(), None()) -> KBase()
+    | (I.KTrait(), None()) -> KTrait()
+    | _ -> cd.name.pos.die("Impossible kind")
+    }
+  }
+
+  private fun convertClassDef(
+    in_: I.ClassDef,
+    classID: FrontEndLazyGClass,
+    pos: FileRange,
+  ): GClass {
+    kind = this.convertClassKind(in_);
+
+    classname = classID.id;
+    name = GClassName(classname);
+
+    // Convert the tparams.
+    tparams = this.convertTypeParameters(in_.tparams);
+    variances = in_.tparams.map(p -> p.var).collect(Array);
+
+    // We can only trust mutable_ on "final" classes. It just means
+    // no fields known here are assignable, but subclasses could add more.
+    classMutable = in_.mutable_.isSome() && kind.isFinal();
+    parentMutability = Mutability::fromFlag(classMutable);
+
+    // Magically poke in some LLVM type names for native types.
+    scalarType = classname match {
+    | "Bool" -> Some(ScalarType(1, 1, "i1", IntegerScalarKind()))
+    | "Char" -> Some(ScalarType(32, 32, "i32", IntegerScalarKind()))
+    | "Int" -> Some(ScalarType(64, 64, "i64", IntegerScalarKind()))
+    | "Int8" -> Some(ScalarType(8, 8, "i8", IntegerScalarKind()))
+    | "Int16" -> Some(ScalarType(16, 16, "i16", IntegerScalarKind()))
+    | "Int32" -> Some(ScalarType(32, 32, "i32", IntegerScalarKind()))
+    | "Float" -> Some(ScalarType(64, 64, "double", FloatScalarKind()))
+    | "Runtime.GCPointer" -> Some(ScalarType::gcPointer)
+    | "Runtime.NonGCPointer" -> Some(ScalarType::nonGCPointer)
+    | "Runtime.HhvmHandle" -> Some(ScalarType::hhvmHandle)
+    | "String" -> Some(ScalarType::gcPointer)
+    | _ -> None()
+    };
+
+    extends_ = this.convertExtends(in_, parentMutability);
+
+    nonStaticMethods = in_.methods.filter((_, v) ->
+      v.kind is SkipNamedAst.FKDynamic _
+    );
+
+    // TODO: Could the type of some field depend on a class constant,
+    // in which case these are not really final?
+    fieldsFinal =
+      kind.isFinal() ||
+      {
+        in_.params match {
+        | Some(cp) -> cp.final_.isSome()
+        | None() -> false
+        }
+      };
+
+    isCppExport = annotationsContainParam(
+      in_.annotations,
+      "@cpp_export",
+      pos,
+    ).isSome();
+
+    if (isCppExport) {
+      // @cpp_export must be concrete with no base classes
+      pos.invariant(
+        kind is KClass _ && extends_.isEmpty(),
+        `@cpp_export classes must be final and may not extend any base classes`,
+      )
+    };
+
+    // Flatten the fields into calling convention order (optional last).
+    fieldParams = getFields(in_, pos);
+    (fields, _, _) = flattenParams(fieldParams, paramTypes(fieldParams));
+
+    isHhvmImport = Hhvm.isImportAnnotation(in_.annotations, pos);
+    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
+    isHhvmShape = Hhvm.isShapeAnnotation(in_.annotations, pos);
+
+    convertedFields = if (classname != "Unsafe.RawStorage") {
+      this.convertFields(fields)
+    } else {
+      // Give Unsafe.RawStorage a field "value: T" to hold its internal data.
+      pos.invariant(fields.isEmpty(), "Unexpected RawStorage fields.");
+      Array[
+        GField{
+          name => "value",
+          pos,
+          typ => tparams[0],
+          isAssignable => false,
+          index => 0,
+        },
+      ]
+    };
+
+    origFields = if (isHhvmImport || isHhvmArray || isHhvmShape) {
+      // Compute the fields as if we hadn't replaced the fields with
+      // proxyPointer
+      origFieldParams = in_.params match {
+      | Some(cp) -> cp.params
+      | None() -> Positional::create()
+      };
+      (f, _, _) = flattenParams(origFieldParams, paramTypes(origFieldParams));
+      this.convertFields(f);
+    } else {
+      convertedFields
+    };
+
+    methods = UnorderedMap::mcreate(nonStaticMethods.size());
+    for (v in nonStaticMethods) {
+      (mname, mf) = this.convertMethodDef(v, name, name, tparams);
+      methods.add(mname, mf)
+    };
+
+    // only record nonlocal method sources
+    methodFields = in_.fields.filter((_, f) ~>
+      f.eltk == SkipNamedAst.EMethod() && f.source.i1 != classname
+    );
+    methodSources = UnorderedMap::mcreate(methodFields.size());
+    for (mname => f in methodFields) {
+      methodSources.add(mname.i1, FrontEndLazyGClass(f.source.i1))
+    };
+
+    // For classes marked @hhvm_import add getters for each of
+    // the parameters specified in the original class.  Later on we'll
+    // convert field references into calls to these getters.
+    if (isHhvmImport || isHhvmShape) {
+      Hhvm.setUpStandardImportMethods(
+        this,
+        methods,
+        classID,
+        in_.params,
+        tparams,
+        pos,
+        isHhvmImport,
+      );
+    } else if (isHhvmArray) {
+      in_.params.each(cp -> {
+        pos.invariant(cp.params.isEmpty(), "Cannot have fields on @hhvm_array");
+      });
+    };
+
+    if ((isHhvmArray || isHhvmShape) && kind.isBaseClass()) {
+      pos.die("@hhvm_array cannot be used on base classes");
+    };
+
+    this.finishGClass(
+      GClass{
+        name,
+        tparams,
+        variances,
+        pos,
+        isMutable => classMutable,
+        isNative => in_.native_.isSome(),
+        isFrontEndClass => true,
+        hasMeta => !(kind is KTrait _),
+        fieldsFinal,
+        constructorParametersNamed => fieldParams match {
+        | Positional _ -> false
+        | Named _ -> true
+        },
+        kind,
+        extends_,
+        methods => freeze(methods),
+        methodSources => freeze(methodSources),
+        annotations => in_.annotations,
+        fields => convertedFields,
+        origFields,
+        scalarType,
+      },
+    )
+  }
+
+  // This provides a LazyGFun for the "inspect" function. This function calls
+  // the kInspectMethodName method on its argument, something that can't
+  // be expressed in user source code.
+  private fun createInspect(
+    funInfo: GFunInfo,
+    params: Array<ParameterInfo>,
+    def: I.FunDef,
+  ): NormalLazyGFun {
+    // Extract the only Parameter (somewhat tedious).
+    param = def.params.foldl(
+      (acc, param) -> {
+        if (!acc.isNone()) {
+          param.name.pos.die("Too many parameters");
+        };
+        Some(param)
+      },
+      (None() : ?I.Parameter),
+    ) match {
+    | Some(a) -> a
+    | None() -> funInfo.pos.die("Missing parameter")
+    };
+
+    pos = param.name.pos;
+
+    // Extract the parameter to inspect().
+    paramExpr = I.Expr(param.type, pos, I.Local(param.name));
+
+    // Call kInspectMethodName on it.
+    returnType = def.return_;
+    methodInfo = I.DotInfo{
+      obj_expr => paramExpr,
+      field => I.Name(pos, kInspectMethodName),
+      field_targs => Array[],
+      source => I.Name(pos, "<no source for inspect>"),
+      elt_kind => I.EMethod(),
+      field_type => I.Type(
+        pos,
+        I.Tfun(
+          I.TfunModifiers(I.Fpure(), I.Ftracked()),
+          Positional::create(),
+          returnType,
+        ),
+      ),
+    };
+    call = I.MethodCall(methodInfo, Positional::create());
+
+    // Return that value.
+    body = I.Return(I.Expr(returnType, pos, call));
+
+    NormalLazyGFun{
+      funInfo => funInfo with {
+        isNative => false,
+        annotations => funInfo.annotations.add("@no_inline"),
+      },
+      params,
+      body,
+      useOptionalMask => true,
+    }
+  }
+
+  fun getHhvmExportName(fd: I.FunDef): ?String {
+    pos = fd.getPos();
+
+    Hhvm.exportAnnotationName(fd.annotations, pos).map(hhvmName -> {
+      if (hhvmName.isEmpty()) {
+        !hhvmName = fd.getName();
+      };
+
+      if (hhvmName.contains(".") || hhvmName.contains("\\")) {
+        pos.die(
+          "@hhvm_export functions must either be top-level or have a " +
+            "top-level exported name (without a dot or backslash)",
+        )
+      };
+
+      hhvmName
+    })
+  }
+
+  fun convertFunDef(in_: I.FunDef): LazyGFun {
+    (pos, name) = (in_.name.pos, in_.name.id);
+
+    tparams = this.convertTypeParameters(in_.tparams);
+
+    funParamTypes = paramTypes(in_.params);
+    funType = this.makeGFunType{
+      paramTypes => funParamTypes,
+      returnType => in_.return_,
+      isMutable => false,
+      isTracked => in_.untracked_.isNone(),
+    };
+
+    hhvmImportName = Hhvm.importAnnotationName(in_.annotations, pos);
+    hhvmExportName = Hhvm.exportAnnotationName(in_.annotations, pos);
+    hhvmShapeName = Hhvm.shapeAnnotationName(in_.annotations, pos);
+    isHhvmExtern = Hhvm.isExternAnnotation(in_.annotations, pos);
+    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
+
+    if (isHhvmArray) {
+      pos.die("Functions cannot be specified as @hhvm_array");
+    };
+
+    if (
+      (hhvmImportName.maybe(0, _ -> 1) +
+        hhvmExportName.maybe(0, _ -> 1) +
+        hhvmShapeName.maybe(0, _ -> 1) +
+        (if (isHhvmExtern) 1 else 0) +
+        (if (isHhvmArray) 1 else 0)) > 1
+    ) {
+      pos.die("Functions cannot specify more than one @hhvm_* annotation")
+    };
+
+    isNative = (
+      (in_.native_.isSome() ||
+        annotationsContainParam(in_.annotations, "@cpp_extern", pos).isSome() ||
+        annotationsContainParam(
+          in_.annotations,
+          "@cpp_runtime",
+          pos,
+        ).isSome()) &&
+      !hhvmImportName.isSome() &&
+      !hhvmShapeName.isSome() &&
+      !hhvmExportName.isSome()
+    );
+
+    if (isNative) {
+      ann = in_.annotations;
+      pos.invariant(
+        annotationsContainParam(ann, "@cpp_extern", pos).isSome() ||
+          annotationsContainParam(ann, "@cpp_runtime", pos).isSome() ||
+          isHhvmExtern ||
+          annotationsContainParam(ann, "@intrinsic", pos).isSome(),
+        "Native functions must be declared with @cpp_extern, @cpp_runtime, " +
+          "@hhvm_extern or @intrinsic",
+      );
+    };
+
+    funInfo = GFunInfo{
+      gfunction => GFunctionName(name),
+      pos,
+      tparams,
+      isNative,
+      isMemoized => in_.memoized_.isSome(),
+      isAsync => in_.async_.isSome(),
+      isGenerator => in_.yields.isSome(),
+      annotations => in_.annotations,
+      className => None(),
+      funType,
+    };
+
+    (flatParams, numOptional, useOptionalMask) = flattenParams(
+      in_.params,
+      funParamTypes,
+    );
+
+    params = insertOptionalFlags(flatParams, numOptional, useOptionalMask, pos);
+
+    function = if (funInfo.isNative) {
+      Hhvm.convertIntrinsic(name, funInfo, params) match {
+      | Some(lazyFun) -> lazyFun
+      | None() ->
+        name match {
+        | "inspect" -> this.createInspect(funInfo, params, in_)
+        | _ ->
+          if (isHhvmExtern) {
+            Hhvm.HhvmRuntimeLazyGFun::make(funInfo, params)
+          } else {
+            NativeLazyGFun{funInfo, params}
+          }
+        }
+      }
+    } else if (hhvmImportName.isSome()) {
+      HhvmImportLazyGFun{
+        funInfo,
+        params,
+        useOptionalMask,
+        isStatic => false,
+        hhvmName => hhvmImportName match {
+        | Some(s) if (!s.isEmpty()) -> s
+        | _ -> funInfo.gfunction.id
+        },
+      }
+    } else {
+      in_.body match {
+      | Some _ ->
+        DefLazyGFun::make{funInfo, def => in_, params, useOptionalMask}
+      | None() -> NativeLazyGFun{funInfo, params}
+      }
+    };
+
+    function
+  }
+
+  fun convertMethodDef(
+    in_: I.MethodDef,
+    physicalClassName: GClassName,
+    // Usually the same as physicalClassName, but for static methods
+    // moved to metaclasses it's the original class, not the metaclass
+    // where the methods are implemented in the back end.
+    logicalClassName: GClassName,
+    classTparams: Array<GTparam>,
+  ): (String, GMethodDef) {
+    (pos, name) = (in_.name.pos, in_.name.id);
+
+    methodTparams = this.convertTypeParameters(in_.tparams);
+
+    thisBinding = in_.implicit_param;
+
+    isStatic = in_.kind is SkipNamedAst.FKStatic _;
+    pos.invariant(
+      thisBinding.name.id == (if (isStatic) "static" else "this"),
+      "Surprising name for implicit arg.",
+    );
+
+    // Prepend a "this" or "static" argument.
+    thisParameter = I.Parameter{
+      annotations => SSet[],
+      visibility => (pos, I.VPrivate()),
+      name => thisBinding.name,
+      type => thisBinding.ty,
+      value => None(),
+      frozen_ => thisBinding.info,
+      index => -1,
+      mutable_ => Some(pos),
+    };
+
+    (flatParamsWithoutThis, numOptional, useOptionalMask) = flattenParams(
+      in_.params,
+      paramTypes(in_.params),
+    );
+    flatParams = Array[thisParameter].concat(flatParamsWithoutThis);
+
+    funName = physicalClassName.id + "::" + name;
+
+    funType = makeGFunTypeWithFlags{
+      paramTypes => this.convertTypes(flatParams.map(defaultifyParamType)),
+      numOptional,
+      useOptionalMask,
+      returnType => this.convertType(in_.return_),
+      isMutable => false,
+      isTracked => in_.untracked_.isNone(),
+    };
+
+    // Turn each method into a global generic function, whose tparams
+    // are all the class tparams followed by all the method tparams.
+    tparams = classTparams.concat(methodTparams);
+
+    hhvmImportName = Hhvm.importAnnotationName(in_.annotations, pos);
+    hhvmShapeName = Hhvm.shapeAnnotationName(in_.annotations, pos);
+    hhvmExportName = Hhvm.exportAnnotationName(in_.annotations, pos);
+    isHhvmExtern = Hhvm.isExternAnnotation(in_.annotations, pos);
+    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
+
+    if (hhvmExportName.isSome()) {
+      pos.die("Methods cannot be specified as @hhvm_export");
+    };
+
+    if (isHhvmArray || hhvmShapeName.isSome()) {
+      pos.die("Methods cannot be specified as @hhvm_array");
+    };
+
+    if (
+      (hhvmImportName.maybe(0, _ -> 1) +
+        hhvmExportName.maybe(0, _ -> 1) +
+        (if (isHhvmExtern) 1 else 0)) > 1
+    ) {
+      pos.die("Methods cannot specify more than one @hhvm_* annotation")
+    };
+
+    isCppExtern = annotationsContainParam(
+      in_.annotations,
+      "@cpp_extern",
+      pos,
+    ).isSome();
+    isCppRuntime = annotationsContainParam(
+      in_.annotations,
+      "@cpp_runtime",
+      pos,
+    ).isSome();
+
+    isNative = (
+      (in_.native_.isSome() || isCppExtern || isCppRuntime) &&
+      !hhvmImportName.isSome() &&
+      !hhvmExportName.isSome()
+    );
+
+    if (isNative) {
+      ann = in_.annotations;
+      pos.invariant(
+        isCppExtern ||
+          isCppRuntime ||
+          isHhvmExtern ||
+          annotationsContainParam(ann, "@intrinsic", pos).isSome(),
+        "Native methods must be declared with @cpp_extern, @cpp_runtime, " +
+          "@hhvm_extern or @intrinsic",
+      );
+    };
+
+    funID = FrontEndLazyGFun{frontEndName => funName};
+    funInfo = GFunInfo{
+      gfunction => funID.gname(),
+      pos,
+      isNative,
+      isMemoized => in_.memoized_.isSome(),
+      isGenerator => in_.yields.isSome(),
+      className => Some(logicalClassName),
+      isAsync => in_.async_.isSome(),
+      annotations => in_.annotations,
+      tparams,
+      funType,
+    };
+
+    // Remember to compile this body once we have seen all the definitions.
+    params = insertOptionalFlags(flatParams, numOptional, useOptionalMask, pos);
+
+    // If we're marked with hhvm_export then we mock up a new wrapper function
+    // which calls this function
+    if (hhvmExportName.isSome()) {
+      pos.die("@hhvm_export unimplemented on methods")
+    };
+
+    methodFunction = if (funInfo.isNative) {
+      // If a function (or method) is native then ignore any body it might have.
+      if (isHhvmExtern) {
+        Some(Hhvm.HhvmRuntimeLazyGFun::make(funInfo, params))
+      } else {
+        Some(NativeLazyGFun{funInfo, params})
+      }
+    } else if (hhvmImportName.isSome()) {
+      importName = hhvmImportName.fromSome();
+      hhvmName =
+        (if (isStatic) logicalClassName.id + "::" else "") +
+        (if (importName.isEmpty()) name else importName);
+      Some(
+        HhvmImportLazyGFun{
+          funInfo,
+          params,
+          useOptionalMask,
+          isStatic,
+          hhvmName,
+        },
+      )
+    } else if (in_.body is Some _) {
+      Some(DefLazyGFun::make{funInfo, def => in_, params, useOptionalMask})
+    } else {
+      // Do nothing with regular abstract methods.
+      None()
+    };
+
+    tparamInherit = if (methodTparams.isEmpty()) {
+      emptyTparamInherit
+    } else {
+      timap = UnorderedMap::mcreate(in_.generic_mapping.size());
+      for (base => tmap in in_.generic_mapping) {
+        timap.set(
+          FrontEndLazyGClass(base),
+          methodTparams.map(tp -> this.convertType(tmap[tp.id])),
+        )
+      };
+      freeze(timap)
+    };
+    (
+      name,
+      GMethodDef{
+        function => methodFunction.map(lazy ~> _ ~> lazy),
+        tparams => methodTparams,
+        tparamInherit,
+        pos,
+      },
+    )
+  }
+
+  fun convertConstDef(in_: I.ConstDef): ConstLazyGFun {
+    // Create a function that unconditionally computes this constant value.
+    // See GetConst for what happens next.
+    funType = GFunType{
+      isMutable => false,
+      isTracked => true,
+      params => Array[],
+      returnType => this.convertType(in_.type),
+    };
+
+    constName = ConstID(in_.name.id);
+
+    // generate initializer outerIst eagerly for const_defs
+    !in_ = SLO.const_def(in_, this.program);
+
+    in_.value match {
+    | Some(init) ->
+      (stmt, expr) = init.asOuter();
+
+      funInfo = GFunInfo{
+        gfunction => GFunctionName(
+          constName.id + LowerConst.kComputeConstSuffix,
+        ),
+        pos => expr.pos,
+        tparams => Array[],
+        className => None(),
+        funType,
+        annotations => SSet[].add("@always_inline"),
+      };
+
+      ConstLazyGFun{
+        funInfo,
+        params => Array[],
+        body => I.Seq(List.Cons(stmt, List::of(I.Return(expr)))),
+        constName,
+        useOptionalMask => false,
+      }
+    | None() -> invariant_violation("Cannot handle const with no value.")
+    }
+  }
+
+  // If gclass is stored as the field of another object, does it "scalarize"
+  // into no more than one scalar?
+  //
+  // So for any reference type this is true, since it's just one pointer.
+  // For a value class with two Int fields this would be false, for a value
+  // class containing a value class containing one Int it's true, etc.
+  private fun scalarizesToNoMoreThanOneScalar(gid: LazyGClass, pos: Pos): Bool {
+    loop {
+      this.getGClassKind(gid) match {
+      | KBase()
+      | KClass() ->
+        return true
+      | KValue() ->
+        gclass = this.getGClass(gid, pos);
+        if (gclass.fields.isEmpty()) {
+          return true
+        } else if (gclass.fields.size() > 1) {
+          return false
+        } else {
+          gclass.fields[0].typ match {
+          | GTapply(subgid, _, _) ->
+            // This should not loop forever because you can't have
+            // an infinitely recursive value class type.
+            !gid = subgid
+          | _ -> return false
+          }
+        }
+      | KTrait() -> pos.die("Cannot scalarize a trait")
+      }
+    }
+  }
+
+  private fun assertNoStaticMethods(lazyGClass: LazyGClass, gc: GClass): void {
+    metaID = this.getMetaClass(lazyGClass, Some(gc));
+    for (name => def in this.getGClassImpl(metaID).methods) {
+      if (
+        name != kFrozenFactoryName &&
+        name != kGetClassMethodName &&
+        name != kInspectMethodName &&
+        name != kMutableFactoryName
+      ) {
+        def.pos.die(
+          `Unexpected static method ${name} for special class ` +
+            lazyGClass.nameStr(),
+        )
+      }
+    }
+  }
+
+  // Every generator gets its own subclass of Iterator to hold its
+  // particular coroutine state. This produces a new such class
+  // for the generator function described by funInfo.
+  fun createGeneratorClass(funInfo: GFunInfo): GTapply {
+    // We start with Iterator.Generator as a basic template
+    // for the custom class we want to create, then tweak it.
+    pos = funInfo.pos;
+
+    // Computes Array[XX] for the return type "mutable Iterator<XX>".
+    yieldedTargs = funInfo.funType.returnType match {
+    | GTapply(
+      FrontEndLazyGClass("Iterator"),
+      Mutable(),
+      t,
+    ) if (t.size() == 1) ->
+      t
+    | bad -> funInfo.die(`Expected mutable Iterator return type, got ${bad}`)
+    };
+
+    template = this.getGClass(FrontEndLazyGClass("Iterator.Generator"), pos);
+
+    // This class takes as tparams all of the tparams in the
+    // environment where the body appears, since that body might
+    // reference them. Additionally it takes the T for Iterator<T> so
+    // that any fields etc. that it inherits can be resolved in terms
+    // of that T.
+    tparams = template.tparams.concat(funInfo.tparams);
+
+    generatorGClass = template with {
+      name => GClassName(funInfo.gfunction.id + "::Generator"),
+      isFrontEndClass => false,
+      tparams,
+
+      // Replace "extends Iterator<T>" with "extends Iterator<XX>" where
+      // "mutable Iterator<XX>" is the declared return type of the
+      // function containing the yield.
+      extends_ => template.extends_.map(ext -> {
+        if (ext.generic.name() != GClassName("Iterator")) {
+          ext
+        } else {
+          ext with {targs => yieldedTargs}
+        }
+      }),
+
+      methods => template.methods
+        .filter((name, _) -> name != kInspectMethodName)
+        .map((name, methodDef) -> {
+          if (name != "next") {
+            methodDef
+          } else {
+            GMethodDef{
+              function => Some(receiver ~> {
+                generatorType = GTapply(receiver, Mutable(), tparams);
+
+                // Produce a skeleton for the "next" method. The body will
+                // be filled in for real much later, once the ramp up function
+                // has been optimized and gets split in two.
+                nextImpl = GFunction{
+                  funInfo => GFunInfo{
+                    gfunction => GFunctionName(receiver.nameStr() + "::next"),
+                    funType => GFunType{
+                      isMutable => false,
+                      isTracked => funInfo.funType.isTracked,
+                      params => Array[generatorType],
+                      returnType => GTapply(
+                        FrontEndLazyGClass("Option"),
+                        Readonly(),
+                        yieldedTargs,
+                      ),
+                    },
+                    tparams,
+                    pos,
+                    className => Some(receiver.name()),
+                    annotations => funInfo.annotations,
+                  },
+                  params => Array[GFunParam{typ => generatorType, pos}],
+                  blocks => Array[
+                    // Dummy body for now.
+                    GBlock{
+                      id => GBlockID(0),
+                      pos,
+                      instrs => Vector[
+                        GUnreachable{
+                          why => "incomplete generator 'next' method",
+                          pos,
+                        },
+                      ],
+                    },
+                  ],
+                  coroutineInfo => Some(GUnfinishedNext(funInfo)),
+                };
+
+                DoneLazyGFun{function => nextImpl}
+              }),
+              tparams => Array[],
+              pos,
+            }
+          }
+        }),
+    };
+
+    GTapply(
+      LiteralLazyGClass(this.finishGClass(generatorGClass)),
+      Mutable(),
+      yieldedTargs.concat(funInfo.tparams),
+    )
+  }
+
+  // Every awaitable gets its own subclass of AwaitableBase to hold its
+  // particular coroutine state. This produces a new such class
+  // for the generator function described by funInfo.
+  fun createAwaitableClass(funInfo: GFunInfo): GTapply {
+    // We start with Iterator.Generator as a basic template
+    // for the custom class we want to create, then tweak it.
+    pos = funInfo.pos;
+
+    // Computes Array[XX] for the return type "mutable Awaitable<XX>".
+    awaitableTargs = funInfo.funType.returnType match {
+    | GTapply(
+      FrontEndLazyGClass("Awaitable"),
+      Mutable(),
+      t,
+    ) if (t.size() == 1) ->
+      t
+    | bad -> funInfo.die(`Expected mutable Awaitable return type, got ${bad}`)
+    };
+
+    // Change the return type of the generator from Iterator<XX> to
+    // the specific concrete awaitable type we are creating here.
+    // In addition to conveying types more accurately, this gives the
+    // coroutine a way to find its "next" method later.
+    awaitableFunTargs = awaitableTargs.concat(funInfo.tparams);
+
+    templateID = FrontEndLazyGClass("Awaitable.AwaitableTemplate");
+    template = this.getGClass(templateID, pos);
+
+    // This class takes as tparams all of the tparams in the environment
+    // where the async function body appears, since that body might
+    // reference them. Additionally it takes the T for AwaitableTemplate<T>
+    // so that any fields etc. that it inherits can be resolved in terms
+    // of that T.
+    tparams = template.tparams.concat(funInfo.tparams);
+
+    awaitableGClass = template with {
+      name => GClassName(funInfo.gfunction.id + "::Awaitable"),
+      isFrontEndClass => false,
+      tparams,
+
+      // Replace "extends Awaitable<T>" with "extends Awaitable<XX>" where
+      // "mutable Awaitable<XX>" is the declared return type of the
+      // function containing the yield.
+      extends_ => {
+        found = false;
+        ext = template.extends_.map(ext -> {
+          if (ext.generic != FrontEndLazyGClass("Awaitable")) {
+            ext
+          } else {
+            !found = true;
+            ext with {targs => awaitableTargs}
+          }
+        });
+        pos.invariant(found, "Expected Awaitable base class");
+        ext
+      },
+
+      methods => template.methods
+        .filter((name, _) -> name != kInspectMethodName)
+        .map((name, methodDef) -> {
+          if (name != "next") {
+            methodDef
+          } else {
+            function = receiver ~> {
+              // Produce a skeleton for the "next" method. The body will
+              // be filled in for real much later, once the ramp up function
+              // has been optimized and gets split in two.
+              awaitableType = GTapply(receiver, Mutable(), awaitableFunTargs);
+
+              DoneLazyGFun{
+                function => GFunction{
+                  funInfo => GFunInfo{
+                    gfunction => GFunctionName(receiver.nameStr() + "::next"),
+                    funType => GFunType{
+                      isMutable => false,
+                      isTracked => funInfo.funType.isTracked,
+                      params => Array[awaitableType],
+                      returnType => gtVoid,
+                    },
+                    tparams,
+                    pos,
+                    className => Some(receiver.name()),
+                    annotations => funInfo.annotations,
+                  },
+                  params => Array[GFunParam{typ => awaitableType, pos}],
+                  blocks => Array[
+                    // Dummy body for now.
+                    GBlock{
+                      id => GBlockID(0),
+                      pos,
+                      instrs => Vector[
+                        GUnreachable{
+                          why => "incomplete Awaitable 'next' method",
+                          pos,
+                        },
+                      ],
+                    },
+                  ],
+                  coroutineInfo => Some(GUnfinishedNext(funInfo)),
+                },
+              }
+            };
+
+            GMethodDef{function => Some(function), tparams => Array[], pos}
+          }
+        }),
+    };
+
+    // We aren't smart enough to handle static methods on special classes yet.
+    this.assertNoStaticMethods(templateID, template);
+
+    GTapply(LiteralLazyGClass(awaitableGClass), Mutable(), awaitableFunTargs);
+  }
+}
+
+class TryInfo{
+  llvmLandingPad: GBlockID,
+  catchMatch: GBlockID,
+  exceptionVariable: String,
+}
+
+class SwitchBranch<T>(value: T, actionIndex: Int, pos: FileRange)
+
+mutable class SwitchAction(body: I.Stmt, block: mutable GBlock)
+
+// Normally Return inside a memoized function gets turned into a special call.
+// But when we really truly want an actual return, we convey that override
+// to the I.Return handler by providing a Type with this wacky FileRange.
+//
+// TODO: Maybe just say that a Return outside a try must be a "real" one.
+private const kForceReturnHackPos: FileRange = FileRange{
+  filename => "<builtin>.HackForceReturn///\0///",
+  range => TextRange.none,
+};
+
+// Manages converting a single function from OuterIst to GIR.
+mutable class OuterIstEmitter{
+  converter: Converter,
+  mutable funInfo: GFunInfo,
+  lazy: ConcreteLazyGFun,
+  mutable nextBlockID: Int = 0,
+  mutable nextClosureID: Int = 0,
+  mutable nextInstrID: Int = 0,
+  mutable nextTryID: Int = 0,
+  // Containing "try" catch clause blocks ("landing pads").
+  mutable tryInfo: ?TryInfo = None(),
+  mutable continueID: GBlockID = GBlockID::none,
+
+  mutable exitBlockID: GBlockID = GBlockID::none,
+
+  // Maps local name to the GInstr providing its value and a flag indicating
+  // whether that is the value (false) or a LocalVariable holding its value
+  // indirectly (true).
+  locals: mutable UnorderedMap<String, (GInstr, Bool)> = mutable UnorderedMap[],
+  // Maps labels to JumpBlock entry block ids.
+  labels: mutable UnorderedMap<String, GBlockID> = mutable UnorderedMap[],
+  blocks: mutable Vector<mutable GBlock> = mutable Vector[],
+  mutable params: Array<GFunParam> = Array[],
+  mutable blockActive: Bool = false,
+  mutable pos: FileRange,
+} {
+  static fun make(
+    converter: Converter,
+    lazy: ConcreteLazyGFun,
+  ): mutable OuterIstEmitter {
+    funInfo = lazy.funInfo;
+    if (funInfo.isGenerator) {
+      !funInfo.funType.returnType = converter.createGeneratorClass(funInfo)
+    } else if (funInfo.isAsync) {
+      !funInfo.funType.returnType = converter.createAwaitableClass(funInfo)
+    };
+
+    mutable OuterIstEmitter{converter, funInfo, lazy, pos => lazy.funInfo.pos}
+  }
+
+  readonly fun constantBool(value: Bool): GConstantBool {
+    GConstantBool{value}
+  }
+
+  readonly fun constantChar(value: Char): GConstantChar {
+    GConstantChar{value}
+  }
+
+  readonly fun constantDefaultArg(typ: GType): GConstantDefaultArg {
+    GConstantDefaultArg{typ}
+  }
+
+  readonly fun constantFloat(value: Float): GConstantFloat {
+    GConstantFloat{value}
+  }
+
+  readonly fun constantInt(value: Int): GConstantInt {
+    GConstantInt{value}
+  }
+
+  readonly fun constantString(value: UTF8String): GConstantString {
+    GConstantString{value}
+  }
+
+  readonly fun constantVoid(): GConstantVoid {
+    GConstantVoid{}
+  }
+
+  readonly fun constantZero(typ: GType): GConstantZero {
+    GConstantZero{typ}
+  }
+
+  mutable fun emitInstr(instr: GStmt): GStmt {
+    if (this.blockActive) {
+      // Allocate an GInstrID for this instruction.
+      id = this.nextInstrID;
+      this.!nextInstrID = id + 1;
+      !instr = instr with {id => GInstrID(id)};
+
+      this.blocks.last().instrs.push(instr);
+
+      instr match {
+      | GTerminator _ -> this.!blockActive = false
+      | _ -> void
+      }
+    };
+    instr
+  }
+
+  // Returns the raw value of a local variable, which may be the value itself
+  // or may be a ref wrapping it.
+  private mutable fun getRawLocal(
+    name: String,
+    pos: FileRange,
+  ): (GInstr, Bool) {
+    this.locals.maybeGet(name) match {
+    | Some(binding) -> binding
+    | None() ->
+      buf = mutable Vector[];
+      this.locals.keys().each(buf.push);
+      pos.die(
+        "Accessing unknown variable " +
+          name +
+          ": choices are " +
+          buf.join(", "),
+      )
+    }
+  }
+
+  mutable fun getLocal(name: String, pos: FileRange): GInstr {
+    (value, byRef) = this.getRawLocal(name, pos);
+    if (!byRef) {
+      value
+    } else {
+      // Dereference the LocalVariable storing the value by reference.
+      this.emitInstr(
+        GGetField{
+          typ => value.getType().asGTapply(pos).targs[0],
+          pos,
+          obj => value,
+          field => "value",
+          prettyName => name,
+        },
+      )
+    }
+  }
+
+  mutable fun setLocal(var: String, value: GInstr, pos: FileRange): void {
+    (ref, byRef) = this.getRawLocal(var, pos);
+
+    if (byRef) {
+      // Capture-by-reference, so set the field of the ref.
+      _ = this.emitInstr(GSetField{pos, obj => ref, field => "value", value})
+    } else if (ref.getType() != gtVoid) {
+      // Only by-reference values can be set after they are bound.
+      pos.die(
+        "Found unexpected assignment to variable " +
+          var +
+          " of type " +
+          value.getType() +
+          " (var is " +
+          ref.getType() +
+          ")",
+      )
+    }
+  }
+
+  mutable fun emitPreamble(): void {
+    lazy = this.lazy;
+
+    this.startBlock(this.newBlock(this.pos, "entry"));
+
+    funType = this.funInfo.funType;
+    this.pos.invariant(
+      funType.params.size() == lazy.params.size(),
+      "args mismatch",
+    );
+
+    // Create FunParams and assign them the first IDs to match Emitter.
+    this.!params = lazy.params.mapWithIndex((i, p) -> {
+      GFunParam{
+        id => GInstrID(i),
+        typ => funType.params[i],
+        pos => p.pos,
+        prettyName => p.name,
+      }
+    });
+    this.pos.invariant(this.nextInstrID == 0, "FunParams not numbered right");
+    this.!nextInstrID = lazy.params.size();
+
+    returnTempType = lazy.returnTempType();
+    if (returnTempType != gtVoid) {
+      // Declare a return value variable. "Return" assigns to this then
+      // jumps to the exit block.
+      this.emitBind(
+        kImplicitReturnVariableName,
+        returnTempType,
+        this.constantZero(returnTempType),
+        SkipOuterIstUtils.nonconst_binding_info,
+        this.pos,
+      )
+    }
+  }
+
+  mutable fun emitBindParameters(): void {
+    lazy = this.lazy;
+
+    // Bind captured variables as locals.
+    // Load the raw value of each captured variable from the closure.
+    // This may or may not be a LocalVariable.
+    for (f in lazy.captured) {
+      (localName, closureCaptureKind) = parseClosureFieldName(f);
+
+      load = this.emitInstr(
+        GGetField{
+          typ => f.typ,
+          pos => f.pos,
+          obj => this.params[0],
+          field => f.name,
+          prettyName => localName,
+        },
+      );
+
+      closureCaptureKind match {
+      | CCByValue() -> this.locals.set(localName, (load, false))
+      | CCByRef() -> this.locals.set(localName, (load, true))
+      | CCNotCaptured() -> f.pos.die("Expected captured field " + localName)
+      }
+    };
+
+    paramInfos = lazy.getParams(this.converter);
+
+    // Declare all required arguments and all optional positional arguments.
+    // Optional named arguments are handled below.
+    firstOptional = -1;
+    paramInfos.eachWithIndex((i, param) -> {
+      isOptional = param.value.isSome();
+      if (firstOptional < 0 && isOptional) {
+        !firstOptional = i
+      };
+
+      // NOTE: In the case of an optional parameter, this may end up
+      // storing zero bits in a LocalVariable, where it will be overwritten
+      // with the real value. This is safe, since no one can look at it
+      // until a real value is assigned, but it's worth calling out here.
+      this.emitBind(
+        param.name,
+        this.params[i].getType(),
+        this.params[i],
+        param.info with {updated => param.info.updated || isOptional},
+        param.pos,
+      )
+    });
+
+    //
+    // Compute default arguments.
+    //
+    if (firstOptional >= 0) {
+      numOptional = paramInfos.size() - firstOptional;
+
+      if (lazy.useOptionalMask) {
+        // We have named optional arguments. We need to evaluate them in
+        // declaration order, not alphabetical order. This is both for
+        // side effects and if, someday, we allow default values to
+        // reference earlier parameter values.
+        argIndices = Array::fillBy(numOptional, i ->
+          i + firstOptional
+        ).sortedBy(ai ~> {
+          paramInfos[ai].index
+        });
+
+        for (argIndex in argIndices) {
+          param = paramInfos[argIndex];
+          name = param.name;
+          pos = param.pos;
+
+          (defaultStmt, defaultExpr) = param.getInit().asOuter();
+
+          flagIndex = argIndex - firstOptional;
+          whichFlag = flagIndex / 64;
+          suppliedMask = this.getLocal(kOptSuppliedPrefix + whichFlag, pos);
+
+          bit = this.emitInstr(
+            GCallMethod{
+              typ => gtInt,
+              pos,
+              method => "andImpl",
+              args => Array[
+                suppliedMask,
+                this.constantInt(1.shl(flagIndex % 64)),
+              ],
+              source => gtInt.generic,
+            },
+          );
+
+          predicate = this.emitInstr(
+            GCallMethod{
+              typ => gtBool,
+              pos,
+              method => "neImpl",
+              args => Array[bit, this.constantInt(0)],
+              source => gtInt.generic,
+            },
+          );
+
+          computeDefaultBlock = this.newBlock(pos, "set_optional_" + name);
+
+          afterBlock = this.newBlock(pos, "done_optional_" + name);
+
+          _ = this.emitInstr(
+            GIf{
+              pos,
+              predicate,
+              successors => Array[afterBlock.id, computeDefaultBlock.id],
+            },
+          );
+
+          // Conditionally replace this variable with its default value.
+          this.startBlock(computeDefaultBlock);
+          this.emitStmt(defaultStmt);
+          defaultExprPos = defaultExpr.pos;
+          this.setLocal(name, this.emitExpr(defaultExpr), defaultExprPos);
+          this.maybeEmitJump(afterBlock.id, defaultExprPos);
+
+          this.startBlock(afterBlock)
+        }
+      } else {
+        pos = this.pos;
+
+        numArgs = this.getLocal(kOptSuppliedPrefix + "0", pos);
+
+        // Create the blocks for the "switch" to jump to.
+        // For N arguments there are N + 1 blocks we might execute;
+        // for example, if we have 3 optional positional arguments,
+        // there are four possibilities: 0, 1, 2, or 3 arguments were supplied.
+        // We add an additional "default" block for the IntSwitch containing
+        // only an "Unreachable" to tell LLVM that it does not need to handle
+        // the default case.
+
+        blocks = mutable Vector[];
+        blocks.push(this.newBlock(pos, "setup_optional_impossible"));
+        for (i in Range(0, numOptional)) {
+          blocks.push(this.newBlock(paramInfos[i].pos, "setup_optional_" + i))
+        };
+        blocks.push(this.newBlock(pos, "setup_optional_done"));
+
+        _ = this.emitInstr(
+          GIntSwitch{
+            pos,
+            value => numArgs,
+            cases => Array::fillBy(numOptional + 1, id),
+            successors => Array::fillBy(blocks.size(), i -> blocks[i].id),
+          },
+        );
+
+        // Emit the "default" case where an impossible number of optional
+        // arguments was supplied.
+        this.startBlock(blocks[0]);
+        _ = this.emitInstr(
+          GUnreachable{why => "impossible bind parameters", pos},
+        );
+
+        for (i in Range(0, numOptional)) {
+          this.startBlock(blocks[i + 1]);
+
+          param = paramInfos[firstOptional + i];
+          (defaultStmt, defaultExpr) = param.getInit().asOuter();
+
+          this.emitStmt(defaultStmt);
+          defaultExprPos = defaultExpr.pos;
+          this.setLocal(param.name, this.emitExpr(defaultExpr), defaultExprPos);
+
+          // "Fall through" to the next case.
+          this.maybeEmitJump(blocks[i + 2].id, defaultExprPos)
+        };
+
+        this.startBlock(blocks[numOptional + 1])
+      }
+    }
+  }
+
+  private mutable fun emitParams(
+    params: Parameters<I.Expr>,
+    expectedTypes: Parameters<I.Type>,
+    skipOptionalFlags: Bool = false,
+  ): Array<GInstr> {
+    (flatParams, numOptional, useOptionalMask) = flattenParams(
+      params,
+      expectedTypes,
+    );
+    args = flatParams.map(arg -> this.emitExpr(arg));
+
+    if (numOptional == 0 || skipOptionalFlags) {
+      args
+    } else {
+      numRequired = flatParams.size() - numOptional;
+
+      flags = if (useOptionalMask) {
+        // Insert extra arg(s) indicating which optional args are supplied.
+        masks = Array::mfill(computeNumOptionalFlagInts(numOptional, true), 0);
+
+        for (i in Range(0, numOptional)) {
+          args[numRequired + i] match {
+          | GConstantDefaultArg _ -> void
+          | _ ->
+            // Set a 1 bit for each named arg that is being supplied.
+            index = i / 64;
+            bit = 1.shl(i % 64);
+            masks.set(index, masks[index].or(bit))
+          };
+        };
+
+        masks.map(n -> this.constantInt(n))
+      } else {
+        // Scan to find first missing positional argument.
+        firstMissing = numRequired;
+        done = false;
+
+        while (firstMissing < args.size() && !done) {
+          args[firstMissing] match {
+          | GConstantDefaultArg _ -> !done = true
+          | _ -> !firstMissing = firstMissing + 1
+          };
+        };
+
+        Array[this.constantInt(firstMissing - numRequired)];
+      };
+
+      // Insert optional arg flags in the middle.
+      numFlagInts = flags.size();
+      Array::fillBy(args.size() + numFlagInts, i -> {
+        if (i < numRequired) {
+          args[i]
+        } else if (i < numRequired + numFlagInts) {
+          flags[i - numRequired]
+        } else {
+          args[i - numFlagInts]
+        }
+      })
+    }
+  }
+
+  mutable fun emitCast(frm: GInstr, typ: GType, pos: FileRange): GInstr {
+    this.emitInstr(GCast{typ, pos, value => frm})
+  }
+
+  mutable fun newBlock(
+    pos: FileRange,
+    prettyName: String = "",
+  ): mutable GBlock {
+    // NOTE: This Block is not the final one we will end up with in the
+    // GFunction, it's just a carrier of fields we'll need for the final block.
+    id = this.nextBlockID;
+    this.!nextBlockID = id + 1;
+    mutable GBlock{id => GBlockID(id), prettyName, pos}
+  }
+
+  mutable fun terminateExistingBlock(): void {
+    if (this.blockActive) {
+      _ = this.emitInstr(GUnreachable{why => "end of block", pos => this.pos})
+    }
+  }
+
+  mutable fun startBlock(b: mutable GBlock): void {
+    if (this.blockActive) {
+      b.pos.die("Unterminated block")
+    };
+    this.blocks.push(b);
+    this.!blockActive = true;
+    this.!pos = b.pos
+  }
+
+  private mutable fun convertType(typ: I.Type): GType {
+    this.converter.convertType(typ)
+  }
+
+  // Emit a call to a global function.
+  mutable fun emitCallFunction(
+    name: LazyGFun,
+    args: Array<GInstr>,
+    targs: Array<GType>,
+    typ: GType,
+    pos: FileRange,
+  ): GInstr {
+    if (name == FrontEndLazyGFun{frontEndName => "awaitSynchronously"}) {
+      // This intrinsic is pretty messy to do later, so expand it now.
+      this.emitAwaitSynchronously(args, typ, pos)
+    } else {
+      this.tryInfo match {
+      | None() ->
+        // A normal call (not inside a "try").
+        this.emitInstr(GCallFunction{typ, pos, name, args, targs})
+      | Some(tryInfo) ->
+        // A "call" lexically inside a "try" becomes an "invoke",
+        // possibly transferring control to the "catch" landing pad.
+        nextBlockIfNoThrow = this.newBlock(pos, "try_no_throw");
+
+        invoke = this.emitInstr(
+          GInvokeFunction{
+            typ,
+            pos,
+            name,
+            args,
+            targs,
+            successors => Array[nextBlockIfNoThrow.id, tryInfo.llvmLandingPad],
+          },
+        );
+
+        this.startBlock(nextBlockIfNoThrow);
+
+        invoke
+      }
+    }
+  }
+
+  private mutable fun emitMethodCall(
+    info: I.DotInfo,
+    methodArgs: Parameters<I.Expr>,
+    staticMethodCall: Bool,
+    pos: FileRange,
+  ): GInstr {
+    info.elt_kind match {
+    | I.EMethod()
+    | I.EConst() ->
+      void
+    | I.EProperty() -> pos.die("Cannot handle EProperty yet")
+    };
+
+    obj = this.emitExpr(info.obj_expr);
+    frontEndMethodType = this.converter.asTfun(info.field_type);
+    reorderedArgs = this.emitParams(methodArgs, frontEndMethodType.params);
+
+    args = Array[obj].concat(reorderedArgs);
+
+    // Find the type of the method, which does not include "this".
+    mtype = this.converter.convertRawTfun(frontEndMethodType);
+
+    // Prepend a "this" of whatever object type we are invoking it on.
+    typ = mtype with {params => Array[obj.getType()].concat(mtype.params)};
+
+    targs = this.converter.convertTypes(info.field_targs);
+
+    source = (FrontEndLazyGClass(info.source.id) : LazyGClass);
+    if (staticMethodCall) {
+      // Change the "source" of a static method from Foo to Class<Foo>, etc.,
+      // since that's where it will exist in the GClass hierarchy.
+      !source = ClassMetaLazyGClass(source)
+    };
+
+    method = info.field.id;
+
+    this.tryInfo match {
+    | None() ->
+      // A normal call (not inside a "try").
+      this.emitInstr(
+        GCallMethod{typ => typ.returnType, pos, method, args, targs, source},
+      )
+    | Some(tryInfo) ->
+      // A "call" lexically inside a "try" becomes an "invoke",
+      // possibly transferring control to the "catch" landing pad.
+      nextBlockIfNoThrow = this.newBlock(pos, "try_no_throw");
+
+      invoke = this.emitInstr(
+        GInvokeMethod{
+          typ => typ.returnType,
+          pos,
+          method,
+          args,
+          targs,
+          successors => Array[nextBlockIfNoThrow.id, tryInfo.llvmLandingPad],
+          source,
+        },
+      );
+
+      this.startBlock(nextBlockIfNoThrow);
+
+      invoke
+    }
+  }
+
+  private mutable fun emitClosureCall(
+    funcExpr: I.Expr,
+    params: Parameters<I.Expr>,
+    pos: FileRange,
+  ): GInstr {
+    closureType = this.convertType(funcExpr.ty);
+    closureTypeName = closureType match {
+    | GTapply(generic, _, _) -> generic.nameStr()
+    | _ -> ""
+    };
+
+    if (!closureTypeName.startsWith("<builtin>.Closure")) {
+      pos.die("Expected closure type but got " + closureType)
+    };
+
+    // Closures are an object with a single "call" method.
+    info = I.DotInfo{
+      obj_expr => funcExpr,
+      field => I.Name(pos, "call"),
+      field_targs => Array[],
+      source => I.Name(pos, closureTypeName), /// ??? wrong, not a front end type
+      elt_kind => I.EMethod(),
+      field_type => funcExpr.ty,
+    };
+
+    this.emitMethodCall(info, params, false, pos)
+  }
+
+  // Handle an "async" block. The strategy is to create a global async
+  // function that takes as parameters every value captured by this
+  // async block, with the same body as this async block, and call it.
+  private mutable fun emitAsync(
+    body: I.Stmt,
+    value: I.Expr,
+    typ: GType,
+    pos: FileRange,
+  ): GInstr {
+    // Find all local variables mentioned in the async block.
+    vars = UnorderedSet::mcreateFromIterator(
+      SkipOptimizeLocals.reads_of_stmt(body).values(),
+    );
+    cap1 = SkipOuterIstUtils.captured_locals_of_statement(body);
+    cap1.keys().each(vars.insert);
+
+    SkipOptimizeLocals.reads_of_expr(value).each(vars.insert);
+    cap2 = SkipOuterIstUtils.captured_locals_of_statement(I.SingleExpr(value));
+    cap2.keys().each(vars.insert);
+
+    // Ignore the rest (which must be declared inside the "async" block).
+    capturesBuf = mutable Vector[];
+    for (varName in vars) {
+      if (this.locals.containsKey(varName)) {
+        capturesBuf.push((varName, this.getLocal(varName, pos)))
+      }
+    };
+    capturesBuf.sortBy(a ~> a.i0);
+    captures = capturesBuf.toArray();
+
+    // We know these values can't be assigned, as async blocks don't allow
+    // such side effects. We don't care if "captured" is correct so we
+    // leave it as false, and assume "read" is true.
+    info = SkipOuterIstUtils.const_binding_info;
+
+    bodyWithReturn = I.Seq(List[body, I.Return(value)]);
+    params = captures.mapWithIndex((i, arg) -> {
+      ParameterInfo{name => arg.i0, value => None(), info, index => i + 1, pos}
+    });
+    args = captures.map(arg -> arg.i1);
+
+    funType = GFunType{
+      isMutable => false,
+      isTracked => this.funInfo.funType.isTracked,
+      params => args.map(g -> g.getType()),
+      returnType => typ,
+    };
+
+    funInfo = GFunInfo{
+      gfunction => GFunctionName(
+        this.funInfo.gfunction.id +
+          "::asyncCoroutine" +
+          this.getNextClosureID(),
+      ),
+      pos,
+      tparams => this.funInfo.tparams,
+      funType,
+      className => None(),
+      isAsync => true,
+    };
+
+    bodyProvider = NormalLazyGFun{
+      params,
+      useOptionalMask => false,
+      funInfo,
+      body => bodyWithReturn,
+    };
+
+    lazy = AsyncCoroutineLazyGFun{
+      params,
+      useOptionalMask => false,
+      funInfo,
+      bodyProvider,
+    };
+
+    // Call the exlined async body to produce the Awaitable.
+    this.emitInstr(
+      GCallFunction{
+        typ,
+        pos,
+        name => lazy,
+        args,
+        targs => this.funInfo.tparams,
+      },
+    )
+  }
+
+  mutable fun emitAwait(expr: I.Expr, typ: GType, pos: FileRange): GInstr {
+    awaitable = this.emitExpr(expr);
+
+    // See if the awaitable is ready.
+    //
+    // TODO: We could tune this more for the "value is ready" case by
+    // checking for kAwaitableValueMarker and dumping both the exception and
+    // suspend cases off to a slow path.
+    ready = this.emitCallFunction(
+      FrontEndLazyGFun{frontEndName => "Awaitable.awaitableReadyOrThrow"},
+      Array[awaitable],
+      Array[],
+      gtBool,
+      pos,
+    );
+
+    lineStr = getLineStr(pos);
+    suspendBlock = this.newBlock(pos, "suspend_" + lineStr);
+    joinBlock = this.newBlock(pos, "join_suspend_" + lineStr);
+
+    _ = this.emitInstr(
+      GIf{
+        pos,
+        predicate => ready,
+        successors => Array[joinBlock.id, suspendBlock.id],
+      },
+    );
+
+    this.startBlock(suspendBlock);
+
+    // It's not ready, so suspend until it is.
+    _ = this.emitInstr(GSuspend{awaitable, pos});
+    this.maybeEmitJump(joinBlock.id, pos);
+
+    this.startBlock(joinBlock);
+
+    // Load the value from the Awaitable object.
+    this.emitInstr(
+      GCallMethod{
+        typ,
+        pos,
+        method => "unsafeGetValue",
+        source => FrontEndLazyGClass("Awaitable"),
+        args => Array[awaitable],
+      },
+    )
+  }
+
+  mutable fun emitAwaitSynchronously(
+    args: Array<GInstr>,
+    typ: GType,
+    pos: FileRange,
+  ): GInstr {
+    pos.invariant(args.size() == 1, "Expected a single Awaitable");
+
+    _ = this.emitCallFunction(
+      FrontEndLazyGFun{frontEndName => "Awaitable.awaitableSyncOrThrow"},
+      args,
+      Array[],
+      gtVoid,
+      pos,
+    );
+
+    // Load the value from the Awaitable object.
+    this.emitInstr(
+      GCallMethod{
+        typ,
+        pos,
+        method => "unsafeGetValue",
+        source => FrontEndLazyGClass("Awaitable"),
+        args,
+      },
+    )
+  }
+
+  private mutable fun getNextClosureID(): Int {
+    n = this.nextClosureID;
+    this.!nextClosureID = n + 1;
+    n
+  }
+
+  mutable fun emitLambda{
+    paramVars: Array<I.Binding>,
+    captured: Array<I.Name>,
+    body: I.Stmt,
+    closureClassNameHint: String,
+    callMethodType: GFunType,
+    yields: Bool,
+    pos: FileRange,
+  }: GInstr {
+    closureBaseType = this.converter.getClosureBaseClass(callMethodType);
+
+    // We create one field per captured variable.
+    fieldsAndValues = captured.map(posAndName -> {
+      (capturePos, name) = (posAndName.pos, posAndName.id);
+      (rawValue, byRef) = this.getRawLocal(name, capturePos);
+
+      (fieldPrefix, fieldValue) = if (!byRef) {
+        ("captured:", rawValue)
+      } else {
+        ("captured_ref:", rawValue)
+      };
+
+      ( // NOTE: These field names are important, see parseClosureFieldName.
+        GField{
+          name => fieldPrefix + name,
+          typ => fieldValue.getType(),
+          pos => capturePos,
+          isAssignable => false,
+          index => -1,
+        },
+        fieldValue,
+      )
+    });
+
+    fields = fieldsAndValues.map(fv -> fv.i0);
+
+    generateBody = funInfo ~> {
+      paramInfos = Array::fillBy(funInfo.funType.params.size(), i -> {
+        // Prepend a "this" parameter with a non-conflicting name.
+        if (i == 0) {
+          ParameterInfo{
+            name => "closure:this",
+            value => None(),
+            info => SkipOuterIstUtils.const_binding_info,
+            index => i,
+            pos,
+          }
+        } else {
+          paramVar = paramVars[i - 1];
+          ParameterInfo{
+            name => paramVar.name.id,
+            value => None(),
+            info => paramVar.info,
+            index => i,
+            pos => paramVar.name.pos,
+          }
+        }
+      });
+
+      NormalLazyGFun{
+        funInfo,
+        params => paramInfos,
+        body,
+        captured => fields,
+        useOptionalMask => false,
+      }
+    };
+
+    closureClassName = GClassName(
+      this.funInfo.gfunction.id +
+        "::" +
+        closureClassNameHint +
+        this.getNextClosureID(),
+    );
+
+    closureGClass = this.converter.createClosureClass(
+      closureClassName,
+      callMethodType,
+      this.funInfo.tparams,
+      // TODO: Does the variance need to track that of the containing class?
+      Array::fill(this.funInfo.tparams.size(), I.Vnone()),
+      KClass(),
+      Array[closureBaseType],
+      yields,
+      pos,
+      Some(generateBody),
+      fields,
+    );
+
+    closureType = GTapply(
+      LiteralLazyGClass(closureGClass),
+      Mutability::fromFlag(callMethodType.isMutable),
+      this.funInfo.tparams,
+    );
+
+    closureObj = this.emitInstr(
+      GObject{
+        typ => closureType,
+        pos,
+        args => fieldsAndValues.map(fv -> fv.i1),
+      },
+    );
+
+    this.emitCast(closureObj, closureBaseType, pos)
+  }
+
+  private mutable fun emitWith(
+    objExpr: I.Expr,
+    typ: GType,
+    fieldAssignments: UMap<I.WithUpdate>,
+  ): GInstr {
+    pos = objExpr.pos;
+    obj = this.emitExpr(objExpr);
+
+    // Sort assignments by source position so we evaluate them in
+    // the user's original order (see T16663788).
+    assignmentExprs = fieldAssignments.items().collect(Vector).sortedBy(x ~>
+      Orderable.create(x, (a, b) ~> {
+        (aName, _aExpr) = a;
+        (bName, _bExpr) = b;
+        aName.compare(bName)
+      })
+    );
+
+    // Compile expressions in order and make a map of their values.
+    assignments = assignmentExprs.map(a -> {
+      ((_aPos, aField), aExprSourceCast) = a;
+      (aField, this.emitExpr(aExprSourceCast.expr))
+    });
+
+    this.emitInstr(
+      GWith{typ, pos, obj, fieldAssignments => assignments.toArray()},
+    )
+  }
+
+  private mutable fun emitFactoryCall(
+    runtimeType: I.Expr,
+    frontEndType: I.Type,
+    name: I.Name,
+    _types: Array<I.Type>,
+    params: Parameters<I.Expr>,
+    pos: FileRange,
+  ): GInstr {
+    // Reverse engineer the factory's type (close enough, anyway) by looking
+    // at the values being passed to it, which we know passed type checking.
+    defaultedParams = if (params.isEmpty()) {
+      // Special case no arguments, importantly handling metaclasses
+      // which have no ClassDef.
+      params.map(p -> p.ty)
+    } else {
+      // See which fields are optional.
+      fields = getFields(
+        this.converter.program.class_defs[(name.pos, name.id)],
+        pos,
+      );
+      optional = mutable Vector[];
+      _ = fields.map(field -> optional.push(field.value.isSome()));
+
+      if (optional.size() != params.size()) {
+        pos.die("Parameter count mismatch calling factory.")
+      };
+
+      // NOTE: it's a bit annoying to recover the actual argument types here
+      // as that would require applying Tparams etc. But we don't need to --
+      // all we need to know is which arguments are optional and which aren't,
+      // so we get the calling convention right. We can pretend that the
+      // factory takes exactly the argument types we are passing it, since
+      // that mild lie will be discarded soon anyway.
+      index = -1;
+      params.map(x -> {
+        !index = index + 1;
+        typ = x.ty;
+
+        if (optional[index]) {
+          I.Type(typ.pos, I.Tdefault(typ))
+        } else {
+          typ
+        }
+      })
+    };
+
+    factoryFunType = I.Tfun(
+      I.TfunModifiers(I.Fpure(), I.Ftracked()),
+      defaultedParams,
+      frontEndType,
+    );
+
+    // Call the appropriate factory depending whether we want a frozen
+    // object or a mutable one.
+    factoryName = if (isMutableType(frontEndType)) {
+      ".mutableFactory"
+    } else {
+      ".frozenFactory"
+    };
+
+    this.emitMethodCall(
+      I.DotInfo{
+        obj_expr => runtimeType,
+        field => I.Name(pos, factoryName),
+        field_targs => Array[],
+        source => name,
+        elt_kind => I.EMethod(),
+        field_type => I.Type(pos, factoryFunType),
+      },
+      params,
+      true,
+      pos,
+    )
+  }
+
+  private mutable fun emitExpr(
+    expr__: I.Expr,
+    prettyName: String = "",
+  ): GInstr {
+    (frontEndType, pos, top_expr) = (expr__.ty, expr__.pos, expr__.expr);
+
+    typ = this.convertType(frontEndType);
+
+    instr = top_expr match {
+    | I.DefaultArg() -> this.constantDefaultArg(typ)
+    | I.Unreachable() ->
+      // This terminates control without producing any value.
+      _ = this.emitInstr(GUnreachable{why => "no value", pos});
+
+      // Start a dummy block just so any following instructions have
+      // somewhere to go. This block will be discarded.
+      this.startBlock(this.newBlock(pos, "unreachable"));
+
+      // The front end will use the value of an Unreachable so we need
+      // to make something for it.
+      this.constantZero(typ)
+    | I.ELiteral(lit) ->
+      lit match {
+      | I.LBool(value) -> this.constantBool(value)
+      | I.LChar(value) -> this.constantChar(Char::fromCode(value))
+      | I.LFloat(value) -> this.constantFloat(value)
+      | I.LInt(value) -> this.constantInt(value)
+      | I.LString(value) -> this.constantString(UTF8String::make(value))
+      | I.LVoid() ->
+        evoid = I.Object(I.Name(pos, "Void"), Array[], Positional(Array[]));
+        this.emitExpr(I.Expr(frontEndType, pos, evoid), prettyName)
+      }
+    | I.Const(I.Name(_, name)) ->
+      this.emitInstr(GGetConst{typ, pos, name => ConstID(name)})
+    | I.Local(I.Name(_, name)) ->
+      localValue = this.getLocal(name, pos);
+      if (typ == localValue.getType()) {
+        localValue
+      } else {
+        this.emitCast(localValue, typ, pos)
+      }
+    | I.DynamicConstruction(expr, name, types, params) ->
+      this.emitFactoryCall(expr, frontEndType, name, types, params, pos)
+    | I.Object(name, types, params) ->
+      if (Hhvm.gIsHhvmProxy(this.converter, typ, pos)) {
+        pos.die(`Cannot directly construct a proxied pointer of type ${typ}`);
+      };
+      if (hasDefaultArg(params)) {
+        // Missing at least one constructor argument, so call the factory.
+        meta = I.Expr(
+          I.Type(pos, I.Tapply(I.Name(pos, "Concrete"), Array[frontEndType])),
+          pos,
+          I.Classname(name),
+        );
+        this.emitFactoryCall(meta, frontEndType, name, types, params, pos)
+      } else {
+        cd = this.converter.program.class_defs.getOrCrash(name.id);
+        args = this.emitParams(params, paramTypes(getFields(cd, pos)), true);
+
+        this.emitInstr(GObject{typ, pos, prettyName, args})
+      }
+    | I.Call(funcExpr, params) -> this.emitClosureCall(funcExpr, params, pos)
+    | I.FunCall(name, tparams, params) ->
+      def = this.converter.program.fun_defs.getOrCrash(name.id);
+
+      this.emitCallFunction(
+        FrontEndLazyGFun{frontEndName => name.id},
+        this.emitParams(params, paramTypes(def.params)),
+        this.converter.convertTypes(tparams),
+        typ,
+        pos,
+      )
+    | I.MethodCall(info, params) ->
+      this.emitMethodCall(info, params, false, pos)
+    | I.StaticCall(info, params) -> this.emitMethodCall(info, params, true, pos)
+    | I.Dot(info) ->
+      obj = this.emitExpr(info.obj_expr);
+
+      info.elt_kind match {
+      | I.EConst _ -> pos.die("Cannot handle impossible Dot EConst.")
+      | I.EMethod _ -> pos.die("Cannot handle impossible Dot EMethod.")
+      | I.EProperty _ ->
+        if (!info.field_targs.isEmpty()) {
+          pos.die("type parameters unexpected here.")
+        };
+
+        // Convert hhvm proxy property accesses into getter/setter calls
+        maybeCls = obj.getType() match {
+        | gt @ GTapply(generic, _, _) ->
+          if (Hhvm.gIsHhvmProxy(this.converter, gt, pos)) {
+            Some(generic)
+          } else {
+            None()
+          }
+        | _ -> None()
+        };
+
+        maybeCls match {
+        | Some(cls) ->
+          this.emitInstr(
+            GCallMethod{
+              typ,
+              pos,
+              method => ".get." + info.field.id,
+              args => Array[obj],
+              source => cls,
+            },
+          )
+        | None() ->
+          this.emitInstr(GGetField{typ, pos, obj, field => info.field.id})
+        }
+      }
+    | I.StaticDot(info) ->
+      info.elt_kind match {
+      | I.EMethod _ -> pos.die("Cannot handle impossible StaticDot EMethod.")
+      | I.EProperty _ ->
+        pos.die("Cannot handle impossible StaticDot EProperty.")
+      | I.EConst _ ->
+        if (!info.field_targs.isEmpty()) {
+          pos.die("type parameters unexpected here.")
+        };
+
+        // Desugar accessing a static class const into a static method
+        // call. We need to do this because consts can be overridden.
+        callInfo = info with {
+          field => I.Name(info.field.pos, "getConst:" + info.field.id),
+          elt_kind => I.EMethod(),
+          field_type => I.Type(
+            pos,
+            I.Tfun(
+              I.TfunModifiers(I.Fpure(), I.Ftracked()),
+              Positional::create(),
+              frontEndType,
+            ),
+          ),
+        };
+
+        this.emitMethodCall(callInfo, Positional::create(), true, pos)
+      }
+    | I.Lambda(params, _, captured, body, yields) ->
+      (flatParams, _, _) = flattenParams(params, params.map(b -> b.ty));
+      this.emitLambda{
+        paramVars => flatParams,
+        captured => captured.values().map(p -> p.name).collect(Array),
+        body,
+        closureClassNameHint => "Closure",
+        callMethodType => this.converter.convertRawTfun(
+          this.converter.asTfun(frontEndType),
+        ),
+        yields => yields.isSome(),
+        pos,
+      }
+    | I.EArray(exprs) ->
+      this.emitInstr(
+        GEArray{
+          typ,
+          pos,
+          args => exprs.collect(Array).map(e -> this.emitExpr(e)),
+        },
+      )
+    | I.Async(stmt, expr) -> this.emitAsync(stmt, expr, typ, pos)
+    | I.Await(expr) -> this.emitAwait(expr, typ, pos)
+    | I.Freeze(expr) ->
+      this.emitInstr(GFreeze{typ, pos, obj => this.emitExpr(expr)})
+    | I.GetClass(expr) ->
+      // Desugar class(x) -> x..getClass()
+      // These methods are machine-generated and never throw so we don't
+      // need to worry about "invoke" vs "call".
+      obj = this.emitExpr(expr);
+      this.emitInstr(
+        GCallMethod{
+          typ,
+          pos,
+          method => kGetClassMethodName,
+          args => Array[obj],
+          targs => Array[],
+          source => obj.getType() match {
+          | GTapply(generic, _, _) -> generic
+          | _ ->
+            // source is barely used so it should be OK if we somehow
+            // don't know it here.
+            FrontEndLazyGClass("<no source for getClass>")
+          },
+        },
+      )
+    | I.Classname _ ->
+      // Allocate an instance of the metatype, knowing that
+      // post-specialization this can get optimized into a singleton.
+      this.emitInstr(GObject{typ, pos, args => Array[]})
+    | I.With(expr, fieldAssignments) ->
+      this.emitWith(expr, typ, fieldAssignments)
+    | I.Cast(castType, expr) ->
+      _typ = this.convertType(castType);
+      this.emitCast(this.emitExpr(expr), typ, pos)
+    };
+
+    instr
+  }
+
+  private mutable fun emitJumpTo(label: I.Name): void {
+    (pos, name) = (label.pos, label.id);
+    this.labels.maybeGet(name) match {
+    | Some(blockID) -> this.maybeEmitJump(blockID, pos)
+    | None() -> pos.die("Label `" + name + "` not in scope")
+    }
+  }
+
+  private mutable fun emitJumpBlock(entries: List<I.LabeledStmt>): void {
+    items = mutable Vector[];
+    for (lstmt in entries) {
+      (label, stmt) = (lstmt.label, lstmt.stmt);
+      (pos, name) = (label.pos, label.id);
+      line = getLineStr(pos);
+      block = this.newBlock(pos, "jumpBlock_" + name + "_" + line);
+      this.labels.add(name, block.id);
+      items.push(mutable JumpBlockInfo{pos, name, stmt, block})
+    };
+
+    size = items.size();
+    for (i in Range(0, size)) {
+      item = items[i];
+      this.labels.remove(item.name);
+      this.emitStmt(item.stmt);
+      this.maybeEmitJump(items[0].block.id, item.pos);
+      this.startBlock(items[(i + 1) % size].block)
+    }
+  }
+
+  private mutable fun emitIf(
+    predInstr: GInstr,
+    trueBody: I.Stmt,
+    falseBody: I.Stmt,
+    pos: FileRange,
+  ): void {
+    lineStr = getLineStr(pos);
+
+    trueBlock = this.newBlock(pos, "if_true_" + lineStr);
+    falseBlock = this.newBlock(pos, "if_false_" + lineStr);
+    joinBlock = this.newBlock(pos, "join_if_" + lineStr);
+
+    _ = this.emitInstr(
+      GIf{
+        pos,
+        predicate => predInstr,
+        successors => Array[trueBlock.id, falseBlock.id],
+      },
+    );
+
+    // Emit the "if true" clause.
+    this.startBlock(trueBlock);
+    this.emitStmt(trueBody);
+    this.maybeEmitJump(joinBlock.id, pos);
+
+    // Emit the "if false" clause.
+    this.startBlock(falseBlock);
+    this.emitStmt(falseBody);
+    this.maybeEmitJump(joinBlock.id, pos);
+
+    this.startBlock(joinBlock)
+  }
+
+  private mutable fun emitLoopForever(pos: FileRange, body: I.Stmt): void {
+    block = this.newBlock(pos, "loop_forever");
+    this.maybeEmitJump(block.id, pos);
+
+    oldContinueID = this.continueID;
+    this.!continueID = block.id;
+
+    // Emit the body.
+    this.startBlock(block);
+    this.emitStmt(body);
+    this.maybeEmitJump(block.id, pos);
+
+    this.!continueID = oldContinueID;
+  }
+
+  private mutable fun emitTypeSwitch(
+    switchExpr: I.Expr,
+    branchList: List<I.TypeSwitchBranch>,
+    defaultBody: ?I.Stmt,
+  ): void {
+    switchValue = this.emitExpr(switchExpr);
+    pos = switchExpr.pos;
+
+    // Create a "default" body if there isn't one already. TODO: What
+    // exactly should it do? It's supposed to be impossible to match
+    // so it's OK to die horribly, but how?
+    default = defaultBody match {
+    | Some(b) -> b
+    | None() -> unreachableFrontEndStmt(pos)
+    };
+
+    // The first action is "default", the rest are for the cases.
+    // Some of those are shared by fall-throughs.
+    actions = mutable Vector[];
+    actions.push(
+      mutable SwitchAction(default, this.newBlock(pos, "type_switch_default")),
+    );
+
+    // Convert the branches list to array form.
+    seen = UnorderedSet::mcreate(branchList.size());
+    branchesBuf = mutable Vector<SwitchBranch<GClassName>>[];
+    for (b in branchList) {
+      // Only emit the body block at most once.
+      madeBodyBlock = false;
+      for (case in b.cases) {
+        (casePos, caseValueLiteral) = case;
+
+        // Extract the "case" value.
+        caseValue = GClassName(caseValueLiteral.name.id);
+
+        // If we see duplicate values (probably shouldn't happen?), drop the
+        // later one as unreachable.
+        // TODO: We can stop doing this, it will be optimized away later.
+        if (seen.maybeInsert(caseValue)) {
+          if (!madeBodyBlock) {
+            !madeBodyBlock = true;
+
+            casePrettyName =
+              "type_switch_case_" +
+              (if (b.cases.size() == 1) {
+                // No fall-through, so use the case value to name the block.
+                caseValue.idValue()
+              } else {
+                // Fall-throughs, so give up and just use the line number.
+                getLineStr(casePos)
+              });
+
+            block = this.newBlock(casePos, casePrettyName);
+            actions.push(mutable SwitchAction(b.action, block))
+          };
+
+          // Emit a case that jumps to the latest action.
+          branchesBuf.push(SwitchBranch(caseValue, actions.size() - 1, casePos))
+        }
+      }
+    };
+    branches = branchesBuf.toArray();
+
+    _ = this.emitInstr(
+      GTypeSwitch{
+        pos,
+        value => switchValue,
+        cases => branches.map(b -> b.value),
+        successors => Array::fillBy(branches.size() + 1, i -> {
+          actionIndex = if (i == 0) {
+            0
+          } else {
+            branches[i - 1].actionIndex
+          };
+          actions[actionIndex].block.id
+        }),
+      },
+    );
+
+    joinBlock = this.newBlock(pos, "type_switch_join" + getLineStr(pos));
+
+    // Emit the action blocks.
+    for (action in actions) {
+      this.startBlock(action.block);
+      this.emitStmt(action.body);
+      this.maybeEmitJump(joinBlock.id, action.block.pos)
+    };
+
+    this.startBlock(joinBlock)
+  }
+
+  private mutable fun emitIntSwitch(
+    switchValue: GInstr,
+    branchList: List<I.SwitchBranch>,
+    default: I.Stmt,
+    pos: FileRange,
+    charSwitch: Bool = false,
+  ): void {
+    // The first action is "default", the rest are for the cases.
+    // Some of those are shared by fall-throughs.
+    actions = mutable Vector[];
+    actions.push(
+      mutable SwitchAction(default, this.newBlock(pos, "switch_default")),
+    );
+
+    // Convert the branches list to array form.
+    seen = UnorderedSet::mcreate(branchList.size());
+    branchesBuf = mutable Vector<SwitchBranch<Int>>[];
+    for (b in branchList) {
+      madeBodyBlock = false;
+      for (case in b.cases) {
+        (casePos, caseValueLiteral) = case;
+
+        // Extract an Int "case" value.
+        caseValue = (caseValueLiteral, charSwitch) match {
+        | (I.LChar(value), true)
+        | (I.LInt(value), false) ->
+          value
+        | _ -> casePos.die("Wrong literal type")
+        };
+
+        // If we see duplicate values, drop the later one as unreachable.
+        // This could happen when FloatSwitch adds -0.0 for 0.0, and maybe
+        // from the front end (?)
+        if (seen.maybeInsert(caseValue)) {
+          if (!madeBodyBlock) {
+            !madeBodyBlock = true;
+
+            casePrettyName =
+              "switch_case_" +
+              (if (b.cases.size() == 1) {
+                // No fall-through, so use the case value to name the block.
+                caseValue.toString()
+              } else {
+                // Fall-throughs, so give up and just use the line number.
+                getLineStr(casePos)
+              });
+
+            block = this.newBlock(casePos, casePrettyName);
+            actions.push(mutable SwitchAction(b.action, block))
+          };
+
+          // Emit a case that jumps to the latest action.
+          branchesBuf.push(SwitchBranch(caseValue, actions.size() - 1, casePos))
+        }
+      }
+    };
+    branches = branchesBuf.toArray();
+
+    _ = this.emitInstr(
+      GIntSwitch{
+        pos,
+        value => switchValue,
+        cases => branches.map(b -> b.value),
+        successors => Array::fillBy(branches.size() + 1, i -> {
+          actionIndex = if (i == 0) {
+            0
+          } else {
+            branches[i - 1].actionIndex
+          };
+          actions[actionIndex].block.id
+        }),
+      },
+    );
+
+    joinBlock = this.newBlock(pos, "switch_join" + getLineStr(pos));
+
+    // Emit the action blocks.
+    for (action in actions) {
+      this.startBlock(action.block);
+      this.emitStmt(action.body);
+      this.maybeEmitJump(joinBlock.id, action.block.pos)
+    };
+
+    this.startBlock(joinBlock)
+  }
+
+  private mutable fun emitStringSwitch(
+    switchValue: GInstr,
+    branchList: List<I.SwitchBranch>,
+    default: I.Stmt,
+    pos: FileRange,
+  ): void {
+    // The first action is "default", the rest are for the cases.
+    // Some of those are shared by fall-throughs.
+    actions = mutable Vector[];
+    actions.push(
+      mutable SwitchAction(default, this.newBlock(pos, "switch_default")),
+    );
+
+    // Convert the branches list to array form.
+    seen = UnorderedSet::mcreate(branchList.size());
+    branchesBuf = mutable Vector<SwitchBranch<UTF8String>>[];
+    for (b in branchList) {
+      madeBodyBlock = false;
+      for (case in b.cases) {
+        (casePos, caseValueLiteral) = case;
+
+        // Extract the "case" value.
+        caseValue = caseValueLiteral match {
+        | I.LString(value) -> UTF8String::make(value)
+        | _ -> casePos.die("Expected Int literal")
+        };
+
+        // If we see duplicate values, drop the later one as unreachable.
+        // This could happen when FloatSwitch adds -0.0 for 0.0, and maybe
+        // from the front end (?)
+        if (seen.maybeInsert(caseValue)) {
+          if (!madeBodyBlock) {
+            !madeBodyBlock = true;
+
+            casePrettyName =
+              "switch_case_" +
+              (if (b.cases.size() == 1) {
+                // No fall-through, so use the case value to name the block.
+                caseValue.toString()
+              } else {
+                // Fall-throughs, so give up and just use the line number.
+                getLineStr(casePos)
+              });
+
+            block = this.newBlock(casePos, casePrettyName);
+            actions.push(mutable SwitchAction(b.action, block))
+          };
+
+          // Emit a case that jumps to the latest action.
+          branchesBuf.push(SwitchBranch(caseValue, actions.size() - 1, casePos))
+        }
+      }
+    };
+    branches = branchesBuf.toArray();
+
+    _ = this.emitInstr(
+      GStringSwitch{
+        pos,
+        value => switchValue,
+        cases => branches.map(b -> this.constantString(b.value)),
+        successors => Array::fillBy(branches.size() + 1, i -> {
+          actionIndex = if (i == 0) {
+            0
+          } else {
+            branches[i - 1].actionIndex
+          };
+          actions[actionIndex].block.id
+        }),
+      },
+    );
+
+    joinBlock = this.newBlock(pos, "switch_join" + getLineStr(pos));
+
+    // Emit the action blocks.
+    for (action in actions) {
+      this.startBlock(action.block);
+      this.emitStmt(action.body);
+      this.maybeEmitJump(joinBlock.id, action.block.pos)
+    };
+
+    this.startBlock(joinBlock)
+  }
+
+  // We compile a Float switch as an IntSwitch on the raw IEEE FP bits.
+  private mutable fun emitFloatSwitch(
+    switchValue: GInstr,
+    branchList: List<I.SwitchBranch>,
+    default: I.Stmt,
+    pos: FileRange,
+  ): void {
+    zeroBits = (0.0).toBits();
+    minusZeroBits = (-0.0).toBits();
+
+    // Transform the Float cases into Int cases by using the raw IEEE bit
+    // patterns. The tricky part is that 0.0 and -0.0 are equal but have
+    // different bit patterns, so we need to expand any zero to both variants.
+    intBranchList = branchList.map(b -> {
+      intCases = mutable Vector[];
+
+      for (case in b.cases) {
+        (casePos, caseValueLiteral) = case;
+
+        // Extract the "case" value.
+        caseValue = caseValueLiteral match {
+        | I.LFloat(value) -> value
+        | _ -> casePos.die("Expected Float literal")
+        };
+
+        // NaNs are unmatchable via equality semantics, so ignore them here.
+        if (!caseValue.isNaN()) {
+          bits = caseValue.toBits();
+          intCases.push((casePos, I.LInt(bits)));
+
+          // 0.0 also matches -0.0 and vice versa.
+          if (bits == zeroBits) {
+            intCases.push((casePos, I.LInt(minusZeroBits)))
+          } else if (bits == minusZeroBits) {
+            intCases.push((casePos, I.LInt(zeroBits)))
+          }
+        }
+      };
+
+      I.SwitchBranch(List::createFromItems(intCases.toArray()), b.action)
+    });
+
+    bits = this.emitInstr(
+      GCallMethod{
+        typ => gtInt,
+        pos,
+        method => "toBits",
+        args => Array[switchValue],
+        source => gtFloat.generic,
+      },
+    );
+
+    this.emitIntSwitch(bits, intBranchList, default, pos)
+  }
+
+  private mutable fun emitThrow(exc: GInstr, pos: FileRange): void {
+    this.tryInfo match {
+    | None() -> _ = this.emitInstr(GThrow{pos, exception => exc})
+    | Some(tryInfo) ->
+      // A "throw" inside a "try" becomes a jump to the catch block.
+      this.setLocal(tryInfo.exceptionVariable, exc, pos);
+      this.maybeEmitJump(tryInfo.catchMatch, pos)
+    };
+
+    // Start a dummy block just so any following instructions have
+    // somewhere to go. This block will be discarded.
+    this.startBlock(this.newBlock(pos, "unreachable"))
+  }
+
+  mutable fun emitTry(
+    body: I.Stmt,
+    emitCatchMatch: () -> void,
+    excBinding: I.Binding,
+    pos: FileRange,
+  ): void {
+    // Declare an internal local variable to hold the exception.
+    // We don't use the user's excBinding since it may be
+    // declared as not being reassigned, but we can reassign
+    // when a throw appears lexically inside a try.
+    excVar = excBinding.name.id;
+    excType = this.convertType(excBinding.ty);
+    tmpExcVar = "tmp:exc:" + excVar;
+    this.emitBind(
+      tmpExcVar,
+      excType,
+      this.constantZero(excType),
+      SkipOuterIstUtils.nonconst_binding_info,
+      pos,
+    );
+
+    lineStr = getLineStr(pos);
+
+    llvmLandingPad = this.newBlock(pos, "rawcatch_" + lineStr);
+    recordExc = this.newBlock(pos, "record_exc_" + lineStr);
+    catchMatchBlock = this.newBlock(pos, "catch_" + lineStr);
+    afterTry = this.newBlock(pos, "after_try_" + lineStr);
+
+    this.!nextTryID = this.nextTryID + 1;
+
+    // Compile the body inside the "try".
+    oldTryInfo = this.tryInfo;
+    this.!tryInfo = Some(
+      TryInfo{
+        llvmLandingPad => llvmLandingPad.id,
+        catchMatch => catchMatchBlock.id,
+        exceptionVariable => tmpExcVar,
+      },
+    );
+    this.emitStmt(body);
+    this.!tryInfo = oldTryInfo;
+
+    this.maybeEmitJump(afterTry.id, pos);
+
+    // Compile the low-level block catching the raw exception.
+    this.startBlock(llvmLandingPad);
+    landingPadInstr = this.emitInstr(
+      GLandingPad{pos, successors => Array[recordExc.id]},
+    );
+
+    // Create a block that can stash the LandingPad in tmpExcVar.
+    this.startBlock(recordExc);
+    this.setLocal(tmpExcVar, landingPadInstr, pos);
+    this.maybeEmitJump(catchMatchBlock.id, pos);
+
+    // Compile the high-level block doing the catches.
+    this.startBlock(catchMatchBlock);
+
+    // Declare the user's exception variable.
+    this.emitBind(
+      excVar,
+      excType,
+      this.getLocal(tmpExcVar, pos),
+      excBinding.info,
+      pos,
+    );
+
+    emitCatchMatch();
+
+    this.maybeEmitJump(afterTry.id, pos);
+
+    this.startBlock(afterTry)
+  }
+
+  mutable fun maybeEmitJump(target: GBlockID, pos: FileRange): void {
+    if (this.blockActive) {
+      _ = this.emitInstr(GJump{pos, successors => Array[target]})
+    }
+  }
+
+  private mutable fun emitBind(
+    name: String,
+    typ: GType,
+    value: GInstr,
+    info: I.BindingInfo,
+    pos: FileRange,
+  ): void {
+    this.locals.maybeGet(name) match {
+    | Some _ -> pos.die("Encountered multiple Binds of " + name)
+    | None() ->
+      bind = if (typ == gtVoid) {
+        (this.constantVoid(), false)
+      } else if (!info.updated) {
+        (value, false)
+      } else {
+        // Allocate a Localvalue to hold the variable's value.
+
+        // TODO: It would be more efficient to have closures simply
+        // point into a single object containing all captured
+        // variables, rather than having to set up a separate LocalVariable for
+        // every capture-by-reference variable. But if we allow non-downward
+        // lambdas we would still want to split them up to avoid excessive
+        // GC lifetimes for these LocalVariable.
+
+        refType = GTapply(kLocalVarType, Mutable(), Array[typ]);
+
+        ref = this.emitInstr(
+          GObject{
+            typ => refType,
+            pos,
+            args => Array[value],
+            // Allow LocalVariable<_> for _ local variables, which crop up
+            // occasionally but are not used in a problematic way
+            // (T24439354, T25366751). Delete once T25379806 is fixed.
+            forceCanInstantiate => true,
+            prettyName => name,
+          },
+        );
+
+        (ref, true)
+      };
+
+      this.locals.set(name, bind)
+    }
+  }
+
+  mutable fun emitReturn(value: GInstr, pos: FileRange): void {
+    returningValue = this.lazy.returnTempType() != gtVoid;
+    if (returningValue) {
+      this.setLocal(kImplicitReturnVariableName, value, pos);
+    };
+
+    if (this.exitBlockID != GBlockID::none) {
+      this.maybeEmitJump(this.exitBlockID, pos)
+    } else {
+      // This is the first Return we have processed, create the exit block.
+      exitBlock = this.newBlock(pos, "exit");
+      this.!exitBlockID = exitBlock.id;
+
+      this.maybeEmitJump(exitBlock.id, pos);
+
+      this.startBlock(exitBlock);
+
+      logicalReturnValue = if (returningValue) {
+        this.getLocal(kImplicitReturnVariableName, pos)
+      } else {
+        this.constantVoid()
+      };
+
+      this.lazy.emitReturn(this, logicalReturnValue, pos)
+    }
+  }
+
+  // From within a generator, figure out the type of values being
+  // "yielded", then wrap it in the given generic and mutability.
+  private mutable fun generatorOptionType(
+    generic: String,
+    mutability: Mutability,
+  ): GType {
+    // We are inside the "ramp up" function that creates the Generator instance.
+    // The return type holds the specific subclass of Iterator we produce.
+    // Fetch its "next" method's return type, which should be
+    // readonly Option<XX>.
+    pos = this.pos;
+    ta = this.funInfo.funType.returnType.asGTapply(pos);
+    gc = this.converter.getGClass(ta.generic, pos);
+    method = gc.methods["next"];
+    opt = this.converter.getGFunction(
+      method.function.fromSome("No next method found")(ta.generic),
+    ).funInfo.funType.returnType;
+
+    targs = opt match {
+    | GTapply(FrontEndLazyGClass("Option"), _, targs) if (targs.size() == 1) ->
+      targs
+    | t -> pos.die(`Expected next method to return Option, not ${t}`)
+    };
+    GTapply(FrontEndLazyGClass(generic), mutability, targs)
+  }
+
+  private mutable fun generatorNone(pos: FileRange): GInstr {
+    this.emitInstr(
+      GObject{
+        typ => this.generatorOptionType("None", DeepFrozen()),
+        pos,
+        args => Array[],
+      },
+    )
+  }
+
+  private mutable fun emitYield(value: GInstr, pos: FileRange): void {
+    // Yield always yields Some(x), to make it easier for later compilation
+    // stages to eventually turn this into a Return of that value, to
+    // match with the Iterator::next return type.
+    some = this.emitInstr(
+      GObject{
+        typ => this.generatorOptionType("Some", Readonly()),
+        pos,
+        args => Array[value],
+      },
+    );
+    none = this.generatorNone(pos);
+    _ = this.emitInstr(GYield{pos, value => some, none})
+  }
+
+  private mutable fun emitYieldBreak(pos: FileRange): void {
+    // Compute the proper None() type here, to make it easier to access later.
+    none = this.generatorNone(pos);
+    _ = this.emitInstr(GYieldBreak{pos, none})
+  }
+
+  mutable fun emitStmt(stmt: I.Stmt): void {
+    stmt match {
+    | I.JumpTo(name) -> this.emitJumpTo(name)
+    | I.JumpBlock(entries, _) -> this.emitJumpBlock(entries)
+    | I.SingleExpr(e) -> _ = this.emitExpr(e)
+    | I.Bind(var, expr_opt) ->
+      (pos, name) = (var.name.pos, var.name.id);
+
+      typ = this.convertType(var.ty);
+      value = expr_opt match {
+      | Some(expr) -> this.emitExpr(expr)
+      | None() -> this.constantZero(typ)
+      };
+
+      this.emitBind(name, typ, value, var.info, pos)
+    | I.Assign(var, expr) ->
+      this.setLocal(var.name.id, this.emitExpr(expr), expr.pos)
+    | I.AssignField(
+      I.LocalVar(varType, varName),
+      _,
+      I.Name(pos, field),
+      expr,
+    ) ->
+      obj = this.emitExpr(I.Expr(varType, pos, I.Local(varName)));
+      value = this.emitExpr(expr);
+
+      // Convert hhvm proxy property accesses into getter/setter calls
+      maybeCls = obj.getType() match {
+      | gt @ GTapply(generic, _, _) ->
+        if (Hhvm.gIsHhvmProxy(this.converter, gt, pos)) {
+          Some(generic)
+        } else {
+          None()
+        }
+      | _ -> None()
+      };
+
+      maybeCls match {
+      | Some(cls) ->
+        _ = this.emitInstr(
+          GCallMethod{
+            typ => gtVoid,
+            pos,
+            method => ".set." + field,
+            args => Array[obj, value],
+            source => cls,
+          },
+        )
+      | None() -> _ = this.emitInstr(GSetField{pos, obj, field, value})
+      }
+    | I.Seq(stmts) -> for (stmt2 in stmts) this.emitStmt(stmt2)
+    | I.If(e, t, f) ->
+      pos = e.pos;
+      this.emitIf(this.emitExpr(e), t, f, pos)
+    | I.LoopForever(pos, body) -> this.emitLoopForever(pos, body)
+    | I.Match(expr, _branches) -> expr.pos.die("Match should have been lowered")
+    | I.Switch(expr, branches, default) ->
+      pos = expr.pos;
+      val = this.emitExpr(expr);
+
+      if (branches.isEmpty()) {
+        pos.die("Trivial match should have been lowered away earlier.")
+      };
+
+      // Currently only Bool matches can be exhaustive (because
+      // other types have vastly more values), and those get lowered
+      // to "if" before we get here.
+      defaultBody = default match {
+      | Some(d) -> d
+      | None() ->
+        pos.die(
+          val.getType().toString() +
+            " match is missing a default clause but is not exhaustive.",
+        )
+      };
+
+      val.getType() match {
+      | t if (t == gtInt) -> this.emitIntSwitch(val, branches, defaultBody, pos)
+      | t if (t == gtChar) ->
+        // Widen to "Int" and use IntSwitch.
+        wide = this.emitInstr(GZeroExtend{typ => gtInt, pos, value => val});
+        this.emitIntSwitch(wide, branches, defaultBody, pos, true)
+      | t if (t == gtString) ->
+        this.emitStringSwitch(val, branches, defaultBody, pos)
+      | t if (t == gtFloat) ->
+        this.emitFloatSwitch(val, branches, defaultBody, pos)
+      | t if (t == gtBool) ->
+        pos.die("Bool match should have been lowered to 'if' already.")
+      | t -> pos.die("Switch not handled on type " + t)
+      }
+    | I.TypeSwitch(expr, branches, default) ->
+      this.emitTypeSwitch(expr, branches, default)
+    | I.Return(expr) ->
+      pos = expr.pos;
+      value = this.emitExpr(expr);
+      if (expr.ty.pos == kForceReturnHackPos) {
+        // Generate a physical return right here.
+        _ = this.emitInstr(GReturn{pos, value})
+      } else {
+        this.emitReturn(value, pos)
+      }
+    | I.Try _ -> this.funInfo.die("Try should have been lowered")
+    | I.TryCatch(pos, body, excBinding, catchMatch) ->
+      this.emitTry(body, () -> this.emitStmt(catchMatch), excBinding, pos)
+    | I.Throw(e) -> this.emitThrow(this.emitExpr(e), e.pos)
+    | I.Yield(e) -> this.emitYield(this.emitExpr(e), e.pos)
+    | I.YieldBreak(pos) -> this.emitYieldBreak(pos)
+    }
+  }
+}
+
+// Creates a unique mapping from Array<Tclass> to Int.
+mutable private base class SuperpositionInterner<T>(
+  protected map: mutable UnorderedMap<
+    Array<Tclass>,
+    Int,
+  > = mutable UnorderedMap[],
+  keys: mutable Vector<Array<Tclass>> = mutable Vector[],
+) {
+  protected mutable fun getInt(tclasses: Array<Tclass>): Int {
+    this.map.getOrAdd(tclasses, () -> {
+      this.keys.push(tclasses);
+      this.keys.size() - 1
+    })
+  }
+
+  readonly fun computeNames(): Array<String> {
+    Array::fillBy(this.keys.size(), i -> {
+      v = this.keys[i];
+      if (v.isEmpty()) {
+        ""
+      } else {
+        "<" + v.join(", ") + ">"
+      }
+    })
+  }
+}
+
+private const kEmptyMethods: UnorderedMap<
+  MethodKey,
+  SFunctionID,
+> = UnorderedMap[];
+
+untracked private fun makeOuterIst(fileNames: Array<String>): OuterIst.Program {
+  // run the compiler front end from parsing to type checking
+  typedAst = SkipMain.compile(List::createFromItems(fileNames));
+  // OuterIst skeleton is built here, but code is done lazily
+  SkipMakeOuterIst.program(typedAst)
+}
+
+untracked private fun sourceToOuterIst(fileNames: Array<String>): Converter {
+  // Intern this now so memoized lookups on its members are faster later.
+  intern(Converter(makeOuterIst(fileNames)))
+}
+
+// Functions used to compute if a class has no possibility of a mutable alias
+// and thus can use a faster version of freeze().
+private base class FreezeNoAliasOpt uses Equality {
+  children =
+  | FreezeNoAliasRef()
+  | FreezeNoAliasAssignableRef()
+
+  protected fun value(): Int
+  | FreezeNoAliasRef _ -> 0
+  | FreezeNoAliasAssignableRef _ -> 1
+
+  // Update two escape maps by inserting all the elements of source into target and
+  // returning true if there was no overlap.  On a false return the target is in
+  // an indeterminate state.
+  private static fun updateEscapes(
+    target: mutable UnorderedMap<SClassID, FreezeNoAliasOpt>,
+    source: readonly UnorderedMap<SClassID, FreezeNoAliasOpt>,
+  ): Bool {
+    expectedSize = target.size() + source.size();
+    target.extend(source);
+    target.size() == expectedSize
+  }
+
+  // Merge two escape maps, marking a reference as assignable if either map had
+  // it as assignable.
+  private static fun unionEscapes(
+    target: mutable UnorderedMap<SClassID, FreezeNoAliasOpt>,
+    source: readonly UnorderedMap<SClassID, FreezeNoAliasOpt>,
+  ): void {
+    for (k => v in source) {
+      v match {
+      | FreezeNoAliasAssignableRef _ -> target![k] = v
+      | _ -> _ = target.maybeSet(k, v)
+      };
+    };
+  }
+
+  // Mark all the references in the target as assignable.
+  private static fun upgradeAssignable(
+    target: readonly UnorderedMap<SClassID, FreezeNoAliasOpt>,
+  ): UnorderedMap<SClassID, FreezeNoAliasOpt> {
+    target
+      .keys()
+      .map(k -> (k, FreezeNoAliasAssignableRef()))
+      .collect(UnorderedMap)
+  }
+
+  // Handle a non-array class, returning its escape map
+  private static fun computeNonArray(
+    sclass: SClass,
+    specializer: mutable Specializer,
+    freezeNoAliasOptCache: mutable UnorderedMap<
+      SClassID,
+      ?UnorderedMap<SClassID, FreezeNoAliasOpt>,
+    >,
+    inProgress: mutable UnorderedSet<SClassID>,
+  ): ?mutable UnorderedMap<SClassID, FreezeNoAliasOpt> {
+    escapes = mutable UnorderedMap[];
+
+    // Merge the fields for all our subtypes.  If a subtype is dead then we're
+    // dead - but subtypes with reach overlap is fine because we can only be one
+    // of them at a time.
+    if (
+      sclass.subtypes.all(subtype -> {
+        sc = specializer.sclasses[subtype].sclass;
+        subtypeEscapes = mutable UnorderedMap[];
+
+        // Merge the fields for this subtype.  Any escape overlap will mark this
+        // subtype as dead.
+        if (
+          sc.fields.all(f -> {
+            if (f.typ.isDeepFrozen()) {
+              true
+            } else {
+              static::computeType(
+                f.typ.sclassID,
+                specializer,
+                freezeNoAliasOptCache,
+                inProgress,
+              ) match {
+              | None() -> false
+              | Some(fieldEscapes) ->
+                if (f.isAssignable) {
+                  !fieldEscapes = static::upgradeAssignable(fieldEscapes);
+                };
+                static::updateEscapes(subtypeEscapes, fieldEscapes)
+              }
+            }
+          })
+        ) {
+          if (
+            subtypeEscapes.maybeSet(subtype, FreezeNoAliasRef()) ||
+            subtypeEscapes[subtype] == FreezeNoAliasRef()
+          ) {
+            static::unionEscapes(escapes, subtypeEscapes);
+            true
+          } else {
+            false
+          }
+        } else {
+          false
+        }
+      })
+    ) {
+      Some(escapes)
+    } else {
+      None()
+    }
+  }
+
+  // Handle an array class, returning its escape map
+  private static fun computeArray(
+    vectorInfo: ArraySlotInfo,
+  ): ?mutable UnorderedMap<SClassID, FreezeNoAliasOpt> {
+    // Any array whose slot types aren't deep frozen is by definition aliased
+    // because there can be multiple copies of it in the array.
+    if (vectorInfo.types.all(t -> t.isDeepFrozen())) {
+      Some(mutable UnorderedMap[])
+    } else {
+      None()
+    }
+  }
+
+  // Compute the escape map for a type.
+  private static fun computeType(
+    sclassID: SClassID,
+    specializer: mutable Specializer,
+    freezeNoAliasOptCache: mutable UnorderedMap<
+      SClassID,
+      ?UnorderedMap<SClassID, FreezeNoAliasOpt>,
+    >,
+    inProgress: mutable UnorderedSet<SClassID>,
+  ): ?UnorderedMap<SClassID, FreezeNoAliasOpt> {
+    freezeNoAliasOptCache.maybeGet(sclassID) match {
+    | Some(res) -> res
+    | None() ->
+      sclass = specializer.sclasses[sclassID].sclass;
+
+      // If we're already processing this type then return that it (and its
+      // subtypes) escapes so its assignability will be tracked on the way
+      // out.  We'll compute its fields and final escape when we get back to
+      // the in progress computation up the stack.
+      if (!inProgress.maybeInsert(sclassID)) {
+        Some(
+          sclass.subtypes
+            .values()
+            .map(x -> (x, (FreezeNoAliasRef() : FreezeNoAliasOpt)))
+            .collect(UnorderedMap),
+        )
+      } else {
+        optReach = sclass.arraySlot match {
+        | None() ->
+          static::computeNonArray(
+            sclass,
+            specializer,
+            freezeNoAliasOptCache,
+            inProgress,
+          )
+        | Some(slotInfo) -> static::computeArray(slotInfo)
+        };
+
+        inProgress.remove(sclassID);
+
+        // If there's no overlap between inProgress and res then we can cache
+        // this value (because none of the values are in the middle of being
+        // computed)
+
+        optReach match {
+        | None() -> freezeNoAliasOptCache.set(sclassID, None())
+        | Some(reach) ->
+          if (!reach.keys().any(inProgress.contains)) {
+            freezeNoAliasOptCache.set(sclassID, Some(freeze(reach)))
+          }
+        };
+
+        freeze(optReach)
+      }
+    }
+  }
+
+  // Return true if the class can have mutable type aliases.
+  static fun classHasMutableTypeAliases(
+    sclassID: SClassID,
+    specializer: mutable Specializer,
+
+    // Maps SClassID to the result of FreezeNoAliasOpt::computeType for that class
+    // (if we know it).
+    freezeNoAliasOptCache: mutable UnorderedMap<
+      SClassID,
+      ?UnorderedMap<SClassID, FreezeNoAliasOpt>,
+    >,
+  ): Bool {
+    reach = static::computeType(
+      sclassID,
+      specializer,
+      freezeNoAliasOptCache,
+      mutable UnorderedSet[],
+    );
+    if (kConfig.verbose) {
+      print_error(
+        "reach[" +
+          specializer.sclasses[sclassID].sclass +
+          "] = " +
+          (reach match {
+          | None() -> "none"
+          | Some(s) ->
+            ("[" +
+              s
+                .items()
+                .map(i -> {
+                  (i.i1 match {
+                  | FreezeNoAliasRef _ -> ""
+                  | FreezeNoAliasAssignableRef _ -> "!"
+                  }) + specializer.sclasses[i.i0].sclass
+                })
+                .collect(Vector)
+                .join(", ") +
+              "]")
+          }) +
+          "\n",
+      );
+    };
+    reach.isNone()
+  }
+}
+
+untracked fun createIR(
+  fileNames: Array<String>,
+  shouldDisasm: (I.FunDef ~> Bool),
+  shouldRuntimeExport: (I.FunDef ~> Bool),
+): GlobalEnv {
+  converter = sourceToOuterIst(fileNames);
+
+  forceCompile = mutable Vector<LazyGFun>[];
+  disasm = mutable UnorderedSet[];
+
+  // Functions that compute global consts.
+  constsVec = mutable Vector[];
+
+  for (constDef in converter.program.const_defs) {
+    constsVec.push(converter.convertConstDef(constDef));
+  };
+
+  typesToSpecialize = mutable Vector[];
+
+  for (key => classDef in converter.program.class_defs) {
+    (pos, name) = key;
+
+    if (!(classDef.kind is I.KTrait _)) {
+      isHhvm = (
+        Hhvm.isImportAnnotation(classDef.annotations, pos) ||
+        Hhvm.isCopyAnnotation(classDef.annotations, pos) ||
+        Hhvm.isShapeAnnotation(classDef.annotations, pos) ||
+        Hhvm.isShapeCopyAnnotation(classDef.annotations, pos)
+      );
+
+      // TODO: Why is classDef.consts relevant to typesToSpecialize?
+      if (isHhvm || !classDef.consts.isEmpty()) {
+        if (isHhvm && classDef.tparams.isEmpty()) {
+          typesToSpecialize.push(FrontEndLazyGClass(name))
+        };
+
+        // Right now we guarantee we run all const initializers at
+        // startup so create anything with consts now.  We also
+        // forcibly create any HHVM import classes.
+        for (constKey => constDef in classDef.consts) {
+          (constPos, constName) = constKey;
+
+          if (constDef.value.isSome()) {
+            // Create a normal, "true global" const whose name is qualified with
+            // the owning class's name.
+            realConstName = classDef.name.id + "::" + constName;
+
+            constsVec.push(
+              converter.convertConstDef(
+                constDef with {name => I.Name(constPos, realConstName)},
+              ),
+            )
+          }
+        }
+      }
+    }
+  };
+  consts = constsVec.toArray();
+
+  for (c in consts) {
+    forceCompile.push(c)
+  };
+
+  runtimeFunctions = mutable Vector[];
+
+  // Forcibly compile constant initializers too, in case they have side
+  // effects like throwing an exception on startup. This is arguably a bit
+  // wasteful as it pulls in more code than we strictly need.
+
+  for (defKey => funDef in converter.program.fun_defs) {
+    (pos, name) = defKey;
+    annotations = funDef.annotations;
+
+    isParametric = !funDef.tparams.isEmpty();
+
+    // Should we forcibly create a Function for this, even if it appears unused?
+    force = (None() : ?LazyGFun);
+
+    // TODO: If the user explicitly requests we disassemble a specific
+    // function, and either (1) we can't find it at all or (2) it's
+    // parametric and we happen to need no instantiations, perhaps we
+    // should complain.
+    //
+    // In some cases the tool requesting the disassembly could complain
+    // based on the JSON it receives.
+    if (shouldDisasm(funDef)) {
+      disasm.insert(name);
+      !force = Some(FrontEndLazyGFun{frontEndName => name})
+    };
+
+    converter.getHhvmExportName(funDef) match {
+    | Some(hhvmName) ->
+      if (isParametric) {
+        pos.die(
+          `Cannot export function ${name} because it takes type parameters.`,
+        )
+      };
+
+      // Codegen a new wrapper function which calls this function.
+      wrapper = exportHhvmFunctionWrapper(converter, hhvmName, funDef);
+      !force = Some(wrapper)
+    | None() -> void
+    };
+
+    if (
+      (shouldRuntimeExport(funDef) &&
+        annotationsContainParam(annotations, "@cpp_extern", pos).isNone() &&
+        annotationsContainParam(annotations, "@cpp_runtime", pos).isNone())
+    ) {
+      if (isParametric) {
+        pos.die(
+          `Cannot export function ${name} because it takes type parameters.`,
+        )
+      };
+      !force = Some(FrontEndLazyGFun{frontEndName => name})
+    };
+
+    // Guarantee we create Functions for all native runtime functions,
+    // so later stages of the compiler can look them up by name even
+    // if they aren't obviously used until later (e.g. lowering). Since
+    // they are native, they have no implementation so this is cheap.
+    if (
+      funDef.native_.isSome() &&
+      !isParametric &&
+      annotationsContainParam(annotations, "@cpp_runtime", pos).isSome()
+    ) {
+      runtimeFunctions.push(FrontEndLazyGFun{frontEndName => name});
+      !force = Some(FrontEndLazyGFun{frontEndName => name})
+    };
+
+    force match {
+    | Some(fn) -> forceCompile.push(fn)
+    | None() -> void
+    }
+  };
+  reportMemoryStatistics("native/createIR after convert functions");
+
+  // Export request functions outside of Skip.
+  if (forceCompile.isEmpty()) {
+    invariant_violation("Failed to find any functions to compile.")
+  };
+
+  reportMemoryStatistics("native/createIR after specialize");
+
+  specializer = Specializer::make(converter, consts);
+
+  for (gid in forceCompile) {
+    _ = specializer.requestFunction(gid, Array[])
+  };
+  reportMemoryStatistics("native/createIR after force compile constant inits");
+
+  !specializer = specializer with {
+    hhvmTypeTable => HhvmTypeTable.compute(specializer, typesToSpecialize),
+  };
+
+  // Find every relevant type and function in the program.
+  specializer.findAllFunctionsAndSClasses(typesToSpecialize);
+  reportMemoryStatistics("native/createIR after findAllFunctionsAndSClasses");
+
+  // Latch the sub- and supertypes.
+  for (info in specializer.sclasses) {
+    info.!sclass = info.sclass with {
+      subtypes => freeze(info.subtypes),
+      supertypes => freeze(info.supertypes),
+    }
+  };
+  reportMemoryStatistics("native/createIR after latch sub/super");
+
+  // Flatten value class fields into scalars.
+  specializer.scalarizeAllFields();
+  reportMemoryStatistics("native/createIR after scalarizeAllFields");
+
+  // Maps SClassID to the result of FreezeNoAliasOpt::computeType for that class
+  // (if we know it).
+  freezeNoAliasOptCache = mutable UnorderedMap[];
+
+  for (info in specializer.sclasses) {
+    info.!sclass = info.sclass with {
+      canAliasMutableTypes => FreezeNoAliasOpt::classHasMutableTypeAliases(
+        info.sclass.id,
+        specializer,
+        freezeNoAliasOptCache,
+      ),
+    };
+  };
+  reportMemoryStatistics("native/createIR after classHasMutableTypeAliases");
+
+  env = GlobalEnv::make(freeze(specializer.createNewSClassesMap()));
+
+  // Choose offsets for every field.
+  FieldLayoutChooser::run(specializer);
+  reportMemoryStatistics("native/createIR after FieldLayoutChooser");
+
+  // Split up functions based on which ones can share machine code.
+  !env = specializer.partitionFunctions(runtimeFunctions, env);
+  reportMemoryStatistics("native/createIR after partitionFunctions");
+
+  newFuns = env.sfuns.clone();
+  for (f in env.sfuns) {
+    if (f.hasImplementation()) {
+      newFuns.insert(
+        f with {
+          isDisasm => disasm.contains(f.name),
+          isRuntimeExport => (AsmOutput.cppIsExported(
+            f.name,
+            f.annotations,
+            f.pos,
+          ) || AsmOutput.cppIsImported(f, f.pos)),
+        },
+      )
+    }
+  };
+
+  !env = env with {
+    sfuns => freeze(newFuns),
+    // Latch the final array of these, now that their method code IDs
+    // are set, and partitionFunctions has had a chance to make a few
+    // more tuple types.
+    sclasses => specializer.createNewSClassesMap(),
+  };
+
+  reportMemoryStatistics("native/createIR end");
+
+  env
+}

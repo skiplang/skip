@@ -1,0 +1,2 @@
+File "invalid/reference_missing_program_unit/skip.project.json"
+Referenced project 'invalid/reference_missing_program_unit/ref/skip.project.json' does not contain program unit 'missing'.

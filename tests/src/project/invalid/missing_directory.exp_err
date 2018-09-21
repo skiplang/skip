@@ -1,0 +1,2 @@
+File "invalid/missing_directory/skip.project.json"
+Recursive source 'invalid/missing_directory/not_a_directory' in program unit 'lib' is not a directory.

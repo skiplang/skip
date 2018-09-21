@@ -1,0 +1,16 @@
+class X() {
+  fun compare<U: Orderable>[T: U](x: Parameters<U>): Order {
+    x match {
+    | Positional _ -> GT()
+      | Named(args) -> {
+        cmp(this.args.size(), args.size()) match {
+        // Compare with the FileRange value removed. TODO: Delete FileRange from UMap
+        // here once Peter's parser is landed and then this can just compare
+        // the inner values directly.
+        | EQ() -> this.args.inner.map(p -> p.i1).compare(args.inner.map(p -> p.i1))
+        | c -> c
+        }
+      }
+    }
+  }  
+}

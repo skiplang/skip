@@ -1,0 +1,16 @@
+// ok to override untracked with untracked
+fun main(): String {
+  Y().foo()
+}
+
+base class X {
+  overridable public untracked fun foo(): String {
+    "I'm X"
+  }
+}
+
+class Y extends X {
+  public untracked fun foo(): String {
+    "I'm Y"
+  }
+}

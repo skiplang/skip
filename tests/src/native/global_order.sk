@@ -1,0 +1,36 @@
+// Globals should get initialized in the order they appear in the file,
+// not the order of first use, and the initializer should only be run once.
+
+const first: String = {
+  print_string("Initializing first");
+  "first"
+};
+
+const second: String = {
+  print_string("Initializing second");
+  "second"
+};
+
+// NOTE: This is intentionally unreferenced.
+const third: String = {
+  print_string("Initializing third");
+  "third"
+};
+
+@no_inline
+fun getFirst(): String {
+  first
+}
+
+@no_inline
+fun getSecond(): String {
+  second
+}
+
+fun main(): void {
+  b1 = getSecond();
+  a1 = getFirst();
+  b2 = getSecond();
+  a2 = getFirst();
+  print_raw(a1 + " " + b1 + "\n" + a2 + " " + b2 + "\n")
+}

@@ -1,0 +1,15 @@
+base class X {
+  private fun foo(): String {
+    "Pass\n"
+  }
+  fun bar(): String {
+    this.foo()
+  }
+}
+
+base class Y extends X
+class Z() extends Y
+
+fun main(): void {
+  print_raw(Z().bar())
+}

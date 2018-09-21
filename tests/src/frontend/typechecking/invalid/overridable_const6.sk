@@ -1,0 +1,7 @@
+base class MyBase {
+  const x: Int = 12;
+}
+
+class Child() extends MyBase {
+  const x: Int;
+}

@@ -1,0 +1,5 @@
+module A;
+
+fun main(): void {
+  print_raw(M.a)
+}

@@ -1,0 +1,69 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Glob;
+
+private base class GlobState {
+  children =
+  | GlobStateNormal()
+  | GlobStateEscape()
+  | GlobStateCharClassFirst()
+  | GlobStateCharClassRest()
+  | GlobStateCharClassEscape()
+}
+
+// Turn a glob pattern into a regex string.
+fun toRegex(pattern: String): String {
+  res = mutable Vector<Char>[];
+  _ = pattern.foldl<GlobState>(
+    (state, c) -> {
+      state match {
+      | GlobStateNormal() if (c == '[') ->
+        res.push(c);
+        GlobStateCharClassFirst()
+      | GlobStateNormal() if (c == '\\') ->
+        res.push(c);
+        GlobStateEscape()
+      | GlobStateNormal() ->
+        c match {
+        | '*' ->
+          res.push('.');
+          res.push('*')
+        | '?' -> res.push('.')
+        | _ -> res.extend(Regex.escape(c.toString()).chars())
+        };
+        GlobStateNormal()
+      | GlobStateEscape() ->
+        res.push(c);
+        GlobStateNormal()
+      | GlobStateCharClassFirst() ->
+        c match {
+        | '^' ->
+          res.push('\\');
+          res.push('^')
+        | '!' -> res.push('^')
+        | _ -> res.push(c)
+        };
+        GlobStateCharClassRest()
+      | GlobStateCharClassRest() if (c == '\\') ->
+        res.push('\\');
+        GlobStateCharClassEscape()
+      | GlobStateCharClassRest() if (c == ']') ->
+        res.push(c);
+        GlobStateNormal()
+      | GlobStateCharClassRest() ->
+        res.push(c);
+        GlobStateCharClassRest()
+      | GlobStateCharClassEscape() ->
+        res.push(c);
+        GlobStateCharClassRest()
+      }
+    },
+    GlobStateNormal(),
+  );
+  String::fromChars(res.toArray());
+}

@@ -1,0 +1,165 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Token;
+
+extension class Token{} {
+  fun stringLiteralValue(): String {
+    accumulateStringValue("", this.value.sub(1, this.value.length() - 2), 0)
+  }
+
+  fun templateStringLiteralValue(): String {
+    accumulateStringValue("", this.value, 0)
+  }
+
+  fun charLiteralValue(): Char {
+    charLiteral(this.value.sub(1, this.value.length() - 2))
+  }
+
+  fun isHexLiteralToken(): Bool {
+    isHexLiteralString(this.value)
+  }
+
+  fun isIntMinToken(): Bool {
+    this.kind match {
+    | TokenKind.INTEGER_LITERAL() -> isIntMinString(this.value)
+    | _ -> false
+    }
+  }
+
+  fun intLiteralValue(): Int {
+    value = this.value;
+    if (isIntMinString(value)) {
+      Int::min
+    } else if (isHexLiteralString(value)) {
+      Chars.hexDigitsToInt(value.sub(2, value.length() - 2))
+    } else {
+      value.toInt()
+    }
+  }
+
+  fun getId(): String {
+    this.kind match {
+    | TokenKind.TYPE_IDENTIFIER()
+    | TokenKind.NONTYPE_IDENTIFIER()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.MACRO_NONTYPE_IDENTIFIER()
+    | TokenKind.THIS() ->
+      this.value
+    | _ ->
+      if (this.kind.isValidMethodName()) {
+        this.value;
+      } else {
+        invariant_violation("Unexpected string token: " + this);
+      }
+    }
+  }
+}
+
+fun isIntMinString(value: String): Bool {
+  value match {
+  | "0x8000000000000000" | "0X8000000000000000" | "9223372036854775808" -> true
+  | _ -> false
+  }
+}
+
+fun isHexLiteralString(value: String): Bool {
+  value.startsWith("0x") || value.startsWith("0X")
+}
+
+fun charLiteralCode(value: String): Int {
+  if (value[0] != '\\') {
+    value[0].code()
+  } else {
+    value[1] match {
+    | '0' -> 0x00
+    | 'a' -> 0x07
+    | 'b' -> 0x08
+    | 'e' -> 0x1B
+    | 'f' -> 0x0C
+    | 'n' -> 0x0A
+    | 'r' -> 0x0D
+    | 't' -> 0x09
+    | 'v' -> 0x0B
+    | '\\' -> 0x5C
+    | '\'' -> 0x27
+    | '"' -> 0x22
+    | '`' -> 0x60
+    | '$' -> 0x24
+    | '{' -> 0x7B
+    | 'x' -> Chars.hexDigitsToInt(value.sub(2, 2))
+    | 'u' -> Chars.hexDigitsToInt(value.sub(2, 4))
+    | 'U' -> Chars.hexDigitsToInt(value.sub(2, 8))
+    | _ -> invariant_violation("Unexpected simple char escape")
+    }
+  }
+}
+
+fun charLiteral(value: String): Char {
+  Char::fromCode(charLiteralCode(value))
+}
+
+fun charLiteralLength(value: String, index: Int): Int {
+  if (value[index] != '\\') {
+    1
+  } else {
+    value[index + 1] match {
+    | 'x' -> 4
+    | 'u' -> 6
+    | 'U' -> 10
+    | _ -> 2
+    }
+  }
+}
+
+// Note this does not include quotes around the result.
+fun escapeCharLiteralValue(ch: Char): String {
+  ch match {
+  | '\'' -> "\\'"
+  | '\\' -> "\\\\"
+  | '"' -> "\\\""
+  | '\a' -> "\\a"
+  | '\b' -> "\\b"
+  | '\e' -> "\\e"
+  | '\f' -> "\\f"
+  | '\n' -> "\\n"
+  | '\r' -> "\\r"
+  | '\t' -> "\\t"
+  | '\v' -> "\\v"
+  | _ ->
+    if (Chars.isPrintableAscii(ch)) {
+      ch.toString()
+    } else {
+      code = ch.code();
+      if (code < 0x100) {
+        ("\\x" + Chars.intToHexDigits(code, 2))
+      } else if (code < 0x10000) {
+        ("\\u" + Chars.intToHexDigits(code, 4))
+      } else {
+        ("\\U" + Chars.intToHexDigits(code, 8))
+      }
+    }
+  }
+}
+
+// Note this does not include quotes around the result.
+fun escapeStringLiteralValue(s: String): String {
+  s.chars().map(escapeCharLiteralValue).join("")
+}
+
+fun accumulateStringValue(acc: String, value: String, index: Int): String {
+  if (index == value.length()) {
+    acc
+  } else {
+    length = charLiteralLength(value, index);
+    accumulateStringValue(
+      acc + charLiteral(value.sub(index, length)),
+      value,
+      index + length,
+    )
+  }
+}

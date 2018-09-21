@@ -1,0 +1,15 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Iterator;
+
+// A type that can provide an iterator over its contents.
+trait .IntoIterator<+T> {
+  readonly fun iterator(): mutable Iterator<T>;
+}
+
+module end;

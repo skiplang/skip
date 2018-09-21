@@ -1,0 +1,16 @@
+const MyVal: Int = C1::c1a;
+
+class C1(parm: Int) {
+  const c1a: Int = 42;
+}
+
+fun shouldPass(x: Int): String {
+  x match {
+  | MyVal -> "Pass\n"
+  | _ -> "You shouldn't be seeing this\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldPass(MyVal))
+}

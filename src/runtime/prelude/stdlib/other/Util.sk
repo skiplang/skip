@@ -1,0 +1,69 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+fun id<T>(x: T): T {
+  x
+}
+
+/*
+ * Minimum and maximum on totally ordered types.
+ *
+ * Note: we probably should require a weaker ordering trait (something
+ * like LessThanComparable), but for now there's only one.
+ */
+
+fun min<T: Orderable>(x: T, y: T): T {
+  if (x < y) x else y
+}
+
+fun max<T: Orderable>(x: T, y: T): T {
+  if (x < y) y else x
+}
+
+/**
+ * cycle(state, f) lets you model iterative computation using
+ * a state transformer. It's a pure alternative to while - there,
+ * test and body are separate lambdas that must read and write
+ * captured variables. Instead, cycle repeatedly calls a single
+ * function which takes an input state of some type S, and returns
+ * a value of type Cycle.State<S, T>: either Next(s) with new state
+ * s:S, or Done(t) with terminal value t:T.
+ *
+ *  i = 0;
+ *  while(i < 100) {
+ *    print_string(i);
+ *    !i = i + 1
+ *  };
+ *
+ *  i = cycle(0, i -> {
+ *    print_string(i);
+ *    if (i < 100)
+ *      Cycle.Next(i + 1)
+ *    else
+ *      Cycle.Done(i)
+ *  });
+ *
+ */
+module Cycle;
+base class State<S, T> {
+  children =
+  | Next(S)
+  | Done(T)
+}
+
+module end;
+
+fun cycle<S, T>(state: S, f: S -> Cycle.State<S, T>): T {
+  f(state) match {
+  | Cycle.Done(t) -> t
+  | Cycle.Next(state_) -> cycle(state_, f)
+  }
+}
+
+fun ignore<T>(_ignoredValue: T): void {
+  void
+}

@@ -1,0 +1,6 @@
+File "./syntax/invalid/class_constant_modifiers.sk", line 2, characters 3-7:
+Invalid modifier 'async' on class constant
+1 | class C() {
+2 |   async const x : String = "Fail";
+  |   ^^^^^
+3 | }

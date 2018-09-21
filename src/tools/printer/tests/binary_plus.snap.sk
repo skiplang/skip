@@ -1,0 +1,12 @@
+fun render_pos(pos: FileRange): String {
+  startColumn = pos.startPosition().column() + 1;
+  "File \"" +
+    pos.filename +
+    "\", line " +
+    (pos.startPosition().line() + 1) +
+    ", characters " +
+    startColumn +
+    "-" +
+    max(startColumn, pos.endPosition().column()) +
+    ":\n"
+}

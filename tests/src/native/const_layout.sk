@@ -1,0 +1,13 @@
+@no_inline
+fun num(): Int {
+  65
+}
+
+const global_bool: Bool = num() != 65;
+const global_int: Int = num();
+const global_char: Char = Char::fromCode(num());
+const global_string: String = if (global_bool) "" else "really long";
+
+fun main(): void {
+  print_raw(global_string + global_int + global_char + "\n")
+}

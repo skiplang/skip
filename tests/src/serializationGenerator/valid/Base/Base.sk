@@ -1,0 +1,16 @@
+@serialize
+base class A() uses Equality, Show {
+  children =
+  | B()
+  | C()
+
+  fun toString(): String
+  | B _ -> "B"
+  | C _ -> "C"
+}
+
+fun main(): void {
+  assertSerializes(`"B"`, B::meta, (B() : A));
+  assertSerializes(`"C"`, C::meta, (C() : A));
+  print_string("Pass")
+}

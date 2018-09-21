@@ -1,0 +1,20 @@
+mutable class Foo(mutable x: Int) {
+  frozen fun cfoo(): void {
+    void
+  }
+}
+mutable class Cont<T>(v: readonly Ref<T>) {
+  frozen fun cfoo(): void {
+    void
+  }
+}
+
+fun main(): void {
+  rfoo: Foo = Foo(42);
+  ref: readonly Ref<Foo> = Ref(rfoo);
+  rcont: readonly Cont<Foo> = mutable Cont(ref);
+  rcont match {
+  | Cont(v) -> v.value.cfoo()
+  };
+  print_string("Pass")
+}

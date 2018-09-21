@@ -1,0 +1,13 @@
+base class Expr<T>
+base class OrdExpr<T: Orderable>(v: T) extends Expr<T>
+class COrdExpr<T: Orderable> extends OrdExpr<T>
+base class EqExpr<T: Equality>(v: T) extends Expr<T>
+class CEqExpr<T: Equality> extends EqExpr<T>
+
+fun test<T>(e: Expr<T>): Bool {
+  x = e match {
+  | OrdExpr(v) -> v
+  | EqExpr(v) -> v
+  };
+  x == x
+}

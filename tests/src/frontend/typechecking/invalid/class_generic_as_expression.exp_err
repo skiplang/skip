@@ -1,0 +1,7 @@
+File "./typechecking/invalid/class_generic_as_expression.sk", line 3, characters 9-9:
+Generics cannot be used as expressions
+1 | class C<T>() {
+2 |   fun foo(): void {
+3 |     _ = T;
+  |         ^
+4 |   }

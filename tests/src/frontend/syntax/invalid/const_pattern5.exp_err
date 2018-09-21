@@ -1,0 +1,15 @@
+File "./syntax/invalid/const_pattern5.sk", line 7, characters 5-7:
+Ineligible constant used in pattern:
+5 | fun shouldFail(x: Int): String {
+6 |   C(x) match {
+7 |   | MyC -> "Pass\n"
+  |     ^^^
+8 |   | _ -> "Fail\n"
+
+File "./syntax/invalid/const_pattern5.sk", line 3, characters 16-18:
+Constant initializer uses default argument(s)
+1 | class C(x: Int = 42)
+2 |
+3 | const MyC: C = C();
+  |                ^^^
+4 |

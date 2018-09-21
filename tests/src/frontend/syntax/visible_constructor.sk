@@ -1,0 +1,14 @@
+class A private ()
+class B protected ()
+class C private {f: Int}
+base class D protected {}
+class E extends D {
+  static fun new(): this {
+    static{}
+  }
+}
+base class F protected {f: Int}
+
+fun main(): void {
+  print_string("Pass")
+}

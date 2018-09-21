@@ -1,0 +1,17 @@
+module TestList;
+base class .TestList<T> {
+  children =
+  | TestNil()
+  | TestCons(head: T, tail: TestList<T>)
+
+  fun getHead(): T
+  | TestCons(value, _) -> value
+  | TestNil() -> invariant_violation("head of empty list")
+}
+
+module end;
+
+fun main(): void {
+  l = TestList.TestCons<String>("Pass\n", TestList.TestNil());
+  print_raw(l.getHead())
+}

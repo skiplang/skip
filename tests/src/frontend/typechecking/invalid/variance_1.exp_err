@@ -1,0 +1,32 @@
+File "./typechecking/invalid/variance_1.sk", line 24, characters 3-7:
+The value returned from the function is incompatible with the return type 'Foo<Parent>'
+22 |
+23 | fun getFoo(): Foo<Parent> {
+24 |   Bar()
+   |   ^^^^^
+25 | }
+
+File "./typechecking/invalid/variance_1.sk", line 23, characters 19-24:
+The invariant type: Parent
+21 | }
+22 |
+23 | fun getFoo(): Foo<Parent> {
+   |                   ^^^^^^
+24 |   Bar()
+
+File "./typechecking/invalid/variance_1.sk", line 17, characters 25-30:
+Is incompatible with the invariant type: ChildA
+15 | }
+16 |
+17 | class Bar() extends Foo<ChildA> {
+   |                         ^^^^^^
+18 |   fun foo(x: ChildA): Int {
+
+File "./typechecking/invalid/variance_1.sk", line 17, characters 25-30:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+15 | }
+16 |
+17 | class Bar() extends Foo<ChildA> {
+   |                         ^^^^^^
+18 |   fun foo(x: ChildA): Int {

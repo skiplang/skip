@@ -1,0 +1,9 @@
+fun main(): void {
+  lam = () ->
+    42 match {
+    | 1 -> "1"
+    | 2 -> "2"
+    | _ -> "Pass\n"
+    };
+  print_raw(lam());
+}

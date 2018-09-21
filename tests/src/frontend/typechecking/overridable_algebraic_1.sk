@@ -1,0 +1,18 @@
+base class MyBase final () {
+  children =
+  | A
+  | B
+  fun get(): Int
+  | A() -> 112
+  | B() -> 42
+}
+
+class C extends MyBase {
+  fun get(): Int {
+    7
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

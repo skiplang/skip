@@ -1,0 +1,14 @@
+File "./syntax/invalid/unexpected_catch.sk", line 3, characters 5-9:
+Expected '}'. Found 'catch'.
+1 |
+2 | fun test(): void {
+3 |   1 catch 2
+  |     ^^^^^
+4 | }
+
+File "./syntax/invalid/unexpected_catch.sk", line 2, characters 18-18:
+ For opening '{'
+1 |
+2 | fun test(): void {
+  |                  ^
+3 |   1 catch 2

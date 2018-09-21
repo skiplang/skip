@@ -1,0 +1,1 @@
+class Test{x: Int = return 0}

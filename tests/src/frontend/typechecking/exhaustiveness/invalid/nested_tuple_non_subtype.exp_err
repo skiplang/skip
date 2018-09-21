@@ -1,0 +1,20 @@
+File "./typechecking/exhaustiveness/invalid/nested_tuple_non_subtype.sk", line 34, characters 7-26:
+The following pattern is unused:
+ | (_, _, _, _, _, D())
+32 |     }) &&
+33 |     (e match {
+34 |     | (_, _, _, _, _, D()) -> false
+   |       ^^^^^^^^^^^^^^^^^^^^
+35 |     | (_, _, _, _, _, C{}) -> true
+
+File "./typechecking/exhaustiveness/invalid/nested_tuple_non_subtype.sk", line 34, characters 23-25:
+In particular, we encountered this sub-pattern
+ | D()
+But expected one of
+ | C{}
+In that position.
+32 |     }) &&
+33 |     (e match {
+34 |     | (_, _, _, _, _, D()) -> false
+   |                       ^^^
+35 |     | (_, _, _, _, _, C{}) -> true

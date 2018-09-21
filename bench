@@ -1,0 +1,20 @@
+#!/bin/bash -e
+# Usage: ./bench [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native', 'js']] [...benchmark options]
+#
+# optional --backend arg is the backend used to compile the benchmark (native, js).
+#
+# The optional .sk files are library code to be compiled with the benchmark.
+#
+# The last positional argument is the benchmark file or program unit.
+#
+# [...benchmark options] are any flags to pass to to Skip bencher, including:
+# --display-output  =>  when included, benchmark results will be printed to stdout
+# --output          =>  path to json file in which to dump result output
+# --min-iterations  =>  minimum number of iterations to run per benchmark
+# --iters-per-gc    =>  maximum number of benchmark iterations to run before
+#                       forcing garbage collection
+
+DIR=$(dirname "$0")
+TOOLS="$DIR/tests/runtime/tools"
+
+exec "$TOOLS/bench" $@

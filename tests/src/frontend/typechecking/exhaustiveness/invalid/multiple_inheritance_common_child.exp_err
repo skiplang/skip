@@ -1,0 +1,23 @@
+File "./typechecking/exhaustiveness/invalid/multiple_inheritance_common_child.sk", line 9, characters 5-7:
+Invalid pattern. Constraint not satisfied when refining the type for this branch
+ 7 | fun test<T: L & R>(x: T): void {
+ 8 |   x match {
+ 9 |   | A _ -> void
+   |     ^^^
+10 |   | B _ -> void
+
+File "./typechecking/exhaustiveness/invalid/multiple_inheritance_common_child.sk", line 9, characters 5-7:
+The type: A
+ 7 | fun test<T: L & R>(x: T): void {
+ 8 |   x match {
+ 9 |   | A _ -> void
+   |     ^^^
+10 |   | B _ -> void
+
+File "./typechecking/exhaustiveness/invalid/multiple_inheritance_common_child.sk", line 7, characters 17-17:
+Is not a subtype of: R
+5 | class C() extends R
+6 |
+7 | fun test<T: L & R>(x: T): void {
+  |                 ^
+8 |   x match {

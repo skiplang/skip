@@ -1,0 +1,7 @@
+base class Foo {
+  fun no(): void;
+}
+
+base class Bar extends Foo {
+  deferred fun no(): void;
+}

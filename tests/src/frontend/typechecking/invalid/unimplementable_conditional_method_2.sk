@@ -1,0 +1,4 @@
+base class BNo<T> {
+  fun abs[T: Show](): void;
+}
+class C<T>() extends BNo<(T, T)>

@@ -1,0 +1,11 @@
+mutable class Foo(bar: mutable Bar)
+mutable class Bar(baz: mutable Baz)
+mutable class Baz(mutable value: String)
+
+fun main(): void {
+  baz = mutable Baz("Fail");
+  bar = mutable Bar(baz);
+  foo = mutable Foo(bar);
+  foo.bar.baz.!value = "Pass\n";
+  print_raw(foo.bar.baz.value)
+}

@@ -1,0 +1,25 @@
+base class L {
+  children =
+  | CL1()
+  | CL2(Int)
+}
+
+base class R {
+  children =
+  | CR1()
+  | CR2(Bool)
+}
+
+base class P {
+  children =
+  | A(L)
+  | B(R)
+  | C()
+}
+
+fun test(x: P): void {
+  x match {
+  | A(CL1()) -> void
+  | A(CL2(1)) -> void
+  }
+}

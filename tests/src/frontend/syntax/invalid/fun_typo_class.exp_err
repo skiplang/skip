@@ -1,0 +1,6 @@
+File "./syntax/invalid/fun_typo_class.sk", line 2, characters 3-10:
+'function' is not a valid keyword, did you mean 'fun' instead?
+1 | class X() {
+2 |   function f(): void {}
+  |   ^^^^^^^^
+3 | }

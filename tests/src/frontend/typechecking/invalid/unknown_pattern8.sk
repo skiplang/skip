@@ -1,0 +1,16 @@
+base class Hide
+class Bar<T: Show>(x: T) extends Hide
+
+fun showit<T: Show>(x: T): String {
+  x.toString()
+}
+
+fun doit(x: Hide): String {
+  x match {
+  | Bar(v) -> showit(v)
+  }
+}
+
+fun main(): void {
+  print_raw(doit(Bar("Pass\n")))
+}

@@ -1,0 +1,26 @@
+base class Foo final () {
+  type T: Test.MixedScalar;
+
+  deferred fun inout(x: this::T): this::T;
+
+  deferred fun breaky(b: Foo, v: this::T): this::T {
+    _ = this.inout(v); // OK
+    b.inout(v)
+  }
+}
+
+class Inty extends Foo {
+  type T = Test.MixedInt;
+  fun inout(x: Test.MixedInt): Test.MixedInt {
+    _ = x.asInt();
+    x
+  }
+}
+
+class Stringy extends Foo {
+  type T = Test.MixedString;
+  fun inout(x: Test.MixedString): Test.MixedString {
+    _ = x.asString();
+    x
+  }
+}

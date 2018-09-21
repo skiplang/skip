@@ -1,0 +1,29 @@
+base class Expr_body {
+  children =
+  | BNone()
+  | BAlgebraic(String)
+}
+
+class InheritedKind{
+  /* The value that was inherited. */
+  inh_value: Expr_body,
+}
+
+base class Inherited_body {
+  children =
+  | Inherited(InheritedKind)
+  | Body(Expr_body)
+}
+
+fun main(): void {
+  x: Inherited_body = Body(BNone());
+  print_raw(
+    x match {
+    | Inherited(InheritedKind{inh_value => BAlgebraic(branches)})
+    | Body(BAlgebraic(branches)) ->
+      _ = branches;
+      "Fail"
+    | _body -> "Pass\n"
+    },
+  )
+}

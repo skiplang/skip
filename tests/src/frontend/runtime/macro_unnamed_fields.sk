@@ -1,0 +1,13 @@
+base class B {
+  macro fun getFields(): Vector<Int> {
+    result = mutable Vector<Int>[];
+    #forEachField (#field) result.push(this.#field);
+    freeze(result)
+  }
+}
+
+class C(Int, Int, Int) extends B
+
+fun main(): void {
+  print_string(C(1, 2, 3).getFields().toString())
+}

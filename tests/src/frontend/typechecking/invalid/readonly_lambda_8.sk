@@ -1,0 +1,8 @@
+base class Hide
+class Foo<T: () -> Int>(v: T) extends Hide
+
+fun no(foo: readonly Hide): void {
+  foo match {
+  | Foo(v) -> _ = v()
+  }
+}

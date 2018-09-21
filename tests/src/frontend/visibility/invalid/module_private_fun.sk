@@ -1,0 +1,16 @@
+module Foo;
+
+private fun foo(): void {
+  void
+}
+
+fun ok(): void {
+  foo()
+}
+
+module end;
+
+fun main(): void {
+  Foo.foo();
+  print_raw("Fail")
+}

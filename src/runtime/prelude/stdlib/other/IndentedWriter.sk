@@ -1,0 +1,143 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module IndentedWriter;
+
+const defaultIndentSize: Int = 2;
+
+// Writes Text indenting after a newline.
+mutable class .IndentedWriter private {
+  mutable currentIndent: Int = 0,
+  mutable lastWasNewLine: Bool = true,
+  mutable line: Int = 0,
+  mutable column: Int = 0,
+  writeRaw: String -> void,
+  indentSize: Int = defaultIndentSize,
+} {
+  static fun create(
+    writeRaw: String -> void,
+    indentSize: Int = defaultIndentSize,
+  ): mutable IndentedWriter {
+    mutable IndentedWriter{writeRaw, indentSize};
+  }
+
+  mutable private fun writeCharNoPadding(ch: Char): void {
+    this.writeRaw(ch.toString());
+    this.!lastWasNewLine = (ch == '\n');
+    if (this.lastWasNewLine) {
+      this.!line = this.line + 1;
+      this.!column = 0;
+    } else {
+      this.!column = this.column + 1;
+    }
+  }
+
+  mutable private fun writeIndent(): void {
+    if (this.lastWasNewLine) {
+      for (_ in Range(0, this.currentIndent)) this.writeCharNoPadding(' ')
+    }
+  }
+
+  mutable fun write(value: String): void {
+    value.each(this.writeChar);
+  }
+
+  mutable fun writeLine(value: String = ""): void {
+    value.each(this.writeChar);
+    this.writeChar('\n');
+  }
+
+  mutable fun writeChar(ch: Char): void {
+    this.writeIndent();
+    this.writeCharNoPadding(ch);
+  }
+
+  mutable fun indent(): void {
+    this.setIndent(this.currentIndent + this.indentSize);
+  }
+
+  mutable fun outdent(): void {
+    invariant(this.currentIndent >= this.indentSize, "Mismatched outdent");
+    this.setIndent(this.currentIndent - this.indentSize);
+  }
+
+  mutable fun suspendIndent(): Int {
+    result = this.currentIndent;
+    this.setIndent(0);
+    result;
+  }
+
+  readonly fun getIndent(): Int {
+    this.currentIndent;
+  }
+
+  mutable fun setIndent(indent: Int): void {
+    invariant(indent >= 0);
+    this.!currentIndent = indent;
+  }
+
+  mutable fun writeIndented(f: () -> void): void {
+    this.indent();
+    f();
+    this.outdent();
+  }
+
+  readonly fun getLine(): Int {
+    this.line;
+  }
+
+  readonly fun getColumn(): Int {
+    this.column;
+  }
+}
+
+trait Writer{writer: mutable IndentedWriter} {
+  mutable fun writeLine(value: String = ""): void {
+    this.writer.writeLine(value);
+  }
+
+  mutable fun write(value: String): void {
+    this.writer.write(value);
+  }
+
+  mutable fun indent(): void {
+    this.writer.indent();
+  }
+
+  mutable fun outdent(): void {
+    this.writer.outdent();
+  }
+
+  mutable fun suspendIndent(): Int {
+    this.writer.suspendIndent();
+  }
+
+  mutable fun setIndent(indent: Int): void {
+    this.writer.setIndent(indent);
+  }
+}
+
+fun create(
+  writeRaw: String -> void,
+  indentSize: Int = defaultIndentSize,
+): mutable IndentedWriter {
+  IndentedWriter::create(writeRaw, indentSize);
+}
+
+fun createOnStdout(
+  indentSize: Int = defaultIndentSize,
+): mutable IndentedWriter {
+  IndentedWriter.create(print_raw, indentSize);
+}
+
+fun createOnStderr(
+  indentSize: Int = defaultIndentSize,
+): mutable IndentedWriter {
+  IndentedWriter.create(print_error, indentSize);
+}
+
+module end;

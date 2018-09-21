@@ -1,0 +1,6 @@
+base class Foo<T>
+class Bar() extends Foo<Int>
+
+fun get_bar(): Foo<_> {
+  Bar()
+}

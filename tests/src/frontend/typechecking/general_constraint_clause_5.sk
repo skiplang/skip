@@ -1,0 +1,15 @@
+class Co<+T>()
+class Contra<-T>()
+
+class Test<T>() {
+  fun t1<U: Show>[Co<T>: Co<U>](x: T): String {
+    x.toString()
+  }
+  fun t2<U: Show>[Contra<U>: Contra<T>](x: T): String {
+    x.toString()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

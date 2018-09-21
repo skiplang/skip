@@ -1,0 +1,22 @@
+class Bar<+TID: Test.MixedScalar>(x: TID)
+
+fun test2(): Nullable<Bar<Test.MixedString>> {
+  invariant_violation("")
+}
+
+fun getIntKeyAsArrayKey(): Test.MixedScalar {
+  Test.MixedInt(42)
+}
+
+fun main(): void {
+  classname = getIntKeyAsArrayKey() match {
+  | Test.MixedInt _ -> Box(Bar(Test.MixedInt(42)))
+  | Test.MixedString _ -> test2()
+  };
+  print_raw(
+    classname match {
+    | Box(_) -> "Pass\n"
+    | Null() -> "Fail"
+    },
+  )
+}

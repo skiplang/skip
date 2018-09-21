@@ -1,0 +1,10 @@
+class Foo() {
+  const value: Int = 43;
+  static fun get(): Int {
+    42
+  }
+}
+
+fun main(): void {
+  print_raw(if (Foo::get() + Foo::value == 85) "OK\n" else "FAILED")
+}

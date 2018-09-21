@@ -1,0 +1,41 @@
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 14, characters 5-16:
+The field bar is undefined
+12 | class C<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
+13 |   fun doit[T: HasBar](): Int {
+14 |     this.u.bar()
+   |     ^^^^^^^^^^^^
+15 |   }
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 12, characters 10-10:
+For the expression of type U
+10 | base class P1<+T> uses Foo<T>[T: HasBar]
+11 | base class P2<+T> uses Foo<T>[T: HasBar]
+12 | class C<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
+   |          ^
+13 |   fun doit[T: HasBar](): Int {
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 2, characters 7-10:
+Invalid conditional type override for the field 'doit' on child 'C2' for parent 'P1'.
+With additional constraints on the child's method,
+ these constraints must be satisfied when upcasting a child to the parent's type,
+ and then adding any additional constraints from the parent's version of the method
+1 | trait Foo<+T> {
+2 |   fun doit(): Int;
+  |       ^^^^
+3 | }
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 19, characters 12-12:
+The type: U
+17 |
+18 | class C2<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
+19 |   fun doit[U: HasBar](): Int {
+   |            ^
+20 |     this.t.bar()
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 19, characters 15-20:
+Is not a subtype of: HasBar
+17 |
+18 | class C2<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
+19 |   fun doit[U: HasBar](): Int {
+   |               ^^^^^^
+20 |     this.t.bar()

@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern7.sk", line 5, characters 5-5:
+The following pattern is unused:
+ | _
+3 |   | true -> 42
+4 |   | false -> 101
+5 |   | _ ->
+  |     ^
+6 |     43 // pattern already exhausted before this case

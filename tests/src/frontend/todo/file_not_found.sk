@@ -1,0 +1,7 @@
+async fun asyncMain(): ^void {
+  print_raw(await FileSystem.readTextFile("nonexistent_file"))
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

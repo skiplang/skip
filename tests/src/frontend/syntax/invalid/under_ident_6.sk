@@ -1,0 +1,3 @@
+class Foo<T> {
+  fun foo{_ : Int}: void { void }
+}

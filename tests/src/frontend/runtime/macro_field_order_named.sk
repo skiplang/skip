@@ -1,0 +1,57 @@
+trait T1{t1: Int}
+trait T2{t2: Int}
+
+base class D{d: Int}
+
+base class B1{b1a: Int, b1b: Int} extends D uses T1, T2
+base class B2{b2b: Int, b2a: Int} extends D uses T2, T1
+
+trait Fields {
+  macro fun getFields(): Vector<Int> {
+    result = mutable Vector<Int>[];
+    #forEachField (#field) result.push(this.#field);
+    freeze(result)
+  }
+}
+
+class A{a1: Int, a2: Int} extends B2, B1, D uses Fields {}
+
+class C{c2: Int, c1: Int} extends B1, B2, D uses Fields, T2, T1 {}
+
+class CB1{} extends B1 uses Fields
+class CB2{} extends B2 uses Fields
+
+fun main(): void {
+  print_string(
+    CB1{b1a => 1, b1b => 2, t1 => 3, t2 => 4, d => 5}.getFields().toString(),
+  );
+  print_string(
+    A{
+      a1 => 1,
+      a2 => 2,
+      b2b => 3,
+      b2a => 4,
+      t2 => 5,
+      t1 => 6,
+      d => 7,
+      b1a => 8,
+      b1b => 9,
+    }.getFields().toString(),
+  );
+  print_string(
+    CB2{b2b => 1, b2a => 2, t2 => 3, t1 => 4, d => 5}.getFields().toString(),
+  );
+  print_string(
+    C{
+      c2 => 1,
+      c1 => 2,
+      t2 => 3,
+      t1 => 4,
+      b1a => 5,
+      b1b => 6,
+      d => 7,
+      b2b => 8,
+      b2a => 9,
+    }.getFields().toString(),
+  );
+}

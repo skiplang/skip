@@ -1,0 +1,1 @@
+class X private { fun foo(): void { void } }

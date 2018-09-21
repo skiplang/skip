@@ -1,0 +1,13 @@
+// synchronously build and return a lambda with an async block - ok
+fun foo<T1, T: ^T1>(): ^(T -> T1) {
+  x ->
+    async {
+      await x
+    }
+}
+
+// outer async doesn't await in returned lambda
+async fun bar<T1, T: ^T1>(): T -> T1 {
+  x ->
+    await x // error, await outside async context
+}

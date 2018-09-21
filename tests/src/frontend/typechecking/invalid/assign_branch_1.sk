@@ -1,0 +1,18 @@
+base class P
+class Foo() extends P {
+  fun fail(): String {
+    "Fail"
+  }
+}
+class Bar() extends P
+
+fun main(): void {
+  x = Foo();
+  if (true) {
+    !x = Bar()
+  };
+  print_raw(
+    // x : P
+    x.fail(),
+  )
+}

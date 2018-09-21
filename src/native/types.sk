@@ -1,0 +1,751 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// TODO: Use "tparams" for incoming and "targs" for outgoing?
+
+// WARNING: If you add more types here you need to register them in
+// OuterIstToIR, to make sure they get the specified SClassID.
+const tVoid: Tclass = Tclass(SClassID("Void"), DeepFrozen());
+const tBool: Tclass = Tclass(SClassID("Bool"), DeepFrozen());
+const tChar: Tclass = Tclass(SClassID("Char"), DeepFrozen());
+const tFloat: Tclass = Tclass(SClassID("Float"), DeepFrozen());
+const tInt: Tclass = Tclass(SClassID("Int"), DeepFrozen());
+const tInt8: Tclass = Tclass(SClassID("Int8"), DeepFrozen());
+const tInt16: Tclass = Tclass(SClassID("Int16"), DeepFrozen());
+const tInt32: Tclass = Tclass(SClassID("Int32"), DeepFrozen());
+const tException: Tclass = Tclass(SClassID("Exception"), DeepFrozen());
+const tString: Tclass = Tclass(SClassID("String"), DeepFrozen());
+
+// Integer type the same size as a pointer.
+//
+// TODO: Name comes from C++ stdint, but is confusing compared to
+// tNonGCPointer, which is very different.
+const tIntPtr: Tclass = if (ptrByteSize == 4) {
+  tInt32
+} else {
+  tInt
+};
+
+// Synthetic type for a uint8_t*.
+const tNonGCPointer: Tclass = Tclass(
+  SClassID("Runtime.NonGCPointer"),
+  Mutable(),
+);
+const tGCPointer: Tclass = Tclass(SClassID("Runtime.GCPointer"), Mutable());
+
+// Machine-generated object that holds all consts.
+const tConstSingleton: Tclass = Tclass(
+  SClassID("<builtin>.globals"),
+  Mutable(),
+);
+
+// This is a special type that has no instances.
+const tAny: Tclass = Tclass(SClassID("_"), DeepFrozen());
+
+// Synthetic type for an HHVM handle
+const tHhvmHandle: Tclass = Tclass(SClassID("Runtime.HhvmHandle"), Mutable());
+
+const tHhvmShapeHandle: Tclass = Tclass(
+  SClassID("Runtime.HhvmShapeHandle"),
+  Mutable(),
+);
+
+const tMixed: Tclass = Tclass(SClassID("HH.Mixed"), DeepFrozen());
+
+// () -> void
+const kVoidVoidFunType: Tfun = Tfun{
+  isMutable => true,
+  isTracked => true,
+  params => Array[],
+  returnType => Array[],
+  aggregateReturnType => tVoid,
+};
+
+base class ScalarKind uses Orderable {
+  children =
+  | FloatScalarKind()
+  | IntegerScalarKind()
+  | GCPointerScalarKind()
+  | NonGCPointerScalarKind()
+  | HhvmHandleScalarKind()
+
+  fun compare(other: ScalarKind): Order {
+    compare(this.typeOrder(), other.typeOrder())
+  }
+
+  // NOTE: This order affects Vector slot packing slightly.
+  private fun typeOrder(): Int {
+    this match {
+    | GCPointerScalarKind _ -> 0
+    | NonGCPointerScalarKind _ -> 1
+    | HhvmHandleScalarKind _ -> 2
+    | IntegerScalarKind _ -> 3
+    | FloatScalarKind _ -> 4
+    }
+  }
+}
+
+// A basic LLVM type: pointer, integer, double.
+class ScalarType(
+  bitSize: Int,
+  bitAlignment: Int,
+  llvmTypeName: String,
+  kind: ScalarKind,
+) uses Hashable, Orderable, Show {
+  fun hash(): Int {
+    this.llvmTypeName.hash()
+  }
+
+  fun compare(other: ScalarType): Order {
+    // NOTE: ArraySlotInfo semantics require GC pointers to go first.
+    (other.isGCPointer(), other.bitAlignment, other.bitSize, this.kind).compare(
+      (this.isGCPointer(), this.bitAlignment, this.bitSize, other.kind),
+    )
+  }
+
+  fun isGCPointer(): Bool {
+    // HhvmHandles are basically GCPointers but we need to be able to identify
+    // them during the memoization check.
+    this.kind == GCPointerScalarKind() || this.kind == HhvmHandleScalarKind()
+  }
+
+  fun isNonGCPointer(): Bool {
+    this.kind == NonGCPointerScalarKind()
+  }
+
+  fun isHhvmHandle(): Bool {
+    this.kind == HhvmHandleScalarKind()
+  }
+
+  fun isLlvmPointer(): Bool {
+    this.kind match {
+    | GCPointerScalarKind _
+    | NonGCPointerScalarKind _
+    | HhvmHandleScalarKind _ ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun toString(): String {
+    this.llvmTypeName
+  }
+
+  const gcPointer: ScalarType = ScalarType(
+    ptrBitSize,
+    ptrBitSize,
+    "i8*",
+    GCPointerScalarKind(),
+  );
+
+  const nonGCPointer: ScalarType = ScalarType(
+    ptrBitSize,
+    ptrBitSize,
+    "i8*",
+    NonGCPointerScalarKind(),
+  );
+
+  const hhvmHandle: ScalarType = ScalarType(
+    ptrBitSize,
+    ptrBitSize,
+    "i8*",
+    HhvmHandleScalarKind(),
+  );
+}
+
+base class Mutability uses Show, Orderable, Hashable {
+  children =
+  // Can be changed via this reference.
+  | Mutable()
+  // This object and everything reachable from it canont be changed via
+  // this reference, but maybe can be changed via another reference.
+  | Readonly()
+  // This object and everything reachable from it cannot be changed by
+  // anyone ever.
+  | DeepFrozen()
+
+  fun toString(): String
+  | Mutable _ -> "mutable"
+  | Readonly _ -> "readonly"
+  | DeepFrozen _ -> "frozen"
+
+  protected fun typeOrder(): Int
+  | Mutable _ -> 1
+  | Readonly _ -> 2
+  | DeepFrozen _ -> 3
+
+  fun ==(other: Mutability): Bool {
+    this.typeOrder() == other.typeOrder()
+  }
+
+  fun compare(other: Mutability): Order {
+    compare(this.typeOrder(), other.typeOrder())
+  }
+
+  fun isSubTypeOf(other: Mutability): Bool {
+    this == other || other == Readonly()
+  }
+
+  fun join(other: Mutability): Mutability {
+    if (this == other) {
+      this
+    } else {
+      Readonly()
+    }
+  }
+
+  static fun fromFlag(isMutable: Bool): Mutability {
+    if (isMutable) {
+      Mutable()
+    } else {
+      DeepFrozen()
+    }
+  }
+}
+
+base class Type uses Show, Equality, Hashable {
+  static fun make(smap: UnorderedMap<FunSuperpositionID, Tclass>): Type {
+    uniqueSet = UnorderedSet::mcreate(smap.size());
+    example = tVoid;
+    for (v in smap) {
+      !example = v;
+      _ = uniqueSet.maybeInsert(v)
+    };
+
+    if (uniqueSet.size() == 1) {
+      example
+    } else {
+      invariant(uniqueSet.size() > 1, "Cannot have type mapping to nothing.");
+      unique = uniqueSet.toArray().sorted();
+      Tsuperposition(unique, ComplexSuperpositionMap(smap))
+    }
+  }
+
+  fun toString(): String {
+    this.toGroupedString(false)
+  }
+
+  fun asTclass(pos: Pos): Tclass
+  | tc @ Tclass _ -> tc
+  | _ -> pos.die("Expected Tclass, but got " + this)
+
+  // Produce a string, but if parens is true, group it with parens if
+  // needed to make it parse unambiguously.
+  fun toGroupedString(parens: Bool): String;
+
+  fun isMutable(): Bool;
+  fun isDeepFrozen(): Bool;
+
+  fun allowsPointerEscape(env: GlobalEnv): Bool;
+
+  // Could an instance of this type be a singleton allocated on a page
+  // mapped as read-only? This can happen for singletons such as empty Arrays.
+  fun mightBeInConstMemory(env: GlobalEnv): Bool;
+
+  // Invokes the given lambda for each Tclass that this type was statically
+  // declared to be (usually just one, but if there is a superposition
+  // of multiple generics there could be more than one).
+  //
+  // See also forEachConcreteSubtype to iterate through the concrete types
+  // instances of this type could be at runtime.
+  //
+  // Returns true iff f returns true for all Tclasses, false if ever returns
+  // false. The first time f returns false this stops iterating.
+  fun forEachTclass(f: Tclass -> Bool): Bool;
+
+  fun typeInSuperposition(s: FunSuperpositionID): Tclass;
+
+  // Picks an arbitrary SClass from the superposition. This is useful when
+  // querying some SClass property that you know must be shared by all
+  // SClasses in a superposition.
+  fun exampleSClass(env: readonly ClassLookupEnv): SClass;
+
+  fun maybeGetScalarType(env: GlobalEnv): ?ScalarType {
+    // All types in a superposition must have the same primitive type,
+    // so we can just ask one of them arbitrarily.
+    this.exampleSClass(env).maybeGetScalarType()
+  }
+
+  fun getScalarType(env: GlobalEnv): ScalarType {
+    // All types in a superposition must have the same primitive type,
+    // so we can just ask one of them arbitrarily.
+    this.exampleSClass(env).getScalarType()
+  }
+
+  fun mapMutability(f: Mutability -> Mutability): Type;
+
+  // Invokes func once (and only once) for each concrete subtype.
+  // If func ever returns false this stops.
+  //
+  // TODO: This should pass a Tclass, not SClass, to func, handling mutability.
+  fun forEachConcreteSubtype(
+    env: readonly ClassLookupEnv,
+    func: (SClass -> Bool),
+  ): Bool {
+    seen = mutable UnorderedSet[];
+
+    this.forEachTclass(tc -> {
+      tc.sclass(env).subtypes.all(t -> {
+        if (!seen.maybeInsert(t)) {
+          true
+        } else {
+          sub = env.getSClass(t);
+          !sub.kind.isFinal() || func(sub)
+        }
+      })
+    })
+  }
+
+  fun isGeneric(env: readonly ClassLookupEnv, names: Array<String>): Bool {
+    this.forEachTclass(tc -> names.contains(tc.sclass(env).gclassName.id))
+  }
+}
+
+class Tclass(
+  sclassID: SClassID,
+  mutability: Mutability,
+) extends Type uses Orderable {
+  fun sclass(env: readonly ClassLookupEnv): SClass {
+    env.getSClass(this.sclassID)
+  }
+
+  fun ==(other: Type): Bool {
+    other match {
+    | tc @ Tclass _ ->
+      this.sclassID == tc.sclassID && this.mutability == tc.mutability
+    | _ -> false
+    }
+  }
+
+  fun !=(other: Type): Bool {
+    !(this == other)
+  }
+
+  fun toGroupedString(parens: Bool): String {
+    this.mutability match {
+    | DeepFrozen() -> this.sclassID.id
+    | Mutable()
+    | Readonly() ->
+      n = this.mutability.toString() + " " + this.sclassID.id;
+      if (parens) {
+        "(" + n + ")"
+      } else {
+        n
+      }
+    }
+  }
+
+  fun isMutable(): Bool {
+    this.mutability == Mutable()
+  }
+
+  fun isDeepFrozen(): Bool {
+    // TODO: If this type is shallow frozen, and all of its field
+    // types are isDeepFrozen(), then this is effectively DeepFrozen()
+    // even though its mutability is not marked as such.
+    // We could compute this here but it could be expensive, and we'd
+    // have to defend against infinite recursion.
+    this.mutability == DeepFrozen()
+  }
+
+  fun allowsPointerEscape(env: GlobalEnv): Bool {
+    this.mutability match {
+    | DeepFrozen() -> false
+    | Readonly() -> this.sclass(env).allowsPointerEscapeIfReadonly
+    | Mutable() -> this.sclass(env).allowsPointerEscapeIfMutable
+    }
+  }
+
+  fun mightBeInConstMemory(env: GlobalEnv): Bool {
+    this.mutability != Mutable() ||
+      {
+        sc = this.sclass(env);
+
+        // Empty vectors may be singletons in const memory, and even a mutable
+        // object with no assignable fields could theoretically be allocated
+        // as a const singleton.
+        sc.isArray() || !sc.fields.any(f -> f.isAssignable)
+      }
+  }
+
+  fun forEachTclass(f: Tclass -> Bool): Bool {
+    f(this)
+  }
+
+  fun typeInSuperposition(FunSuperpositionID): Tclass {
+    this
+  }
+
+  fun exampleSClass(env: readonly ClassLookupEnv): SClass {
+    this.sclass(env)
+  }
+
+  fun getField(name: String, env: GlobalEnv, pos: Pos): SField {
+    sclass = this.sclass(env);
+    field = sclass.getField(name, pos);
+    if (field.typ.mutability >= this.mutability || (field.typ == tHhvmHandle)) {
+      field
+    } else {
+      // A mutable field on a frozen object gets promoted to frozen, etc.
+      field with {typ => field.typ.mapMutability(m -> max(m, this.mutability))}
+    }
+  }
+
+  fun mapMutability(f: Mutability -> Mutability): Tclass {
+    m = f(this.mutability);
+    if (m == this.mutability) {
+      this
+    } else {
+      this with {mutability => m}
+    }
+  }
+}
+
+// NOTE: Do not make one directly, use Type::make().
+class Tsuperposition(
+  // All the unique Tclasses that appear in this Tsuperposition
+  // (i.e. values of smap). There must be more than one of them or this
+  // would have been created as a simple Tclass.
+  unique: Array<Tclass>,
+
+  // Type for each supported FunSuperpositionID.
+  smap: ComplexSuperpositionMap<Tclass>,
+) extends Type {
+  fun ==(other: Type): Bool {
+    other match {
+    | ts @ Tsuperposition _ -> this.unique == ts.unique && this.smap == ts.smap
+    | _ -> false
+    }
+  }
+
+  /*
+  // TODO: Do we really need to be able to order these, or just Tclasses?
+  fun compare(other: Type): Order {
+    other match {
+    | Tclass _ -> GT()
+    | Tsuperposition(unique, smap) -> {
+        this.unique.compare(unique) match {
+        | EQ() -> {
+            compare(this.smap.size(), smap.size()) match {
+            | EQ() -> {
+                h1 = this.smap.hash();
+                h2 = smap.hash();
+
+                if (h1 != h2) {
+                  compare(h1, h2)
+                } else if (this.smap == smap) {
+                  EQ()
+                } else {
+                  // Challenging case: compare two hash maps. We do it
+                  // by sorting all the items then comparing
+                  // lexicographically. We could do this without
+                  // allocating but this should be very rare.
+                  buf1 = mutable Vector[];
+                  buf2 = mutable Vector[];
+                  this.smap.items().each(buf1.push);
+                  smap.items().each(buf2.push);
+                  buf1.sortBy(cmp2);
+                  buf2.sortBy(cmp2);
+
+                  res = EQ();
+                  i = 0;
+                  while_loop(() -> i < buf1.size() && res == EQ(), () -> {
+                    !res = cmp2(buf1[i], buf2[i]);
+                    !i = i + 1
+                  });
+
+                  res
+                }
+              }
+            | c -> c
+            }
+          }
+        | c -> c
+        }
+      }
+    }
+  }
+  */
+
+  fun toGroupedString(_parens: Bool): String {
+    "<Tsuperposition types=[" +
+      this.unique.join(", ") +
+      "], smap=[" +
+      this.smap +
+      "]>"
+  }
+
+  fun isMutable(): Bool {
+    this.unique.any(u -> u.isMutable())
+  }
+
+  fun isDeepFrozen(): Bool {
+    this.unique.all(u -> u.isDeepFrozen())
+  }
+
+  fun allowsPointerEscape(env: GlobalEnv): Bool {
+    this.unique.any(u -> u.allowsPointerEscape(env))
+  }
+
+  fun mightBeInConstMemory(env: GlobalEnv): Bool {
+    this.unique.any(u -> u.mightBeInConstMemory(env))
+  }
+
+  fun forEachTclass(f: Tclass -> Bool): Bool {
+    this.unique.all(f)
+  }
+
+  fun typeInSuperposition(s: FunSuperpositionID): Tclass {
+    this.smap[s]
+  }
+
+  fun exampleSClass(env: readonly ClassLookupEnv): SClass {
+    this.unique[0].sclass(env)
+  }
+
+  fun mapMutability(f: Mutability -> Mutability): Type {
+    // Optimization: quick check for nothing changing.
+    if (this.unique.all(u -> u.mutability == f(u.mutability))) {
+      this
+    } else {
+      // Create a new Type. Note that theoretically this could collapse
+      // a Tsuperposition into a Tclass, e.g.
+      // Tsuperposition[Foo, mutable Foo] were frozen into just Foo.
+      smap = UnorderedMap::mcreate(this.smap.smap.size());
+      for (k => v in this.smap.smap) smap.add(k, v.mapMutability(f));
+      Type::make(freeze(smap))
+    }
+  }
+}
+
+// NOTE: Tfun corresponds to a raw code pointer, not a front end function
+// pointer. Those are Tapply instances of a machine-generated "Closure" class.
+class Tfun{
+  isMutable: Bool,
+  isTracked: Bool,
+  // Parameter types, required args followed by flags/count indicating which
+  // optional args are supplied followed by optional args.
+  params: Array<Type>,
+  // Return types. Empty for "void".
+  returnType: Array<Type>,
+  // Either tVoid, a scalar type, or a special tuple type for multiple return.
+  // This is the Type that call Instrs invoking this Function use.
+  aggregateReturnType: Type,
+} uses Show, Equality {
+  fun toString(): String {
+    args = if (this.params.size() == 1) {
+      this.params[0].toGroupedString(true)
+    } else {
+      "(" + this.params.join(", ") + ")"
+    };
+
+    str = (
+      args +
+      (if (this.isMutable) " -> " else " ~> ") +
+      this.aggregateReturnType.toString()
+    );
+    if (this.isTracked) {
+      str
+    } else {
+      "untracked (" + str + ")"
+    }
+  }
+
+  fun ==(other: Tfun): Bool {
+    this.params == other.params &&
+      this.returnType == other.returnType &&
+      this.aggregateReturnType == other.aggregateReturnType &&
+      this.isMutable == other.isMutable &&
+      this.isTracked == other.isTracked
+  }
+}
+
+// A unique superposition identifier, originally corresponding to a
+// specific Array<Tclass> for Targs used on a class.
+value class ClassSuperpositionID() uses TypeSafeID<Array<Tclass>> {
+  // Corresponds to zero tparams.
+  const empty: ClassSuperpositionID = intern(ClassSuperpositionID(Array[]));
+}
+
+// A unique superposition identifier, originally corresponding to a
+// specific Array<Tclass> for Targs.
+value class MethodSuperpositionID() uses TypeSafeID<Array<Tclass>> {
+  // Corresponds to zero tparams.
+  const empty: MethodSuperpositionID = intern(MethodSuperpositionID(Array[]));
+}
+
+// Numerically a FunSuperpositionID is the sum of its ClassSuperpositionID
+// (which only uses the high 32 bits) and FunSuperpositionID (which only
+// uses the low 32 bits).
+value class FunSuperpositionID(
+  cls: ClassSuperpositionID,
+  method: MethodSuperpositionID,
+) uses Hashable, Equality, Show {
+  fun toString(): String {
+    `FunSuperpositionID(${this.cls}, ${this.method})`
+  }
+
+  // Corresponds to zero tparams.
+  const empty: FunSuperpositionID = FunSuperpositionID(
+    ClassSuperpositionID::empty,
+    MethodSuperpositionID::empty,
+  );
+}
+
+// Maps a FunSuperposition to something. Nonempty.
+base class SuperpositionMap<T: Hashable & Equality & Show> uses
+  Hashable,
+  Equality,
+  Show,
+{
+  fun get(key: FunSuperpositionID): T;
+  fun toString(): String;
+
+  static fun maybeMake(
+    b: readonly Vector<(FunSuperpositionID, T)>,
+  ): ?SuperpositionMap<T> {
+    if (b.isEmpty()) {
+      return None()
+    };
+
+    if (b.size() > 1) {
+      u = UnorderedMap::mcreate(b.size());
+      for ((k, v) in b) {
+        if (!u.maybeSet(k, v)) {
+          if (u[k] != v) {
+            // One key maps to two different values, so give up.
+            return None()
+          }
+        }
+      };
+
+      if (u.size() > 1) {
+        return Some(ComplexSuperpositionMap(u.chill()))
+      }
+    };
+
+    Some(SimpleSuperpositionMap(b[0].i1))
+  }
+
+  static fun make(
+    b: readonly Vector<(FunSuperpositionID, T)>,
+  ): SuperpositionMap<T> {
+    static::maybeMake(b) match {
+    | Some(s) -> s
+    | None() -> invariant_violation("Malformed superposition")
+    }
+  }
+
+  protected fun eqSimple(other: SimpleSuperpositionMap<T>): Bool;
+  protected fun eqComplex(other: ComplexSuperpositionMap<T>): Bool;
+}
+
+class SimpleSuperpositionMap<T: Hashable & Equality & Show>(
+  default: T,
+) extends SuperpositionMap<T> {
+  fun toString(): String {
+    "<SimpleSuperpositionMap default=" + this.default + ">"
+  }
+
+  fun get(_key: FunSuperpositionID): T {
+    this.default
+  }
+
+  fun ==(other: SuperpositionMap<T>): Bool {
+    other.eqSimple(this)
+  }
+
+  protected fun eqSimple(other: this): Bool {
+    this.default == other.default
+  }
+
+  protected fun eqComplex(_other: ComplexSuperpositionMap<T>): Bool {
+    false
+  }
+}
+
+// SuperpositionMap for nonparametric functions -- any superposition
+// in the caller always maps to zero Targs.
+const kNonParametricFunSmap: SimpleSuperpositionMap<
+  FunSuperpositionID,
+> = SimpleSuperpositionMap(FunSuperpositionID::empty);
+
+const kNonParametricMethodSmap: SimpleSuperpositionMap<
+  MethodSuperpositionID,
+> = SimpleSuperpositionMap(MethodSuperpositionID::empty);
+
+class ComplexSuperpositionMap<T: Hashable & Equality & Show>(
+  smap: UnorderedMap<FunSuperpositionID, T>,
+) extends SuperpositionMap<T> {
+  fun get(key: FunSuperpositionID): T {
+    this.smap[key]
+  }
+
+  fun toString(): String {
+    "<ComplexSuperpositionMap " + this.smap + ">"
+  }
+
+  fun ==(other: SuperpositionMap<T>): Bool {
+    other.eqComplex(this)
+  }
+
+  protected fun eqSimple(_other: SimpleSuperpositionMap<T>): Bool {
+    false
+  }
+
+  protected fun eqComplex(other: this): Bool {
+    this.smap == other.smap
+  }
+}
+
+// These are the suffixes we add to class names for their meta types.
+// These correspond to the Base<T>, Class<T> and Concrete<T> types in
+// the language. Base, Class and Concrete are replaced in the back end
+// after specialization with more specific types.
+const baseMetaSuffix: String = "::.BaseMeta";
+const baseMetaImplSuffix: String = "::.BaseMetaImpl";
+const classMetaSuffix: String = "::.ClassMeta";
+const concreteMetaSuffix: String = "::.ConcreteMeta";
+const concreteMetaImplSuffix: String = "::.ConcreteMetaImpl";
+
+// Return true iff t1 is a subtype of t2. Every type is a subtype of itself.
+fun isSubType(t1: Type, t2: Type, env: GlobalEnv, pos: Pos): Bool {
+  if (t1 == t2) {
+    true
+  } else {
+    (t1, t2) match {
+    | (ts1 @ Tsuperposition _, ts2 @ Tsuperposition _) ->
+      // It's a subtype if it's a subtype in every superposition.
+      // The two Tsuperpositions must have the same keys (it makes
+      // no sense to compare Tsuperpositions from different functions).
+
+      pos.invariant(
+        ts1.smap.smap.size() == ts2.smap.smap.size(),
+        "Tsuperposition size mismatch.",
+      );
+
+      ts1.smap.smap.all((sup1, tc1) -> {
+        tc2 = ts2.typeInSuperposition(sup1);
+        isSubType(tc1, tc2, env, pos)
+      })
+    | (ts1 @ Tsuperposition _, ts2) ->
+      ts1.unique.all(tt1 -> isSubType(tt1, ts2, env, pos))
+    | (ts1, ts2 @ Tsuperposition _) ->
+      ts2.unique.all(tt2 -> isSubType(ts1, tt2, env, pos))
+    | (tc1 @ Tclass _, tc2 @ Tclass _) ->
+      // Lambdas are the one oddball case where a frozen class
+      // can be a subtype of a mutable one. It's safe because of
+      // the restricted way in which they can be used.
+      sc1 = tc1.sclass(env);
+      sc1.supertypes.contains(tc2.sclassID) &&
+        (tc1.mutability.isSubTypeOf(tc2.mutability) ||
+          (sc1.isLambda &&
+            tc2.mutability != DeepFrozen() &&
+            tc2.sclass(env).isLambda))
+    }
+  }
+}

@@ -1,0 +1,8 @@
+File "./syntax/invalid/void_invalid_pattern2.sk", line 4, characters 5-8:
+The following pattern is unused:
+ | void
+2 |   v match {
+3 |   | void -> "I should fail"
+4 |   | void -> "Nope"
+  |     ^^^^
+5 |   }

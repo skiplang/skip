@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tparams_pattern_tuple3.sk", line 5, characters 5-10:
+Invalid pattern. Constraint not satisfied when refining the type for this branch
+3 | fun test<T: (Int, Int) & Int>(x: T): void {
+4 |   x match {
+5 |   | (_, _) -> void
+  |     ^^^^^^
+6 |   }
+
+File "./typechecking/invalid/tparams_pattern_tuple3.sk", line 5, characters 5-10:
+The type: (Int, Int)
+3 | fun test<T: (Int, Int) & Int>(x: T): void {
+4 |   x match {
+5 |   | (_, _) -> void
+  |     ^^^^^^
+6 |   }
+
+File "./typechecking/invalid/tparams_pattern_tuple3.sk", line 3, characters 26-28:
+Is not a subtype of: Int
+1 | // We only look at the upper bounds for tparams individually -- if one of
+2 | // them works accept it.
+3 | fun test<T: (Int, Int) & Int>(x: T): void {
+  |                          ^^^
+4 |   x match {

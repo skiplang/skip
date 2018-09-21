@@ -1,0 +1,4 @@
+fun main(): String {
+  x = (private p) -> p;
+  x("Fail")
+}

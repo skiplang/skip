@@ -1,0 +1,10 @@
+fun main(): String {
+  x match {
+  | A
+  | B -> x
+  | C
+  | D ->
+    f();
+    let myint = 10;    
+  }
+}

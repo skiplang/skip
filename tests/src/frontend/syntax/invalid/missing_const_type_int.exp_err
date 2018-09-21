@@ -1,0 +1,4 @@
+File "./syntax/invalid/missing_const_type_int.sk", line 1, characters 9-9:
+Missing constant type annotation. ': Int ='
+1 | const x = 10;
+  |         ^

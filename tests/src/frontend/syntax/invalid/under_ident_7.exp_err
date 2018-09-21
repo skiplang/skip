@@ -1,0 +1,7 @@
+File "./syntax/invalid/under_ident_7.sk", line 4, characters 11-11:
+Unbound name: _
+2 |   fun matcher(): T {
+3 |     this match {
+4 |     | Foo{_ => _} -> _
+  |           ^
+5 |     }

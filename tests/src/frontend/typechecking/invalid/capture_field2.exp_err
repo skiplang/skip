@@ -1,0 +1,15 @@
+File "./typechecking/invalid/capture_field2.sk", line 9, characters 5-16:
+Cannot call a frozen method on a readonly object
+ 7 | mutable class A(x: mutable B) {
+ 8 |   readonly fun foo(): X {
+ 9 |     this.x.foo()
+   |     ^^^^^^^^^^^^
+10 |   }
+
+File "./typechecking/invalid/capture_field2.sk", line 3, characters 3-8:
+This is where the method was annotated as 'frozen'
+1 | class X()
+2 | mutable class B(x: mutable X) {
+3 |   frozen fun foo(): X {
+  |   ^^^^^^
+4 |     this.x

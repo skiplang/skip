@@ -1,0 +1,5 @@
+fun shouldFail<T: (Int, Int), B: (T, Int)>(x: B): String {
+  x match {
+  | (_, (_, _)) -> "Fail\n"
+  }
+}

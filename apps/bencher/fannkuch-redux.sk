@@ -1,0 +1,100 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Modified from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/fannkuchredux-hack-2.html
+
+module Fannkuch;
+
+fun fannkuch(n: Int): Int {
+  perm = Array::mfill(n, 0);
+  count = Array::mfill(n, 0);
+  perm1 = Array::mfillBy(n, i -> i);
+
+  f = 0;
+  i = 0;
+  k = 0;
+  flips = 0;
+  nperm = 0;
+  checksum = 0;
+
+  r = n;
+  while (r > 0) {
+    !i = 0;
+    while (r != 1) {
+      count![r - 1] = r;
+      !r = r - 1
+    };
+    while (i < n) {
+      perm![i] = perm1[i];
+      !i = i + 1
+    };
+
+    // Count flips and update max  and checksum
+    !f = 0;
+    !k = perm[0];
+    while (k != 0) {
+      !i = 0;
+      while (2 * i < k) {
+        t = perm[i];
+        perm![i] = perm[k - i];
+        perm![k - i] = t;
+        !i = i + 1;
+      };
+      !k = perm[0];
+      !f = f + 1;
+    };
+    if (f > flips) {
+      !flips = f
+    };
+    if ((nperm.and(0x1)) == 0) {
+      !checksum = checksum + f
+    } else {
+      !checksum = checksum - f
+    };
+
+    // Use incremental change to generate another permutation
+    go = true;
+    while (go) {
+      if (r == n) {
+        // exit all the loops
+        !r = 0;
+        !go = false;
+      } else {
+        p0 = perm1[0];
+        !i = 0;
+        while (i < r) {
+          j = i + 1;
+          perm1![i] = perm1[j];
+          !i = j;
+        };
+        perm1![r] = p0;
+
+        count![r] = count[r] - 1;
+        if (count[r] > 0) {
+          !go = false
+        } else {
+          !r = r + 1
+        }
+      }
+    };
+    !nperm = nperm + 1;
+  };
+  flips
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  // using 9 as the most reasonable input that doesn't take too long to run
+  n = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(7);
+  bencher.bench{
+    run => () -> {
+      _ = fannkuch(n)
+    },
+  }
+}
+
+module end;

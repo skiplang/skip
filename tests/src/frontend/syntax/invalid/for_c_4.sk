@@ -1,0 +1,5 @@
+fun main(): void {
+  for (const i = 0; i < 10; ++i) {
+    void
+  };
+}

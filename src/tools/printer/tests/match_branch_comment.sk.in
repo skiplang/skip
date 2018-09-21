@@ -1,0 +1,14 @@
+fun skipEscapeSequence(): void {
+  this.next() match {
+    // Standard escapes
+    | 'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0'
+    // For template literals
+    | '$' | '{' | '`' -> void;
+
+    | 'x' -> this.checkHexEscape(2);
+    | 'u' -> this.checkHexEscape(4);
+    | 'U' -> this.checkHexEscape(8);
+    | _ ->
+      this.addErrorAt(escape, errorInvalidEscapeSequence, "Invalid escape sequence");
+  }
+}

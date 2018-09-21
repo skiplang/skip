@@ -1,0 +1,7 @@
+class Foo(x: Int, y: String)
+
+fun main(): String {
+  foo = Foo(0, "hello");
+  foo = foo with (42, "Fail");
+  foo.y
+}

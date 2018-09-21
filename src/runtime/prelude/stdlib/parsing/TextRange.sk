@@ -1,0 +1,93 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// A Range in a block of text.
+// start is inclusive.
+// end is exclusive.
+////////////////////////////////////////////////////////////////////////////////
+
+value class TextRange{
+  start: Position,
+  end: Position,
+} uses Show, Orderable, Hashable {
+  fun isNone(): Bool {
+    this == TextRange.none;
+  }
+
+  static fun create(start: Position, end: Position): TextRange {
+    // TODO: invariant(start <= end);
+    TextRange{start, end};
+  }
+
+  fun toString(): String {
+    if (this.isNone()) {
+      "";
+    } else {
+      this.start.toString() + "-" + this.end;
+    };
+  }
+
+  fun contains(position: Position): Bool {
+    this.start <= position && this.end > position;
+  }
+
+  fun containsRange(range: TextRange): Bool {
+    this.start <= range.start && this.end >= range.end;
+  }
+
+  fun inspect(): Inspect {
+    InspectLiteral(this.toString());
+  }
+}
+
+module TextRange;
+
+const none: TextRange = empty(Position.start);
+
+fun create(start: Position, end: Position): TextRange {
+  // TODO: invariant(start <= end);
+  TextRange::create(start, end);
+}
+
+fun empty(position: Position): TextRange {
+  create(position, position);
+}
+
+fun contentFromLines(tr: TextRange, lines: Vector<String>): String {
+  result = "";
+  for (i in Range(0, tr.end.line() - tr.start.line() + 1)) {
+    index = tr.start.line() + i;
+    line = lines[index];
+    startColumn = if (index == tr.start.line()) {
+      tr.start.column();
+    } else {
+      0;
+    };
+    endColumn = if (index == tr.end.line()) {
+      tr.end.column();
+    } else {
+      line.length();
+    };
+    if (index > tr.start.line()) {
+      !result = result + Chars.lineFeed.toString();
+    };
+    !result = result + line.sub(startColumn, endColumn - startColumn);
+  };
+  result
+}
+
+fun createEndOfLines(lines: Vector<String>): Position {
+  line = lines.size() - 1;
+  if (line == 0) {
+    Position.start;
+  } else {
+    Position.create(line, lines[line].length());
+  }
+}
+
+module end;

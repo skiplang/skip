@@ -1,0 +1,13 @@
+File "./typechecking/invalid/mutable_field_1.sk", line 3, characters 11-15:
+Field `value` is not assignable. Assignable fields must be prefixed with 'mutable'
+1 | mutable class Cell(value: String) {
+2 |   mutable fun set(v: String): void {
+3 |     this.!value = v; // error, this.value is immutable
+  |           ^^^^^
+4 |     void
+
+File "./typechecking/invalid/mutable_field_1.sk", line 1, characters 20-24:
+It is defined here
+1 | mutable class Cell(value: String) {
+  |                    ^^^^^
+2 |   mutable fun set(v: String): void {

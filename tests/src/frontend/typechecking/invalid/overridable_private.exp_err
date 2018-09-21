@@ -1,0 +1,6 @@
+File "./typechecking/invalid/overridable_private.sk", line 2, characters 3-13:
+Private methods in base classes cannot be overridable since they are not visible in the children
+1 | base class Foo {
+2 |   overridable private fun foo(): void {
+  |   ^^^^^^^^^^^
+3 |     void

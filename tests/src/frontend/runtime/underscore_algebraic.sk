@@ -1,0 +1,13 @@
+fun main(): void {
+  print_raw(Baz().expectBaz())
+}
+
+base class Foo {
+  fun expectBaz(): String
+  | Baz() -> "Pass\n"
+  | _ -> invariant_violation("expectBaz called on non-Baz")
+}
+
+base class Bar extends Foo
+
+class Baz() extends Bar

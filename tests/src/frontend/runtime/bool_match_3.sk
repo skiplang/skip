@@ -1,0 +1,9 @@
+class BC{x: Bool = false}
+fun main(): void {
+  print_raw(
+    BC{x => true} match {
+    | BC{x => true} -> "Pass\n"
+    | BC _ -> "FAIL"
+    },
+  )
+}

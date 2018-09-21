@@ -1,0 +1,44 @@
+File "./typechecking/invalid/loop_break_with_else.sk", line 2, characters 35-35:
+Incompatible loop results
+1 | fun no1(): void {
+2 |   _ = while (false) break "" else 0
+  |                                   ^
+3 | }
+
+File "./typechecking/invalid/loop_break_with_else.sk", line 2, characters 27-28:
+The type: String
+1 | fun no1(): void {
+2 |   _ = while (false) break "" else 0
+  |                           ^^
+3 | }
+
+File "./typechecking/invalid/loop_break_with_else.sk", line 2, characters 35-35:
+Does not share a common super type with: Int
+1 | fun no1(): void {
+2 |   _ = while (false) break "" else 0
+  |                                   ^
+3 | }
+
+File "./typechecking/invalid/loop_break_with_else.sk", line 6, characters 36-37:
+Incompatible loop results
+4 |
+5 | fun no2(): void {
+6 |   _ = do break 0 while (true) else ""
+  |                                    ^^
+7 | }
+
+File "./typechecking/invalid/loop_break_with_else.sk", line 6, characters 16-16:
+The type: Int
+4 |
+5 | fun no2(): void {
+6 |   _ = do break 0 while (true) else ""
+  |                ^
+7 | }
+
+File "./typechecking/invalid/loop_break_with_else.sk", line 6, characters 36-37:
+Does not share a common super type with: String
+4 |
+5 | fun no2(): void {
+6 |   _ = do break 0 while (true) else ""
+  |                                    ^^
+7 | }

@@ -1,0 +1,1636 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Vector;
+
+// A mutable, growable sequence of items with O(1) lookup/update and amortized
+// O(1) appending of items.
+//
+// ## Notes
+//
+// Vector is represented as a contiguous block of memory and supports random
+// access by integer index for indices in the range 0 (inclusive) up to the
+// vector's size() (exclusive).
+mutable class .Vector<+T> private (
+  private mutable inner: mutable .Array<Unsafe.RawStorage<T>>,
+  private mutable sz: Int = 0,
+  mutable generation_PRIVATE: Int = 0,
+)
+  extends .MutableIndexedSequence<T>
+  uses
+    IntoIterator<T>,
+    FromIterator<T>,
+    Show[T: readonly Show],
+    Hashable[T: Hashable],
+    Orderable[T: Orderable],
+    Equality[T: Equality],
+   {
+  // # Creating a Vector
+
+  // Create a mutable Vector with the given capacity.
+  static fun mcreate(capacity: Int = 0): mutable this {
+    invariant(
+      capacity >= 0,
+      "Vector::mcreate: Expected capacity to be nonnegative.",
+    );
+    inner = unsafeMake(capacity);
+    mutable Vector(inner)
+  }
+
+  // Create a Vector containing the given items.
+  static fun createFromItems<I: readonly Sequence<T>>(items: I): this {
+    size = items.size(); // can't trust that each() will yield exactly this many items
+    if (size == 0) {
+      Vector(Array[])
+    } else if (size > 0) {
+      inner = unsafeMake(size);
+      unsafeWriteSeqToSlice(items, inner, 0, size);
+      Vector(unsafe_chill_trust_me(inner), size)
+    } else {
+      invariant_violation(
+        "Vector::mcreateFromItems: Expected items size() to be nonnegative.",
+      );
+    }
+  }
+
+  static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
+    size = items.size(); // can't trust that each() will yield exactly this many items
+    invariant(
+      size >= 0,
+      "Vector::mcreateFromItems: Expected items size() to be nonnegative.",
+    );
+    inner = unsafeMake(size);
+    unsafeWriteSeqToSlice(items, inner, 0, size);
+    mutable Vector(inner, size)
+  }
+
+  // Create a Vector filled with the items of an iterator.
+  static fun createFromIterator<I: mutable Iterator<T>>(items: I): this {
+    unsafe_chill_trust_me(Vector::mcreateFromIterator(items))
+  }
+
+  static fun mcreateFromIterator<I: mutable Iterator<T>>(
+    items: I,
+  ): mutable this {
+    sizeHint = items.sizeHint().default(0); // estimate of capacity, if accurate will avoid resizing.
+    invariant(
+      sizeHint >= 0,
+      "Vector::mcreateFromIterator: Expected items sizeHint() to be nonnegative.",
+    );
+    result = Vector::mcreate(sizeHint);
+    items.each(result.push);
+    result
+  }
+
+  // Create a Vector filled with the items of an iterator in reverse order.
+  // Throws if the iterator does not yield exactly its reported number of items.
+  static fun reverseFromIterator<I: mutable Iterator<T>>(items: I): this {
+    unsafe_chill_trust_me(Vector::mreverseFromIterator(items))
+  }
+
+  static fun mreverseFromIterator<I: mutable Iterator<T>>(
+    items: I,
+  ): mutable this {
+    items.sizeHint() match {
+    | Some(size) ->
+      invariant(
+        size >= 0,
+        "Vector::mreverseFromIterator(): Expected items sizeHint() to be nonnegative.",
+      );
+      inner = unsafeMake(size);
+      index = size;
+      items.each(value -> {
+        !index = index - 1;
+        invariant(
+          index.uge(0),
+          "Vector::mreverseFromIterator(): Invalid iterator, expected each() to yield sizeHint() items.",
+        );
+        unsafeSet(inner, index, value);
+      });
+      invariant(
+        index == 0,
+        "Vector::mreverseFromIterator(): Invalid iterator, expected each() to yield sizeHint() items.",
+      );
+      mutable Vector(inner, size)
+    | None() ->
+      result = Vector::mcreateFromIterator(items);
+      result.reverse();
+      result
+    }
+  }
+
+  // Create a vector of the given size with all indices set to the given value.
+  static fun fill(size: Int, value: T): this {
+    unsafe_chill_trust_me(static::mfill(size, value))
+  }
+
+  static fun mfill(size: Int, value: T): mutable this {
+    invariant(size >= 0, "Vector::mfill: Expected size to be nonnegative.");
+    inner = unsafeMake(size);
+    unsafeFillSlice(inner, 0, size, value);
+    mutable Vector(inner, size);
+  }
+
+  // Create a vector of the given size with each index set to the result of
+  // calling the function with the index.
+  static fun fillBy(size: Int, f: Int -> T): this {
+    unsafe_chill_trust_me(static::mfillBy(size, f))
+  }
+
+  static fun mfillBy(size: Int, f: Int -> T): mutable this {
+    invariant(size >= 0, "Vector::mfillBy: Expected size to be nonnegative.");
+    inner = unsafeMake(size);
+    for (index in Range(0, size)) unsafeSet(inner, index, f(index));
+    mutable Vector(inner, size);
+  }
+
+  // # Copying a Vector
+
+  // Returns a mutable, shallow copy of this Vector. The returned
+  // Vector is sized to fit exactly the number of items in this vector,
+  // plus the optional reserveCapacity number of additional items.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this {
+    invariant(
+      reserveCapacity >= 0,
+      "Vector::clone: Expected reserveCapacity to be nonnegative.",
+    );
+    sz = this.sz;
+    newSize = sz + reserveCapacity;
+    inner = unsafeMake(newSize);
+    unsafeMoveSlice(this.inner, 0, sz, inner, 0);
+    mutable Vector(inner, sz)
+  }
+
+  readonly fun chill(): this {
+    Vector(this.inner.chill(), this.sz)
+  }
+
+  // # Sizing
+
+  // Returns the number of items contained in this vector
+  readonly fun size(): Int {
+    this.sz
+  }
+
+  // Returns the total number of items that can fit in the Vector's internal
+  // storage without allocating new space. To determine the number of
+  // *additional* items that can be added without allocating, use
+  // capacity() - size().
+  // NOTE: Making capacity observable on frozen values prevents optimizations such
+  // as shrinking to fit on freeze. By making it mutable we preserve option value
+  // to add such optimizations in the future.
+  mutable fun capacity(): Int {
+    this.inner.size()
+  }
+
+  // Grow the Vector's internal storage as necessary to accommodate the
+  // given (absolute) capacity. This method *may* allocate more storage
+  // than requested: if the method succeeds the Vector's capacity will
+  // be equal or greater than the given capacity.
+  mutable fun ensureCapacity(capacity: Int): void {
+    if (capacity > this.capacity()) {
+      // Allocate new memory. If the new capacity is close enough to exponential
+      // growth, grow to it. Otherwise use the normal growth heuristic to
+      // avoid O(n^2) behavior (e.g. from calling ensureCapacity(n+1) in a loop).
+      if (capacity < (this.sz * 5).ushr(2)) {
+        !capacity = getCapacityForSize(capacity)
+      };
+      this.unsafeGrowCapacity(capacity)
+    } else {
+      invariant(
+        capacity >= 0,
+        "Vector.ensureCapacity(): Expected capacity to be positive.",
+      )
+    }
+  }
+
+  // Remove all items from this Vector. The Vector's internal storage is not
+  // affected (ie the Vector's capacity does not change).
+  mutable fun clear(): void {
+    unsafeFreeSlice(this.inner, 0, this.sz);
+    this.!sz = 0;
+    this.invalidateIterators();
+  }
+
+  // Expand or shrink the vector to the given size. If the new size is larger
+  // than the current size, indices between the old and new size are set to
+  // the given filler value.
+  mutable fun resize(newSize: Int, value: T): void {
+    invariant(
+      newSize >= 0,
+      "Vector.resize(): Expected size to be nonnegative.",
+    );
+    sz = this.sz;
+    if (newSize < sz) {
+      // Shrink, overwriting [newSize, sz) with nulls
+      unsafeFreeSlice(this.inner, newSize, sz);
+    } else if (newSize > this.capacity()) {
+      // Grow capacity, copying [0, sz) and then overwriting [sz, newSize) w filler
+      newCapacity = getCapacityForSize(newSize);
+      inner = unsafeMake(newCapacity);
+      unsafeMoveSlice(this.inner, 0, sz, inner, 0);
+      unsafeFillSlice(inner, sz, newSize, value);
+      this.!inner = inner;
+    } else if (newSize != sz) {
+      // Grow within existing capacity, overwriting [sz, newSize) with filler
+      unsafeFillSlice(this.inner, sz, newSize, value);
+    }; // else same size
+    // Always invalidate iterators for consistency
+    this.!sz = newSize;
+    this.invalidateIterators();
+  }
+
+  // # Accessing Items
+
+  // Get the item at the given index, throws if the index is out of bounds.
+  readonly fun get(index: Int): T {
+    if (index.uge(this.sz)) {
+      throwOutOfBounds()
+    };
+    unsafeGet(this.inner, index)
+  }
+
+  // Get the item at the given index as Some() or return None() if the index
+  // is out of bounds.
+  readonly fun maybeGet(index: Int): ?T {
+    if (index.uge(this.sz)) {
+      None()
+    } else {
+      Some(unsafeGet(this.inner, index))
+    }
+  }
+
+  // # Adding/Changing/Removing Items
+
+  // Set the value at the given index. Throws if the index is out of bounds.
+  // NOTE: To add items to the end of a container use push().
+  mutable fun set(index: Int, value: T): void {
+    if (index.uge(this.sz)) {
+      throwOutOfBounds()
+    };
+    unsafeSet(this.inner, index, value)
+  }
+
+  // Add the value to the end of the container, growing the container's
+  // internal storage if necessary to make space for the item.
+  mutable fun push(value: T): void {
+    sz = this.sz;
+
+    newSize = sz + 1;
+    if (sz == this.capacity()) {
+      newCapacity = getCapacityForSize(newSize);
+      this.unsafeGrowCapacity(newCapacity);
+    };
+
+    unsafeSet(this.inner, sz, value);
+    this.!sz = newSize;
+    this.invalidateIterators();
+  }
+
+  // Remove the last item of the container and return it. Throws if the
+  // container is empty.
+  mutable fun pop(): T {
+    if (this.sz == 0) {
+      throwOutOfBounds()
+    };
+    this.unsafePop();
+  }
+
+  // Remove the last item of the container and return it as Some() if
+  // non-empty, otherwise returns None().
+  mutable fun maybePop(): ?T {
+    if (this.sz == 0) {
+      None()
+    } else {
+      Some(this.unsafePop())
+    }
+  }
+
+  // Append all of items from the given sequence to the end of this container.
+  mutable fun extend<I: readonly Sequence<T>>(second: I): void {
+    sz = this.sz;
+    newSize = sz + second.size();
+    this.ensureCapacity(newSize);
+    unsafeWriteSeqToSlice(second, this.inner, sz, newSize);
+    this.!sz = newSize;
+    this.invalidateIterators();
+  }
+
+  // Inserts the value at the given index, shifting over existing elements to
+  // make room for the new element. Grows internal storage if necessary: throws
+  // if the index is out of bounds.
+  // NOTE: unlike set(), insert() allows inserting at index == size
+  mutable fun insert(index: Int, value: T): void {
+    sz = this.sz;
+    if (index.ugt(this.sz)) {
+      throwOutOfBounds()
+    };
+
+    newSize = sz + 1;
+    prevInner = this.inner;
+    nextInner = prevInner;
+    if (sz == this.capacity()) {
+      // Grow, but only copy up to the insertion index
+      newCapacity = getCapacityForSize(newSize);
+      !nextInner = unsafeMake(newCapacity);
+      unsafeMoveSlice(prevInner, 0, index, nextInner, 0);
+    };
+
+    // When the vector grew above, this will copy index..sz to the new vector
+    // Otherwise prev/next are the same and this just shifts that slice forward
+    unsafeMoveSlice(prevInner, index, sz, nextInner, index + 1);
+    unsafeSet(nextInner, index, value);
+    this.!inner = nextInner;
+    this.!sz = newSize;
+    this.invalidateIterators();
+  }
+
+  // Deletes the value at the given index, shifting over elements after that
+  // index to fill the gap. Throws if the index is out of bounds.
+  mutable fun delete(index: Int): void {
+    sz = this.sz;
+    if (index.uge(this.sz)) {
+      throwOutOfBounds()
+    };
+
+    inner = this.inner;
+    unsafeMoveSlice(inner, index + 1, sz, inner, index);
+    unsafeFreeSlice(inner, sz - 1, sz); // null out the last slot for GC
+    this.!sz = sz - 1;
+    this.invalidateIterators();
+  }
+
+  // Deletes the items in the range of start (inclusive) to end (exclusive)
+  // and inserts the items from the second sequence at the start index. If
+  // second is smaller than the length of the slice denoted by start/end, then
+  // subsequent items will be shifted left to fill any gaps. If second is larger
+  // than the start-end slice, then subsequent items will be shifted right to
+  // make room.
+  //
+  // ```
+  // Visual Example:
+  //
+  // Before:
+  //   [ ...prefix, ...start-end, ...suffix ]
+  //
+  // After:
+  //   [ ...prefix, ...second, ...suffix ]
+  // ```
+  mutable fun splice<I: readonly Sequence<T>>(
+    start: Int,
+    end: Int,
+    src: I,
+  ): void {
+    // Start/count must be positive but are allowed to exceed bounds
+    invariant(
+      start >= 0,
+      "Vector.splice(): Expected start index to be nonnegative.",
+    );
+    invariant(
+      end >= start,
+      "Vector.splice(): Expected end to be greater than or equal to start.",
+    );
+    sz = this.sz;
+    // Clamp such that start is in the range [0, sz], start + count <= sz
+    !start = min(start, sz);
+    !end = min(end, sz);
+    count = end - start;
+
+    // TODO: A crazy srcSize like Int::max can cause newSize to wrap around
+    // and be negative, etc.
+    srcSize = src.size();
+    shift = srcSize - count;
+    newSize = sz + shift;
+    fromInner = this.inner;
+    toInner = fromInner;
+    if (newSize.ugt(this.capacity())) {
+      // Grow and copy everything up to start
+      newCapacity = getCapacityForSize(newSize);
+      !toInner = unsafeMake(newCapacity);
+      unsafeMoveSlice(fromInner, 0, start, toInner, 0)
+    }; // otherwise toInner [0, start) is already correct
+
+    // Shift items to clear space
+    unsafeMoveSlice(fromInner, end, sz, toInner, end + shift);
+    // Write new items into the gap
+    unsafeWriteSeqToSlice(src, toInner, start, start + srcSize);
+    // Null out any unused slots for GC
+    if (newSize.ult(sz)) {
+      unsafeFreeSlice(toInner, newSize, sz);
+    };
+
+    this.!inner = toInner;
+    this.!sz = newSize;
+    this.invalidateIterators();
+  }
+
+  // Remove all items from this sequence for which the predicate returns
+  // false, keeping only those items for which the predicate returns true.
+  @synonym("retain")
+  mutable fun keepWhere(p: T -> Bool): void {
+    inner = this.inner;
+    from = 0;
+    to = 0;
+    this.each(value -> {
+      if (p(value)) {
+        unsafeSet(inner, to, value);
+        !to = to + 1
+      };
+      !from = from + 1;
+    });
+    if (to.ult(this.sz)) {
+      unsafeFreeSlice(inner, to, this.sz);
+    };
+    // Always invalidate iterators for consistency
+    this.!sz = to;
+    this.invalidateIterators();
+  }
+
+  // # Reordering Items
+
+  // Reverses the order of the items in this Vector.
+  mutable fun reverse(): void {
+    inner = this.inner;
+    unsafeReverse(inner, 0, this.sz, inner)
+  }
+
+  // Randomize the order of items in this Vector using a pseudo-random
+  // generator initialized with the given seed. For a collection of Hashable
+  // values, a deterministic random value can be initialized with:
+  //
+  // ```
+  // rng = Random::mcreate(vector.hash());
+  // ```
+  mutable fun shuffle(rng: mutable Random): void {
+    // Deterministic shuffle using the Fisher–Yates algorithm.
+    sz = this.sz;
+    inner = this.inner;
+    for (index in Range(0, sz - 1)) {
+      swap = rng.random(index, sz);
+      unsafeSwap(inner, index, swap);
+    };
+  }
+
+  // Sorts the items in place, using the given predicate to determine ordering.
+  // To sort a collection of non-Orderable items, use Orderable.create():
+  //
+  //    a: Vector<NonOrderable> = Vector[...];
+  //    compareFn = (a: NonOrderable, b: NonOrderable): Order ~> { ... };
+  //    b = a.sortBy(x ~> Orderable.create(x, compareFn));
+  mutable fun sortBy<K: readonly Orderable>(
+    selector: T ~> K,
+    compare: (K, K) ~> Order = (x, y) ~> x.compare(y),
+  ): void {
+    sz = this.sz;
+    // Sort from a minimally sized copy into the existing storage
+    dest = this.inner;
+    src = unsafeMake(sz);
+    unsafeMoveSlice(dest, 0, sz, src, 0);
+    this.sortSplit(
+      selector,
+      compare,
+      this.generation_PRIVATE,
+      src,
+      0,
+      sz,
+      dest,
+    );
+    this.invalidateIterators();
+  }
+
+  // # Selecting Portions of a Sequence
+
+  // Returns the items of this container from the start index (inclusive) up to
+  // the end index (exclusive). The start/end values may be negative, in which
+  // case they refer to the nth index before the end of the container.
+  // For example, `x.slice(0, -2)` is equivalent to `x.slice(0, x.size() - 2)`.
+  readonly fun slice(start: Int, end: Int = Int::max): this {
+    sz = this.sz;
+    if (start < 0) {
+      !start = max(0, sz + start);
+    };
+    if (end < 0) {
+      !end = max(0, sz + end);
+    };
+    !start = min(sz, start);
+    !end = min(sz, end);
+    if (end <= start) {
+      Vector[]
+    } else {
+      thisInner = this.inner;
+      capacity = end - start;
+      sliceInner = unsafeMake(capacity);
+      unsafeMoveSlice(thisInner, start, end, sliceInner, 0);
+      static(unsafe_chill_trust_me(sliceInner), capacity)
+    }
+  }
+
+  // Returns the items of this container that do not appear in the second
+  // sequence.
+  readonly fun difference<S: readonly Sequence<T>>[T: Hashable & Equality](
+    second: S,
+  ): this {
+    result = Vector::mcreate(0);
+    set = UnorderedSet::mcreate(second.size());
+    second.each(set.add);
+    this.unsafeEach(value -> {
+      if (!set.contains(value)) {
+        result.push(value)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Return the items of this container that appear in the second sequence.
+  readonly fun intersection<S: readonly Sequence<T>>[T: Hashable & Equality](
+    second: S,
+  ): this {
+    result = Vector::mcreate(0);
+    set = UnorderedSet::mcreate(second.size());
+    second.each(set.add);
+    this.unsafeEach(value -> {
+      if (set.contains(value)) {
+        result.push(value)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Return the unique items of this container.
+  readonly fun unique[T: Hashable & Equality](): this {
+    // TODO: use a heuristic to avoid reallocation in avg case
+    set = Map<T, void>::mcreate(0);
+    this.unsafeEach(value -> {
+      set.set(value, void);
+    });
+    result = Vector::mcreate(set.size());
+    set.each((value, _) -> {
+      result.push(value);
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns up to N items randomly sampled from this Vector using a
+  // pseudo-random generator initialized with the given seed. Returns all items
+  // if N is greater than or equal to the size of the container. For a
+  // collection of Hashable values, a deterministic random value can be
+  // initialized with:
+  //
+  // ```
+  // rng = Random::mcreate(vector.hash());
+  // ```
+  readonly fun sample(rng: mutable Random, count: Int): this {
+    sz = this.sz;
+    if (count == 0) {
+      Vector[]
+    } else if (sz <= count) {
+      this.chill()
+    } else {
+      invariant(
+        count >= 0,
+        "Vector.sample(): Expected count to be nonnegative.",
+      );
+
+      // Algorithm R: copy the first K items to the output, then iterate over
+      // the subsequent elements and randomly swap them into the output vector.
+      thisInner = this.inner;
+      sampleInner = unsafeMake(count);
+      unsafeMoveSlice(thisInner, 0, count, sampleInner, 0);
+      for (offset in Range(0, sz - count)) {
+        index = count + offset;
+        swap = rng.random(0, index + 1); // [0, index] - inclusive
+        if (swap < count) {
+          unsafeSet(sampleInner, swap, unsafeGet(thisInner, index))
+        }
+      };
+      Vector(unsafe_chill_trust_me(sampleInner), count)
+    }
+  }
+
+  // # Iteration
+
+  // Calls the given function once per element of this sequence.
+  @synonym("iter")
+  readonly fun each(f: T -> void): void {
+    this.eachWhileImpl(x -> {
+      f(x);
+      true
+    })
+  }
+
+  // Calls the given function once per element of this sequence.
+  @synonym("iter")
+  untracked readonly fun eachUntracked(f: untracked T -> void): void {
+    this.eachWhileImplUntracked(untracked x -> {
+      f(x);
+      true
+    })
+  }
+
+  // # Aggregation
+
+  // Returns Some(x) for the first item in this sequence that matches
+  // the predicate, or None() if no items match.
+  readonly fun find(p: T -> Bool): ?T {
+    result: ?T = None();
+    this.eachWhileImpl(x -> {
+      if (p(x)) {
+        !result = Some(x);
+        false // break
+      } else {
+        true // continue
+      }
+    });
+    result
+  }
+
+  readonly fun sumInt[T: Int](): Int {
+    sum = 0;
+    this.unsafeEach(x -> !sum = sum + x);
+    sum;
+  }
+
+  readonly fun sumFloat[T: Float](): Float {
+    sum = 0.0;
+    this.unsafeEach(x -> !sum = sum + x);
+    sum;
+  }
+
+  readonly fun maxBy<K: readonly Orderable>(selector: T ~> K): ?T {
+    currentMax: ?(K, T) = None();
+    this.unsafeEach(x -> {
+      value = selector(x);
+      currentMax match {
+      | Some((max, _)) if (value <= max) -> void
+      | _ -> !currentMax = Some((value, x))
+      };
+    });
+    currentMax.map(pair -> pair.i1)
+  }
+
+  readonly fun minBy<K: readonly Orderable>(selector: T ~> K): ?T {
+    currentMin: ?(K, T) = None();
+    this.unsafeEach(x -> {
+      value = selector(x);
+      currentMin match {
+      | Some((min, _)) if (value >= min) -> void
+      | _ -> !currentMin = Some((value, x))
+      };
+    });
+    currentMin.map(pair -> pair.i1)
+  }
+  readonly fun join[T: readonly Show](separator: String): String {
+    this.sz match {
+    | 0 -> ""
+    | 1 -> unsafeGet(this.inner, 0).toString()
+    | _ -> this.toArray().join(separator)
+    }
+  }
+
+  // # Composition
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element of this sequence.
+  @synonym("select")
+  @synonym("project")
+  readonly fun map<U>(s: T -> U): Vector<U> {
+    // mapping is a special case for composition where the result size is known
+    // in advance.
+    inner = unsafeMake(this.sz);
+    index = 0;
+    this.each(value -> {
+      unsafeSet(inner, index, s(value));
+      !index = index + 1;
+    });
+    Vector(unsafe_chill_trust_me(inner), index)
+  }
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element of this sequence.
+  @synonym("select")
+  @synonym("project")
+  untracked readonly fun mapUntracked<U>(s: untracked T -> U): Vector<U> {
+    // mapping is a special case for composition where the result size is known
+    // in advance.
+    inner = unsafeMake(this.sz);
+    index = 0;
+    this.each(value -> {
+      unsafeSet(inner, index, s(value));
+      !index = index + 1;
+    });
+    Vector(unsafe_chill_trust_me(inner), index)
+  }
+
+  // Similar to map(), but calls the callback with (index, item) for each
+  // item in this sequence.
+  readonly fun mapWithIndex<U>(s: (Int, T) -> U): Vector<U> {
+    inner = unsafeMake(this.sz);
+    index = 0;
+    this.each(value -> {
+      unsafeSet(inner, index, s(index, value));
+      !index = index + 1;
+    });
+    Vector(unsafe_chill_trust_me(inner), index)
+  }
+
+  readonly fun mapAcc<R, U>(f: (R, T) -> (R, U), acc: R): (R, Vector<U>) {
+    inner = unsafeMake(this.sz);
+    index = 0;
+    this.each(x -> {
+      (!acc, y) = f(acc, x);
+      unsafeSet(inner, index, y);
+      !index = index + 1;
+    });
+    (acc, Vector(unsafe_chill_trust_me(inner), index))
+  }
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element to map each element to a sequence, and
+  // (conceptually) flattening the resulting sequences.
+  @synonym("selectMany")
+  readonly fun flatMap<U>(s: T -> Sequence<U>): Vector<U> {
+    result: mutable Vector<U> = Vector::mcreate(0);
+    this.each(value -> {
+      items: Sequence<U> = s(value);
+      result.extend(items);
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // When the items of this sequence are themselves sequences, returns a new
+  // sequence that contains all the items from all of the inner sequences.
+  readonly fun flatten<U>[T: Sequence<U>](): Vector<U> {
+    // Calculate total size in order to avoid growing the result vector
+    capacity = this.reduce((acc, items) -> acc + items.size(), 0);
+    result: mutable Vector<U> = Vector::mcreate(capacity);
+    // unsafeEach because no user callback
+    this.unsafeEach(result.extend);
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new sequence representing all the elements of this sequence
+  // for which the predicate returns true.
+  @synonym("where")
+  readonly fun filter(p: T -> Bool): Vector<T> {
+    result = Vector::mcreate(0);
+    this.each(value -> {
+      if (p(value)) {
+        result.push(value)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // When the items of this sequence are Options, returns a new sequence
+  // containing the inner values of items that are Some():
+  //
+  // Before:
+  //   Vector[None(), None(), Some(2), None(), Some(4)]
+  // After:
+  //   Vector[2, 4]
+  readonly fun filterNone<U>[T: ?U](): Vector<U> {
+    result = Vector::mcreate(0);
+    this.unsafeEach(value ->
+      value match {
+      | Some(x) -> result.push(x)
+      | None() -> void
+      }
+    );
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new sequence representing the results of calling the selection
+  // function with tuples of the ith elements of this and the second sequence.
+  readonly fun zipWith<U, V, S: readonly Sequence<U>>(
+    other: S,
+    s: (T, U) -> V,
+  ): Vector<V> {
+    index = 0;
+    sz = this.sz;
+    capacity = min(sz, other.size());
+    result = Vector::mcreate(capacity);
+    _ = other.find(otherValue -> {
+      invariant(
+        index.ult(sz),
+        "Vector.zipWith(): Expected the second sequence to yield exactly size() items.",
+      );
+      thisValue = this.get(index);
+      result.push(s(thisValue, otherValue));
+      !index = index + 1;
+      index == sz
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new sequence representing the elements of this sequence after the
+  // nth element.
+  readonly fun drop(n: Int): Vector<T> {
+    invariant(n >= 0, "Vector.drop(): Expected count to be nonnegative.");
+    this.slice(n)
+  }
+
+  // Returns a new sequence representing the elements of this sequence after the
+  // contiguous prefix for which the predicate returns true.
+  readonly fun dropWhile(p: T -> Bool): Vector<T> {
+    index = -1;
+    found = this.find(value -> {
+      !index = index + 1;
+      !p(value)
+    });
+    found match {
+    | Some _ -> this.slice(index, this.sz)
+    | None _ -> Vector[]
+    }
+  }
+
+  // Returns a new sequence representing the first n elements of this.
+  readonly fun take(n: Int): Vector<T> {
+    invariant(n >= 0, "Vector.take(): Expected count to be nonnegative.");
+    this.slice(0, n)
+  }
+
+  // Returns a new sequence representing the contiguous prefix of elements from
+  // this for which the predicate returns true.
+  readonly fun takeWhile(p: T -> Bool): Vector<T> {
+    result = Vector::mcreate(0);
+    for (x in this) {
+      if (p(x)) {
+        result.push(x);
+      } else {
+        break void
+      }
+    };
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new Vector containing the items of this sequence followed by
+  // the items of the second sequence.
+  readonly fun concat<U, S: readonly Sequence<U>>[T: U](second: S): Vector<U> {
+    result = (this : readonly Vector<U>).clone(second.size());
+    result.extend(second);
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new sequence representing the items of this sequence in reverse
+  // order.
+  readonly fun reversed(): Vector<T> {
+    sz = this.sz;
+    inner = unsafeMake(sz);
+    unsafeReverse(this.inner, 0, sz, inner);
+    Vector(unsafe_chill_trust_me(inner), sz)
+  }
+
+  // Returns a new sequence representing the items of this sequence in sorted
+  // order, using their default ordering.
+  // To sort a collection of non-Orderable items, use sortedBy().
+  readonly fun sorted[T: readonly Orderable](
+    compare: (T, T) ~> Order = (x, y) ~> x.compare(y),
+  ): Vector<T> {
+    this.sortedBy(id, compare)
+  }
+
+  // Returns a new sequence representing the items of this sequence in sorted
+  // order, using the given predicate to determine ordering.
+  // To sort a collection of non-Orderable items, use Orderable.create():
+  //
+  //    a: Vector<NonOrderable> = Vector[...];
+  //    compareFn = (a: NonOrderable, b: NonOrderable): Order ~> { ... };
+  //    b = a.sortedBy(x ~> Orderable.create(x, compareFn));
+  readonly fun sortedBy<K: readonly Orderable>(
+    selector: T ~> K,
+    compare: (K, K) ~> Order = (x, y) ~> x.compare(y),
+  ): Vector<T> {
+    sz = this.sz;
+    // Sort from/to minimally sized copies of internal storage: one copy (dest)
+    // is for the result, the other (src) is the temporary storage required by
+    // merge sort
+    src = unsafeMake(sz);
+    unsafeMoveSlice(this.inner, 0, sz, src, 0);
+    dest = src.clone();
+    this.sortSplit(
+      selector,
+      compare,
+      this.generation_PRIVATE,
+      src,
+      0,
+      sz,
+      dest,
+    );
+    Vector(unsafe_chill_trust_me(dest), this.sz)
+  }
+
+  // # Transforming To Different Sequence Types
+
+  // # Async
+
+  async fun gen<U: frozen>[T: ^U](): ^Vector<U> {
+    sz = this.sz;
+    inner = this.inner;
+    handles = List::tabulate(sz, index ->
+      async {
+        x = await unsafeGet(inner, index);
+        Unsafe.RawStorage::make(x)
+      }
+    );
+    nextInner = Array::mcreateFromItems(await handles.genReverse());
+    nextInner.reverse();
+    Vector(unsafe_chill_trust_me(nextInner), sz)
+  }
+
+  async frozen fun genMap<U: frozen>(s: T ~> ^U): ^Vector<U> {
+    sz = this.sz;
+    inner = this.inner;
+    nextInner = await ASIO.genFillBy(sz, index ~>
+      async {
+        awaitable_x = s(unsafeGet(inner, index));
+        x = await awaitable_x;
+        Unsafe.RawStorage::make(x)
+      }
+    );
+    Vector(nextInner, sz)
+  }
+
+  async frozen fun genFilter(p: T ~> ^Bool): ^Vector<T> {
+    // Asynchronously map each item to whether it passes the predicate or not
+    sz = this.sz;
+    inner = this.inner;
+    predicates = await ASIO.genFillBy(sz, index ~> p(unsafeGet(inner, index)));
+    // Count the number of matching items to allocate a single exactly sized Array
+    nextSz = predicates.reduce(
+      (sum, predicate) -> if (predicate) sum + 1 else sum,
+      0,
+    );
+    // Insert items into a return Array for which the predicate returned true
+    nextInner = unsafeMake(nextSz);
+    fromIndex = 0;
+    toIndex = 0;
+    // NOTE: The check for `fromIndex.ult(sz)` is skipped here because there
+    // are guaranteed to be `nextSz` items in `inner` for which the predicate
+    // passes and that cause `toIndex` to be incremented.
+    while (toIndex.ult(nextSz)) {
+      if (unsafeGetRaw(predicates, fromIndex)) {
+        unsafeSet(nextInner, toIndex, unsafeGet(inner, fromIndex));
+        !toIndex = toIndex + 1;
+      };
+      !fromIndex = fromIndex + 1;
+    };
+    Vector(unsafe_chill_trust_me(nextInner), nextSz)
+  }
+
+  async frozen fun genFind(p: T ~> ^Bool): ^?T {
+    await this.genFindLoop(this.inner, p, 0);
+  }
+
+  // # Extension Methods
+  // Methods unique to Vector and not inherited from Seq/IndexedSequence.
+
+  // Returns a new Vector with the results of applying the selection function
+  // in parallel to each item of this Vector.
+  frozen fun parallelMap<U>(f: T ~> U): Vector<U> {
+    sz = this.sz;
+    inner = this.inner;
+    nextInner = Parallel.tabulate(sz, i ~>
+      Unsafe.RawStorage::make(f(unsafeGet(inner, i)))
+    );
+    Vector(unsafe_chill_trust_me(nextInner), sz)
+  }
+
+  // Returns an Array with the items of this Vector.
+  readonly fun toArray(): Array<T> {
+    inner = this.inner;
+    Array::fillBy(this.sz, index -> unsafeGet(inner, index))
+  }
+
+  // # Iterators
+
+  // Returns an Iterator that yields the range of numbers from 0 (inclusive)
+  // to the size of this vector (exclusive) - ie of `[0, size)`.
+  readonly fun keys(): mutable Iterator<Int> {
+    KeysIterator::make(this, this.inner, this.sz)
+  }
+
+  // Returns an Iterator that yields the values contained in this vector.
+  readonly fun values(): mutable Iterator<T> {
+    ValuesIterator::make(this, this.inner, this.sz)
+  }
+
+  // Returns an Iterator that yields tuples of (index, value), where index
+  // is the zero-based index of the value within this vector.
+  readonly fun items(): mutable Iterator<(Int, T)> {
+    ItemsIterator::make(this, this.inner, this.sz)
+  }
+
+  // Returns an Iterator that yields the values of this Vector in reverse
+  // order.
+  readonly fun reversedValues(): mutable Iterator<T> {
+    ReversedValuesIterator::make(this, this.inner, this.sz)
+  }
+
+  // # Trait Implementations
+
+  readonly fun toString[T: readonly Show](): String {
+    "Vector[" + this.join(", ") + "]"
+  }
+
+  readonly fun hash[T: Hashable](): Int {
+    this.reduce((acc, value) -> Hashable.combine(acc, value.hash()), -1)
+  }
+
+  readonly fun inspect(): Inspect {
+    vector = Array::fillBy(this.sz, index -> inspect(this.get(index)));
+    InspectVector("Vector", vector)
+  }
+
+  readonly fun <<U: Orderable>[T: U](other: readonly Vector<U>): Bool {
+    this.compare(other) == LT()
+  }
+
+  readonly fun ><U: Orderable>[T: U](other: readonly Vector<U>): Bool {
+    this.compare(other) == GT()
+  }
+
+  readonly fun <=<U: Orderable>[T: U](other: readonly Vector<U>): Bool {
+    this.compare(other) != GT()
+  }
+
+  readonly fun >=<U: Orderable>[T: U](other: readonly Vector<U>): Bool {
+    this.compare(other) != LT()
+  }
+
+  readonly fun ==<U: Equality>[T: U](other: readonly Vector<U>): Bool {
+    this.sz == other.sz && this.eqLoop(0, this.sz, this.inner, other.inner)
+  }
+
+  readonly fun !=<U: Equality>[T: U](other: readonly Vector<U>): Bool {
+    !(this == other)
+  }
+
+  readonly fun compare<U: Orderable>[T: U](other: readonly Vector<U>): Order {
+    this.compareLoop(0, min(this.sz, other.sz), this.inner, other.inner) match {
+    | EQ() -> compare(this.sz, other.sz)
+    | c -> c
+    }
+  }
+
+  // # Private Methods
+
+  // Invalidates any iterators or iterations (e.g. if called from the callback
+  // of each()).
+  private mutable fun invalidateIterators(): void {
+    this.!generation_PRIVATE = this.generation_PRIVATE + generationSkip
+  }
+
+  // Internal helper for iteration guarding against concurrent modifiction.
+  @always_inline
+  readonly fun eachWhileImpl(f: T -> Bool): void {
+    inner = this.inner;
+    indexMinusGeneration = -this.generation_PRIVATE;
+    sz = this.sz;
+    while ({
+      index = indexMinusGeneration + this.generation_PRIVATE;
+      if (index.uge(sz)) {
+        // NOTE: If the vector is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "vector size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each iteration of the loop.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        false
+      } else {
+        value = unsafeGet(inner, index);
+        !indexMinusGeneration = indexMinusGeneration + 1;
+        f(value)
+      }
+    }) void;
+  }
+
+  // Internal helper for iteration guarding against concurrent modifiction.
+  @always_inline
+  untracked readonly fun eachWhileImplUntracked(f: untracked T -> Bool): void {
+    inner = this.inner;
+    indexMinusGeneration = -this.generation_PRIVATE;
+    sz = this.sz;
+    while ({
+      index = indexMinusGeneration + this.generation_PRIVATE;
+      if (index.uge(sz)) {
+        // NOTE: If the vector is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "vector size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each iteration of the loop.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        false
+      } else {
+        value = unsafeGet(inner, index);
+        !indexMinusGeneration = indexMinusGeneration + 1;
+        f(value)
+      }
+    }) void;
+  }
+
+  private readonly fun compareLoop<U: Orderable>[T: U](
+    i: Int,
+    size: Int,
+    inner: readonly .Array<Unsafe.RawStorage<U>>,
+    other: readonly .Array<Unsafe.RawStorage<U>>,
+  ): Order {
+    if (i == size) {
+      EQ()
+    } else {
+      compare(unsafeGet(inner, i), unsafeGet(other, i)) match {
+      | EQ() -> this.compareLoop(i + 1, size, inner, other)
+      | c -> c
+      }
+    }
+  }
+
+  private readonly fun eqLoop<U: Equality>[T: U](
+    i: Int,
+    size: Int,
+    inner: readonly .Array<Unsafe.RawStorage<U>>,
+    other: readonly .Array<Unsafe.RawStorage<U>>,
+  ): Bool {
+    if (i == size) {
+      true
+    } else if ((unsafeGet(inner, i) : U) != unsafeGet(other, i)) {
+      false
+    } else {
+      this.eqLoop(i + 1, size, inner, other)
+    }
+  }
+
+  private async frozen fun genFindLoop<U>[T: U](
+    inner: .Array<Unsafe.RawStorage<U>>,
+    p: U ~> ^Bool,
+    index: Int,
+  ): ^?U {
+    if (index == this.sz) {
+      None();
+    } else {
+      item = unsafeGet(inner, index);
+      if (await p(item)) {
+        Some(item);
+      } else {
+        await this.genFindLoop(inner, p, index + 1);
+      };
+    };
+  }
+
+  // Increase the internal storage to accommodate the given capacity. The
+  // caller is responsible for ensuring that the capacity is a valid value.
+  private mutable fun unsafeGrowCapacity(capacity: Int): void {
+    inner = unsafeMake(capacity);
+    unsafeMoveSlice(this.inner, 0, this.sz, inner, 0);
+    this.!inner = inner;
+    this.invalidateIterators();
+  }
+
+  @always_inline
+  private mutable fun unsafePop(): T {
+    sz = this.sz;
+    inner = this.inner;
+    newSize = sz - 1;
+    value = unsafeGet(inner, newSize);
+    unsafeFreeSlice(inner, newSize, sz); // null out the last slot for GC
+    this.!sz = newSize;
+    this.invalidateIterators();
+    value
+  }
+
+  // Iterates over all the items of this without guarding against
+  // concurrent modification. Only use when the callback cannot
+  // modify this vector.
+  @always_inline
+  private readonly fun unsafeEach(f: T -> void): void {
+    inner = this.inner;
+    for (index in Range(0, this.sz)) f(unsafeGet(inner, index))
+  }
+
+  // Similar to unsafeEach() but passes (index, item) to the callback.
+  @always_inline
+  private readonly fun unsafeEachWithIndex(f: (T, Int) -> void): void {
+    inner = this.inner;
+    for (index in Range(0, this.sz)) f(unsafeGet(inner, index), index)
+  }
+
+  // Merge sort using O(n) extra space: sorts the items from src into dest,
+  // guarding against concurrent modification of this vector by the comparison
+  // function.
+  // Note that src and dest should be identical in the range [start, end)
+  private readonly fun sortSplit<K: readonly Orderable, U>[T: U](
+    selector: U ~> K,
+    compare: (K, K) -> Order,
+    generation: Int,
+    src: mutable .Array<Unsafe.RawStorage<U>>,
+    start: Int,
+    end: Int,
+    dest: mutable .Array<Unsafe.RawStorage<U>>,
+  ): void {
+    if (end - start > 1) {
+      middle = (end + start).ushr(1);
+      this.sortSplit(selector, compare, generation, dest, start, middle, src);
+      this.sortSplit(selector, compare, generation, dest, middle, end, src);
+      this.sortMerge(
+        selector,
+        compare,
+        generation,
+        src,
+        start,
+        middle,
+        end,
+        dest,
+      );
+    };
+  }
+
+  private readonly fun sortMerge<K: readonly Orderable, U>[T: U](
+    selector: U ~> K,
+    compare: (K, K) -> Order,
+    generation: Int,
+    src: mutable .Array<Unsafe.RawStorage<U>>,
+    start: Int,
+    middle: Int,
+    end: Int,
+    dest: mutable .Array<Unsafe.RawStorage<U>>,
+  ): void {
+    left = start;
+    right = middle;
+    index = start;
+    while ({
+      if (left >= middle) {
+        // All items from the left portion have been merged, copy remaining
+        // items from right.
+        unsafeMoveSlice(src, right, end, dest, index);
+        false
+      } else if (right >= end) {
+        // All items from the right portion have been merged, copy remaining
+        // items from the left.
+        unsafeMoveSlice(src, left, middle, dest, index);
+        false
+      } else {
+        // Compare the left/right sides, take the lower value and advance the
+        // index of that side
+        leftValue = unsafeGet(src, left);
+        leftKey = selector(leftValue);
+        rightValue = unsafeGet(src, right);
+        rightKey = selector(rightValue);
+        lte = compare(leftKey, rightKey).isLTE();
+        // Guard against selector()/compare() concurrently modifying this,
+        // which could make index invalid
+        if (generation != this.generation_PRIVATE) {
+          throwContainerChanged()
+        };
+        if (lte) {
+          unsafeSet(dest, index, leftValue);
+          !left = left + 1;
+        } else {
+          unsafeSet(dest, index, rightValue);
+          !right = right + 1;
+        };
+        !index = index + 1;
+        index.ult(end)
+      }
+    }) void;
+  }
+}
+
+// # Private Helper Functions
+// Unsafe, private helper functions: it is the caller's responsibility to
+// ensure that indices are valid relative to the Arrays involved,
+// and that the Array cannot be concurrently modified during these
+// operations.
+
+// Toggle to true to use guarded set/get calls during development
+// to help identify unsafe out-of-bounds access.
+private const debugEnableBoundsCheck: Bool = false;
+
+// Write the items of a sequence into a given slice, guarding against
+// the sequence returning more/less items than expected.
+private fun unsafeWriteSeqToSlice<T, S: readonly Sequence<T>>(
+  src: S,
+  dest: mutable .Array<Unsafe.RawStorage<T>>,
+  start: Int,
+  end: Int,
+): void {
+  index = start;
+  src.each(value -> {
+    invariant(
+      index.ult(end),
+      "Vector.unsafeWriteSeqToSlice(): Invalid sequence, expected each() to yield size() items.",
+    );
+    unsafeSet(dest, index, value);
+    !index = index + 1;
+  });
+  invariant(
+    index == end,
+    "Vector.unsafeWriteSeqToSlice(): Invalid sequence, expected each() to yield size() items.",
+  );
+}
+
+// Copy a slice (inclusive start, exclusive end) from src to dest, optionally
+// shifting elements by the given amount. Src and dest may be the same array,
+// in which case elements are shifted (and shift of 0) is a no-op.
+private fun unsafeMoveSlice<T>(
+  src: readonly .Array<Unsafe.RawStorage<T>>,
+  srcStart: Int,
+  srcEnd: Int,
+  dest: mutable .Array<Unsafe.RawStorage<T>>,
+  destStart: Int,
+): void {
+  shift = destStart - srcStart;
+  if (shift > 0) {
+    // Shifting right: start from the right and pull from the left
+    srcBase = srcEnd - 1;
+    destBase = srcBase + shift;
+    for (offset in Range(0, srcEnd - srcStart)) {
+      v = unsafeGet(src, srcBase - offset);
+      unsafeSet(dest, destBase - offset, v)
+    }
+  } else {
+    // Shifting left: start from the left and pull from the right
+    // Note that items must be shifted even when shift == 0 because
+    // src/dest may be different vectors.
+    for (offset in Range(0, srcEnd - srcStart)) {
+      v = unsafeGet(src, srcStart + offset);
+      unsafeSet(dest, destStart + offset, v)
+    }
+  }
+}
+
+// Write a value into the slots of a vector from start (inclusive) to end (exclusive).
+private fun unsafeFillSlice<T>(
+  dest: mutable .Array<Unsafe.RawStorage<T>>,
+  start: Int,
+  end: Int,
+  value: T,
+): void {
+  for (offset in Range(0, end - start)) {
+    index = start + offset;
+    unsafeSet(dest, index, value);
+  };
+}
+
+// Writes null values into the given slice from start (inclusive) to end (exclusive).
+private fun unsafeFreeSlice<T>(
+  dest: mutable .Array<Unsafe.RawStorage<T>>,
+  start: Int,
+  end: Int,
+): void {
+  if (debugEnableBoundsCheck && end.ugt(start) && end.ugt(dest.size())) {
+    throwOutOfBounds()
+  };
+  null = Unsafe.RawStorage::uninitialized();
+  for (offset in Range(0, end - start)) {
+    index = start + offset;
+    Unsafe.array_set(dest, index, null)
+  };
+}
+
+// Swap the values at the given indices
+@always_inline
+private fun unsafeSwap<T>(
+  inner: mutable .Array<Unsafe.RawStorage<T>>,
+  from: Int,
+  to: Int,
+): void {
+  tmp = unsafeGet(inner, to);
+  unsafeSet(inner, to, unsafeGet(inner, from));
+  unsafeSet(inner, from, tmp);
+}
+
+// Reverse the items in the given range of src into the same range of dest.
+// Note that src/dest may be the same Array.
+private fun unsafeReverse<T>(
+  src: readonly .Array<Unsafe.RawStorage<T>>,
+  srcStart: Int,
+  srcEnd: Int,
+  dest: mutable .Array<Unsafe.RawStorage<T>>,
+): void {
+  start = srcStart;
+  end = srcEnd - 1;
+  while (start < end) {
+    left = unsafeGet(src, start);
+    right = unsafeGet(src, end);
+    unsafeSet(dest, start, right);
+    unsafeSet(dest, end, left);
+    !start = start + 1;
+    !end = end - 1;
+  };
+  if (start == end) {
+    mid = unsafeGet(src, start);
+    unsafeSet(dest, start, mid)
+  }
+}
+
+// Wrapper around Unsafe.array_make to use a compile-time constant for the empty
+// case: an empty Array cannot be modified (it must be cloned) so sharing
+// an instance is safe.
+private fun unsafeMake<T>(size: Int): mutable Array<T> {
+  if (size == 0) {
+    mutable Array[]
+  } else {
+    Unsafe.array_make(size)
+  }
+}
+
+// Debug wrapper for Unsafe.array_get and RawStorage::unsafeGet
+@always_inline
+private fun unsafeGet<T>(
+  inner: readonly .Array<Unsafe.RawStorage<T>>,
+  index: Int,
+): T {
+  if (debugEnableBoundsCheck && index.uge(inner.size())) {
+    throwOutOfBounds()
+  };
+  Unsafe.RawStorage::unsafeGet(Unsafe.array_get(inner, index))
+}
+
+// Debug wrapper for Unsafe.array_get
+@always_inline
+private fun unsafeGetRaw<T>(inner: readonly .Array<T>, index: Int): T {
+  if (debugEnableBoundsCheck && index.uge(inner.size())) {
+    throwOutOfBounds()
+  };
+  Unsafe.array_get(inner, index)
+}
+
+// Debug wrapper for Unsafe.array_set and RawStorage::make
+@always_inline
+private fun unsafeSet<T>(
+  inner: mutable .Array<Unsafe.RawStorage<T>>,
+  index: Int,
+  value: T,
+): void {
+  if (debugEnableBoundsCheck && index.uge(inner.size())) {
+    throwOutOfBounds()
+  };
+  Unsafe.array_set(inner, index, Unsafe.RawStorage::make(value))
+}
+
+// See Vector::invalidateIterators().
+// NOTE: This assumes underlying Arrays have fewer than 2**32 entries.
+private const generationSkip: Int = 0x100000000;
+
+// Calculates the capacity to accommodate the given size using a heuristic to
+// ensure operations such as push() have amortized O(1) performance.
+private fun getCapacityForSize(newSize: Int): Int {
+  // Double in size until it starts to get large.
+  if (newSize < 4) {
+    4
+  } else if (newSize < 512) {
+    1.shl(64 - (newSize - 1).clz())
+  } else {
+    // Approximate a sqrt(2) growth factor where we double every other time.
+    // 0.75 is close enough to 1/sqrt(2) for our purposes, to see which size
+    // bucket to fall into. So the growth pattern looks roughly like:
+    //
+    //   N, N*1.5, N*2, N*3, N*4, N*6, N*8, etc.
+    //
+
+    // Give GC some overhead for these large blocks.
+    overhead = 8;
+
+    paddedSize = newSize + overhead;
+    nextPowerOfTwo = 1.shl(64 - (paddedSize - 1).clz());
+
+    // Note that nextPowerOfTwo >= 4 so this math is safe.
+    threeFourths = nextPowerOfTwo.ushr(2) * 3;
+
+    roundedUpSize = if (paddedSize <= threeFourths) {
+      threeFourths
+    } else {
+      nextPowerOfTwo
+    };
+
+    roundedUpSize - overhead
+  }
+}
+
+// # Iterator Implementations
+
+private trait VectorIterator<T, V>(
+  protected vector: readonly Vector<V>,
+  protected inner: readonly .Array<Unsafe.RawStorage<V>>,
+  protected sz: Int,
+  protected mutable indexMinusGeneration: Int,
+) {
+  overridable readonly fun sizeHint(): ?Int {
+    index = this.indexMinusGeneration + this.vector.generation_PRIVATE;
+    sz = max(0, this.sz - index);
+    Some(sz)
+  }
+
+  @always_inline
+  mutable fun next(): ?T {
+    vector = this.vector;
+    index = this.indexMinusGeneration + vector.generation_PRIVATE;
+
+    if (index.uge(this.sz)) {
+      // NOTE: If the vector is changed while we are iterating,
+      // invalidateIterators() will effectively advance "index" by 2**32.
+      // That lets us locate the check for "vector size changed" here,
+      // in the uncommon case where we've already hit the end, rather than
+      // inefficiently checking it separately on each next() call.
+      if (index >= generationSkip) {
+        throwContainerChanged()
+      };
+      None()
+    } else {
+      this.!indexMinusGeneration = this.indexMinusGeneration + 1;
+      Some(this.getItemValue(index))
+    }
+  }
+
+  protected readonly fun getItemValue(index: Int): T;
+}
+
+private mutable class KeysIterator<V>
+  extends Iterator<Int>
+  uses VectorIterator<Int, V> {
+  @always_inline
+  static fun make(
+    vector: readonly Vector<V>,
+    inner: readonly .Array<Unsafe.RawStorage<V>>,
+    sz: Int,
+  ): mutable this {
+    mutable static(vector, inner, sz, -vector.generation_PRIVATE)
+  }
+
+  readonly fun sizeHint from VectorIterator;
+
+  @always_inline
+  protected readonly fun getItemValue(index: Int): Int {
+    index
+  }
+}
+
+private mutable class ValuesIterator<V>
+  extends Iterator<V>
+  uses VectorIterator<V, V> {
+  @always_inline
+  static fun make(
+    vector: readonly Vector<V>,
+    inner: readonly .Array<Unsafe.RawStorage<V>>,
+    sz: Int,
+  ): mutable this {
+    mutable static(vector, inner, sz, -vector.generation_PRIVATE)
+  }
+
+  readonly fun sizeHint from VectorIterator;
+
+  @always_inline
+  protected readonly fun getItemValue(index: Int): V {
+    unsafeGet(this.inner, index)
+  }
+}
+
+private mutable class ItemsIterator<V>
+  extends Iterator<(Int, V)>
+  uses VectorIterator<(Int, V), V> {
+  @always_inline
+  static fun make(
+    vector: readonly Vector<V>,
+    inner: readonly .Array<Unsafe.RawStorage<V>>,
+    sz: Int,
+  ): mutable this {
+    mutable static(vector, inner, sz, -vector.generation_PRIVATE)
+  }
+
+  readonly fun sizeHint from VectorIterator;
+
+  @always_inline
+  protected readonly fun getItemValue(index: Int): (Int, V) {
+    (index, unsafeGet(this.inner, index))
+  }
+}
+
+private mutable class ReversedValuesIterator<V>
+  extends Iterator<V>
+  uses VectorIterator<V, V> {
+  @always_inline
+  static fun make(
+    vector: readonly Vector<V>,
+    inner: readonly .Array<Unsafe.RawStorage<V>>,
+    sz: Int,
+  ): mutable this {
+    mutable static(vector, inner, sz, -vector.generation_PRIVATE)
+  }
+
+  readonly fun sizeHint from VectorIterator;
+
+  @always_inline
+  protected readonly fun getItemValue(index: Int): V {
+    !index = this.sz - index - 1; // reverse the ordering
+    unsafeGet(this.inner, index)
+  }
+}
+
+module end;

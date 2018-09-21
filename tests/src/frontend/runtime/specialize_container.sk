@@ -1,0 +1,17 @@
+trait Gettable<T: Show> {
+  fun get(): T;
+}
+
+fun getString<T: Show, C: Gettable<T>>(c: C): String {
+  c.get().toString()
+}
+
+class One<T: Show>(t: T) uses Gettable<T> {
+  fun get(): T {
+    this.t
+  }
+}
+
+fun main(): void {
+  print_raw(getString(One("Pass\n")))
+}

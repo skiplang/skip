@@ -1,0 +1,15 @@
+// in collection literal expressions,
+// check explicit type args against contents.
+//
+// 4 collection literal cases:
+// {Array, non-Array} x {array syntax, map syntax}
+//
+// (in non-Array cases, the literal is desugared)
+//
+// non-Array, array syntax:
+//
+fun main(): void {
+  _ = Vector<Int>[1, 2, 3]; // ok
+  _ = Vector<String>[1, 2, 3]; // error
+  print_string("Fail")
+}

@@ -1,0 +1,7 @@
+fun no1(): void {
+  while (false) break ""
+}
+
+fun no2(): void {
+  do break 0 while (true)
+}

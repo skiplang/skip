@@ -1,0 +1,7 @@
+base class Foo {
+  const x: Int = 42;
+}
+
+class Bar() extends Foo {
+  const x: Int = 43;
+}

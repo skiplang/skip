@@ -1,0 +1,10 @@
+type ValueWriter = () ~> void;
+
+fun writeField(field: (String, ValueWriter)): void {
+  (_name, writeValue) = field;
+  writeValue() // fails here
+}
+
+fun main(): void {
+  print_string("Pass")
+}

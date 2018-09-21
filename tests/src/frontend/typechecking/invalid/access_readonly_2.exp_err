@@ -1,0 +1,15 @@
+File "./typechecking/invalid/access_readonly_2.sk", line 4, characters 3-7:
+Expected a mutable object
+2 | mutable class Bar<T>(mutable v: mutable Foo<T>)
+3 | fun test1(opt: readonly Bar<Int>): void {
+4 |   opt.v.!v = 0
+  |   ^^^^^
+5 | }
+
+File "./typechecking/invalid/access_readonly_2.sk", line 4, characters 3-7:
+This expression has type: readonly Foo<Int>
+2 | mutable class Bar<T>(mutable v: mutable Foo<T>)
+3 | fun test1(opt: readonly Bar<Int>): void {
+4 |   opt.v.!v = 0
+  |   ^^^^^
+5 | }

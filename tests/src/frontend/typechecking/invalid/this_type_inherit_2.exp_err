@@ -1,0 +1,40 @@
+File "./typechecking/invalid/this_type_inherit_2.sk", line 4, characters 5-10:
+In 'MyCons's version of the member 'ex2' inherited from 'MyList'
+2 |   children =
+3 |   | MyNil()
+4 |   | MyCons(T, MyList<T>)
+  |     ^^^^^^
+5 |
+
+File "./typechecking/invalid/this_type_inherit_2.sk", line 8, characters 23-37:
+Invalid annotation
+ 6 |   // rvalue element type incompatible with anno in the context of MyCons
+ 7 |   fun ex2(): void {
+ 8 |     _: Vector<this> = Vector[MyNil()]
+   |                       ^^^^^^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/this_type_inherit_2.sk", line 8, characters 30-36:
+The type: MyNil<_>
+ 6 |   // rvalue element type incompatible with anno in the context of MyCons
+ 7 |   fun ex2(): void {
+ 8 |     _: Vector<this> = Vector[MyNil()]
+   |                              ^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/this_type_inherit_2.sk", line 8, characters 15-18:
+Is not a subtype of: MyCons<T>
+ 6 |   // rvalue element type incompatible with anno in the context of MyCons
+ 7 |   fun ex2(): void {
+ 8 |     _: Vector<this> = Vector[MyNil()]
+   |               ^^^^
+ 9 |   }
+
+File "./typechecking/invalid/this_type_inherit_2.sk", line 8, characters 15-18:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: MyList<T>
+ 6 |   // rvalue element type incompatible with anno in the context of MyCons
+ 7 |   fun ex2(): void {
+ 8 |     _: Vector<this> = Vector[MyNil()]
+   |               ^^^^
+ 9 |   }

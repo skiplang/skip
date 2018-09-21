@@ -1,0 +1,23 @@
+File "./typechecking/invalid/invalid_conditional_use_2.sk", line 12, characters 3-12:
+Constraint not satisfied
+10 |
+11 | fun no(): void {
+12 |   print_show(MyRef())
+   |   ^^^^^^^^^^
+13 | }
+
+File "./typechecking/invalid/invalid_conditional_use_2.sk", line 12, characters 14-20:
+The type: MyRef<_>
+10 |
+11 | fun no(): void {
+12 |   print_show(MyRef())
+   |              ^^^^^^^
+13 | }
+
+File "./typechecking/invalid/invalid_conditional_use_2.sk", line 7, characters 19-31:
+Is not a subtype of: readonly Show
+5 | }
+6 |
+7 | fun print_show<T: readonly Show>(x: T): void {
+  |                   ^^^^^^^^^^^^^
+8 |   print_string(x.toString())

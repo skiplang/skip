@@ -1,0 +1,10 @@
+fun main(): void {
+  x = "Fail";
+  f = (
+    () -> {
+      !x = "Pass\n"
+    }
+  );
+  f();
+  print_raw(x)
+}

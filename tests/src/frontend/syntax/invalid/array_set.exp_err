@@ -1,0 +1,7 @@
+File "./syntax/invalid/array_set.sk", line 3, characters 3-3:
+Expected !
+1 | fun main(): void {
+2 |   v = Vec ["Hello"];
+3 |   v[0] = " world!";
+  |   ^
+4 |   print_raw(v[0])

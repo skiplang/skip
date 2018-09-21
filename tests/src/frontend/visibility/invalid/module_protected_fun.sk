@@ -1,0 +1,6 @@
+module Foo;
+
+protected fun bar() : Int { 112 }
+
+module end;
+

@@ -1,0 +1,34 @@
+base class Foo {
+  fun isBar(): Bool
+  | Bar() -> true
+  | _ -> false
+
+  fun isBaz(): Bool
+  | Baz _ -> true
+  | _ -> false
+}
+
+base class Bar_ extends Foo
+class Bar() extends Bar_
+class Baz() extends Foo
+
+fun getBarAsBar_(): Bar_ {
+  Bar()
+}
+
+fun main(): void {
+  print_raw(
+    if (
+      Bar().isBar() &&
+      !Bar().isBaz() &&
+      getBarAsBar_().isBar() &&
+      !getBarAsBar_().isBaz() &&
+      !Baz().isBar() &&
+      Baz().isBaz()
+    ) {
+      "Pass\n"
+    } else {
+      "Fail"
+    },
+  )
+}

@@ -1,0 +1,13 @@
+class C(x: String) {
+  fun m(x: String): C {
+    lam = () -> {
+      !this = C(x)
+    };
+    lam();
+    this
+  }
+}
+
+fun main(): void {
+  print_raw(C("Fail").m("Pass\n").x)
+}

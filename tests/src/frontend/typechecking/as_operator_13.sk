@@ -1,0 +1,15 @@
+class Foo(int: Int) {}
+
+const FOO: Foo = Foo(0);
+
+fun main(): void {
+  x = Foo(0);
+  _x = x as FOO;
+  try {
+    y = Foo(1);
+    _y = y as FOO;
+    print_string("Fail")
+  } catch {
+  | InvalidCast _ -> print_string("Pass")
+  }
+}

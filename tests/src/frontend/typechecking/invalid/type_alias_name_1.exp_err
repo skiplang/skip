@@ -1,0 +1,23 @@
+File "./typechecking/invalid/type_alias_name_1.sk", line 11, characters 27-33:
+Invalid annotation
+ 9 |
+10 | fun not_valid(): void {
+11 |   _: Wrap2<Foo<String>> = baz(42)
+   |                           ^^^^^^^
+12 | }
+
+File "./typechecking/invalid/type_alias_name_1.sk", line 6, characters 16-20:
+The type: Wrap1<(Foo<V> = Bar<Int>)>
+4 | class Wrap2<T>()
+5 |
+6 | fun baz<V>(V): Wrap1<Foo<V>> {
+  |                ^^^^^
+7 |   Wrap1()
+
+File "./typechecking/invalid/type_alias_name_1.sk", line 11, characters 6-10:
+Is not a subtype of: Wrap2<(Foo<String> = Bar<String>)>
+ 9 |
+10 | fun not_valid(): void {
+11 |   _: Wrap2<Foo<String>> = baz(42)
+   |      ^^^^^
+12 | }

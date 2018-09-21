@@ -1,0 +1,15 @@
+File "./typechecking/invalid/mutable_assign_tparam_object_2.sk", line 5, characters 3-3:
+Expected a mutable object
+3 |
+4 | fun set<T: A>(b: T): void {
+5 |   b.!x = 37
+  |   ^
+6 | }
+
+File "./typechecking/invalid/mutable_assign_tparam_object_2.sk", line 4, characters 18-18:
+This expression has type: T
+2 | mutable class B extends A
+3 |
+4 | fun set<T: A>(b: T): void {
+  |                  ^
+5 |   b.!x = 37

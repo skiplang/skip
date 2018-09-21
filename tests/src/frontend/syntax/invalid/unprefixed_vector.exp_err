@@ -1,0 +1,6 @@
+File "./syntax/invalid/unprefixed_vector.sk", line 2, characters 7-7:
+Unexpected '['. Collection initializers require the collection type. For example: 'Vector['
+1 | fun main(): String {
+2 |   a = [1, 2, 3];
+  |       ^
+3 |   ""

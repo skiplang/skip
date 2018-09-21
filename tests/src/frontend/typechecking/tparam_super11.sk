@@ -1,0 +1,9 @@
+class Foo<+T>(value: T) {
+  fun combine<T2>[T: T2](other: Foo<T2>, f: (T2, T2) -> T2): Foo<T2> {
+    Foo(f(this.value, other.value))
+  }
+}
+
+fun main(): void {
+  print_raw(Foo("Pa").combine(Foo("ss\n"), (a, b) -> a + b).value)
+}

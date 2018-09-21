@@ -1,0 +1,16 @@
+base class A final (f: Bool)
+base class B extends A
+class C extends B
+class L extends B
+
+fun myMatch(b: B): String {
+  b match {
+  | B(false) -> "P"
+  | C(true) -> "a"
+  | B(true) -> "ss\n"
+  }
+}
+
+fun main(): void {
+  print_raw(myMatch(C(false)) + myMatch(C(true)) + myMatch(L(true)))
+}

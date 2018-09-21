@@ -1,0 +1,4 @@
+fun main(): String {
+  x = {p = "Fail"} ~> p;
+  x{}
+}

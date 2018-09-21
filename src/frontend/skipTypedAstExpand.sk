@@ -1,0 +1,660 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Module expanding Typed Ast (SkipTypedAst).
+ * It get rids of type variables and expands lazy expressions.
+ * It expands tuples to Tuple classes ((Int, Bool) => Tuple2 (Int, Bool))
+ */
+/*****************************************************************************/
+
+module alias A = SkipAst;
+module alias N = SkipNamedAst;
+module alias TAstUtils = SkipTypedAstUtils;
+module alias T = SkipTypedAst;
+module alias TU = SkipTypingUtils;
+module alias Types = SkipTypes;
+
+module SkipTypedAstExpand;
+
+/*****************************************************************************/
+/* Env and utils */
+/*****************************************************************************/
+
+class Env{
+  is_constraint: Bool,
+  sk_this: ?T.Name,
+  tparam_constraints: TU.TparamConstraints,
+  mismatched_variance_bounds: SMap<N.Type_>,
+}
+
+fun prune_tfun_mods<Ta>(x: Array<Ta>): Array<Ta> {
+  invariant(!x.isEmpty(), "ICE empty tfun mods");
+  Array[x[0]]
+}
+
+/*****************************************************************************/
+/* Type expansion. */
+/*****************************************************************************/
+fun type(env: Env, subst: IMap<N.Type_>, ty_: N.Type_): N.Type_ {
+  (pos, ty) = ty_;
+  (pos, type__(env, subst, pos, ty))
+}
+
+fun type__(
+  env: Env,
+  subst: IMap<N.Type_>,
+  pos: FileRange,
+  ty_: N.Type__,
+): N.Type__ {
+  inner = ty -> type(env, subst, ty);
+  ty_ match {
+  | N.Tanything() -> ty_
+  | N.Tfrozen _
+  | N.TnonNullable _ ->
+    N.Tanything()
+  | N.Tapply(mode, n, tyl) ->
+    check_tapply(env, pos, n, ty_);
+    N.Tapply(mode, n, tyl.map(inner))
+  | N.Tpromoted(var, mode, _, tparams, n, tyl) ->
+    !tparams = filter_expanded_tparams(tparams);
+    check_tpromoted(env, pos, tparams, n, ty_);
+    tyl1 = tyl.map(inner);
+    if (tparams.isEmpty()) {
+      N.Tapply(mode, n, tyl1)
+    } else {
+      cd = SkipNaming.getClass(n);
+      elt = N.InterElt{
+        depth => cd.depth,
+        kind => cd.kind,
+        name => n,
+        targs => tyl1,
+        conditions => N.ECNoConditions(),
+      };
+      N.Tset(var, mode, tparams, Array[elt])
+    }
+  | N.Tawaitable(var, ty) -> N.Tawaitable(var, inner(ty))
+  | N.Tfun(variance, mods, _, params, ty) ->
+    N.Tfun(
+      variance,
+      tfun_mods(mods),
+      Array[],
+      type__params(env, subst, params),
+      inner(ty),
+    )
+  // Mismatched variance tparams are replaced with their upper bound post typing
+  // The "upper bound" is usually whatever the type argument the parent has
+  // that was found to be unsafe
+  | N.Tparam(_, _, id, _) if (id.startsWith(TU.mismatched_prefix)) ->
+    type(env, subst, env.mismatched_variance_bounds[id]).i1
+  // Uknown type arg existentials are replaced with their upper bound post
+  // typing. The upper bound must be a concrete/physical type and not a ktrait
+  // If no bound is found, we give Tanything
+  | N.Tparam(_, _, id, _) if (id.startsWith(TU.unknown_prefix)) ->
+    if (!env.tparam_constraints.hasTparam(id)) {
+      SkipError.error(pos, "ICE unbound existential");
+    };
+    uppers = env.tparam_constraints.findUppers(id).filter(x ->
+      TU.has_concrete_type_for_matching(
+        env.tparam_constraints,
+        subst,
+        x,
+      ).isNone()
+    );
+    if (uppers.isEmpty()) {
+      N.Tanything()
+    } else {
+      type(env, subst, uppers[0]).i1
+    }
+  | x @ N.Tparam _ -> x
+  // Empty Tset is valid if it has a Tparam that it came from
+  | N.Tset(var, mode, tparams, elts) if (elts.isEmpty()) ->
+    !tparams = filter_expanded_tparams(tparams);
+    if (tparams.isEmpty()) N.Tanything() else {
+      N.Tset(var, mode, tparams, Array[])
+    }
+  // Arbitarily take the first element of the tset to provide easy compilation
+  // For the NBE, if another elt is needed, we add a cast
+  | N.Tset(var, mode, tparams, inter) ->
+    elt = inter[0];
+    !tparams = filter_expanded_tparams(tparams);
+    check_elt(env, pos, tparams, elt, ty_);
+    newElts = type__inter(env, subst, inter);
+    invariant(!newElts.isEmpty(), "ICE empty tset in nonempty case");
+    ielt = newElts[0];
+    if (tparams.isEmpty()) N.Tapply(mode, ielt.name, ielt.targs) else {
+      N.Tset(var, mode, tparams, Array[ielt])
+    }
+
+  | N.Tvar(n) ->
+    subst.maybeGet(n) match {
+    | None() -> N.Tanything()
+    | Some(y) -> inner(y).i1
+    }
+  | N.Tlambda(_, _, _, ty) -> inner(ty).i1
+  | N.Tdefault(ty) -> N.Tdefault(inner(ty))
+  | N.Tnamed(names, ty) -> N.Tnamed(names, inner(ty))
+  }
+}
+
+fun type__inter(
+  env: Env,
+  subst: IMap<N.Type_>,
+  inter: Array<N.InterElt>,
+): Array<N.InterElt> {
+  parents = mutable Set[];
+  add_all = pars -> for (n in pars.keys()) parents.insert(n.i1);
+  inter
+    .values()
+    .map(elt -> {
+      cname = elt.name;
+      tyl = elt.targs;
+      if (parents.contains(cname.i1)) {
+        None()
+      } else {
+        cd = SkipNaming.getClass(cname);
+        add_all(cd.extends_);
+        add_all(cd.use);
+        !elt.targs = tyl.map(ty -> type(env, subst, ty));
+        Some(elt)
+      }
+    })
+    .filter(opt -> opt is Some _)
+    .map(opt -> (opt as Some _).value)
+    .collect(Array)
+}
+
+fun type__params(
+  env: Env,
+  subst: IMap<N.Type_>,
+  x: Parameters<N.Type_>,
+): Parameters<N.Type_> {
+  x match {
+  | Positional(l) -> Positional(l.map(ty -> type(env, subst, ty)))
+  | Named(m) -> Named(m.map((_, ty) -> type(env, subst, ty)))
+  }
+}
+
+fun tfun_mods(p: N.Tfun_modifiers): N.Tfun_modifiers {
+  (purity, tracking) = p;
+  purity1 = prune_tfun_mods(purity);
+  tracking1 = prune_tfun_mods(tracking);
+  (purity1, tracking1)
+}
+
+fun filter_expanded_tparams(tparams: SMap<String>): SMap<String> {
+  tparams.filter((s, _) ->
+    !(s.startsWith(TU.mismatched_prefix) || s.startsWith(TU.unknown_prefix))
+  )
+}
+
+fun check_tapply(env: Env, pos: FileRange, n: N.Name, ty: N.Type__): void {
+  is_valid =
+    check_is_this(env, n) ||
+    env.is_constraint ||
+    SkipNaming.getClass(n).kind != A.KTrait();
+  if (!is_valid) {
+    print_error_ln(pos.toString());
+    BufferedPrinter.pp(SkipNamedAstPp.type__, ty);
+    invariant_violation(
+      "INTERNAL ERROR. Unexpected stand-alone Tapply KTrait: " + n.i1,
+    )
+  }
+}
+
+fun check_tpromoted(
+  env: Env,
+  pos: FileRange,
+  tparams: SMap<String>,
+  n: N.Name,
+  ty: N.Type__,
+): void {
+  is_valid =
+    check_is_this(env, n) ||
+    env.is_constraint ||
+    !tparams.isEmpty() ||
+    SkipNaming.getClass(n).kind != A.KTrait();
+  if (!is_valid) {
+    print_error_ln(pos.toString());
+    BufferedPrinter.pp(SkipNamedAstPp.type__, ty);
+    invariant_violation(
+      "INTERNAL ERROR. Unexpected stand-alone Tpromoted KTrait: " + n.i1,
+    )
+  }
+}
+
+fun check_elt(
+  env: Env,
+  pos: FileRange,
+  tparams: SMap<String>,
+  elt: N.InterElt,
+  ty: N.Type__,
+): void {
+  k = elt.kind;
+  n = elt.name;
+  is_valid =
+    check_is_this(env, n) ||
+    env.is_constraint ||
+    !tparams.isEmpty() ||
+    k != A.KTrait();
+  if (!is_valid) {
+    print_error_ln(pos.toString());
+    BufferedPrinter.pp(SkipNamedAstPp.type__, ty);
+    invariant_violation(
+      "INTERNAL ERROR. Unexpected stand-alone Tset KTrait: " + n.i1,
+    )
+  }
+}
+
+fun check_is_this(env: Env, n: N.Name): Bool {
+  env.sk_this match {
+  | Some((_, c)) -> c == n.i1
+  | None() -> false
+  }
+}
+
+/*****************************************************************************/
+/* Expression type expansion. */
+/*****************************************************************************/
+
+private base class ExprState {
+  children =
+  | TExpr{expr: T.Expr}
+  | BindState{ty: T.Type_, pos: FileRange, bind: T.Binding, rval: T.Expr}
+  | SeqState{ty: T.Type_, pos: FileRange, left: T.Expr}
+  | CallState{ty: T.Type_, pos: FileRange, args: T.Call_args}
+}
+
+fun expr(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  e: T.Expr,
+): T.Expr {
+  initial: ExprState = TExpr{expr => e};
+  stack = mutable Vector[initial];
+  res: ?T.Expr = None();
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | tx @ TExpr _ ->
+      tx.expr match {
+      | (ty, (pos, b @ T.Bind _)) ->
+        !ty = type(env, subst, ty);
+        bind = binding(env, subst, b.binding);
+        rval = expr(env, lambdas, subst, b.expr);
+        stack.push(BindState{ty, pos, bind, rval});
+        stack.push(TExpr{expr => b.cont})
+      | (ty, (pos, s @ T.Seq _)) ->
+        !ty = type(env, subst, ty);
+        left = expr(env, lambdas, subst, s.left);
+        stack.push(SeqState{ty, pos, left});
+        stack.push(TExpr{expr => s.right})
+      | (ty, (pos, c @ T.Call _)) ->
+        !ty = type(env, subst, ty);
+        stack.push(CallState{ty, pos, args => c.args});
+        stack.push(TExpr{expr => c.base})
+      | x -> !res = Some(expr_(env, lambdas, subst, x))
+      }
+    | b @ BindState _ ->
+      cont = res.fromSome();
+      !res = Some((b.ty, (b.pos, T.Bind(b.bind, b.rval, cont))))
+    | s @ SeqState _ ->
+      right = res.fromSome();
+      !res = Some((s.ty, (s.pos, T.Seq(s.left, right))))
+    | c @ CallState _ ->
+      base = res.fromSome();
+      args = expr_parameters(env, lambdas, subst, c.args);
+      !res = Some((c.ty, (c.pos, T.Call(base, args))))
+    }
+  };
+  res.fromSome()
+}
+
+fun expr_(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  e: T.Expr,
+): T.Expr {
+  (orig_ty, (pos, e__)) = e;
+  ty = type(env, subst, orig_ty);
+  inner = ex -> expr(env, lambdas, subst, ex);
+  e__ match {
+  | T.DefaultArg() -> (ty, (pos, T.DefaultArg()))
+  | T.Literal(l) -> (ty, (pos, T.Literal(l)))
+  | T.Const(n) -> (ty, (pos, T.Const(n)))
+  | T.Fun(n, tyl) -> (ty, (pos, T.Fun(n, tyl.map(ty -> type(env, subst, ty)))))
+  | T.Local(n) -> (ty, (pos, T.Local(n)))
+  | T.Annotated(e1, ty_) ->
+    (ty, (pos, T.Annotated(inner(e1), type(env, subst, ty_))))
+  | T.Call _ -> invariant_violation("ICE call covered in expr")
+  | T.Barbar(e1, e2) -> (ty, (pos, T.Barbar(inner(e1), inner(e2))))
+  | T.Ampamp(e1, e2) -> (ty, (pos, T.Ampamp(inner(e1), inner(e2))))
+  | T.Assign(v, rvalue) ->
+    (ty, (pos, T.Assign(local(env, subst, v), inner(rvalue))))
+  | T.Lambda(np, fv, e1, yields) ->
+    np1 = np.map(p -> binding(env, subst, p));
+    fv1 = fv.map((_, p) -> binding(env, subst, p));
+    e2 = inner(e1);
+    (ty, (pos, T.Lambda(np1, fv1, e2, yields)))
+  | T.Await(e1) -> (ty, (pos, T.Await(inner(e1))))
+  | T.Return(e1) -> (ty, (pos, T.Return(inner(e1))))
+  | T.Async(fv, e1) ->
+    fv1 = fv.map((_, p) -> binding(env, subst, p));
+    (ty, (pos, T.Async(fv1, inner(e1))))
+  | T.Throw(e1) -> (ty, (pos, T.Throw(inner(e1))))
+  | T.Array(el) -> (ty, (pos, T.Array(el.map(inner))))
+  | T.Freeze(e1) -> (ty, (pos, T.Freeze(inner(e1))))
+  | T.GetClass(e1) -> (ty, (pos, T.GetClass(inner(e1))))
+  | T.Classname((n, n_opt)) -> (ty, (pos, T.Classname((n, n_opt))))
+  | T.LazyLambda(id) -> inner(lambdas[id])
+  | T.Seq _ -> invariant_violation("ICE seq already covered")
+  | T.If(e1, e2, e3) -> (ty, (pos, T.If(inner(e1), inner(e2), inner(e3))))
+  | T.Match(e1, mbl) ->
+    (
+      ty,
+      (
+        pos,
+        T.Match(
+          inner(e1),
+          mbl.map(mb -> match_branch(env, lambdas, subst, mb)),
+        ),
+      ),
+    )
+  | T.Try(e1, mbl) ->
+    (
+      ty,
+      (
+        pos,
+        T.Try(inner(e1), mbl.map(mb -> match_branch(env, lambdas, subst, mb))),
+      ),
+    )
+  | T.Bind _ -> invariant_violation("ICE bind covered in expr")
+  | T.Object(n, targs, args) ->
+    (
+      ty,
+      (
+        pos,
+        T.Object(
+          n,
+          targs.map(ty -> type(env, subst, ty)),
+          expr_parameters(env, lambdas, subst, args),
+        ),
+      ),
+    )
+  | T.Concurrent _ -> invariant_violation("TODO concurrent")
+
+  /* Add casts to "dot" nodes to remove `Tset` for the native backend */
+  | T.Dot(dot_info) ->
+    obj_expr = add_source_cast(
+      env,
+      lambdas,
+      subst,
+      dot_info.source,
+      dot_info.obj_expr,
+    );
+    field_targs = dot_info.field_targs.map(ty -> type(env, subst, ty));
+    (ty, (pos, T.Dot(dot_info with {obj_expr, field_targs})))
+  | T.AssignField(e1, source, n, e2) ->
+    e11 = add_source_cast(env, lambdas, subst, source, e1);
+    (ty, (pos, T.AssignField(inner(e11), source, n, inner(e2))))
+  | T.With(e1, updates) ->
+    (
+      ty,
+      (pos, T.With(inner(e1), with_updates(env, lambdas, subst, ty, updates))),
+    )
+
+  /* Add casts to "static dot" nodes to remove `Tset` for the native backend */
+  | T.StaticDot(dot_info) ->
+    obj_expr = add_classobj_source_cast(
+      env,
+      dot_info.source,
+      inner(dot_info.obj_expr),
+    );
+    field_targs = dot_info.field_targs.map(ty -> type(env, subst, ty));
+    (ty, (pos, T.StaticDot(dot_info with {obj_expr, field_targs})))
+  | T.DynamicConstruction(e1, n, targs, args) ->
+    e2 = add_classobj_source_cast(env, n, inner(e1));
+    (
+      ty,
+      (
+        pos,
+        T.DynamicConstruction(
+          e2,
+          n,
+          targs.map(ty -> type(env, subst, ty)),
+          expr_parameters(env, lambdas, subst, args),
+        ),
+      ),
+    )
+  | T.TemplateLiteral(args) ->
+    (ty, (pos, T.TemplateLiteral(expr_parameters(env, lambdas, subst, args))))
+  | T.Continue() -> (ty, (pos, T.Continue()))
+  | T.Break(eb) -> (ty, (pos, T.Break(inner(eb))))
+  | T.Loop(eb) -> (ty, (pos, T.Loop(inner(eb))))
+  | T.DoWhile(body, condition, withoutBreak) ->
+    (ty, (pos, T.DoWhile(inner(body), inner(condition), inner(withoutBreak))))
+  | T.While(condition, body, withoutBreak) ->
+    (ty, (pos, T.While(inner(condition), inner(body), inner(withoutBreak))))
+  | T.Yield(e1) -> (ty, (pos, T.Yield(inner(e1))))
+  | T.YieldBreak() -> (ty, (pos, T.YieldBreak()))
+  }
+}
+
+fun ordered_expr(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  ex: T.Ordered_expr,
+): T.Ordered_expr {
+  (i, e) = ex;
+  (i, expr(env, lambdas, subst, e))
+}
+
+fun with_updates(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  obj_ty: N.Type_,
+  m: T.With_updates,
+): T.With_updates {
+  m.map((_, p) -> {
+    (i, e, source, cast_opt) = p;
+    assert(cast_opt.isSome());
+    cast = type(env, subst, cast_opt.fromSome());
+    (
+      i,
+      expr(env, lambdas, subst, e),
+      source,
+      build_necessary_cast(env, source, obj_ty, cast),
+    )
+  })
+}
+
+fun expr_option(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  x: ?T.Expr,
+): ?T.Expr {
+  x match {
+  | None() -> None()
+  | Some(x1) -> Some(expr(env, lambdas, subst, x1))
+  }
+}
+
+fun expr_parameters(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  x: T.Call_args,
+): T.Call_args {
+  x match {
+  | Positional(el) ->
+    Positional(el.map(oe -> ordered_expr(env, lambdas, subst, oe)))
+  | Named(em) -> Named(em.map((_, oe) -> ordered_expr(env, lambdas, subst, oe)))
+  }
+}
+
+fun add_source_cast(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  source: N.Name,
+  e: T.Expr,
+): T.Expr {
+  (ty, (pos, _)) = e;
+  cast_ty_opt = find_source_ty(env, false, source, ty);
+  res_e = cast_ty_opt match {
+  | None() -> e
+  | Some(new_ty) -> (new_ty, (pos, T.Annotated(e, new_ty)))
+  };
+  expr(env, lambdas, subst, res_e)
+}
+
+fun find_source_ty(
+  env: Env,
+  from_with: Bool,
+  source: N.Name,
+  ty: N.Type_,
+): ?N.Type_ {
+  ty match {
+  | (_, N.Tnamed(_, inner_ty)) ->
+    find_source_ty(env, from_with, source, inner_ty)
+  | (pos, N.Tset(_, mode, _, elts)) ->
+    elt = elts.find(elt -> elt.name.i1 == source.i1).fromSome();
+    elt_cd = SkipNaming.getClass(elt.name);
+    elt_cd.kind match {
+    | A.KTrait() -> None()
+    | _ -> Some((pos, N.Tapply(mode, elt.name, elt.targs)))
+    }
+  | (
+    fr,
+    N.Tpromoted(_, mode, _, tparam_set, n, tyl),
+  ) if (!tparam_set.isEmpty()) ->
+    invariant(n.i1 == source.i1, "ICE invalid cast");
+    SkipNaming.getClass(n).kind match {
+    | A.KTrait() -> None()
+    | _ -> Some((fr, N.Tapply(mode, n, tyl)))
+    }
+  | (_, N.Tpromoted _)
+  | (_, N.Tapply _) ->
+    /* guaranteed to be the source or a child of the source */
+    None()
+  /* Indicate cast needed for with updates */
+  | (_, N.Tparam _) if (from_with) -> Some(ty)
+  | _ -> invariant_violation("ICE could not find source ty")
+  }
+}
+
+fun add_classobj_source_cast(env: Env, source: N.Name, e: T.Expr): T.Expr {
+  (classobj_ty, (pos, _)) = e;
+  (cpos, cname, inner_ty) = unwrap_classobj_ty(classobj_ty);
+  cast_ty_opt = find_source_ty(env, false, source, inner_ty);
+  cast_ty_opt match {
+  | None() -> e
+  | Some(new_inner_ty) ->
+    new_ty = (cpos, N.Tapply(N.Mchilled(), cname, Array[new_inner_ty]));
+    (new_ty, (pos, T.Annotated(e, new_ty)))
+  }
+}
+
+fun unwrap_classobj_ty(ty: N.Type_): (FileRange, N.Name, N.Type_) {
+  ty match {
+  | (_, N.Tnamed(_, inner_ty)) -> unwrap_classobj_ty(inner_ty)
+  | (cpos, N.Tapply(_, cname, targs)) ->
+    assert(TAstUtils.is_class_object(cname.i1));
+    invariant(targs.size() == 1, "ICE invalid class obj");
+    (cpos, cname, targs[0])
+  | (cpos, N.Tset(_, _, _, elts)) ->
+    elt = elts.find(elt -> TAstUtils.is_class_object(elt.name.i1)).fromSome();
+    invariant(elt.targs.size() == 1, "ICE invalid class obj");
+    (cpos, elt.name, elt.targs[0])
+  | (_pos, _) -> invariant_violation("ICE invalid class obj")
+  }
+}
+
+fun build_necessary_cast(
+  env: Env,
+  source: N.Name,
+  obj_ty: N.Type_,
+  cast: N.Type_,
+): ?N.Type_ {
+  /* If the source is just the obj_ty, no cast;
+   *   otherwise, use the cast provided */
+  find_source_ty(env, true, source, obj_ty) match {
+  | None() -> None()
+  | Some _ -> find_source_ty(env, false, source, cast)
+  }
+}
+
+/*****************************************************************************/
+/* Pattern-matching. */
+/*****************************************************************************/
+fun match_branch(
+  env: Env,
+  lambdas: IMap<T.Expr>,
+  subst: IMap<N.Type_>,
+  p: T.Match_branch,
+): T.Match_branch {
+  (pats, maybe_guard, e) = p;
+  (
+    patterns(env, subst, pats),
+    maybe_guard.map((ex -> expr(env, lambdas, subst, ex))),
+    expr(env, lambdas, subst, e),
+  )
+}
+
+fun patterns(
+  env: Env,
+  subst: IMap<N.Type_>,
+  pats: List<T.Pattern>,
+): List<T.Pattern> {
+  pats.map(pat -> pattern(env, subst, pat))
+}
+
+fun pattern(env: Env, subst: IMap<N.Type_>, pat: T.Pattern): T.Pattern {
+  (ty, pat_) = pat;
+  (type(env, subst, ty), pattern_(env, subst, pat_))
+}
+
+fun pattern_(env: Env, subst: IMap<N.Type_>, pat_: T.Pattern_): T.Pattern_ {
+  (pos, pat__) = pat_;
+  (pos, pattern__(env, subst, pat__))
+}
+
+fun pattern__(env: Env, subst: IMap<N.Type_>, x: T.Pattern__): T.Pattern__ {
+  x match {
+  | T.Pat_var(v) -> T.Pat_var(binding(env, subst, v))
+  | l @ T.Pat_literal _ -> l
+  | T.Pat_type(tid, castType, params) ->
+    new_params = params.map(pars ->
+      pars.map(p -> param_pattern(env, subst, p))
+    );
+    T.Pat_type(tid, type(env, subst, castType), new_params)
+  | T.Pat_as(p, v) -> T.Pat_as(pattern(env, subst, p), binding(env, subst, v))
+  }
+}
+
+fun param_pattern(
+  env: Env,
+  subst: IMap<N.Type_>,
+  param_pat: T.ParamPattern,
+): T.ParamPattern {
+  (ty, pat) = param_pat;
+  (type(env, subst, ty), pattern(env, subst, pat))
+}
+
+fun local(env: Env, subst: IMap<N.Type_>, local: T.LocalInfo): T.LocalInfo {
+  (ty, n) = local;
+  (type(env, subst, ty), n)
+}
+
+fun binding(env: Env, subst: IMap<N.Type_>, binding: T.Binding): T.Binding {
+  (ty, n, byref) = binding;
+  (type(env, subst, ty), n, byref)
+}

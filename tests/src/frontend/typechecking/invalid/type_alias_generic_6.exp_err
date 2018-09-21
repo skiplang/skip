@@ -1,0 +1,5 @@
+File "./typechecking/invalid/type_alias_generic_6.sk", line 2, characters 14-18:
+MyMap expects 2 type arguments, but 1 was passed
+1 | class MyMap<+K: Orderable, +V>(K, V)
+2 | type MM<V> = MyMap<V>;
+  |              ^^^^^

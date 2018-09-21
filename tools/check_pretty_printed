@@ -1,0 +1,44 @@
+#!/bin/bash
+
+srcdir="$1"
+testok="$2"
+
+# If a testok file already exists, and is newer than skip_printer, only
+# consider files that have changed since it was last touched.
+if [ -e "$testok" -a "$testok" -nt "$srcdir/build/bin/skip_printer" ]; then
+    newer="-newer $testok"
+fi
+
+errs=$( \
+    set -o pipefail; \
+    cd "$srcdir" && \
+    find . \( -path './build' -o -path './.git' -o -path './third-party' \) \
+            -prune -o \( -name '*.sk' $newer -print0 \) | \
+        xargs -0 ./build/bin/skip_printer --list-different \
+)
+
+status=$?
+
+if [ -n "$errs" ]; then
+    if [ "$UPDATE_BASELINE" == 1 ]; then
+      cd "$srcdir"
+      echo 'Pretty printing the following files:' >&2
+      echo "$errs" | xargs ./build/bin/skip_printer --write >&2
+      exit 0
+    else
+      echo 'The following files are not correctly formatted, run UPDATE_BASELINE=1 ninja check_pretty_printed to fix it:' >&2
+      echo "$errs" >&2
+      exit 1
+    fi
+fi
+
+if [ "$status" != 0 ]; then
+    echo "Failed to run skip_printer" >&2
+    exit 1
+fi
+
+
+if [ -n "$testok" ]; then
+    # If specified, touch the testok file so we visit fewer files next time.
+    touch "$testok"
+fi

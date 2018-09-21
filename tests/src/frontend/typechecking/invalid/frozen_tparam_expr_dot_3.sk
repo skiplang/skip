@@ -1,0 +1,5 @@
+mutable class Foo(x: mutable Array<Int>)
+
+fun no<T: mutable Foo>(x: T): void {
+  _ = freeze(x) with {x => mutable Array[0]}
+}

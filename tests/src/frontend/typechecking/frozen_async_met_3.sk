@@ -1,0 +1,12 @@
+mutable class Foo(mutable v: Int) {
+  async fun yes(): ^void {
+    void
+  }
+  async frozen fun yes2(): ^void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

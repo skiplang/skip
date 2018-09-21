@@ -1,0 +1,83 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip Search
+//
+// This tool helps you do ast-based searches
+//
+// To run your search:
+//   cd build && ninja skip_search
+//   build/bin/skip_search "!{a}.size()" <source-files>
+
+module alias P = ParseTree;
+
+mutable class SearchCodeMod{
+  template: CodeModTemplate.ParseTreeTemplate,
+  results: mutable Vector<P.ParseTree> = mutable Vector[],
+} extends P.CodeMod {
+  mutable fun transformTree(tree: ParseTree): ?ParseTree {
+    if (this.template.matches(tree).isSome()) {
+      this.results.push(tree)
+    };
+    None()
+  }
+
+  static fun search(
+    contents: String,
+    template: CodeModTemplate.ParseTreeTemplate,
+  ): Vector<P.ParseTree> {
+    parseResults = SkipParser.parseSource(contents, false);
+    if (parseResults.hasError()) {
+      Vector[]
+    } else {
+      tree = parseResults.tree as P.SourceUnitTree _;
+      lines = contents.split(Chars.lineFeed.toString());
+      codemod = mutable SearchCodeMod{template};
+      _ = codemod.transformAst(tree, lines);
+      codemod.results.chill()
+    }
+  }
+}
+
+fun main(): void {
+  args = arguments();
+  if (args.size() < 2) {
+    print_error_ln("Usage: skip_search pattern <list_of_sk_files>\n");
+    exit(1)
+  };
+
+  template = try {
+    CodeModTemplate.ParseTreeTemplate::createFromString(args[0], "template")
+  } catch {
+  | e ->
+    print_error_ln(e.getMessage());
+    print_error_ln("Example of valid templates:");
+    print_error_ln(" - Vector::!{a} to get all the static members on Vector");
+    print_error_ln(" - (!{a} : !{B}) to get all the casts");
+    print_error_ln(
+      " - (!{a}, !{a}) to get all the tuples with two identical elements",
+    );
+    exit(1)
+  };
+  files = args.slice(1);
+
+  _ = files.collect(Vector).parallelMap(filename ~> {
+    source = FileSystem.readTextFile(filename);
+    results = SearchCodeMod::search(source, template);
+    if (results.size() > 0) {
+      lines = source.split("\n");
+      print_raw(
+        results
+          .map(x -> {
+            line = x.range.start.line();
+            filename + ":" + (line + 1) + " " + lines[line] + "\n"
+          })
+          .join(""),
+      )
+    }
+  })
+}

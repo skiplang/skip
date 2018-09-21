@@ -1,0 +1,9 @@
+trait MyTC {
+  static fun foo(): void {
+    static::foo()
+  }
+}
+
+fun foo(): void {
+  MyTC::foo()
+}

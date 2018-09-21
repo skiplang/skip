@@ -1,0 +1,6 @@
+class B<T: String>() {
+  const x: String = {
+    a = (Array[] : Array<T>);
+    a.concat(Array["Fail\n"])[0];
+  };
+}

@@ -1,0 +1,6 @@
+class Foo{closure: Int ~> Int}
+
+fun main(): void {
+  _ = Foo{closure => (x ~> x)};
+  print_string("Pass")
+}

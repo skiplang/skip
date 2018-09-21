@@ -1,0 +1,12 @@
+fun foo(x: Int): void {
+  _ = x;
+  void
+}
+
+fun test(): (_ ~> void) {
+  foo
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,7 @@
+File "./expand/invalid/extension_class_adds_generics.sk", line 3, characters 22-23:
+Invalid extension. Extension classes cannot add generics.
+1 | module X;
+2 |
+3 | extension base class .X<T>
+  |                      ^^
+4 |

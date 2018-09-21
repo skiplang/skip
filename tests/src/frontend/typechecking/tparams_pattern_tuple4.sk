@@ -1,0 +1,10 @@
+class Foo<T>() {
+  fun foo<B: (T, T)>(x: B): void {
+    x match {
+    | (_, _) -> void
+    }
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

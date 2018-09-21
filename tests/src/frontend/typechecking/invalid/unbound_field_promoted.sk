@@ -1,0 +1,9 @@
+class X(a: Int) {
+  fun b(x: X): void {
+    x.z
+  }
+
+  static fun c(): void {
+    void
+  }
+}

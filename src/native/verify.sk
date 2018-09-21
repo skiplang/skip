@@ -1,0 +1,755 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Verify;
+
+//
+// IR verifier
+//
+
+const fixedT31800000: Bool = false;
+
+// Key in the Map caching dominator checks.
+private value class BlockPair(
+  parent: BlockID,
+  child: BlockID,
+) uses Hashable, Equality {
+  fun ==(other: BlockPair): Bool {
+    this.parent == other.parent && this.child == other.child
+  }
+}
+
+mutable private class Verifier(
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+  dominatesCache: mutable UnorderedMap<BlockPair, Bool>,
+  where: String,
+  mutable currentInstr: InstrWithPos,
+  mutable currentPos: Pos,
+) {
+  mutable fun verify(): void {
+    optinfo = this.optinfo;
+    f = optinfo.f;
+    env = this.env;
+
+    // Check arguments.
+    this.invariant(
+      f.funType.params.size() == f.params.size(),
+      "Argument count mismatch",
+    );
+
+    f.funType.params.eachWithIndex((i, p) -> {
+      this.invariant(p == f.params[i].typ, "Argument type mismatch.")
+    });
+
+    // Which Instrs have we visited already?
+    seen = Array::mfill(optinfo.idToInstr.size(), false);
+
+    // Do this low-level check before calling reversePostorder().
+    for (b in f.blocks) {
+      b.instrs.maybeLast() match {
+      | Some(Terminator _) -> void
+      | Some _ -> this.die("Block " + b.id + " is unterminated")
+      | None() -> this.die("Empty block " + b.id)
+      }
+    };
+    this.!currentPos = f.pos;
+
+    for (blockID in optinfo.reversePostorder()) {
+      b = optinfo.getBlock(blockID);
+
+      // Check all the BlockParams.
+      b.params.eachWithIndex((i, bp) -> {
+        oldInstr = this.setCurrentInstr(bp);
+
+        this.invariant(i == bp.index, "Bad BlockParam index");
+        this.invariant(!seen[bp.idValue()], "duplicate InstrID");
+        seen.set(bp.idValue(), true);
+
+        _ = this.setCurrentInstr(oldInstr);
+      });
+
+      b.instrs.eachWithIndex((i, instr) -> {
+        oldInstr = this.setCurrentInstr(instr);
+
+        this.invariant(!seen[instr.idValue()], "duplicate InstrID");
+
+        // Make sure Terminators are where they belong.
+        isTerminator = instr is Terminator _;
+        this.invariant(
+          isTerminator == (i + 1 == b.instrs.size()),
+          "Each block must contain exactly one Terminator, " + "at the end.",
+        );
+
+        checkDominates = inputID -> {
+          input = this.getInstr(inputID);
+          input match {
+          | FunParam _
+          | Constant _ ->
+            // These dominate all uses.
+            void
+          | _ ->
+            inputBlockID = optinfo.instrToBlock[inputID];
+            ok = if (inputBlockID == blockID) {
+              seen[inputID.id]
+            } else {
+              this.dominates(inputBlockID, blockID)
+            };
+
+            if (!ok) {
+              this.die(
+                "Input " +
+                  input +
+                  " from block " +
+                  inputBlockID +
+                  " does not dominate use " +
+                  instr +
+                  " in block " +
+                  blockID,
+              )
+            }
+          }
+        };
+
+        // Make sure non-block inputs dominate their uses.
+        instr.visitNonBlockArgInputs(checkDominates, optinfo);
+
+        seen.set(instr.idValue(), true);
+        // Now check block inputs (successors). An Invoke is allowed
+        // to pass its own result value to a successor, so we couldn't
+        // check these before the "seen" set above.
+        for (succ in instr.getSuccessors()) {
+          succ.args.each(checkDominates)
+        };
+
+        // Do more detailed checks.
+        this.verifyInstr(instr);
+
+        _ = this.setCurrentInstr(oldInstr)
+      });
+
+      // Check successors.
+      term = b.terminator();
+      oldInstr = this.setCurrentInstr(term);
+      for (succ in term.successors) {
+        target = optinfo.getBlock(succ.target);
+
+        passedArgs = succ.args.size();
+        expectedArgs = target.params.size();
+
+        if (passedArgs != expectedArgs) {
+          this.die(
+            "Block parameter count mismatch: block " +
+              b.id +
+              " is passing " +
+              passedArgs +
+              " argument" +
+              (if (passedArgs == 1) "" else "s") +
+              ", but block " +
+              target.id +
+              " expects " +
+              expectedArgs,
+          );
+        };
+
+        succ.args.eachWithIndex((i, argID) -> {
+          arg = this.getInstr(argID);
+          expected = target.params[i].typ;
+          if (fixedT31800000 && !isSubType(arg.typ, expected, env, term.pos)) {
+            this.die(
+              `Block ${blockID} is passing argument ${i} of incompatible type` +
+                ` ${arg.typ} to block ${target.id}, which expected ${expected}`,
+            )
+          }
+        })
+      };
+      _ = this.setCurrentInstr(oldInstr)
+    }
+  }
+
+  // Simplify error reporting by latching what Instr we were verifying when
+  // a problem was found. If the Instr has a negative ID it is considered
+  // to be "no Instr".
+  private mutable fun setCurrentInstr(instr: InstrWithPos): InstrWithPos {
+    oldInstr = this.currentInstr;
+    this.!currentInstr = instr;
+    this.!currentPos = instr.pos;
+    oldInstr
+  }
+
+  private mutable fun dominates(parent: BlockID, child: BlockID): Bool {
+    if (parent == child) {
+      true
+    } else {
+      key = BlockPair(parent, child);
+      this.dominatesCache.maybeGet(key) match {
+      | Some(d) -> d
+      | None() ->
+        dom = this.optinfo.getDominator(child);
+
+        result = dom.id >= 0 && this.dominates(parent, dom);
+        this.dominatesCache.set(key, result);
+        result
+      }
+    }
+  }
+
+  private mutable fun verifyInstrType(instr: Instr, expected: Type): void {
+    if (instr.typ != expected) {
+      this.die(
+        "Expected " +
+          instr +
+          " to have type " +
+          expected +
+          ", but found " +
+          instr.typ +
+          " instead.",
+      )
+    }
+  }
+
+  private mutable fun verifySimple(
+    instr: Stmt,
+    inputType: Type,
+    outputType: Type,
+  ): void {
+    optinfo = this.optinfo;
+    this.verifyInstrType(instr, outputType);
+
+    instr.visitNonBlockArgInputs(
+      inputID -> {
+        input = this.getInstr(inputID);
+        if (input.typ != inputType) {
+          this.die(
+            "Expected " +
+              instr +
+              " operand to have type " +
+              inputType +
+              ", but operand " +
+              input +
+              " has type " +
+              input.typ,
+          )
+        }
+      },
+      optinfo,
+    )
+  }
+
+  // Like verifySimple() but the inputs can be any of the input types - but they
+  // all must be of the same type.
+  private mutable fun verifySimplish(
+    instr: Stmt,
+    inputTypes: Array<Type>,
+    outputType: Type,
+  ): void {
+    this.invariant(
+      inputTypes.size() > 1,
+      "inputTypes must have more than one type",
+    );
+
+    optinfo = this.optinfo;
+    this.verifyInstrType(instr, outputType);
+
+    instr.visitNonBlockArgInputs(
+      inputID -> {
+        input = this.getInstr(inputID);
+        if (!inputTypes.contains(input.typ)) {
+          this.die(
+            "Expected " +
+              instr +
+              " operand to have type " +
+              inputTypes.join(", ") +
+              ", but operand " +
+              input +
+              " has type " +
+              input.typ,
+          );
+        } else {
+          !inputTypes = Array[input.typ];
+        }
+      },
+      optinfo,
+    )
+  }
+
+  private mutable fun verifySimpleTerminator(
+    instr: Terminator,
+    numExpectedSuccesors: Int,
+  ): void {
+    this.verifyInstrType(instr, tVoid);
+    this.invariant(
+      instr.successors.size() == numExpectedSuccesors,
+      "Successor count mismatch",
+    )
+  }
+
+  private mutable fun verifyBytePointerAdd(add: BytePointerAdd): void {
+    this.verifyInstrType(add, tNonGCPointer);
+    this.verifyInstrType(this.getInstr(add.addr), tNonGCPointer);
+    this.verifyInstrType(this.getInstr(add.offset), tInt);
+  }
+
+  private mutable fun verifyCallFunction(cf: CallFunctionBase): void {
+    subf = this.env.getFunction(cf.name, cf.pos);
+
+    if (cf.args.size() != subf.funType.params.size()) {
+      this.die(
+        "Attempt to call " +
+          subf +
+          " with " +
+          cf.args.size() +
+          " arguments when it expects " +
+          subf.funType.params.size(),
+      )
+    }
+  }
+
+  private mutable fun verifyCast(c: Cast): void {
+    objType = this.getInstr(c.value).typ;
+
+    s1 = objType.maybeGetScalarType(this.env) match {
+    | Some(tt) -> tt
+    | None() ->
+      this.die(`Attempt to cast from non-scalar type ${objType} to ${c.typ}`)
+    };
+
+    s2 = c.typ.maybeGetScalarType(this.env) match {
+    | Some(tt) -> tt
+    | None() ->
+      this.die(`Attempt to cast from ${objType} to non-scalar type ${c.typ}`)
+    };
+
+    if (s1.toString() != s2.toString()) {
+      this.die(
+        `Attempt to cast from ${objType} to ${c.typ} but they have different ` +
+          `ScalarTypes ${s1} and ${s2}`,
+      )
+    }
+  }
+
+  private mutable fun verifyReinterpret(r: Reinterpret): void {
+    objType = this.getInstr(r.value).typ;
+
+    s1 = objType.getScalarType(this.env);
+    s2 = r.typ.getScalarType(this.env);
+    if (s1.bitSize != s2.bitSize) {
+      this.die(
+        `Attempt to reinterpret from ${objType} to ${r.typ}, but they have ` +
+          `different bit sizes ${s1.bitSize} and ${s2.bitSize}`,
+      )
+    }
+  }
+
+  private mutable fun verifyGetField(gf: GetField): void {
+    optinfo = this.optinfo;
+
+    objType = this.getInstr(gf.obj).typ;
+    for (s in optinfo.f.superpositions) {
+      objtc = objType.typeInSuperposition(s);
+      objsc = objtc.sclass(this.env);
+
+      objsc.maybeGetField(gf.field) match {
+      | Some(field) ->
+        claimedType = gf.typ.typeInSuperposition(s);
+
+        // A normally mutable field on a frozen class itself
+        // becomes frozen, etc.
+        fieldType = field.typ.mapMutability(m -> max(m, objtc.mutability));
+
+        if (
+          fixedT31800000 &&
+          !isSubType(fieldType, claimedType, this.env, gf.pos)
+        ) {
+          this.die(
+            `${gf} read field '${gf.field}' from an object of type ${objtc}, ` +
+              `where the field has type ${fieldType} but the GetField ` +
+              `claimed its type is ${claimedType}`,
+          )
+        }
+      | None() ->
+        this.die(
+          gf.toString() +
+            " attempted to read nonexistent field '" +
+            gf.field +
+            "' from an object of type " +
+            objtc,
+        )
+      }
+    }
+  }
+
+  private mutable fun verifyObject(obj: Object): void {
+    optinfo = this.optinfo;
+    objType = obj.typ;
+
+    for (s in optinfo.f.superpositions) {
+      objtc = objType.typeInSuperposition(s);
+      objsc = objtc.sclass(this.env);
+
+      if (objsc.fields.size() != obj.args.size()) {
+        this.die(
+          obj.toString() +
+            " argument count mismatch: " +
+            objtc +
+            " expecting [" +
+            objsc.fields.map(f -> f.name + ":" + f.typ).join(", ") +
+            "], but got [" +
+            obj.args.map(arg -> this.getInstr(arg).typ).join(", ") +
+            "]",
+        )
+      }
+      // TODO Check that arguments are subtypes.
+    }
+  }
+
+  private mutable fun verifyTupleExtract(extr: TupleExtract): void {
+    obj = this.getInstr(extr.obj);
+
+    objSClass = obj.typ.exampleSClass(this.env);
+    if (!objSClass.gclassName.id.startsWith("<builtin>.ReturnTuple")) {
+      this.die("TupleExtract applied to unexpected type " + obj.typ)
+    };
+
+    if (extr.index < 0 || extr.index >= objSClass.fields.size()) {
+      this.die("TupleExtract(" + extr.index + ") out of range for " + obj.typ)
+    };
+
+    obj match {
+    | CallBase _
+    | NamedCall _
+    | RawCallBase _ ->
+      void
+    | _ ->
+      this.die(
+        "TupleExtract " +
+          extr +
+          " reading a value from something other than a call.",
+      )
+    }
+  }
+
+  private mutable fun verifyExtend(e: ExtendBase): void {
+    in_ = this.getInstr(e.value).typ.getScalarType(this.env);
+    out = e.typ.getScalarType(this.env);
+
+    this.invariant(IntegerScalarKind() == in_.kind, "Expected integer");
+    this.invariant(IntegerScalarKind() == out.kind, "Expected integer");
+    if (out.bitSize <= in_.bitSize) {
+      this.die("Extend " + e + " must increase width")
+    };
+    this.invariant(out.bitSize > 1 && out.bitSize <= 64, "Bad bit size")
+  }
+
+  private mutable fun verifySetField(s: SetField): void {
+    optinfo = this.optinfo;
+
+    objType = this.getInstr(s.obj).typ;
+    valueType = this.getInstr(s.value).typ;
+
+    for (sposn in optinfo.f.superpositions) {
+      objtc = objType.typeInSuperposition(sposn);
+      valtc = valueType.typeInSuperposition(sposn);
+
+      if (objtc.mutability != Mutable()) {
+        this.die(
+          "Attempt to set field '" +
+            s.field +
+            "' on " +
+            objtc.mutability +
+            " object of type " +
+            objtc,
+        )
+      };
+
+      objtc.sclass(this.env).maybeGetField(s.field) match {
+      | None() ->
+        choices = objtc.sclass(this.env).fields.map(f -> f.name).sorted();
+        this.die(
+          "Attempt to set nonexistent field '" +
+            s.field +
+            `' on object of type ${objtc}; ` +
+            `choices are: ${choices.join(", ")}`,
+        )
+      | Some(field) ->
+        if (!field.isAssignable) {
+          this.die(
+            "Attempt to set non-assignable field '" +
+              s.field +
+              "' on object of type " +
+              objtc,
+          )
+        };
+
+        if (!isSubType(valtc, field.typ, this.env, s.pos)) {
+          this.die(
+            "Attempt to store incompatible value of type " +
+              valtc +
+              " in field '" +
+              s.field +
+              "' which has type " +
+              field.typ +
+              " on object of type " +
+              objtc,
+          )
+        }
+      }
+    }
+  }
+
+  private mutable fun verifyTruncate(e: Truncate): void {
+    in_ = this.getInstr(e.value).typ.getScalarType(this.env);
+    out = e.typ.getScalarType(this.env);
+
+    this.invariant(IntegerScalarKind() == in_.kind, "Expected integer");
+    this.invariant(IntegerScalarKind() == out.kind, "Expected integer");
+    if (out.bitSize >= in_.bitSize) {
+      this.die("Truncate " + e + " must decrease width")
+    };
+    this.invariant(out.bitSize >= 1 && out.bitSize < 64, "Bad bit size")
+  }
+
+  private mutable fun verifyIsArrayType(t: Type): void {
+    sc = t.exampleSClass(this.env);
+    if (!sc.isArray()) {
+      this.die("Got unexpected non-array type " + t)
+    }
+  }
+
+  private mutable fun verifyArrayAlloc(v: ArrayAlloc): void {
+    this.verifySimple(v, tInt, v.typ);
+    this.verifyIsArrayType(v.typ)
+  }
+
+  private mutable fun verifyArraySize(v: ArraySize): void {
+    arg = this.getInstr(v.value);
+    this.verifySimple(v, arg.typ, tInt);
+    this.verifyIsArrayType(arg.typ)
+  }
+
+  private mutable fun verifyInstr(instr: Stmt): void {
+    pos = instr.pos;
+    oldInstr = this.setCurrentInstr(instr);
+
+    instr match {
+    | BoolBinOp _ -> this.verifySimple(instr, tBool, tBool)
+
+    | add @ BytePointerAdd _ -> this.verifyBytePointerAdd(add)
+
+    | call @ CallFunctionBase _ -> this.verifyCallFunction(call)
+
+    | c @ Cast _ -> this.verifyCast(c)
+    | r @ Reinterpret _ -> this.verifyReinterpret(r)
+
+    | FloatCmpEq _
+    | FloatCmpLe _
+    | FloatCmpLt _
+    | FloatCmpNe _ ->
+      this.verifySimple(instr, tFloat, tBool)
+    | FloatAdd _
+    | FloatDiv _
+    | FloatMul _
+    | FloatSub _ ->
+      this.verifySimple(instr, tFloat, tFloat)
+
+    | gf @ GetField _ -> this.verifyGetField(gf)
+
+    | IntCmpEq _
+    | IntCmpLe _
+    | IntCmpLt _
+    | IntCmpNe _
+    | IntCmpUle _
+    | IntCmpUlt _ ->
+      this.verifySimplish(instr, Array[tInt, tInt8, tInt16, tInt32], tBool)
+
+    | IntAdd _
+    | IntAnd _
+    | IntClz _
+    | IntCtz _
+    | IntPopcount _
+    | IntDiv _
+    | IntMul _
+    | IntOr _
+    | IntRem _
+    | IntSll _
+    | IntSra _
+    | IntSrl _
+    | IntSub _
+    | IntXor _ ->
+      this.verifySimple(instr, tInt, tInt)
+
+    | Freeze{value} ->
+      // allow any Mutability, since Freeze(x) -> x, if x is frozen
+      o = this.getInstr(value);
+      if (!o.typ.getScalarType(this.env).isGCPointer()) {
+        this.die("Attempting to freeze value of non-pointer type " + o.typ)
+      };
+      // Only verify subtype, not an exact match. The argument to
+      // freeze() might be an upcast, which we optimize away, leaving
+      // the types not matching exactly ignoring frozenness.
+      if (
+        !isSubType(
+          o.typ.mapMutability(_ -> DeepFrozen()),
+          instr.typ,
+          this.env,
+          pos,
+        )
+      ) {
+        this.die(
+          `freeze(${o.typ}) yielded value of ` +
+            `incompatible type ${instr.typ}`,
+        )
+      }
+    | Intern{value} ->
+      if (!instr.typ.isDeepFrozen()) {
+        this.die("Intern yielded non-frozen type " + instr.typ)
+      };
+
+      o = this.getInstr(value);
+      if (
+        !isSubType(
+          o.typ.mapMutability(_ -> DeepFrozen()),
+          instr.typ,
+          this.env,
+          pos,
+        )
+      ) {
+        this.die(
+          `intern(${o.typ}) yielded value of ` +
+            `incompatible type ${instr.typ}`,
+        )
+      };
+
+      if (!o.typ.getScalarType(this.env).isGCPointer()) {
+        this.die("Attempting to intern value of non-pointer type " + o.typ)
+      }
+    | IntSwitch _ -> this.verifySimple(instr, tInt, tVoid)
+    | StringCmp _
+    | StringHash _ ->
+      this.verifySimple(instr, tString, tInt)
+    | StringCmpEq _ -> this.verifySimple(instr, tString, tBool)
+    | StringConcat _ -> this.verifySimple(instr, tString, tString)
+    | StringSwitch _ -> this.verifySimple(instr, tString, tVoid)
+
+    | FloatBits _
+    | FloatToInt _ ->
+      this.verifySimple(instr, tFloat, tInt)
+    | FloatToString _ -> this.verifySimple(instr, tFloat, tString)
+    | IntToFloat _ -> this.verifySimple(instr, tInt, tFloat)
+    | IntToString _ -> this.verifySimple(instr, tInt, tString)
+
+    | t @ Jump _ -> this.verifySimpleTerminator(t, 1)
+    | t @ Unreachable _ -> this.verifySimpleTerminator(t, 0)
+    | t @ If _ ->
+      this.verifySimpleTerminator(t, 2);
+      this.verifySimple(instr, tBool, tVoid)
+
+    | LandingPad{id, successors} ->
+      this.invariant(successors.size() == 1, "Wrong # of successors");
+      containingBlock = this.optinfo.getBlock(this.optinfo.instrToBlock[id]);
+      this.invariant(
+        containingBlock.instrs.size() == 1,
+        "LandingPad must be the only Instr in a block",
+      )
+    | t @ Object _ -> this.verifyObject(t)
+
+    | s @ SetField _ -> this.verifySetField(s)
+    | t @ TupleExtract _ -> this.verifyTupleExtract(t)
+
+    | t @ Throw _ ->
+      // TODO: Verify it's an Exception
+      this.verifySimpleTerminator(t, 0)
+
+    | t @ ExtendBase _ -> this.verifyExtend(t)
+    | t @ Truncate _ -> this.verifyTruncate(t)
+
+    | t @ ArrayAlloc _ -> this.verifyArrayAlloc(t)
+    | t @ ArraySize _ -> this.verifyArraySize(t)
+
+    // TODO: These verifiers need to be implemented.
+    | Alloca _
+    | AsyncReturn _
+    | CallMethodBase _
+    | GetConst _
+    | GetCurrentAwaitable _
+    | IndirectJump _
+    | Load _
+    | LoadVTableEntry _
+    | LocalGC _
+    | NamedCall _
+    | ObstackAlloc _
+    | ObstackNote _
+    | ObstackShallowClone _
+    | ObstackUsage _
+    | RawCallBase _
+    | Return _
+    | Store _
+    | Suspend _
+    | TypeSwitch _
+    | ArrayClone _
+    | ArrayNew _
+    | ArrayUnsafeGet _
+    | ArrayUnsafeSet _
+    | With _
+    | Yield _
+    | YieldBreak _ ->
+      void
+    };
+
+    _ = this.setCurrentInstr(oldInstr)
+  }
+
+  private readonly fun getInstr(id: InstrID): Instr {
+    this.optinfo.idToInstr.maybeGet(id) match {
+    | Some(x) -> x
+    | None() -> this.die(`Attempt to ask for nonexistent InstrID ${id}`)
+    }
+  }
+
+  private readonly fun invariant(flag: Bool, msg: String): void {
+    if (!flag) {
+      this.die(msg)
+    }
+  }
+
+  private readonly fun die(msg: String): _ {
+    errorMsg =
+      "Encountered fatal error: " +
+      msg +
+      (if (this.currentInstr.id.id >= 0) {
+        " while processing " + this.currentInstr
+      } else {
+        ""
+      }) +
+      " during phase '" +
+      this.where +
+      "'\n";
+    print_error("" + this.currentPos + ": Internal error: " + errorMsg);
+    print_error("Function causing the error:\n");
+    this.optinfo.f.dump(this.env);
+    this.currentPos.die(errorMsg);
+  }
+}
+
+fun verifyFunction(f: Function, env: GlobalEnv, where: String): void {
+  if (f.hasImplementation()) {
+    // Sentinel instr we use to attribute errors.
+    pos = f.pos;
+    dummyInstr = BlockParam{id => InstrID::none, typ => tVoid, pos, index => 0};
+
+    v = mutable Verifier(
+      OptimizerInfo::make(f),
+      env,
+      mutable UnorderedMap[],
+      where,
+      dummyInstr,
+      pos,
+    );
+
+    v.verify()
+  }
+}

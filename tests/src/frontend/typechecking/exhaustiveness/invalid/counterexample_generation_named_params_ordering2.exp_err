@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/counterexample_generation_named_params_ordering2.sk", line 7, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | B{z => true, a => Int _}
+5 |
+6 | fun test(x: P): void {
+7 |   x match {
+  |   ^^^^^^^^^
+8 |   | B{z => true, a => 1} -> void
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

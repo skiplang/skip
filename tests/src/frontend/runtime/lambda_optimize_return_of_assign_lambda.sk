@@ -1,0 +1,12 @@
+fun main(): void {
+  lambda = () -> {
+    s = "init";
+    !s = "Fail";
+    lam = () -> {
+      !s = "Pass\n"
+    };
+    lam();
+    s;
+  };
+  print_raw(lambda());
+}

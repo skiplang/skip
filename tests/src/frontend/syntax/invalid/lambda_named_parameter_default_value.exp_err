@@ -1,0 +1,12 @@
+File "./syntax/invalid/lambda_named_parameter_default_value.sk", line 2, characters 20-21:
+Expected '}'. Found '~>'.
+1 | fun main(): String {
+2 |   x = {p = "Fail"} ~> p;
+  |                    ^^
+3 |   x{}
+
+File "./syntax/invalid/lambda_named_parameter_default_value.sk", line 1, characters 20-20:
+ For opening '{'
+1 | fun main(): String {
+  |                    ^
+2 |   x = {p = "Fail"} ~> p;

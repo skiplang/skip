@@ -1,0 +1,80 @@
+File "./typechecking/invalid/joined_tabstract_4.sk", line 8, characters 9-26:
+Invalid deferred call
+ 6 |   deferred static fun eat(Inv<this::T>): this::T;
+ 7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+ 8 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 27, characters 9-26:
+Invalid deferred call
+25 |
+26 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+27 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+28 |   }
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 46, characters 9-26:
+Invalid deferred call
+44 |
+45 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+46 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+47 |   }
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 51, characters 14-17:
+Invalid argument
+49 |
+50 | fun main(): void {
+51 |   AbsC::test(IntC, StringC);
+   |              ^^^^
+52 |   print_raw("wut")
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 51, characters 14-17:
+The type: Base<IntC>
+49 |
+50 | fun main(): void {
+51 |   AbsC::test(IntC, StringC);
+   |              ^^^^
+52 |   print_raw("wut")
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 7, characters 35-42:
+Is not a subtype of: Concrete<AbsC>
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+  |                                   ^^^^^^^^
+8 |     _ = c1::eat(c2::get())
+
+File "./typechecking/invalid/joined_tabstract_4.sk", line 7, characters 35-42:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Class<AbsC>
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+  |                                   ^^^^^^^^
+8 |     _ = c1::eat(c2::get())

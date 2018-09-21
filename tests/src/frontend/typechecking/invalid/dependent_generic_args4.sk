@@ -1,0 +1,5 @@
+class Foo<T>(x: T)
+
+fun foo<T2: Foo<T>, T>(): void {
+  void
+}

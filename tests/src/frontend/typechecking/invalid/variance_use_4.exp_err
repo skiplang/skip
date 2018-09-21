@@ -1,0 +1,11 @@
+File "./typechecking/invalid/variance_use_4.sk", line 1, characters 12-12:
+Invalid variance annotation
+1 | class Foo<+T> uses Bar<T> {}
+  |            ^
+2 | trait Bar<T>{}
+
+File "./typechecking/invalid/variance_use_4.sk", line 1, characters 24-24:
+The parameter appears in an invariant position
+1 | class Foo<+T> uses Bar<T> {}
+  |                        ^
+2 | trait Bar<T>{}

@@ -1,0 +1,23 @@
+mutable class EmptyMutable(mutable x: Int) {
+  static fun mcreateFromItems<U, C: readonly Sequence<U>>(
+    _elements: C,
+  ): mutable EmptyMutable {
+    print_raw("P");
+    mutable EmptyMutable(10)
+  }
+}
+
+fun main(): void {
+  // P
+  _ = mutable EmptyMutable[];
+
+  // a
+  d = mutable Map["first" => "_"];
+  d!["first"] = "a";
+
+  // ss\n
+  v = mutable Array["_", "s", "\n"];
+  v![0] = "s";
+
+  print_raw(d["first"] + v[0] + v[1] + v[2])
+}

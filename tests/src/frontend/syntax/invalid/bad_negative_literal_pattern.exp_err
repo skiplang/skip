@@ -1,0 +1,7 @@
+File "./syntax/invalid/bad_negative_literal_pattern.sk", line 3, characters 7-11:
+Expected integer or float literal.
+1 | fun main(): String {
+2 |   0 match {
+3 |   | - false -> "Fail"
+  |       ^^^^^
+4 |   }

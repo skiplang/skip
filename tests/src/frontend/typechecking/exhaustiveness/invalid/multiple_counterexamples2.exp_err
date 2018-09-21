@@ -1,0 +1,11 @@
+File "./typechecking/exhaustiveness/invalid/multiple_counterexamples2.sk", line 21, characters 3-3:
+Non-exhaustive pattern match found.
+The following are the structures of values that won't be matched:
+ | B _
+ | C()
+19 |
+20 | fun test(x: P): void {
+21 |   x match {
+   |   ^^^^^^^^^
+22 |   | A(CL1()) -> void
+   |   ^^^^^^^^^^^^^^^^^^

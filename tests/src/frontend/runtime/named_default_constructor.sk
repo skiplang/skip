@@ -1,0 +1,5 @@
+class C{x: String = "Pass\n"} {}
+
+fun main(): void {
+  print_raw(C{}.x)
+}

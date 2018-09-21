@@ -1,0 +1,17 @@
+class Pair<+T1, +T2>(T1, T2)
+
+base class Listish() {
+  children =
+  | Consish
+  | Nilish
+  fun test(): void {
+    Pair(this, 0) match {
+    | Pair(Nilish(), _) -> void
+    | Pair(Consish(), _) -> void
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

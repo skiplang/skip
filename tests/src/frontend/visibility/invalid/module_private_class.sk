@@ -1,0 +1,14 @@
+module Foo;
+
+private class Bar
+
+fun ok(x: Bar): Bar {
+  x
+}
+
+module end;
+
+fun main(): void {
+  _ = Foo.Bar();
+  print_raw("Fail")
+}

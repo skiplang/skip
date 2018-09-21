@@ -1,0 +1,6 @@
+File "./syntax/invalid/char_literal_too_long.sk", line 2, characters 3-6:
+Too many characters for a character literal. Did you mean to create a string literal with double quotes (") instead of single quotes (')?
+1 | fun main(): String {
+2 |   'hi'.toString()
+  |   ^^^^
+3 | }

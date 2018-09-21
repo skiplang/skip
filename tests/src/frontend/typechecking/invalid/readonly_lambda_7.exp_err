@@ -1,0 +1,15 @@
+File "./typechecking/invalid/readonly_lambda_7.sk", line 8, characters 6-36:
+Cannot freeze a mutable lambda
+ 6 |
+ 7 | fun test(): void {
+ 8 |   no(freeze(Foo<() -> Int>(() -> 0)))
+   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/readonly_lambda_7.sk", line 8, characters 17-25:
+This is the lambda you are trying to freeze
+ 6 |
+ 7 | fun test(): void {
+ 8 |   no(freeze(Foo<() -> Int>(() -> 0)))
+   |                 ^^^^^^^^^
+ 9 | }

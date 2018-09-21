@@ -1,0 +1,20 @@
+File "./typechecking/invalid/extend_covaraint_invalid.sk", line 2, characters 7-28:
+Incompatible branches
+1 | fun a_no(): String {
+2 |   _ = if (true) L() else R();
+  |       ^^^^^^^^^^^^^^^^^^^^^^
+3 |   "FAIL"
+
+File "./typechecking/invalid/extend_covaraint_invalid.sk", line 2, characters 17-19:
+The type: L
+1 | fun a_no(): String {
+2 |   _ = if (true) L() else R();
+  |                 ^^^
+3 |   "FAIL"
+
+File "./typechecking/invalid/extend_covaraint_invalid.sk", line 2, characters 26-28:
+Does not share a common super type with: R
+1 | fun a_no(): String {
+2 |   _ = if (true) L() else R();
+  |                          ^^^
+3 |   "FAIL"

@@ -1,0 +1,23 @@
+base class X {
+  children =
+  | L(String)
+  | R()
+  fun toString(): String
+  | L(s) -> s
+  | R() -> "R()"
+}
+
+base class Bar
+class Foo<T: X>(T) extends Bar
+
+fun drop_foo_generic<T: X>(x: Foo<T>): Bar {
+  x
+}
+
+fun main(): void {
+  print_raw(
+    drop_foo_generic(Foo(L("Pass\n"))) match {
+    | Foo(x) -> x.toString()
+    },
+  )
+}

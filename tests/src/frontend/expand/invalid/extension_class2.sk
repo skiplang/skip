@@ -1,0 +1,2 @@
+class A()
+native extension class A

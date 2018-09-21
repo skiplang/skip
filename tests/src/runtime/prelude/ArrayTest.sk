@@ -1,0 +1,286 @@
+@test
+fun testCompareAndEqual(): void {
+  // Test vectors in lexicographical order.
+  vecs = vectorsToTest();
+
+  // Try all O(n^2) combinations -- order should match index order.
+  vecs.eachWithIndex((i, v1) -> {
+    vecs.eachWithIndex((j, v2) -> {
+      assertEqual(v1 == v2, i == j);
+      assertEqual(v1 != v2, i != j);
+      assertEqual(v1.compare(v2), compare(i, j));
+      assertEqual(v1 > v2, i > j);
+      assertEqual(v1 >= v2, i >= j);
+      assertEqual(v1 < v2, i < j);
+      assertEqual(v1 <= v2, i <= j)
+    })
+  })
+}
+
+@test
+fun testFromItems(): void {
+  v = Array[1, 2, 3, 4, 5];
+  v2 = v.collect(Array);
+  assertEqual(v, v2);
+}
+
+@test
+fun testMutableFromItems(): void {
+  v = Array[1, 2, 3, 4, 5];
+  v2 = Array::mcreateFromItems(v);
+  assertEqual(v, v2);
+}
+
+@test
+fun testFind(): void {
+  v = Array[1, 2, 3, 4, 5];
+  // Make sure "find" short-circuits.
+  count = 0;
+  f = v.find(n -> {
+    !count = count + 1;
+    n == 3
+  });
+  assertTrue(f.isSome());
+  assertEqual(f.fromSome(), 3);
+  assertEqual(count, 3);
+
+  count2 = 0;
+  f2 = v.find(n -> {
+    !count2 = count2 + 1;
+    n == 6
+  });
+  assertTrue(f2.isNone());
+  assertEqual(count2, v.size());
+}
+
+@test
+fun testAll(): void {
+  v = Array[3, 2, 3, 4, 5, 1, 1];
+
+  // Make sure "all" short-circuits.
+  count = 0;
+  f = v.all(n -> {
+    !count = count + 1;
+    n < 4
+  });
+  assertFalse(f);
+  assertEqual(count, 4);
+
+  count2 = 0;
+  f2 = v.all(n -> {
+    !count2 = count2 + 1;
+    n < 6
+  });
+  assertTrue(f2);
+  assertEqual(count2, v.size())
+}
+
+@test
+fun testAny(): void {
+  v = Array[3, 2, 3, 4, 5, 1, 1];
+  count = 0;
+
+  // Make sure "any" short-circuits.
+  f = v.any(n -> {
+    !count = count + 1;
+    n >= 4
+  });
+  assertTrue(f);
+  assertEqual(count, 4);
+
+  count2 = 0;
+  f2 = v.any(n -> {
+    !count2 = count2 + 1;
+    n >= 6
+  });
+  assertFalse(f2);
+  assertEqual(count2, v.size())
+}
+
+@test
+fun testClone(): void {
+  v = Array[42];
+  v2 = v.clone();
+  v2![0] = 43;
+  assertEqual(v.size(), 1);
+  assertEqual(v[0], 42);
+  assertEqual(v2.size(), 1);
+  assertEqual(v2[0], 43)
+}
+
+@test
+fun testMfill(): void {
+  v = Array::mfill(3, 9);
+  assertEqual(v.size(), 3);
+  assertEqual(v[0], 9);
+  assertEqual(v[1], 9);
+  assertEqual(v[2], 9);
+
+  v2 = freeze(v);
+
+  v.set(1, 5);
+  assertEqual(v[0], 9);
+  assertEqual(v[1], 5);
+  assertEqual(v[2], 9);
+
+  assertEqual(v2[0], 9);
+  assertEqual(v2[1], 9);
+  assertEqual(v2[2], 9)
+}
+
+@test
+fun testToString(): void {
+  assertEqual(Array[].toString(), "Array[]");
+  assertEqual(Array[1].toString(), "Array[1]");
+  assertEqual(Array[1, 2].toString(), "Array[1, 2]");
+  void
+}
+
+@test
+fun testJoin(): void {
+  assertEqual(Array[1, 2, 3].join(", "), "1, 2, 3")
+}
+
+@test
+// reverse/reversed
+fun testReverse(): void {
+  seq = mutable Array[0, 1, 2, 3, 4];
+  seq2 = seq.clone();
+  seq2.reverse();
+  assertEqual(seq2.size(), 5);
+  assertEqual(seq2, Array[4, 3, 2, 1, 0]);
+
+  seq3 = seq.reversed();
+  assertEqual(seq, Array[0, 1, 2, 3, 4]); // original unchanged
+  assertEqual(seq3, Array[4, 3, 2, 1, 0]);
+}
+
+@test
+// sort/sorted
+fun testSort(): void {
+  seq = mutable Array[-9, 12, 13, 7, 7, 0, -100];
+  sorted = Array[-100, -9, 0, 7, 7, 12, 13];
+  reverseSorted = Array[13, 12, 7, 7, 0, -9, -100];
+
+  seq2 = seq.clone();
+  seq2.sort();
+  assertEqual(seq2, sorted);
+
+  seq3 = seq.clone();
+  seq3.sortBy(id, (a, b) ~> a.compare(b));
+  assertEqual(seq3, sorted);
+
+  seq4 = seq.clone();
+  seq4.sortBy(id, (a, b) ~> b.compare(a)); // reverse sort
+  assertEqual(seq4, reverseSorted);
+
+  seq5 = seq.sorted();
+  assertEqual(seq5, sorted);
+
+  seq6 = seq.sortedBy(id, (a, b) ~> a.compare(b));
+  assertEqual(seq6, sorted);
+
+  seq7 = seq.sortedBy(id, (a, b) ~> b.compare(a)); // reverse sort
+  assertEqual(seq7, reverseSorted);
+}
+
+@test
+fun testSortRandom(): void {
+  base = Range(0, 100).collect(Vector);
+  count = 10; // max items to draw in each sample
+  samples = 50;
+  rng = Random::mcreate(94759283);
+  // Create 50 samples of various sizes/ordering and verify that all
+  // permutations are sorted correctly.
+  for (_ in Range(0, samples)) {
+    sample = base.sample(rng, rng.random(0, count)).collect(Array);
+    // mutable sort
+    seq = sample.clone();
+    seq.sort();
+    assertSorted(seq);
+    // immutable sorted
+    seq2 = sample.sorted();
+    assertSorted(seq2);
+  };
+}
+
+@test
+fun testSort1(): void {
+  seq = mutable Array[1, -1];
+  seq.sort();
+  assertSorted(seq);
+}
+
+@test
+fun testParallelMap(): void {
+  map = UnorderedMap["a" => "A", "b" => "B", "c" => "C"];
+  v = Array["a", "b", "c"].parallelMap(c ~> c + map[c]);
+
+  exp = Array["aA", "bB", "cC"];
+  for (idx in Range(0, v.size())) assertEqual(v[idx], exp[idx])
+}
+
+@test
+// slice
+fun testSlice(): void {
+  seq = Array[0, 1, 2, 3, 4];
+  seq2 = seq.slice(0, 1);
+  assertEqual(seq2, Array[0]);
+  seq3 = seq.slice(0, 5);
+  assertEqual(seq3, Array[0, 1, 2, 3, 4]);
+  seq4 = seq.slice(3, 5);
+  assertEqual(seq4, Array[3, 4]);
+  seq5 = seq.slice(4, 5);
+  assertEqual(seq5, Array[4]);
+  seq6 = seq.slice(4, 10);
+  assertEqual(seq6, Array[4]);
+  seq7 = seq.slice(5, 10);
+  assertEqual(seq7, Array[]);
+  seq8 = seq.slice(5, 5);
+  assertEqual(seq8, Array[]);
+
+  // Negative
+  seq9 = seq.slice(0, -2);
+  assertEqual(seq9, Array[0, 1, 2]);
+  seq10 = seq.slice(-2, -1);
+  assertEqual(seq10, Array[3]);
+
+  // Empty
+  seq11 = seq.slice(10, 10);
+  assertEqual(seq11, Array[]);
+  seq12 = seq.slice(3, 2);
+  assertEqual(seq12, Array[]);
+  seq13 = seq.slice(-2, -3);
+  assertEqual(seq13, Array[]);
+
+  // No upperbound
+  seq14 = seq.slice(2);
+  assertEqual(seq14, Array[2, 3, 4]);
+}
+
+fun assertSorted(seq: readonly Array<Int>): void {
+  size = seq.size();
+  if (size > 0) {
+    prev = Int::min;
+    for (index in Range(0, size)) {
+      value = seq.get(index);
+      assertTrue(value >= prev);
+      !prev = value;
+    };
+  }
+}
+
+fun vectorsToTest(): Array<Array<Int>> {
+  Array[
+    Array[],
+    Array[1],
+    Array[1, 1, 1, 1, 1],
+    Array[1, 1, 1, 1, 2],
+    Array[1, 2],
+    Array[1, 2, 3],
+    Array[1, 3, 3],
+    Array[1, 99],
+    Array[4],
+    Array[100, 101, 102, 103],
+  ]
+}

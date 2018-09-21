@@ -1,0 +1,771 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Pretty printer used only for debugging. (That's why it looks so ugly ;-)) */
+/*****************************************************************************/
+module alias A = SkipAst;
+module alias N = SkipNamedAst;
+module alias T = SkipTypedAst;
+module alias TU = SkipTypedAstUtils;
+
+module SkipTypedAstPp;
+
+fun array<V>(
+  f: ((mutable BufferedPrinter.Out, V) -> void),
+  o: mutable BufferedPrinter.Out,
+  a: Array<V>,
+): void {
+  BufferedPrinter.array(f, o, a)
+}
+
+fun annotations(o: mutable BufferedPrinter.Out, ans: SSet): void {
+  for (annot in ans) {
+    o.out(annot);
+    o.newline()
+  }
+}
+
+fun program(o: mutable BufferedPrinter.Out, prog: T.Program): void {
+  t__ = prog;
+  class_defs = t__.class_defs;
+  fun_defs = t__.fun_defs;
+  const_defs = t__.const_defs;
+  for (x in class_defs) class_def(o, x);
+  for (x in fun_defs) fun_def(o, x);
+  for (x in const_defs) const_def(o, x)
+}
+
+fun const_def(o: mutable BufferedPrinter.Out, cst: T.Const_def): void {
+  annotations(o, cst.annotations);
+  o.out("const ");
+  BufferedPrinter.name(o, cst.name);
+  o.out(": ");
+  type(o, cst.type);
+  o.out(" = ");
+  cst.value match {
+  | None() -> void
+  | Some(v) -> expr(o, v)
+  };
+  o.out(";");
+  o.newline()
+}
+
+fun class_def(o: mutable BufferedPrinter.Out, cd: T.Class_def): void {
+  annotations(o, cd.annotations);
+  if (cd.value.isSome()) {
+    o.out("value ")
+  };
+  o.out(
+    cd.kind match {
+    | A.KBase() -> "base class "
+    | A.KClass() -> "class "
+    | A.KTrait() -> "interface "
+    },
+  );
+  o.out(cd.name.i1);
+  tparams(o, cd.tparams);
+  class_params(o, cd.params);
+  if (!cd.extends_.isEmpty()) {
+    o.out(" extends ");
+    parent_map(o, cd.extends_)
+  };
+  if (!cd.use.isEmpty()) {
+    o.out(" use ");
+    parent_map(o, cd.use)
+  };
+  o.out(" {");
+  o.newline();
+  o.margin(() -> {
+    o.out("depth = " + cd.depth);
+    o.newline();
+    for (cur1 in cd.methods) method_(o, cur1);
+    for (cur1 in cd.consts) const_def(o, cur1)
+  });
+  o.out("}");
+  o.newline();
+  o.newline()
+}
+
+fun fun_def(o: mutable BufferedPrinter.Out, fd: T.Fun_def): void {
+  annotations(o, fd.annotations);
+  o.out("fun ");
+  BufferedPrinter.name(o, fd.name);
+  tparams(o, fd.tparams);
+  params(o, fd.params);
+  return_type(o, fd.return_);
+  fd.body match {
+  | T.Abstract()
+  | T.Native() ->
+    o.out(";");
+    o.newline()
+  | T.Implemented(body) ->
+    o.out("{");
+    o.newline();
+    o.margin(() -> expr(o, body));
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.newline()
+  }
+}
+
+fun type(o: mutable BufferedPrinter.Out, ty: T.Type_): void {
+  SkipNamedAstPp.type(o, ty)
+}
+
+fun type_params(o: mutable BufferedPrinter.Out, x: Parameters<T.Type_>): void {
+  x match {
+  | Positional(tya) ->
+    o.out("(");
+    array(type, o, tya);
+    o.out(")")
+  | Named(m) ->
+    o.out("{");
+    type_map(o, m);
+    o.out("}")
+  }
+}
+
+fun type_map(o: mutable BufferedPrinter.Out, m: UMap<T.Type_>): void {
+  for (name => ty in m) {
+    o.out(name.i1);
+    o.out(": ");
+    type(o, ty);
+    o.out(", ")
+  }
+}
+
+fun type_args(o: mutable BufferedPrinter.Out, x: Array<T.Type_>): void {
+  if (x.isEmpty()) return void;
+
+  o.out("<");
+  type_list(o, x);
+  o.out(">")
+}
+
+fun type_list(o: mutable BufferedPrinter.Out, l: Array<T.Type_>): void {
+  BufferedPrinter.array(type, o, l)
+}
+
+fun parent_map(o: mutable BufferedPrinter.Out, m: UMap<T.Parent>): void {
+  l = m.reduce(
+    ((acc, n, tyl) -> List.Cons((n, tyl), acc)),
+    (List[] : List<(N.Name, T.Parent)>),
+  );
+  BufferedPrinter.list(parent, o, l)
+}
+
+fun parent(o: mutable BufferedPrinter.Out, nt: (T.Name, T.Parent)): void {
+  BufferedPrinter.name(o, nt.i0);
+  type_args(o, nt.i1.targs)
+}
+
+fun class_params(o: mutable BufferedPrinter.Out, x: ?T.Class_params): void {
+  x match {
+  | None() -> void
+  | Some(cp) -> class_params_(o, cp)
+  }
+}
+
+fun class_params_(o: mutable BufferedPrinter.Out, cp: T.Class_params): void {
+  if (cp.final_.isSome()) {
+    o.out(" final ")
+  };
+  params(o, cp.params)
+}
+
+fun params(o: mutable BufferedPrinter.Out, x: Parameters<T.Parameter>): void {
+  x match {
+  | Positional(paraml) ->
+    o.out("(");
+    array(fun_parameter, o, paraml);
+    o.out(")")
+  | Named(param_map) ->
+    o.out("{");
+    values = param_map.values() |> List::createFromIterator;
+    BufferedPrinter.list(fun_parameter, o, values);
+    o.out("}")
+  }
+}
+
+fun fun_parameter(o: mutable BufferedPrinter.Out, fp: T.Parameter): void {
+  annotations(o, fp.annotations);
+  BufferedPrinter.name(o, fp.name);
+  o.out(": ");
+  type(o, fp.type);
+  fp.value match {
+  | None() -> void
+  | Some(e) ->
+    o.out(" = ");
+    expr(o, e)
+  }
+}
+
+fun return_type(o: mutable BufferedPrinter.Out, ty: T.Type_): void {
+  o.out(": ");
+  type(o, ty);
+  o.out(" ")
+}
+
+fun method_body(o: mutable BufferedPrinter.Out, m: T.Method_def): void {
+  m.body match {
+  | T.Abstract()
+  | T.Native() ->
+    o.out("; from ");
+    BufferedPrinter.name(o, m.source);
+    o.newline()
+  | T.Implemented(e) ->
+    o.out("{ from ");
+    BufferedPrinter.name(o, m.source);
+    o.newline();
+    o.margin(() -> expr(o, e));
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.newline()
+  }
+}
+
+fun tparams(o: mutable BufferedPrinter.Out, x: Array<T.Type_parameter>): void {
+  if (x.isEmpty()) return void;
+
+  o.out("<");
+  BufferedPrinter.array(type_parameter, o, x);
+  o.out(">")
+}
+
+fun type_parameter(o: mutable BufferedPrinter.Out, tp: T.Type_parameter): void {
+  (var, i, x, _) = tp;
+  var match {
+  | A.Vnone() -> void
+  | A.Vplus() -> o.out("+")
+  | A.Vminus() -> o.out("-")
+  };
+  o.out("#");
+  o.out(i.toString());
+  o.out(".");
+  BufferedPrinter.name(o, x)
+}
+
+fun tparams_sk(
+  o: mutable BufferedPrinter.Out,
+  tps: List<N.Type_parameter>,
+): void {
+  tps match {
+  | List.Nil() -> void
+  | l ->
+    o.out("<");
+    BufferedPrinter.list(type_parameter_sk, o, l);
+    o.out(">")
+  }
+}
+
+fun type_parameter_sk(
+  o: mutable BufferedPrinter.Out,
+  tp: N.Type_parameter,
+): void {
+  (var, i, x, _) = tp;
+  var match {
+  | A.Vnone() -> void
+  | A.Vplus() -> o.out("+")
+  | A.Vminus() -> o.out("-")
+  };
+  o.out("#");
+  o.out(i.toString());
+  o.out(".");
+  BufferedPrinter.name(o, x)
+}
+
+fun method_(o: mutable BufferedPrinter.Out, m: T.Method_def): void {
+  annotations(o, m.annotations);
+  o.out(`${m.kind} `);
+  BufferedPrinter.name(o, m.name);
+  tparams(o, m.tparams);
+  params(o, m.params);
+  return_type(o, m.return_);
+  method_body(o, m)
+}
+
+fun expr(o: mutable BufferedPrinter.Out, ex: T.Expr): void {
+  (ty, (_, e)) = ex;
+  expr_(ty, o, e)
+}
+
+fun expr_(ty: T.Type_, o: mutable BufferedPrinter.Out, e: T.Expr__): void {
+  e match {
+  | T.DefaultArg() -> o.out("#default")
+  | T.Literal(l) -> SkipAstPp.literal(o, l)
+  | T.Freeze(e1) ->
+    o.out("freeze(");
+    expr(o, e1);
+    o.out(")")
+  | T.GetClass(e1) ->
+    o.out("class(");
+    expr(o, e1);
+    o.out(")")
+  | T.Classname(n) -> BufferedPrinter.name(o, n)
+  | T.DynamicConstruction(e1, n, targs, args) ->
+    expr(o, e1);
+    o.out("[");
+    BufferedPrinter.name(o, n);
+    type_args(o, targs);
+    o.out("]");
+    expr_call_args(o, args)
+  | T.Object(x, targs, args) ->
+    BufferedPrinter.name(o, x);
+    type_args(o, targs);
+    expr_call_args(o, args)
+  | T.Const(x) -> BufferedPrinter.name(o, x)
+  | T.Fun(x, tyl) ->
+    BufferedPrinter.name(o, x);
+    o.out("<");
+    type_list(o, tyl);
+    o.out(">")
+  | T.Local(x) ->
+    o.out("(");
+    BufferedPrinter.name(o, x);
+    o.out(" : ");
+    type(o, ty);
+    o.out(")")
+  | T.Seq(e1, e2) ->
+    expr(o, e1);
+    o.out(";");
+    o.newline();
+    expr(o, e2)
+  | T.If(e1, e2, e3) ->
+    o.out("if(");
+    expr(o, e1);
+    o.out(") {");
+    o.newline();
+    o.margin(() -> {
+      expr(o, e2);
+      o.newline()
+    });
+    o.out("}");
+    o.newline();
+    o.out("else {");
+    o.newline();
+    o.margin(() -> {
+      expr(o, e3);
+      o.newline()
+    });
+    o.out("}");
+    o.newline()
+  | T.Annotated(e1, ty1) ->
+    o.out("(");
+    expr(o, e1);
+    o.out(" : ");
+    type(o, ty1);
+    o.out(")")
+  | T.Call(e1, el) ->
+    o.out("Call ");
+    expr(o, e1);
+    expr_call_args(o, el)
+  | T.Barbar(e1, e2) ->
+    expr(o, e1);
+    o.out(" || ");
+    expr(o, e2)
+  | T.Ampamp(e1, e2) ->
+    expr(o, e1);
+    o.out(" && ");
+    expr(o, e2)
+  | T.Assign(v, rvalue) ->
+    local(o, v);
+    o.out(" <- ");
+    expr(o, rvalue)
+  | T.StaticDot(dinfo) -> dot_info(o, "::", dinfo)
+  | T.Dot(dinfo) -> dot_info(o, ".", dinfo)
+  | T.Match(e1, mbl) ->
+    expr(o, e1);
+    o.out(" match {");
+    for (cur1 in mbl) match_branch(o, cur1);
+    o.newline();
+    o.out("}");
+    o.newline()
+  | T.Lambda(lp, fv, e1, yields) ->
+    ty match {
+    | (_, N.Tfun(_, (purity, tracking), _, _, _)) ->
+      if (purity[0] is N.Fmutable()) o.out("mutable ");
+      if (tracking[0] is N.Funtracked()) o.out("untracked ");
+      if (yields.isSome()) o.out("yields ")
+    | _ -> void
+    };
+    o.out("Lambda ");
+    lambda_params(o, lp);
+    lambda_freevars(o, fv);
+    o.out(" ->");
+    o.newline();
+    o.margin(() -> expr(o, e1));
+    o.newline()
+  | T.Try(e1, mbl) ->
+    o.out("try {");
+    expr(o, e1);
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.out("catch {");
+    for (cur1 in mbl) match_branch(o, cur1);
+    o.newline();
+    o.out("}");
+    o.newline()
+  | T.Bind(v, rvalue, e1) ->
+    binding(o, v);
+    o.out(" = ");
+    expr(o, rvalue);
+    o.out(" in");
+    o.newline();
+    expr(o, e1)
+  | T.Await(e1) ->
+    o.out("await ");
+    expr(o, e1)
+  | T.Return(e1) ->
+    o.out("return ");
+    expr(o, e1)
+  | T.Async(fvs, e1) ->
+    o.out("async ");
+    lambda_freevars(o, fvs);
+    o.out("{");
+    o.newline();
+    expr(o, e1);
+    o.out("}")
+  | T.Throw(e1) ->
+    o.out("throw ");
+    expr(o, e1)
+  | T.Concurrent(el) ->
+    o.out("concurrent ");
+    o.newline();
+    o.margin(() ->
+      for (e1 in el) {
+        o.out("{");
+        o.newline();
+        expr(o, e1);
+        o.newline();
+        o.out("}");
+        o.newline()
+      }
+    )
+  | T.Array(el) ->
+    o.out("vector ");
+    o.newline();
+    o.margin(() ->
+      for (e1 in el) {
+        o.out("(");
+        o.newline();
+        expr(o, e1);
+        o.newline();
+        o.out(")");
+        o.newline()
+      }
+    )
+  | T.LazyLambda(_) -> o.out("#lazy#")
+  | T.With(e1, updates) ->
+    expr(o, e1);
+    o.out(" with {");
+    with_updates(o, updates);
+    o.out("}")
+  | T.AssignField(e1, _, field_name, e2) ->
+    expr(o, e1);
+    o.out(".");
+    BufferedPrinter.name(o, field_name);
+    o.out(" <- ");
+    expr(o, e2)
+  | T.TemplateLiteral(args) ->
+    o.out("`");
+    expr_call_args(o, args);
+    o.out("`")
+  | T.Continue() -> o.out("continue")
+  | T.Break(eb) ->
+    o.out("break ");
+    expr(o, eb)
+  | T.Loop(body) ->
+    o.out("loop ");
+    expr(o, body)
+
+  | T.DoWhile(body, condition, withoutBreak) ->
+    o.out("do ");
+    expr(o, body);
+    o.out("while (");
+    expr(o, condition);
+    o.out(") else ");
+    expr(o, withoutBreak)
+  | T.While(condition, body, withoutBreak) ->
+    o.out("while (");
+    expr(o, condition);
+    o.out(")");
+    expr(o, body);
+    o.out(" else ");
+    expr(o, withoutBreak)
+  | T.Yield(e1) ->
+    o.out("yield ");
+    expr(o, e1)
+  | T.YieldBreak() -> o.out("yield break")
+  }
+}
+
+fun expr_call_args(o: mutable BufferedPrinter.Out, l: T.Call_args): void {
+  object_args(o, l)
+}
+
+fun object_name(o: mutable BufferedPrinter.Out, x: N.Name): void {
+  BufferedPrinter.name(o, x)
+}
+
+fun expr_list(o: mutable BufferedPrinter.Out, l: List<T.Expr>): void {
+  BufferedPrinter.list(expr, o, l)
+}
+
+fun local(o: mutable BufferedPrinter.Out, l: T.LocalInfo): void {
+  (ty, n) = l;
+  BufferedPrinter.name(o, n);
+  o.out(": ");
+  type(o, ty)
+}
+
+fun binding(o: mutable BufferedPrinter.Out, b: T.Binding): void {
+  (ty, _, _) = b;
+  binding_name(o, b);
+  o.out(": ");
+  type(o, ty)
+}
+
+fun dot_info(
+  o: mutable BufferedPrinter.Out,
+  op: String,
+  info: T.Dot_info,
+): void {
+  expr(o, info.obj_expr);
+  o.out(op);
+  BufferedPrinter.name(o, info.field);
+  o.out("{");
+  elt_kind(o, info.elt_kind);
+  o.out(" in ");
+  BufferedPrinter.name(o, info.source);
+  o.out("}");
+  if (!info.field_targs.isEmpty()) {
+    o.out("<");
+    array(type, o, info.field_targs);
+    o.out(">")
+  }
+}
+
+fun elt_kind(o: mutable BufferedPrinter.Out, k: T.Elt_kind): void {
+  o.out(
+    k match {
+    | N.EType() -> "type"
+    | N.EConst() -> "const"
+    | N.EProperty() -> "property"
+    | N.EMethod() -> "method"
+    },
+  )
+}
+
+fun lambda_params(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<T.Binding>,
+): void {
+  x match {
+  | Positional(l) -> lambda_param_array("(", ")", o, l)
+  | Named(m) -> lambda_param_array("{", "}", o, m.values().collect(Array))
+  }
+}
+
+fun lambda_param_array(
+  open_: String,
+  close: String,
+  o: mutable BufferedPrinter.Out,
+  a: Array<T.Binding>,
+): void {
+  a.size() match {
+  | 0 ->
+    o.out(open_);
+    o.out(close)
+  | 1 -> ty_name(o, a[0])
+  | _ ->
+    o.out(open_);
+    array(ty_name, o, a);
+    o.out(close)
+  }
+}
+
+fun ty_name(o: mutable BufferedPrinter.Out, tyn: T.Binding): void {
+  (ty, x, info) = tyn;
+  if (TU.binding_needs_ref(info)) {
+    o.out("&")
+  };
+  BufferedPrinter.name(o, x);
+  o.out(": ");
+  type(o, ty)
+}
+
+fun lambda_freevars(o: mutable BufferedPrinter.Out, fv: SMap<T.Binding>): void {
+  if (fv.isEmpty()) {
+    void
+  } else {
+    l = fv.reduce((acc, _, v) -> List.Cons(v, acc), (List[] : List<T.Binding>));
+    o.out("uses (");
+    BufferedPrinter.list(binding, o, l);
+    o.out(")")
+  }
+}
+
+fun bool(o: mutable BufferedPrinter.Out, x: Bool): void {
+  o.out(x.toString());
+  o.space()
+}
+
+fun binding_info(o: mutable BufferedPrinter.Out, info: T.Binding_info): void {
+  o.out("{");
+  if (info.updated) {
+    o.out(" updated");
+  };
+  if (info.captured) {
+    o.out(" captured");
+  };
+  o.out("}");
+}
+
+fun binding_name(o: mutable BufferedPrinter.Out, bn: T.Binding): void {
+  (_, (_, name), info) = bn;
+  o.out(name);
+  binding_info(o, info);
+}
+
+fun param_pattern_fields(
+  o: mutable BufferedPrinter.Out,
+  pf: (T.Name, T.ParamPattern),
+): void {
+  ((_, k), v) = pf;
+  o.out(k);
+  o.out(" = ");
+  param_pattern(o, v)
+}
+
+fun match_branch(o: mutable BufferedPrinter.Out, mb: T.Match_branch): void {
+  (pats, maybe_guard, action) = mb;
+  match_patterns(o, pats);
+  maybe_guard.each(
+    (e -> {
+      o.out(" when {");
+      expr(o, e);
+      o.out("}")
+    }),
+  );
+  o.out(" => ");
+  expr(o, action)
+}
+
+fun match_patterns(
+  o: mutable BufferedPrinter.Out,
+  pats: List<T.Pattern>,
+): void {
+  // sk_list_iter(pats, pat -> match_pattern(o, pat))
+  BufferedPrinter.list_sep(" | ", (o, pat) -> match_pattern(o, pat), o, pats);
+}
+
+fun match_pattern(o: mutable BufferedPrinter.Out, p: T.Pattern): void {
+  (_ty, mp) = p;
+  match_pattern_(o, mp)
+}
+
+fun match_pattern_(o: mutable BufferedPrinter.Out, x: T.Pattern_): void {
+  x match {
+  | (_, T.Pat_type(tid, castType, obj_params)) ->
+    type_identifier(o, tid);
+    o.out(": ");
+    type(o, castType);
+    obj_params match {
+    | None() -> o.out(" _")
+    | Some(obj_params1) ->
+      obj_params1 match {
+      | Positional(l) ->
+        o.out("(");
+        array(param_pattern, o, l);
+        o.out(")")
+      | Named(m) ->
+        values = m.items() |> List::createFromIterator;
+        o.out("{");
+        BufferedPrinter.list(param_pattern_fields, o, values);
+        o.out("}")
+      }
+    }
+  | (_, T.Pat_var(x1)) -> binding(o, x1)
+  | (_, T.Pat_literal(l)) -> SkipAstPp.literal(o, l)
+  | (_, T.Pat_as(pat, y)) ->
+    binding(o, y);
+    o.out(" @ ");
+    match_pattern(o, pat)
+  }
+}
+
+fun param_pattern(o: mutable BufferedPrinter.Out, p: T.ParamPattern): void {
+  (ty, pat) = p;
+  o.out("(");
+  match_pattern(o, pat);
+  o.out(": ");
+  type(o, ty);
+  o.out(")");
+}
+
+fun type_identifier(
+  o: mutable BufferedPrinter.Out,
+  x: T.Type_identifier,
+): void {
+  x match {
+  | T.Tid_object(obj_name)
+  | T.Tid_static(_, obj_name) ->
+    BufferedPrinter.name(o, obj_name)
+  }
+}
+
+fun object_args(o: mutable BufferedPrinter.Out, x: T.Call_args): void {
+  x match {
+  | Positional(l) ->
+    o.out("(");
+    array(expr, o, l.map(p -> p.i1));
+    o.out(")")
+  | Named(l) ->
+    o.out("{");
+    field_list(o, l);
+    o.out("}")
+  }
+}
+
+fun with_updates(o: mutable BufferedPrinter.Out, m: T.With_updates): void {
+  field_list(
+    o,
+    m.map((_, p) -> {
+      (i, e, _, _) = p;
+      (i, e)
+    }),
+  )
+}
+
+fun field_list(
+  o: mutable BufferedPrinter.Out,
+  map: UMap<T.Ordered_expr>,
+): void {
+  key_values: List<(String, T.Ordered_expr)> =
+    map.items().map(noe -> (noe.i0.i1, noe.i1)) |> List::createFromIterator;
+  sorted_key_values = key_values.sortedBy(oe ~> (oe.i1.i0 : Int), compare);
+  sorted_key_values1 = sorted_key_values.map(kv -> {
+    (k, (_, v)) = kv;
+    (k, v)
+  });
+  BufferedPrinter.list(field, o, sorted_key_values1)
+}
+
+fun field(o: mutable BufferedPrinter.Out, f: (String, T.Expr)): void {
+  (x, e) = f;
+  e match {
+  | (_, (_, T.Local(y))) if (x == y.i1) -> o.out(y.i1)
+  | _ ->
+    o.out(x);
+    o.out(" = ");
+    expr(o, e)
+  }
+}

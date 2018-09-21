@@ -1,0 +1,1461 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The named abstract syntax tree. */
+/*****************************************************************************/
+
+module alias A = SkipAst;
+module alias FileRange = FileRange;
+
+module SkipNamedAst;
+
+type Class_kind = SkipAst.Class_kind;
+
+base class Elt_kind uses Equality {
+  children =
+  | EType()
+  | EConst()
+  | EProperty()
+  | EMethod()
+}
+
+type Name = (FileRange, String);
+
+type Visibility = (FileRange, Visibility_);
+base class Visibility_ {
+  children =
+  | VPrivate()
+  | VPublic()
+  | VProtected()
+}
+
+class Program{
+  class_defs: UMap<Class_def>,
+  const_defs: UMap<Const_def>,
+  fun_defs: UMap<Fun_def>,
+  tya_defs: UMap<Type_alias_def>,
+}
+
+class Const_def{
+  annotations: SSet,
+  deferred_: ?FileRange,
+  from_: ?Name,
+  name: Name,
+  native_: ?FileRange,
+  source: ?Name,
+  type: Type_,
+  value: Expr_body,
+  visibility: Visibility,
+  // Errors for locals generated during naming aren't raised until after typing
+  localsErrors: List<SkipError.Trace>,
+}
+
+class Type_alias_def{
+  annotations: SSet,
+  body: Type_,
+  name: Name,
+  tparams: .Array<(String, Name)>,
+}
+
+class Type_def{
+  annotations: SSet,
+  body: Cla_tyd,
+  name: Name,
+  source: Name,
+  tparams: .Array<Type_parameter>,
+  visibility: Visibility,
+}
+
+base class Cla_tyd {
+  children =
+  | TydAbstract(?Type_, ?Type_)
+  | TydDefined(Type_)
+}
+
+class Class_def{
+  annotations: SSet,
+  concrete_children: SSet, // KClass filter of children_, does not include itself
+  children_: SSet, // children of all kinds
+
+  consts: UMap<Const_def>,
+  data: ?FileRange,
+  depth: Int,
+  extends_: ParentMap,
+  use: ParentMap,
+  fields: UMap<Field_type>,
+  kind: Class_kind,
+  methods: UMap<Method_def>,
+  mutable_: ?FileRange,
+  name: Name,
+  native_: ?FileRange,
+  params: MaybeClassParams,
+  /* Tparams that have a valid, but mismatched variance in extends
+   * see checkVariance for details */
+  tparam_mismatched: SMap<SSet>,
+  tparams: .Array<Type_parameter>,
+  types: UMap<Type_def>,
+  value: ?FileRange,
+  // Tparams are the list, sset is each parent that has a view of it
+  tparam_parents: .Array<SSet>,
+  // true if class code refers to `this` type.
+  // we use this when deciding whether to copy down inherited methods.
+  // (See SkipTyping.method_is_copydown for details)
+  is_self_parameterized: Bool,
+} {
+  // A class is chilled only if it never has mutable instances
+  // traits could be used by a mutable class so always false
+  fun isChilledOnly(): Bool {
+    this.mutable_.isNone() && !(this.kind is SkipAst.KTrait());
+  }
+
+  // A class is frozen only if it is a KClass whose chilled version is
+  // equivalent to it's frozen version, i.e. no tparams
+  fun isFrozenOnly(): Bool {
+    this.mutable_.isNone() &&
+      this.tparams.isEmpty() &&
+      this.kind is SkipAst.KClass()
+  }
+}
+
+base class MaybeClassParams {
+  children =
+  | NoParams()
+  | NativeConstruct(FileRange)
+  | HasParams(Class_params)
+
+  fun mapClassParams(f: Class_params -> Class_params): this
+  | HasParams(cp) -> HasParams(f(cp))
+  | _ -> this
+
+  fun fromHasParams(s: String): Class_params
+  | HasParams(cp) -> cp
+  | _ -> invariant_violation("ICE does not have params: " + s)
+}
+
+class Class_params{
+  final_: ?FileRange,
+  params: Parameters<Parameter>,
+  pos: FileRange,
+  source: Name,
+  visibility: Visibility,
+}
+
+base class FieldKind uses Show
+class FKStatic(fr: FileRange) extends FieldKind {
+  fun toString(): String {
+    "static"
+  }
+}
+base class FKDynamic extends FieldKind {
+  children =
+  | FKMutable(fr: FileRange)
+  | FKReadonly(fr: FileRange)
+
+  fun toString(): String
+  | FKMutable _ -> "mutable"
+  | FKReadonly _ -> "readonly"
+}
+base class FKChilledThis extends FKDynamic {
+  children =
+  | FKFrozen(fr: FileRange)
+  | FKChilled()
+
+  fun toString(): String
+  | FKFrozen _ -> "frozen"
+  | FKChilled _ -> "unmodified"
+}
+
+class Field_type{
+  abstract: ?FileRange,
+  deferred_: ?FileRange,
+  assignable: ?FileRange,
+  eltk: Elt_kind,
+  kind: FieldKind,
+  source: Name,
+  tparams: .Array<Type_parameter>,
+  type: Type_,
+  visibility: Visibility,
+  whenparams: .Array<Whenclause>,
+}
+
+base class Callable_def{
+  annotations: SSet,
+  async_: ?FileRange,
+  body: Expr_body,
+  memoized_: ?FileRange,
+  name: Name,
+  native_: ?FileRange,
+  params: Parameters<Parameter>,
+  return_: Type_,
+  tparams: .Array<Type_parameter>,
+  untracked_: ?FileRange,
+  yields: ?FileRange,
+  // Errors for locals generated during naming aren't raised until after typing
+  localsErrors: List<SkipError.Trace>,
+}
+
+class Method_def{
+  visibility: Visibility,
+  algebraic: Bool,
+  macro_: ?FileRange,
+  deferred_: ?FileRange,
+  from_: Name,
+  overridable_: ?FileRange,
+  kind: FieldKind,
+  source: Name,
+  whenparams: .Array<Whenclause>,
+} extends Callable_def
+
+base class Expr_body {
+  children =
+  | Abstract()
+  | Native()
+  | Implemented(Expr)
+}
+
+class Fun_def{visibility: ?FileRange} extends Callable_def
+
+type Variance = SkipAst.Variance;
+
+type Type_parameter = (Variance, String, Name, .Array<Type_>);
+
+type Whenclause = (Type_, .Array<Type_>);
+
+class Parameter{
+  annotations: SSet,
+  deferred_: ?FileRange,
+  index: Int,
+  mutable_: ?FileRange,
+  name: Name,
+  source: ?Name,
+  type: Type_,
+  value: ?Expr,
+  visibility: Visibility,
+  // Errors for locals generated during naming aren't raised until after typing
+  localsErrors: List<SkipError.Trace>,
+}
+
+type Type_ = (FileRange, Type__);
+
+private fun eqType(t1: Type_, t2: Type_): Bool {
+  t1.i1 == t2.i1
+}
+
+private fun hashType(t: Type_): Int {
+  t.i1.hash()
+}
+
+base class Type__ uses Hashable, Equality {
+  children =
+  | Tfrozen(Variance)
+  | TnonNullable(Variance)
+  | Tanything()
+  | Tapply(Modality, Name, .Array<Type_>)
+  | Tfun(Variance, Tfun_modifiers, .Array<Type_>, Parameters<Type_>, Type_)
+  | Tparam(frozen_src: ?FileRange, variance: Variance, id: String, name: Name)
+  | Tvar(Int)
+  | Tlambda(Variance, Int, Tfun_modifiers, Type_)
+  | Tdefault(Type_)
+
+  /* names are just error messages, and transcompilation */
+  | Tnamed(Named_info, Type_)
+
+  | Tpromoted(
+    variance: Variance,
+    mode: Modality,
+    promoted_set: SSet,
+    tparam_set: SMap<String>,
+    name: Name,
+    targs: .Array<Type_>,
+  )
+  | Tset(
+    variance: Variance,
+    mode: Modality,
+    tparam_set: SMap<String>,
+    elts: .Array<InterElt>,
+  )
+  | Tawaitable(Variance, Type_)
+
+  fun ==(other: Type__): Bool
+  | Tanything() -> other is Tanything _
+  | Tfrozen(var1) ->
+    other match {
+    | Tfrozen(var2) -> var1 == var2
+    | _ -> false
+    }
+  | TnonNullable(var1) ->
+    other match {
+    | TnonNullable(var2) -> var1 == var2
+    | _ -> false
+    }
+  | Tapply(m1, n1, tyl1) ->
+    other match {
+    | Tapply(m2, n2, tyl2) ->
+      n1.i1 == n2.i1 && m1 == m2 && tyl1.eqBy(tyl2, eqType)
+    | _ -> false
+    }
+  | Tfun(v1, pltl, tyl1, pty1, rety1) ->
+    other match {
+    | Tfun(v2, (pl2, tl2), tyl2, pty2, rety2) ->
+      (pl1, tl1) = pltl;
+      v1 == v2 &&
+        pl1 == pl2 &&
+        tl1 == tl2 &&
+        tyl1.eqBy(tyl2, eqType) &&
+        pty1.eqBy(pty2, eqType) &&
+        eqType(rety1, rety2)
+    | _ -> false
+    }
+  | Tparam(frz1, v1, id1, _) ->
+    other match {
+    | Tparam(frz2, v2, id2, _) ->
+      id1 == id2 &&
+        ((frz1.isSome() && frz2.isSome()) ||
+          (frz1.isNone() && frz2.isNone())) &&
+        v1 == v2
+    | _ -> false
+    }
+  | Tvar(id1) ->
+    other match {
+    | Tvar(id2) -> id1 == id2
+    | _ -> false
+    }
+  | Tlambda(v1, i1, pltl, ty1) ->
+    other match {
+    | Tlambda(v2, i2, (pl2, tl2), ty2) ->
+      (pl1, tl1) = pltl;
+      i1 == i2 && v1 == v2 && pl1 == pl2 && tl1 == tl2 && eqType(ty1, ty2)
+    | _ -> false
+    }
+  | Tdefault(ty1) ->
+    other match {
+    | Tdefault(ty2) -> eqType(ty1, ty2)
+    | _ -> false
+    }
+  | Tnamed(ni1, ty1) ->
+    other match {
+    | Tnamed(ni2, ty2) -> ni1 == ni2 && eqType(ty1, ty2)
+    | _ -> false
+    }
+  | Tpromoted(v1, m1, ps1, ts1, n1, tyl1) ->
+    other match {
+    | Tpromoted(v2, m2, ps2, ts2, n2, tyl2) ->
+      n1.i1 == n2.i1 &&
+        v1 == v2 &&
+        m1 == m2 &&
+        ps1 == ps2 &&
+        ts1.eqBy(ts2, (_, _) ~> true) &&
+        tyl1.eqBy(tyl2, eqType)
+    | _ -> false
+    }
+  | Tset(v1, m1, ts1, elts1) ->
+    other match {
+    | Tset(v2, m2, ts2, elts2) ->
+      v1 == v2 && m1 == m2 && ts1.eqBy(ts2, (_, _) ~> true) && elts1 == elts2
+    | _ -> false
+    }
+  | Tawaitable(v1, ty1) ->
+    other match {
+    | Tawaitable(v2, ty2) -> v1 == v2 && eqType(ty1, ty2)
+    | _ -> false
+    }
+
+  fun hash(): Int
+  | Tanything() -> "%Tanything".hash()
+  | Tfrozen(var1) -> ("%Tfrozen", var1).hash()
+  | TnonNullable(var) -> ("%TnonNullable", var).hash()
+  | Tapply(m, n, tyl) ->
+    // Does not hash on n.i0
+    cur = ("%Tapply", m, n.i1).hash();
+    tyl.hashBy(hashType, cur)
+  | Tfun(v1, pltl, tyl, pty, rety) ->
+    (pl, tl) = pltl;
+    cur = ("%Tfun", v1, rety.i1, pl, tl).hash();
+    !cur = tyl.hashBy(hashType, cur);
+    pty.foldl((i, ty) -> (i, ty.i1).hash(), cur)
+  | Tparam(frz, v, id, _) ->
+    (
+      "%Tparam",
+      frz match {
+      | Some _ -> "Some"
+      | None() -> "None"
+      },
+      v,
+      id,
+    ).hash()
+  | Tvar(id) -> ("%Tvar", id).hash()
+  | Tlambda(v, i, pltl, ty) ->
+    (pl, tl) = pltl;
+    ("%Tlambda", v, i, ty.i1, pl, tl).hash()
+  | Tdefault(ty) -> ("%Tdefault", ty.i1).hash()
+  | Tnamed(ni, ty) -> ("%Tnamed", ni, ty.i1).hash()
+  | Tpromoted(v, m, ps, ts, n, tyl) ->
+    cur = ("%Tpromoted", v, m, n.i1, ps, ts.keys().collect(Set)).hash();
+    tyl.hashBy(hashType, cur)
+  | Tset(v, m, ts, elts) ->
+    cur = ("%Tset", v, m, ts.keys().collect(Set)).hash();
+    elts.foldl((i, elt) -> (i, elt).hash(), cur)
+  | Tawaitable(v, ty) -> ("%^", v, ty.i1).hash()
+}
+
+/* Object types can have 3 modes
+ * Immutable (MChilled)
+ * Mutable (Mmutable)
+ * Readonly (Mreadonly)
+ *
+ * These modes are reflective of the instantiated behavior of the object
+ */
+base class Modality uses Equality, Hashable
+base class MnotFrozen extends Modality, EffectiveNotFrozen
+class Mmutable extends MnotFrozen {
+  fun toString(): String {
+    "mutable"
+  }
+}
+class Mreadonly extends MnotFrozen {
+  fun toString(): String {
+    "readonly"
+  }
+}
+class Mchilled() extends Modality {}
+
+/* Object types can have 4 observed modes
+ * In this system we split Immutable into two possible states
+ * Deeply immutable, which we call 'frozen'. No mutable value can be reached
+ * Partially immutable, which we call 'chilled'. Mutable values might be reached
+ * BUT they will only be reached in spots via the visible type arguments to the
+ * object type. In other words, the type argument is the witness to any possible
+ * mutability
+ *
+ * Frozen (Efrozen)
+ * Chilled (Echilled)
+ * Mutable (Mmutable)
+ * Readonly (Mreadonly)
+ */
+base class EffectiveMode
+base class EffectiveNotFrozen(fr: FileRange) extends EffectiveMode uses Show
+class Efrozen() extends EffectiveMode
+class Echilled(reason: MnotFrozen) extends EffectiveNotFrozen {
+  fun toString(): String {
+    "" + this.reason + " containing"
+  }
+}
+
+base class Named_info uses Equality, Hashable {
+  children =
+  | NAlias(Name)
+  | NThis(Name)
+  | NStatic(Name)
+  | NInst(Name)
+  | NTydResolved(Name, .Array<Name>)
+  | NTydAbstract(Name, .Array<Name>)
+
+  fun ==(other: Named_info): Bool
+  | NAlias(n1) ->
+    other match {
+    | NAlias(n2) -> n1.i1 == n2.i1
+    | _ -> false
+    }
+  | NThis(n1) ->
+    other match {
+    | NThis(n2) -> n1.i1 == n2.i1
+    | _ -> false
+    }
+  | NStatic(n1) ->
+    other match {
+    | NStatic(n2) -> n1.i1 == n2.i1
+    | _ -> false
+    }
+  | NInst(n1) ->
+    other match {
+    | NInst(n2) -> n1.i1 == n2.i1
+    | _ -> false
+    }
+  | NTydResolved(n1, l1) ->
+    other match {
+    | NTydResolved(n2, l2) ->
+      n1.i1 == n2.i1 && l1.eqBy(l2, (x1, x2) -> x1.i1 == x2.i1)
+    | _ -> false
+    }
+  | NTydAbstract(n1, l1) ->
+    other match {
+    | NTydAbstract(n2, l2) ->
+      n1.i1 == n2.i1 && l1.eqBy(l2, (x1, x2) -> x1.i1 == x2.i1)
+    | _ -> false
+    }
+
+  // Does not hash on n.i0
+  fun hash(): Int
+  | NAlias(n) -> ("%NAlias", n.i1).hash()
+  | NThis(n) -> ("%NThis", n.i1).hash()
+  | NStatic(n) -> ("%NStatic", n.i1).hash()
+  | NInst(n) -> ("%NInst", n.i1).hash()
+  | NTydResolved(n, l) ->
+    l.hashBy(x -> x.i1.hash(), ("%NTydResolved", n.i1).hash())
+  | NTydAbstract(n, l) ->
+    l.hashBy(x -> x.i1.hash(), ("%NTydAbstract", n.i1).hash())
+}
+
+type Tfun_modifiers = (.Array<Purity_modifier>, .Array<Tracking_modifier>);
+
+base class Purity_modifier uses Equality, Hashable {
+  children =
+  | Fpure()
+  | Fmutable()
+}
+
+base class Tracking_modifier uses Equality, Hashable {
+  children =
+  | Ftracked()
+  | Funtracked()
+}
+
+class InterElt{
+  depth: Int,
+  kind: Class_kind,
+  name: Name,
+  targs: .Array<Type_>,
+  conditions: InterEltConditions,
+} uses Equality, Hashable {
+  fun hash(): Int {
+    cur = (this.depth, this.kind, this.name.i1, this.conditions).hash();
+    this.targs.hashBy(hashType, cur)
+  }
+
+  fun isConditional(): Bool {
+    this.conditions match {
+    | ECSatisfied()
+    | ECConditions _ ->
+      true
+    | ECNoConditions() -> false
+    }
+  }
+}
+
+base class InterEltConditions uses Equality, Hashable {
+  children =
+  | ECSatisfied()
+  | ECNoConditions()
+  | ECConditions(conditions: .Array<.Array<Whenclause>>)
+
+  fun ==(other: InterEltConditions): Bool
+  | ECSatisfied() -> other is ECSatisfied()
+  | ECNoConditions() -> other is ECNoConditions()
+  | ECConditions(conds1) ->
+    other match {
+    | ECConditions(conds2) ->
+      conds1.size() == conds2.size() &&
+        for ((inner1, inner2) in conds1.values().zip(conds2.values())) {
+          if (inner1.size() != inner2.size()) break false;
+          eqInner = for ((wc1, wc2) in inner1.values().zip(inner2.values())) {
+            if (wc1.i0 != wc2.i0 || !wc1.i1.eqBy(wc1.i1, eqType)) break false
+          } else {
+            true
+          };
+          if (!eqInner) break false
+        } else {
+          true
+        }
+    | _ -> false
+    }
+
+  fun hash(): Int
+  | ECSatisfied() -> "%ECSatisfied".hash()
+  | ECNoConditions() -> "%ECNoConditions".hash()
+  | ECConditions(conds) ->
+    conds.reduce(
+      (acc, inner) ->
+        inner.reduce(
+          (acc, wc) -> wc.i1.hashBy(hashType, (acc, wc.i0).hash()),
+          acc,
+        ),
+      "%ECConditions".hash(),
+    )
+
+  fun map(f: Whenclause -> Whenclause): this
+  | ECSatisfied() -> this
+  | ECNoConditions() -> this
+  | ECConditions(conditions) ->
+    !this.conditions = conditions.map(inner -> inner.map(f));
+    this
+}
+
+type Expr = (FileRange, Expr_);
+
+base class Expr_ {
+  children =
+  | Classname(name: Name, targs: .Array<Type_>)
+  | Literal(value: SkipAst.LiteralValue)
+  | Var(name: Name)
+  | Object(mut: ?FileRange, name: Name, targs: .Array<Type_>, args: Call_args)
+  | Seq(left: Expr, right: Expr)
+  | If(cond: Expr, t: Expr, f: Expr)
+  | Call(mut: ?FileRange, base: Expr, targs: .Array<Type_>, args: Call_args)
+  | ArrayGet(base: Expr, args: Call_args)
+  | Annotated(expr: Expr, type_: Type_)
+  | Bind(name: Name, expr: Expr, cont: Expr)
+  | Assign(name: Name, expr: Expr)
+  | Dot(base: Expr, field: Name)
+  | StaticDot(base: Expr, field: Name)
+  | Pipe(left: Expr, right: Expr)
+  | Binop(op: PosBinop, left: Expr, right: Expr)
+  | Unop(op: PosUnop, arg: Expr)
+  | Is(expr: Expr, pattern: Pattern)
+  | As(expr: Expr, pattern: Pattern)
+  | Match(expr: Expr, branches: List<Match_branch>)
+  | Lambda(
+    mods: Tfun_modifiers,
+    params: Parameters<Lam_parameter>,
+    captured: SMap<FileRange>,
+    body: Expr,
+    yields: ?FileRange,
+  )
+  | Try(expr: Expr, branches: List<Match_branch>)
+  | Await(expr: Expr)
+  | Return(expr: Expr)
+  | Yield(expr: Expr)
+  | YieldBreak()
+  | Async(captured: SMap<FileRange>, expr: Expr)
+  | Throw(expr: Expr)
+  | Concurrent(exprs: List<Expr>)
+  | Array(mut: ?FileRange, targs: .Array<Type_>, args: .Array<Expr>)
+  | With(expr: Expr, args: UMap<Ordered_expr>)
+  | AssignField(base: Expr, field: Name, expr: Expr)
+  | TemplateLiteral(args: Call_args)
+
+  | Continue()
+  | Break(Expr)
+  | Loop(body: Expr)
+  // dowhile/while is kept for ease of translating break and continue
+  // forEach is translated to dowhile
+  | DoWhile(body: Expr, condition: Expr, withoutBreak: Expr)
+  | While(condition: Expr, body: Expr, withoutBreak: Expr)
+}
+
+type Lam_parameter = (Name, ?Type_);
+
+type Ordered_expr = (Int, Expr);
+
+type Call_args = Parameters<Ordered_expr>;
+
+type Match_branch = (List<Pattern>, ?Expr, Expr);
+
+type Pattern_complete = SkipAst.Pattern_complete;
+
+type Pattern = (FileRange, Pattern_);
+
+base class Pattern_ {
+  children =
+  | Pat_const(Expr)
+  | Pat_var(Name)
+  | Pat_literal(SkipAst.LiteralValue)
+  | Pat_type(Type_identifier, ?Parameters<Pattern>, Pattern_complete)
+  | Pat_as(Pattern, Name)
+}
+
+base class Type_identifier {
+  children =
+  | Tid_object(Name)
+  | Tid_static((Name, Name), Name)
+}
+
+type PosUnop = (FileRange, Unop_);
+
+base class Unop_ {
+  children =
+  | Not()
+  | Uminus()
+}
+
+type PosBinop = (FileRange, Binop_);
+
+base class Binop_ {
+  children =
+  | Barbar()
+  | Ampamp()
+  | Eqeq()
+  | Diff()
+  | Lt()
+  | Lte()
+  | Gt()
+  | Gte()
+  | Plus()
+  | Minus()
+  | Star()
+  | Slash()
+  | Percent()
+}
+
+/* Because of duplicate items in extends/use lists, parents are stored in a map
+ * The order being Class => Type Arguments => (Sources, [Conditions])
+ * Note that the keys for type arguments are purely syntactic
+ *
+ * The purpose of this is to reduce duplicate work for the same extension of a
+ * given parent. This is particularly important when checking overrides/valid
+ * extensions during typing
+ *
+ * Unless absolutely necessary, DO NOT grab 'value' manually.
+ * Instead, you should use 'each' or 'values' to iterate through the parent
+ */
+value class ParentMap(private value: Map<NameKey, Map<TargKey, Parent>>) {
+  fun reduce<R>(f: (R, Name, .Array<Type_>, Parent) -> R, init: R): R {
+    this.value.reduce(
+      (acc, nk, tm) ->
+        tm.reduce((facc, tk, p) -> f(facc, nk.name, tk.targs, p), acc),
+      init,
+    )
+  }
+
+  fun each(f: (Name, .Array<Type_>, Parent) -> void): void {
+    for ((n, targs, par) in this) f(n, targs, par)
+  }
+
+  fun keys(): mutable Iterator<Name> {
+    this.value.keys().map(nk -> nk.name)
+  }
+
+  fun values(): mutable Iterator<(Name, .Array<Type_>, Parent)> {
+    for (nk => tm in this.value) {
+      for (tk => p in tm) yield (nk.name, tk.targs, p)
+    }
+  }
+
+  fun filter(p: (Name, .Array<Type_>, Parent) -> Bool): this {
+    value = this.value.map((nk, tm) ->
+      tm.filter((tk, par) -> p(nk.name, tk.targs, par))
+    ).filter((_, tm) -> !tm.isEmpty());
+    ParentMap(value)
+  }
+
+  fun find(
+    p: (Name, .Array<Type_>, Parent) -> Bool,
+  ): ?(Name, .Array<Type_>, Parent) {
+    for ((n, targs, par) in this) {
+      if (p(n, targs, par)) break Some((n, targs, par))
+    } else {
+      None()
+    }
+  }
+
+  fun any(p: (Name, .Array<Type_>, Parent) -> Bool): Bool {
+    for ((n, targs, par) in this) {
+      if (p(n, targs, par)) break true
+    } else {
+      false
+    }
+  }
+
+  fun isEmpty(): Bool {
+    this.value.isEmpty()
+  }
+}
+
+/* The name is the parent where this comes from (before expansion) */
+class Parent{
+  effective_source: Name,
+  inherited_source: Name,
+  conditions: .Array<.Array<Whenclause>>,
+}
+
+mutable class ParentBuilder{
+  mutable effective_source: Name,
+  mutable inherited_source: Name,
+  conditions: mutable Set<WhenclauseKey>,
+} {
+  readonly fun toParent(): Parent {
+    Parent{
+      effective_source => this.effective_source,
+      inherited_source => this.inherited_source,
+      conditions => this.conditions.values()
+        .map(wck -> wck.clauses)
+        .collect(.Array),
+    }
+  }
+}
+
+value class NameKey(name: Name) uses Hashable, Equality {
+  fun hash(): Int {
+    this.name.i1.hash()
+  }
+
+  fun ==(other: NameKey): Bool {
+    this.name.i1 == other.name.i1
+  }
+}
+
+value class TargKey(targs: .Array<Type_>) uses Hashable, Equality {
+  fun hash(): Int {
+    this.targs.foldl((seed, t) -> (seed, hashType(t)).hash(), -1)
+  }
+
+  fun ==(other: TargKey): Bool {
+    this.targs.size() == other.targs.size() &&
+      for (ts in this.targs.values().zip(other.targs.values())) {
+        if (!eqType(ts.i0, ts.i1)) break false;
+      } else {
+        true
+      }
+  }
+}
+
+value class WhenclauseKey(clauses: .Array<Whenclause>) uses Hashable, Equality {
+  fun hash(): Int {
+    this.clauses.foldl(
+      (seed, wc) -> (seed, wc.i1.hashBy(hashType, hashType(wc.i0))).hash(),
+      -1,
+    )
+  }
+
+  fun ==(other: WhenclauseKey): Bool {
+    this.clauses.size() == other.clauses.size() &&
+      {
+        for (wcs in this.clauses.values().zip(other.clauses.values())) {
+          (wc1, wc2) = wcs;
+          if (!eqType(wc1.i0, wc2.i0)) break false;
+          if (!wc1.i1.eqBy(wc2.i1, eqType)) break false;
+        } else {
+          true
+        }
+      }
+  }
+}
+
+/*****************************************************************************/
+/* Tuples */
+/*****************************************************************************/
+
+// TODO move to tuple shared file
+// TODO tuples should be generated at compile time
+const min_tuple: Int = SharedTuples.min_size;
+const max_tuple: Int = SharedTuples.max_size;
+
+fun is_tuple_class_(str: String): Bool {
+  SharedTuples.is_tuple_class(str)
+}
+
+fun is_tuple_class(name: Name): Bool {
+  is_tuple_class_(name.i1)
+}
+
+fun tuple_arity(name: Name): Int {
+  SharedTuples.tuple_arity(name.i1)
+}
+
+fun tuple_str(arity: Int): String {
+  SharedTuples.tuple_name(arity)
+}
+
+fun tuple_name(pos: FileRange, arity: Int): Name {
+  (pos, tuple_str(arity))
+}
+
+fun tuple_not_supported<T>(pos: FileRange, arity: Int): T {
+  SkipError.error(
+    pos,
+    "Tuple of arity " +
+      arity +
+      " is not supported as it is not easy for a user to determine what each element is for. Try making a value class",
+  )
+}
+
+fun mk_tuple<T>(pos: FileRange, arity: Int, k: Name -> T): T {
+  pos.invariant(arity >= min_tuple, "ICE invalid tuple: arity < min_tuple");
+  name = tuple_name(pos, arity);
+  SkipInherit.maybeGetClass(name.i1) match {
+  | None() -> tuple_not_supported(pos, arity)
+  | Some _ ->
+    pos.invariant(arity <= max_tuple, "ICE invalid tuple: arity > max_tuple");
+    k(name)
+  }
+}
+
+fun tuple_pattern(pos: FileRange, l: .Array<Pattern>): Pattern_ {
+  mk_tuple(pos, l.size(), name ->
+    Pat_type(Tid_object(name), Some(Positional(l)), A.Complete())
+  )
+}
+
+fun tuple_type(pos: FileRange, l: .Array<Type_>): Type__ {
+  mk_tuple(pos, l.size(), name -> Tapply(Mchilled(), name, l))
+}
+
+fun tuple_expr(pos: FileRange, l: .Array<Expr>): Expr_ {
+  args = Positional(l.map(e -> (0, e)));
+  mk_tuple(pos, l.size(), name -> Object(None(), name, .Array[], args))
+}
+
+/*****************************************************************************/
+/* Ast visitor entry point. */
+/*****************************************************************************/
+fun same_mutability(m1: MnotFrozen, m2: MnotFrozen): Bool {
+  (m1, m2) match {
+  | (Mreadonly _, Mreadonly _)
+  | (Mmutable _, Mmutable _) ->
+    true
+  | _ -> false
+  }
+}
+
+fun tparam_name(tp: Type_parameter): SkipAst.Name {
+  tp.i2
+}
+
+fun tparam_ident<T1, T3, T4>(tp: (T1, String, T3, T4)): String {
+  tp.i1
+}
+
+fun tyd_def_name(cn: SkipAst.Name, tyn: SkipAst.Name): SkipAst.Name {
+  (_, cla_name) = cn;
+  (pos, tyd_name) = tyn;
+  (pos, cla_name + "::" + tyd_name)
+}
+
+fun is_tdefined(x: Cla_tyd): Bool {
+  x is TydDefined _
+}
+
+fun constraint_of_tabstract(x: Cla_tyd): ?Type_ {
+  x match {
+  | TydAbstract(tyd_type, _) -> tyd_type
+  | _ -> invariant_violation("ICE non tydabstract in constraint_of_tabstract")
+  }
+}
+
+fun get_variance(x: Type_): ?A.Variance {
+  x.i1 match {
+  | Tanything()
+  | Tvar _
+  | Tapply _ ->
+    None()
+
+  | Tawaitable(v, _)
+  | Tfrozen(v)
+  | TnonNullable(v)
+  | Tfun(v, _, _, _, _)
+  | Tparam(_, v, _, _)
+  | Tlambda(v, _, _, _)
+  | Tpromoted(v, _, _, _, _, _)
+  | Tset(v, _, _, _) ->
+    Some(v)
+
+  | Tnamed(_, inner)
+  | Tdefault(inner) ->
+    get_variance(inner)
+  }
+}
+
+/*****************************************************************************/
+/* Type visitor. */
+/*****************************************************************************/
+fun type<TEnv, TAcc>(
+  f: ((TEnv, TAcc, Type_) -> (TAcc, Type_)),
+  env: TEnv,
+  acc: TAcc,
+  ty_: Type_,
+): (TAcc, Type_) {
+  (pos, ty) = ty_;
+  (acc1, ty1) = type__(f, env, acc, ty);
+  pty = (pos, ty1);
+  (acc2, pty1) = f(env, acc1, pty);
+  (acc2, pty1)
+}
+
+fun type__<Ta, Tb>(
+  f: ((Ta, Tb, Type_) -> (Tb, Type_)),
+  env: Ta,
+  acc: Tb,
+  x: Type__,
+): (Tb, Type__) {
+  x match {
+  | Tanything()
+  | Tfrozen _
+  | TnonNullable _ ->
+    (acc, x)
+  | Tapply(mode, n, tyl) ->
+    (acc1, n1, tyl1) = type_tapply(f, env, acc, n, tyl);
+    (acc1, Tapply(mode, n1, tyl1))
+  | Tpromoted(variance, mode, seen, tparams, n, tyl) ->
+    (acc1, n1, tyl1) = type_tapply(f, env, acc, n, tyl);
+    (acc1, Tpromoted(variance, mode, seen, tparams, n1, tyl1))
+  | Tfun(variance, ml, tyl, ty1, ty2) ->
+    (acc1, tyl1) = tyl.mapAcc((acc4, ty) -> type(f, env, acc4, ty), acc);
+    (acc2, ty11) = ty1.map_foldl((acc5, ty) -> type(f, env, acc5, ty), acc1);
+    (acc3, ty21) = type(f, env, acc2, ty2);
+    (acc3, Tfun(variance, ml, tyl1, ty11, ty21))
+  | x1 @ Tparam _ -> (acc, x1)
+  | Tset(var, mode, tparams, inter) ->
+    (acc1, inter1) = type_inter(f, env, acc, inter);
+    (acc1, Tset(var, mode, tparams, inter1))
+  | Tvar(n) -> (acc, Tvar(n))
+  | Tlambda(var, id, mods, ty) ->
+    (acc1, ty1) = type(f, env, acc, ty);
+    (acc1, Tlambda(var, id, mods, ty1))
+  | Tdefault(ty) ->
+    (acc1, ty1) = type(f, env, acc, ty);
+    (acc1, Tdefault(ty1))
+  | Tnamed(cnl, ty) ->
+    (acc1, ty1) = type(f, env, acc, ty);
+    (acc1, Tnamed(cnl, ty1))
+  | Tawaitable(var, ty) ->
+    (acc1, ty1) = type(f, env, acc, ty);
+    (acc1, Tawaitable(var, ty1))
+  }
+}
+
+fun type_tapply<Ta, Tb>(
+  f: ((Ta, Tb, Type_) -> (Tb, Type_)),
+  env: Ta,
+  acc: Tb,
+  n: Name,
+  targs: .Array<Type_>,
+): (Tb, Name, .Array<Type_>) {
+  (acc1, targs1) = targs.mapAcc((acc1, ty) -> type(f, env, acc1, ty), acc);
+  (acc1, n, targs1)
+}
+
+fun type_inter<Ta, Tb>(
+  f: ((Ta, Tb, Type_) -> (Tb, Type_)),
+  env: Ta,
+  acc: Tb,
+  inter: .Array<InterElt>,
+): (Tb, .Array<InterElt>) {
+  inter.mapAcc(
+    (facc, elt) -> {
+      (!facc, targs) = elt.targs.mapAcc(
+        (acc3, ty) -> type(f, env, acc3, ty),
+        facc,
+      );
+      conditions = elt.conditions.map(wc -> {
+        (!facc, lhs) = type(f, env, facc, wc.i0);
+        rhs = wc.i1.map(t -> {
+          (!facc, !t) = type(f, env, facc, t);
+          t
+        });
+        (lhs, rhs)
+      });
+      (facc, elt with {targs, conditions})
+    },
+    acc,
+  )
+}
+
+fun type_map(f: ((Type_) -> Type_), ty: Type_): Type_ {
+  (_, ty1) = type(
+    ((_, _, ty1) -> {
+      (void, f(ty1))
+    }),
+    void,
+    void,
+    ty,
+  );
+  ty1
+}
+
+fun type_fold<Ta: frozen>(f: ((Ta, Type_) -> Ta), b: Ta, ty: Type_): Ta {
+  (res, _) = type(((_, res, t) -> (f(res, t), t)), void, b, ty);
+  res
+}
+
+fun type_iter(f: ((Type_) -> void), ty: Type_): void {
+  ignore(
+    type_map(
+      (t -> {
+        f(t);
+        t
+      }),
+      ty,
+    ),
+  )
+}
+
+/*****************************************************************************/
+/* Expression visitor. */
+/*****************************************************************************/
+fun expr<TEnv, TAcc>(
+  f: ((TEnv, TAcc, Expr) -> (TAcc, Expr)),
+  env: TEnv,
+  acc: TAcc,
+  ex: Expr,
+): (TAcc, Expr) {
+  (pos, exp) = ex;
+  (acc1, exp1) = expr_(f, env, acc, exp);
+  pexp = (pos, exp1);
+  (acc2, pexp1) = f(env, acc1, pexp);
+  (acc2, pexp1)
+}
+
+fun expr_<TEnv, TAcc>(
+  f: ((TEnv, TAcc, Expr) -> (TAcc, Expr)),
+  env: TEnv,
+  acc: TAcc,
+  x: Expr_,
+): (TAcc, Expr_) {
+  x match {
+  | Literal _
+  | Var _
+  | Classname _ ->
+    (acc, x)
+  | If(e1, e2, e3) ->
+    (acc1, e11) = expr(f, env, acc, e1);
+    (acc2, e21) = expr(f, env, acc1, e2);
+    (acc3, e31) = expr(f, env, acc2, e3);
+    (acc3, If(e11, e21, e31))
+  | Object(mut, obj_name, tyl, obj_args) ->
+    (acc1, obj_args1) = call_args(
+      ((acc2, ex) -> expr(f, env, acc2, ex)),
+      acc,
+      obj_args,
+    );
+    (acc1, Object(mut, obj_name, tyl, obj_args1))
+  | Call(mut, e, tyl, params) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc2, params1) = call_args(
+      ((acc3, ex) -> expr(f, env, acc3, ex)),
+      acc1,
+      params,
+    );
+    (acc2, Call(mut, e1, tyl, params1))
+  | ArrayGet(e, args) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc2, args1) = call_args(
+      ((acc3, ex) -> expr(f, env, acc3, ex)),
+      acc1,
+      args,
+    );
+    (acc2, ArrayGet(e1, args1))
+  | Annotated(e, ty) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Annotated(e1, ty))
+  | Bind(name, rval, e) ->
+    (acc1, rval1) = expr(f, env, acc, rval);
+    (acc2, e1) = expr(f, env, acc1, e);
+    (acc2, Bind(name, rval1, e1))
+  | Seq(e1, e2) ->
+    (acc1, e11) = expr(f, env, acc, e1);
+    (acc2, e21) = expr(f, env, acc1, e2);
+    (acc2, Seq(e11, e21))
+  | Assign(name, rval) ->
+    (acc1, rval1) = expr(f, env, acc, rval);
+    (acc1, Assign(name, rval1))
+  | Dot(e, n) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Dot(e1, n))
+  | StaticDot(e, n) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, StaticDot(e1, n))
+  | Pipe(e1, e2) ->
+    (acc1, e11) = expr(f, env, acc, e1);
+    (acc2, e21) = expr(f, env, acc1, e2);
+    (acc2, Pipe(e11, e21))
+  | Binop(bop, e1, e2) ->
+    (acc1, e11) = expr(f, env, acc, e1);
+    (acc2, e21) = expr(f, env, acc1, e2);
+    (acc2, Binop(bop, e11, e21))
+  | Unop(uop, e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Unop(uop, e1))
+  | Is(e1, pat1) ->
+    (acc1, e2) = expr(f, env, acc, e1);
+    (acc1, Is(e2, pat1))
+  | As(e1, pat1) ->
+    (acc1, e2) = expr(f, env, acc, e1);
+    (acc1, As(e2, pat1))
+  | Match(e, mbl) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc2, mbl1) = mbl.map_foldl(
+      ((acc3, ex) -> match_branch(f, env, acc3, ex)),
+      acc1,
+    );
+    (acc2, Match(e1, mbl1))
+  | Lambda(ml, params, locals, e, yields) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Lambda(ml, params, locals, e1, yields))
+  | Try(e, mbl) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc2, mbl1) = mbl.map_foldl(
+      ((acc3, ex) -> match_branch(f, env, acc3, ex)),
+      acc1,
+    );
+    (acc2, Try(e1, mbl1))
+  | Await(e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Await(e1))
+  | Return(e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Return(e1))
+  | Yield(e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Yield(e1))
+  | YieldBreak() -> (acc, x)
+  | Async(fv, e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Async(fv, e1))
+  | Throw(e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, Throw(e1))
+  | Concurrent(el) ->
+    (acc1, el1) = el.map_foldl(((acc2, ex) -> expr(f, env, acc2, ex)), acc);
+    (acc1, Concurrent(el1))
+  | Array(mut, tyl, el) ->
+    (acc1, el1) = el.mapAcc((acc2, ex) -> expr(f, env, acc2, ex), acc);
+    (acc1, Array(mut, tyl, el1))
+  | With(e, updates) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc2, updates1) = updates.mapAcc(
+      ((acc3, _, oex) -> {
+        ordered_expr(((acc4, ex) -> expr(f, env, acc4, ex)), acc3, oex)
+      }),
+      acc1,
+    );
+    (acc2, With(e1, updates1))
+  | AssignField(var_name, field_name, e) ->
+    (acc1, e1) = expr(f, env, acc, e);
+    (acc1, AssignField(var_name, field_name, e1))
+  | TemplateLiteral(args) ->
+    (acc1, args1) = call_args(
+      ((acc2, ex) -> expr(f, env, acc2, ex)),
+      acc,
+      args,
+    );
+    (acc1, TemplateLiteral(args1))
+
+  | Continue() -> (acc, Continue())
+  | Break(eb) ->
+    (!acc, !eb) = expr(f, env, acc, eb);
+    (acc, Break(eb))
+  | Loop(eb) ->
+    (!acc, !eb) = expr(f, env, acc, eb);
+    (acc, Loop(eb))
+  | DoWhile(body, condition, withoutBreak) ->
+    (!acc, !body) = expr(f, env, acc, body);
+    (!acc, !condition) = expr(f, env, acc, condition);
+    (!acc, !withoutBreak) = expr(f, env, acc, withoutBreak);
+    (acc, DoWhile(body, condition, withoutBreak))
+  | While(condition, body, withoutBreak) ->
+    (!acc, !condition) = expr(f, env, acc, condition);
+    (!acc, !body) = expr(f, env, acc, body);
+    (!acc, !withoutBreak) = expr(f, env, acc, withoutBreak);
+    (acc, While(condition, body, withoutBreak))
+  }
+}
+
+const FOR_ITEMS: String = "items";
+const FOR_VALUES: String = "values";
+const FOR_NEXT: String = "next";
+const FOR_SOME: String = "Some";
+const FOR_NONE: String = "None";
+
+fun ordered_expr<Tb>(
+  f: ((Tb, Expr) -> (Tb, Expr)),
+  acc: Tb,
+  ex: Ordered_expr,
+): (Tb, Ordered_expr) {
+  (i, e) = ex;
+  (acc1, e1) = f(acc, e);
+  (acc1, (i, e1))
+}
+
+fun call_args<Tb>(
+  f: ((Tb, Expr) -> (Tb, Expr)),
+  acc: Tb,
+  params: Call_args,
+): (Tb, Call_args) {
+  params.map_foldl((p1, p2) -> ordered_expr(f, p1, p2), acc)
+}
+
+fun match_branch<Ta, Tb>(
+  f: ((Ta, Tb, Expr) -> (Tb, Expr)),
+  env: Ta,
+  acc: Tb,
+  mb: Match_branch,
+): (Tb, Match_branch) {
+  (pat, maybe_guard, action) = mb;
+  (acc1, maybe_guard1) = maybe_guard match {
+  | None() -> (acc, None())
+  | Some(x) ->
+    (acc2, x2) = expr(f, env, acc, x);
+    (acc2, Some(x2))
+  };
+  (acc2, action1) = expr(f, env, acc1, action);
+  (acc2, (pat, maybe_guard1, action1))
+}
+
+/*****************************************************************************/
+/* Substitutions. */
+/*****************************************************************************/
+fun make_subst<Ta>(
+  pos: FileRange,
+  a1: .Array<String>,
+  a2: .Array<(FileRange, Ta)>,
+): SMap<(FileRange, Ta)> {
+  a1sz = a1.size();
+  a2sz = a2.size();
+  compare(a1sz, a2sz) match {
+  | LT() -> SkipError.error(a2[a1sz].i0, "Too many arguments")
+  | GT() -> SkipError.error(pos, "Missing arguments")
+  | _ ->
+    result = SortedMap[];
+    for ((ident, value) in a1.values().zip(a2.values())) {
+      !result = result.set(ident, value);
+    } else {
+      result
+    }
+  }
+}
+
+/*****************************************************************************/
+/* Type substitution */
+/*****************************************************************************/
+fun type_subst<T>(
+  freeze: (FileRange, IMap<Type_>, T, Type_) -> Type_,
+  subst: SMap<Type_>,
+  bounds: T,
+  ty: Type_,
+): Type_ {
+  (_, ty1) = type(
+    ((subst1: SMap<Type_>, _: void, ty_: Type_) -> {
+      (pos, ty1) = ty_;
+      ty1 match {
+      | Tparam(frozen_, _, ident, _) ->
+        ty2 = {
+          subst1.maybeGet(ident) match {
+          | None() -> (pos, ty1)
+          | Some(ty2) -> ty2
+          }
+        };
+        frozen_ match {
+        | None() -> (void, ty2)
+        | Some(pos1) -> (void, freeze(pos1, SortedMap[], bounds, ty2))
+        }
+      | x -> (void, (pos, x))
+      }
+    }),
+    subst,
+    void,
+    ty,
+  );
+  ty1
+}
+
+fun tparam_subst<T>(
+  freeze: ((FileRange, IMap<Type_>, T, Type_) -> Type_),
+  subst: SMap<Type_>,
+  bounds: T,
+  x: Type_parameter,
+): Type_parameter {
+  x match {
+  | (var, ident, name, tyl) if (!tyl.isEmpty()) ->
+    tyl1 = tyl.map(ty -> type_subst(freeze, subst, bounds, ty));
+    (var, ident, name, tyl1)
+  | tparam -> tparam
+  }
+}
+
+fun compare_modifiers<Ta>(to_int: ((Ta) -> Int), m1: Ta, m2: Ta): Order {
+  to_int(m1).compare(to_int(m2))
+}
+
+fun compare_purity_modifiers(l: Purity_modifier, r: Purity_modifier): Order {
+  compare_modifiers(
+    (m -> {
+      m match {
+      | Fpure() -> 0
+      | Fmutable() -> 1
+      }
+    }),
+    l,
+    r,
+  )
+}
+
+fun compare_tracking_modifiers(
+  l: Tracking_modifier,
+  r: Tracking_modifier,
+): Order {
+  compare_modifiers(
+    (t -> {
+      t match {
+      | Ftracked() -> 0
+      | Funtracked() -> 1
+      }
+    }),
+    l,
+    r,
+  )
+}
+
+fun compare_set_elt(l: InterElt, r: InterElt): Order {
+  ckind = (l.kind, r.kind) match {
+  | (A.KClass(), A.KClass()) -> EQ()
+  | (A.KClass(), _) -> LT()
+  | (_, A.KClass()) -> GT()
+  | (A.KBase(), A.KBase()) -> EQ()
+  | (A.KBase(), _) -> LT()
+  | (_, A.KBase()) -> GT()
+  | (A.KTrait(), A.KTrait()) -> EQ()
+  };
+  if (!ckind.isEQ()) return ckind;
+
+  c = r.depth - l.depth;
+  if (c == 0) {
+    compare(l.name.i1, r.name.i1)
+  } else {
+    c.compare(0)
+  }
+}
+
+/*****************************************************************************/
+/* Replaces all the type parameters with a type variable. */
+/*****************************************************************************/
+fun replace_tparams(
+  ty: Type_,
+  new_id: () -> Int,
+): (IMap<(?FileRange, Variance, String, Name)>, Type_) {
+  type(
+    ((_, acc, ty1) -> {
+      ty1 match {
+      | (pos, Tparam(fr, var, param_id, param_name)) ->
+        tvar_id = new_id();
+        acc1 = acc.set(tvar_id, (fr, var, param_id, param_name));
+        (acc1, (pos, Tvar(tvar_id)))
+      | x -> (acc, x)
+      }
+    }),
+    void,
+    SortedMap[],
+    ty,
+  )
+}
+
+fun exprBodyIsAbstract(value: Expr_body): Bool {
+  value match {
+  | Abstract() -> true
+  | _ -> false
+  }
+}
+
+fun constantIsAbstract(con: Const_def): Bool {
+  exprBodyIsAbstract(con.value)
+}
+
+fun unfold_tnamed(x: Type_): Type_ {
+  x match {
+  | (_, Tnamed(_, ty)) -> unfold_tnamed(ty)
+  | ty -> ty
+  }
+}
+
+fun is_pure<Ta>(p: (.Array<Purity_modifier>, Ta)): Bool {
+  (kindl, _) = p;
+  kindl.any(x -> {
+    x match {
+    | Fpure() -> true
+    | _ -> false
+    }
+  })
+}

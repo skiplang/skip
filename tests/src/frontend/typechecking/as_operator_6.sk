@@ -1,0 +1,11 @@
+// V types
+base class P
+base class Q
+class R() extends P, Q
+class S() extends P, Q
+
+fun main(): void {
+  x: P = R();
+  _s = x as R _;
+  print_string("Pass")
+}

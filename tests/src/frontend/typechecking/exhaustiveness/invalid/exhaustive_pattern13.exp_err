@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern13.sk", line 9, characters 9-9:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | A()
+ 7 |   }
+ 8 |   fun test(): Int {
+ 9 |     x = this match {
+   |         ^^^^^^^^^^^^
+10 |     | o @ B _ -> o
+   |     ^^^^^^^^^^^^^^

@@ -1,0 +1,47 @@
+File "./typechecking/invalid/exhaustive_matches.sk", line 17, characters 13-16:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+15 |
+16 | fun matchesClass(): Bool {
+17 |   PC(42) is PC _;
+   |             ^^^^
+18 | }
+
+File "./typechecking/invalid/exhaustive_matches.sk", line 21, characters 35-44:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+19 |
+20 | fun matchesNamedArgs(): Bool {
+21 |   NC{s => "Hello", b => false} is NC{b => _};
+   |                                   ^^^^^^^^^^
+22 | }
+
+File "./typechecking/invalid/exhaustive_matches.sk", line 13, characters 15-17:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+11 |
+12 | fun matchesParen(): Bool {
+13 |   (40 + 2) is (_);
+   |               ^^^
+14 | }
+
+File "./typechecking/invalid/exhaustive_matches.sk", line 25, characters 13-17:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+23 |
+24 | fun matchesPositionalArgs(): Bool {
+25 |   PC(42) is PC(_);
+   |             ^^^^^
+26 | }
+
+File "./typechecking/invalid/exhaustive_matches.sk", line 9, characters 31-39:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+ 7 |
+ 8 | fun matchesTuple(): Bool {
+ 9 |   (40 + 2, !true, "Hello") is (_, _, _);
+   |                               ^^^^^^^^^
+10 | }
+
+File "./typechecking/invalid/exhaustive_matches.sk", line 29, characters 16-16:
+Unnecessary 'is' expression. The value will always successfully match the pattern given.
+27 |
+28 | fun matchesUnderscore(): Bool {
+29 |   (-1 * 12) is _;
+   |                ^
+30 | }

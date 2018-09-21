@@ -1,0 +1,20 @@
+base class BarMyBase {
+  type T: BazMyBase;
+  deferred const foo: Int = 10;
+}
+
+class Bar() extends BarMyBase {
+  type T = Baz;
+}
+
+base class BazMyBase {
+  type T: Test.MixedScalar;
+}
+
+base class Baz extends BazMyBase {
+  type T = Test.MixedInt;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

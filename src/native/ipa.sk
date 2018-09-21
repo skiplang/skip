@@ -1,0 +1,274 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Interprocedural;
+
+mutable class .Interprocedural{} extends Rewrite {
+  // Applies non-inlining interprocedural optimizations:
+  //
+  // - "no return": If a subroutine can't return, the code after the
+  //   procedure call is unreachable.
+  //
+  // - "no throw": Any InvokeFunction calling a function that can't throw
+  //   can be upgraded to CallFunction, which does not contain a control
+  //   flow edge to the "catch" block.
+  //
+  // - "alloc amount": (analysis only). If any instruction may alloc, this
+  //    function may alloc. Otherwise, extend unfinishedDependencies if any
+  //    callee OptimizationStatus is OptPartial
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    d = mutable static{optinfo => OptimizerInfo::make(f), env, pos => f.pos};
+    d.go("ipa", true);
+  }
+
+  protected /* override */ mutable fun optimizeAllBlocks(
+    inputBlocks: Array<BlockID>,
+  ): void {
+    for (b in inputBlocks) this.optimizeBlock(this.getBlock(b));
+
+    // Make sure we know enough to decide how much we allocate.
+    unfinishedDependencies = mutable UnorderedSet[];
+    if (
+      funAllocAmount(
+        this.optinfo,
+        this.env,
+        Some(unfinishedDependencies),
+      ) is None()
+    ) {
+      this.unfinishedDependencies.extend(unfinishedDependencies)
+    }
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    instr match {
+    | call @ CallFunctionBase _ ->
+      this.optimizeNoReturn(call) ||
+        (call match {
+        | inv @ InvokeFunction _ -> this.optimizeNoThrow(inv)
+        | _ -> false
+        })
+    | _ -> false
+    }
+  }
+
+  private mutable fun optimizeNoReturn(call: CallFunctionBase): Bool {
+    blockID = this.nextBlockID;
+    if (blockID == BlockID::none) {
+      // Something already truncated the containing block, don't optimize
+      // further on this pass.
+      return false
+    };
+
+    if (!call.returns) {
+      // We already marked this as a no-return call.
+      return false
+    };
+
+    pos = call.pos;
+
+    // Determine whether the called function returns (conservatively assuming
+    // it does if we don't know).
+    subroutine = this.env.getFunction(call.name, pos);
+    subroutine.status match {
+    | OptDone{returns} ->
+      if (returns) {
+        return false
+      }
+    | OptPartial _ ->
+      // We don't know it returns yet, so assume it does.
+      this.unfinishedDependencies.insert(subroutine.id);
+      return false
+    };
+
+    oldSuccessors = this.getBlock(blockID).successors();
+
+    why = `Call to no-return function ${subroutine}`;
+
+    call match {
+    | c @ CallFunction _ ->
+      // Chop off this block early, right after the call. Every Instr
+      // following this will get dumped into a new, unreachable block.
+      _ = this.emitInstr(c with {returns => false});
+      _ = this.emitUnreachable{pos, why};
+      this.startNewBlock()
+    | invoke @ InvokeFunction _ ->
+      // Invoke already ends its Block so we need to make its
+      // "fall-through" case jump to a new Block containing only
+      // an "Unreachable".
+      unreachableBlock = this.newBlockID();
+
+      newSuccessors = Array[BlockSuccessor(unreachableBlock), oldSuccessors[1]];
+
+      // The Invoke needs to continue ending the Block, but make its
+      // "fall through" transfer control to a new Unreachable block.
+      _ = this.emitInstr(
+        invoke with {returns => false, successors => newSuccessors},
+      );
+      this.startNewBlock(unreachableBlock);
+
+      _ = this.emitUnreachable{pos, why}
+    };
+
+    true
+  }
+
+  private mutable fun optimizeNoThrow(invoke: InvokeFunction): Bool {
+    pos = invoke.pos;
+
+    // Determine whether the called function can throw (conservatively assuming
+    // it can if we don't know).
+    subroutine = this.env.getFunction(invoke.name, pos);
+    subroutine.status match {
+    | OptDone{canThrow} ->
+      if (canThrow) {
+        return false
+      }
+    | OptPartial _ ->
+      this.unfinishedDependencies.insert(subroutine.id);
+      return false
+    };
+
+    // Emit a CallFunction in place of this InvokeFunction.
+    _ = this.emitInstr(
+      CallFunction{
+        id => invoke.id,
+        typ => invoke.typ,
+        pos => invoke.pos,
+        name => invoke.name,
+        args => invoke.args,
+        prettyName => invoke.prettyName,
+        smap => invoke.smap,
+        blacklist => invoke.blacklist,
+        returns => invoke.returns,
+      },
+    );
+
+    _ = this.emitJump{target => invoke.successors[0], pos => invoke.pos};
+
+    true
+  }
+}
+
+// Is there any chance the given instr could throw an exception at runtime?
+fun instrCanThrow(
+  instr: Stmt,
+  functionAssumedNotToThrow: SFunctionID,
+  env: GlobalEnv,
+): Bool {
+  instr match {
+  | InvokeBase _ ->
+    false // Invoke catches all exceptions, w/rethrow elsewhere
+  | NamedCall{canThrow} -> canThrow
+
+  | CallFunction{name} ->
+    if (name == functionAssumedNotToThrow) {
+      false
+    } else {
+      f = env.getFunction(name, instr.pos);
+      f.status match {
+      | OptDone{canThrow} -> canThrow
+      | _ -> true
+      }
+    }
+
+  // TODO: We could easily have method calls check every possible override
+  // and see if any throw. If any throw, we have the answer. But if none
+  // throw, and some are unfinished (OptPartial), we'll need to indicate
+  // that we need to wait for an arbitrary one of those dependencies to
+  // finish before checking again.
+
+  | CallBase _
+  | RawCallBase _
+  | Throw _
+  | Yield _ ->
+    true
+
+  | Alloca _
+  | AsyncReturn _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | Cast _
+  | YieldBreak _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | GetConst _
+  | GetCurrentAwaitable _
+  | GetField _
+  | If _
+  | IndirectJump _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntCtz _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | Jump _
+  | LandingPad _
+  | Load _
+  | LoadVTableEntry _
+  | LocalGC _
+  | ObstackUsage _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | Reinterpret _
+  | Return _
+  | SetField _
+  | SignExtend _
+  | Store _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | Suspend _
+  | Truncate _
+  | TupleExtract _
+  | TypeSwitch _
+  | Unreachable _
+  | ValueSwitch _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | ArrayUnsafeSet _
+  | With _
+  | ZeroExtend _ ->
+    false
+  }
+}

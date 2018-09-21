@@ -1,0 +1,18 @@
+@serialize
+class MapWrapper{
+  map: Map<String, Int>,
+} uses Show, Equality {
+  fun toString(): String {
+    this.map.toString()
+  }
+}
+
+fun main(): void {
+  assertSerializes(`{"map": {}}`, MapWrapper::meta, MapWrapper{map => Map[]});
+  assertSerializes(
+    `{"map": {"a": 0, "b": 1, "c": 2}}`,
+    MapWrapper::meta,
+    MapWrapper{map => Map["a" => 0, "b" => 1, "c" => 2]},
+  );
+  print_string("Pass")
+}

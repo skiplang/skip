@@ -1,0 +1,171 @@
+#!/usr/bin/env python
+
+# This script creates a fresh build and attempts to figure out if any previously
+# failing tests are now passing.  It updates the .failing_<backend> files for
+# all the tests in preparation for a commit.
+#
+# Run it from a clean repo.  It will delete any existing build directory.
+#
+# $ ./tools/check_newly_passing_tests
+#
+
+from __future__ import print_function
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+
+
+# 15 minute timeout for each test
+MAX_CPU_LIMIT = 15 * 60
+
+FORCE_FAILING = set((
+    # This test only passes on linux
+    'src/tests/typechecking/overridable_const5.php',
+))
+
+
+def removeDir(dirname, dirs, path):
+    path = os.path.split(path)
+    if path[0] == dirname and path[1] in dirs:
+        dirs.remove(path[1])
+
+
+def touch(filename):
+    with open(filename, 'w'):
+        pass
+
+
+class ProgressWatcher(threading.Thread):
+    '''
+    A thread that watches the output of the reader object for text in the form
+    "[a/b]" and prints a percent done.
+    '''
+    def __init__(self, reader, writer):
+        super(ProgressWatcher, self).__init__()
+        self._reader = reader
+        self._writer = writer
+        self.daemon = True
+        self.start()
+
+    def run(self):
+        x = ''
+        while True:
+            try:
+                read = self._reader.read(10)
+                if not read:
+                    break
+                self._writer.write(read)
+                x += read
+            except Exception:
+                break
+
+            m = re.search(r'\[(\d+)/(\d+)\]', x)
+            if m:
+                num = int(str(m.group(1)))
+                den = int(str(m.group(2)))
+                if den != 0:
+                    sys.stdout.write('\r%.2f%% (%d / %d)  ' % (num * 100.0 / den, num, den))
+                    sys.stdout.flush()
+                x = x[len(m.group(0)):]
+            else:
+                x = x[-50:]
+
+        self._writer.flush()
+
+
+def updateTestState(root):
+    for dirname, _dirs, files in os.walk(root):
+        for f in files:
+            f = os.path.join(dirname, f)
+            if not f.endswith(('.testok', '.testfail')):
+                continue
+            f = f[len(binary_dir) + 1:]
+
+            path, action = os.path.splitext(f)
+
+            if path in FORCE_FAILING:
+                action = '.testfail'
+
+            path, backend = os.path.splitext(path)
+            backend = backend[1:]
+
+            root = os.path.join(source_dir, path)
+            testFailingAll = root + '.failing'
+            testFailing = testFailingAll + '_' + backend
+            testPassing = root + '.passing_' + backend
+
+            if action == '.testok':
+                if os.path.isfile(testFailingAll):
+                    print(
+                        '%s is no longer failing all backends (passing %s)' %
+                        (path, backend))
+                    os.unlink(testFailingAll)
+                if os.path.isfile(testFailing):
+                    print('%s is no longer failing on %s' % (path, backend))
+                    os.unlink(testFailing)
+                if backend == 'native' and not os.path.isfile(testPassing):
+                    touch(testPassing)
+            else:
+                if not os.path.isfile(testFailingAll):
+                    if not os.path.isfile(testFailing):
+                        print('%s is newly failing on %s' % (path, backend))
+                        touch(testFailing)
+                    if backend == 'native' and os.path.isfile(testPassing):
+                        os.unlink(testPassing)
+
+
+def main():
+    global source_dir
+    source_dir = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+
+    # TODO: It would be nice to have this be something other than 'build' -
+    # right now skip_check requires it to be 'build'.
+    global binary_dir
+    binary_dir = os.path.join(source_dir, 'build')
+
+    # Clean up the build directory
+    if os.path.isdir(binary_dir):
+        shutil.rmtree(binary_dir)
+
+    os.makedirs(binary_dir)
+    with open(
+            os.path.join(binary_dir, 'check-newly-passing-tests.log'), 'w'
+    ) as logfile:
+        print('Configuring...')
+        subprocess.check_call(
+            ('cmake', source_dir, '-G', 'Ninja', '-DINCLUDE_NATIVE=1',
+             '-DINCLUDE_FAILING=1'),
+            cwd=binary_dir,
+            stdout=logfile)
+
+        print('Building all...')
+        with open(os.devnull, 'w') as stdout:
+            p = subprocess.check_call(
+                ('ninja', 'all'),
+                cwd=binary_dir,
+                stdout=stdout)
+
+        print('Running tests...')
+        p = subprocess.Popen(
+            ('ninja', 'test', '-k', '0'),
+            env=dict(os.environ.items() +
+                     [('MAX_CPU_LIMIT', str(MAX_CPU_LIMIT))]),
+            cwd=binary_dir,
+            stdout=subprocess.PIPE)
+        watcher = ProgressWatcher(p.stdout, logfile)
+        p.wait()
+        watcher.join()
+    print()
+
+    print('Scraping results...')
+    updateTestState(os.path.join(binary_dir, 'src'))
+    updateTestState(os.path.join(binary_dir, 'prelude'))
+
+
+if __name__ == '__main__':
+    rc = main()
+    sys.exit(rc)

@@ -1,0 +1,14 @@
+File "./visibility/invalid/with_visibility_3.sk", line 9, characters 27-27:
+Invalid binding of property b for class B2
+ 7 |   _ = f with {x => void, a => void, b => void};
+ 8 |   _ = f2 with {a => void};
+ 9 |   _ = f2 with {a => void, b => void};
+   |                           ^
+10 |   void
+
+File "./visibility/invalid/with_visibility_3.sk", line 2, characters 15-21:
+Changing this property constructs a new object, so it is limited by the constructor visibility. It was declared as private
+1 | base class B1(a: void)
+2 | base class B2 private (b: void)
+  |               ^^^^^^^
+3 | class Foo(x: void) extends B1, B2

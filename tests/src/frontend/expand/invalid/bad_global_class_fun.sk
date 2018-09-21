@@ -1,0 +1,3 @@
+class Foo {
+  fun .bad(): void { void }
+}

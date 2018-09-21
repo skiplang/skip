@@ -1,0 +1,6 @@
+File "./syntax/invalid/duplicate_modifiers_class_member.sk", line 2, characters 11-17:
+Duplicate modifier 'private'
+1 | class C() {
+2 |   private private static fun m(): String { "Fail" }
+  |           ^^^^^^^
+3 | }

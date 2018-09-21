@@ -1,0 +1,63 @@
+fun main(): void {
+  i = 0;
+  print_string(
+    while (i < 2) {
+      !i = i + 1;
+      while (continue) void;
+      break "FAIL"
+    } else {
+      "Pass"
+    },
+  );
+
+  !i = 0;
+  print_string(
+    while (i < 2) {
+      !i = i + 1;
+      while (false) void else continue;
+      break "FAIL"
+    } else {
+      "Pass"
+    },
+  );
+
+  !i = 0;
+  print_string(
+    do {
+      !i = i + 1;
+      do void while (continue);
+      break "FAIL"
+    } while (i < 2) else {
+      "Pass"
+    },
+  );
+
+  !i = 0;
+  print_string(
+    do {
+      !i = i + 1;
+      do void while (false) else continue;
+      break "FAIL"
+    } while (i < 2) else {
+      "Pass"
+    },
+  );
+
+  print_string(
+    for (_ in Vector[1, 2]) {
+      while (continue) void;
+      break "FAIL"
+    } else {
+      "Pass"
+    },
+  );
+
+  print_string(
+    for (_ in Vector[1, 2]) {
+      for (_ in Vector[1, 2]) void else continue;
+      break "FAIL";
+    } else {
+      "Pass"
+    },
+  );
+}

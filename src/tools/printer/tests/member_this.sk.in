@@ -1,0 +1,9 @@
+class X() {
+  fun f(): void {
+    this
+      .inner
+      .keys()
+      .filter(k -> r.containsKey(k))
+      .map(k -> (k, combine((this.get(k), r.get(k)))))
+  }
+}

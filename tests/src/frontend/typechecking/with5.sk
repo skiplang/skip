@@ -1,0 +1,7 @@
+class Foo(x: Int, y: String)
+
+fun main(): void {
+  foo = Foo(0, "hello");
+  !foo = foo with {x => 42} with {y => "Pass\n"};
+  print_raw(foo.x.toString() + " " + foo.y)
+}

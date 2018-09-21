@@ -1,0 +1,13 @@
+base class MyBase
+class Foo() extends MyBase
+
+fun foo(x: MyBase): void {
+  x match {
+  | Foo() -> void
+  | Foo() -> void
+  }
+}
+
+fun main(): void {
+  print_string("OK")
+}

@@ -1,0 +1,7 @@
+base class B final ()
+
+fun main(): void {
+  b: Class<B> = B;
+  _ = b();
+  print_raw("No")
+}

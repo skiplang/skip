@@ -1,0 +1,7 @@
+File "./syntax/invalid/type_annotation_3.sk", line 3, characters 3-14:
+Invalid LValue
+1 | fun main(): String {
+2 |   x = "";
+3 |   (x : String) = "Fail";
+  |   ^^^^^^^^^^^^
+4 |   x

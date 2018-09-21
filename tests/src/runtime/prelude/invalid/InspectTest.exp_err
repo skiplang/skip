@@ -1,0 +1,111 @@
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 53, characters 17-20:
+Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
+51 |   inspect: Inspect = InspectCall("foo", Array[InspectString("argument")]);
+52 |   _ = inspect match {
+53 |   | InspectCall(name, value) -> (name, value)
+   |                 ^^^^
+54 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 74, characters 18-26:
+It was declared as protected
+72 |   )
+73 |   // Call(elem1, elem2, ...)
+74 |   | .InspectCall(protected name: String, protected value: Array<Inspect>)
+   |                  ^^^^^^^^^
+75 |   // Object{key1 => elem1, key2 => elem2}
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 23, characters 20-24:
+Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
+21 |   inspect: Inspect = InspectLiteral("foo");
+22 |   _ = inspect match {
+23 |   | InspectLiteral(value) -> value
+   |                    ^^^^^
+24 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 65, characters 21-29:
+It was declared as protected
+63 |   | .InspectString(protected value: String)
+64 |   // value
+65 |   | .InspectLiteral(protected value: String)
+   |                     ^^^^^^^^^
+66 |   // Array[elem1, elem2, ...]
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 44, characters 16-19:
+Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
+42 |   );
+43 |   _ = inspect match {
+44 |   | InspectMap(name, value) -> (name, value)
+   |                ^^^^
+45 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 70, characters 5-13:
+It was declared as protected
+68 |   // Map[key1 => elem1, key2 => elem2]
+69 |   | .InspectMap(
+70 |     protected name: String,
+   |     ^^^^^^^^^
+71 |     protected value: Array<(Inspect, Inspect)>,
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 65, characters 19-22:
+Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
+63 |   );
+64 |   _ = inspect match {
+65 |   | InspectObject(name, value) -> (name, value)
+   |                   ^^^^
+66 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 77, characters 5-13:
+It was declared as protected
+75 |   // Object{key1 => elem1, key2 => elem2}
+76 |   | .InspectObject(
+77 |     protected name: String,
+   |     ^^^^^^^^^
+78 |     protected value: Array<(String, Inspect)>,
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 5, characters 20-24:
+Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
+3 |   inspect: Inspect = InspectSpecial("foo");
+4 |   _ = inspect match {
+5 |   | InspectSpecial(value) -> value
+  |                    ^^^^^
+6 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 61, characters 21-29:
+It was declared as protected
+59 |   children =
+60 |   // <<value>>
+61 |   | .InspectSpecial(protected value: String)
+   |                     ^^^^^^^^^
+62 |   // "value"
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 14, characters 19-23:
+Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
+12 |   inspect: Inspect = InspectString("foo");
+13 |   _ = inspect match {
+14 |   | InspectString(value) -> value
+   |                   ^^^^^
+15 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 63, characters 20-28:
+It was declared as protected
+61 |   | .InspectSpecial(protected value: String)
+62 |   // "value"
+63 |   | .InspectString(protected value: String)
+   |                    ^^^^^^^^^
+64 |   // value
+
+File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 32, characters 19-22:
+Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
+30 |   inspect: Inspect = InspectVector("foo", Array[InspectString("item")]);
+31 |   _ = inspect match {
+32 |   | InspectVector(name, value) -> (name, value)
+   |                   ^^^^
+33 |   | _ -> invariant_violation("unexpected type")
+
+File "tests/runtime/prelude/stdlib/debug/Debug.sk", line 67, characters 20-28:
+It was declared as protected
+65 |   | .InspectLiteral(protected value: String)
+66 |   // Array[elem1, elem2, ...]
+67 |   | .InspectVector(protected name: String, protected value: Array<Inspect>)
+   |                    ^^^^^^^^^
+68 |   // Map[key1 => elem1, key2 => elem2]

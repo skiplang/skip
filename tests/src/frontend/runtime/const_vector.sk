@@ -1,0 +1,10 @@
+fun foo(Array<Int>): void {
+  void
+}
+
+const bar: Array<Int> = Array[];
+
+fun main(): void {
+  foo(bar);
+  print_string("Pass")
+}

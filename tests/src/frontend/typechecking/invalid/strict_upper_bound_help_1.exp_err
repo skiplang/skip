@@ -1,0 +1,32 @@
+File "./typechecking/invalid/strict_upper_bound_help_1.sk", line 10, characters 10-12:
+Invalid argument
+ 8 |   v = mutable Vector[];
+ 9 |   v.push(B());
+10 |   v.push(C())
+   |          ^^^
+11 | }
+
+File "./typechecking/invalid/strict_upper_bound_help_1.sk", line 10, characters 10-12:
+The type: C
+ 8 |   v = mutable Vector[];
+ 9 |   v.push(B());
+10 |   v.push(C())
+   |          ^^^
+11 | }
+
+File "./typechecking/invalid/strict_upper_bound_help_1.sk", line 9, characters 10-12:
+Is not a subtype of: B
+ 7 | fun no(): void {
+ 8 |   v = mutable Vector[];
+ 9 |   v.push(B());
+   |          ^^^
+10 |   v.push(C())
+
+File "./typechecking/invalid/strict_upper_bound_help_1.sk", line 9, characters 10-12:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A
+ 7 | fun no(): void {
+ 8 |   v = mutable Vector[];
+ 9 |   v.push(B());
+   |          ^^^
+10 |   v.push(C())

@@ -1,0 +1,13 @@
+class C() {
+  fun tc(i: Int): String {
+    if (i == 0) {
+      "Pass\n"
+    } else {
+      this.tc(i - 1)
+    }
+  }
+}
+
+fun main(): void {
+  print_raw(C().tc(1000000))
+}

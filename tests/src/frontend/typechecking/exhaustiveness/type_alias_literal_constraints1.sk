@@ -1,0 +1,14 @@
+// Type aliases and literal constraints
+class Test() {
+  type Foo = Int;
+
+  fun bar(x: Int): void {
+    x match {
+    | 1 -> void
+    | this::Foo _ -> void
+    }
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

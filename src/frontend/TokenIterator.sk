@@ -1,0 +1,154 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Lexer;
+
+// Iterates through the Tokens produced by the lexer.
+// While iterating, leading and trailing comments for each token are available.
+//
+// A comment is a trailing comment iff:
+//  - it occurs on a line with a token
+//  - it begins after the last token on that line
+// Trailing comments are attached to the last token on the line containing the
+// comment start.
+//
+// If a comment is not a trailing comment, then it is a leading comment.
+// Leading comments are attached to the token immediately after the comment.
+// A token may have more than one leading or trailing comment.
+//
+// Comments at the end of a file are leading comments of the END_OF_FILE token.
+// Comments at the beginning of a file are leading comments of the first token
+// after the BEGINNING_OF_FILE token.
+//
+// NOTE: I'm hoping that TokenIterator plus preserving all Tokens in the
+// ParseTrees will be a convenient API to build the formatter. If that proves
+// incorrect we can adjust the API. A reasonable alterantive will be to
+// include leading and trailing trivia directly in Tokens.
+mutable class TokenIterator{
+  tokens: Array<Token.Token>,
+  comments: Array<Token.Comment>,
+  mutable tokenIndex: Int,
+  // The start of leading comments for the current token.
+  mutable commentIndex: Int,
+} {
+  static fun create(
+    tokens: Array<Token.Token>,
+    comments: Array<Token.Comment>,
+  ): mutable TokenIterator {
+    mutable TokenIterator{tokens, comments, tokenIndex => 0, commentIndex => 0};
+  }
+
+  readonly fun atEnd(): Bool {
+    this.tokenIndex >= this.tokens.size();
+  }
+
+  readonly fun token(): Token.Token {
+    this.tokens[this.tokenIndex];
+  }
+
+  readonly fun range(): TextRange {
+    this.token().range;
+  }
+
+  readonly fun start(): Position {
+    this.range().start;
+  }
+
+  readonly fun end(): Position {
+    this.range().end;
+  }
+
+  // The start of the leading comments, or the token start if no leading
+  // comments are present.
+  readonly fun triviaStart(): Position {
+    leadingComments = this.leadingComments();
+    if (leadingComments.isEmpty()) {
+      this.start();
+    } else {
+      leadingComments[0].range.start;
+    }
+  }
+
+  // The end of the trailing comments, or the token end if no trailing
+  // comments are present.
+  readonly fun triviaEnd(): Position {
+    trailingComments = this.trailingComments();
+    if (trailingComments.isEmpty()) {
+      this.end();
+    } else {
+      trailingComments.last().range.end;
+    }
+  }
+
+  readonly fun triviaRange(): TextRange {
+    TextRange.create(this.triviaStart(), this.triviaEnd());
+  }
+
+  readonly fun leadingComments(): Array<Token.Comment> {
+    this.comments.slice(this.commentIndex, this.endIndexOfLeadingComments());
+  }
+
+  // End indices are exclusive
+  private readonly fun endIndexOfLeadingComments(): Int {
+    endIndex = this.commentIndex;
+    while (
+      endIndex < this.comments.size() &&
+      this.comments[endIndex].range.end <= this.start()
+    ) {
+      !endIndex = endIndex + 1
+    };
+    endIndex;
+  }
+
+  // Trailing comments include comments on the same line which do not precede
+  // another token.
+  readonly fun trailingComments(): Array<Token.Comment> {
+    this.comments.slice(
+      this.endIndexOfLeadingComments(),
+      this.endIndexOfTrailingComments(),
+    );
+  }
+
+  // End indices are exclusive
+  private readonly fun endIndexOfTrailingComments(): Int {
+    startIndex = this.endIndexOfLeadingComments();
+    if (this.tokenIndex == 0) {
+      startIndex;
+    } else if (startIndex >= this.comments.size()) {
+      startIndex;
+    } else if ((this.tokenIndex + 1) >= this.tokens.size()) {
+      startIndex;
+    } else if (
+      this.end().line() == this.tokens[this.tokenIndex + 1].range.start.line()
+    ) {
+      startIndex;
+    } else {
+      endIndex = startIndex;
+      endLine = this.end().nextLine().line();
+      while (
+        endIndex < this.comments.size() &&
+        this.comments[endIndex].range.start.line() < endLine
+      ) {
+        !endIndex = endIndex + 1;
+      };
+      endIndex;
+    }
+  }
+
+  mutable fun next(): void {
+    invariant(!this.atEnd());
+    this.!commentIndex = this.endIndexOfTrailingComments();
+    this.!tokenIndex = this.tokenIndex + 1;
+  }
+
+  mutable fun advanceTo(position: Position): void {
+    // TODO: Use binary search.
+    while (this.start() < position) this.next();
+  }
+}
+
+module end;

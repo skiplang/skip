@@ -1,0 +1,7 @@
+File "./syntax/invalid/missing_semi_in_block.sk", line 3, characters 3-8:
+Missing semi-colon before expression in expression sequence. All expressions in an expression sequence must be separated by a ';'.
+1 | fun main(): String {
+2 |   if (true) { void } else {void }
+3 |   "Fail"
+  |   ^^^^^^
+4 | }

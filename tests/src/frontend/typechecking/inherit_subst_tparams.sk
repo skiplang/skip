@@ -1,0 +1,16 @@
+base class B<T> {
+  fun ignore<T>(): void {
+    void
+  }
+  fun make(x: T): B<T> {
+    _ = Array<T>[x];
+    _ = SortedMap<String, T>["1" => x];
+    _ = this.ignore<T>();
+    L<T>()
+  }
+}
+class L<T2>() extends B<T2>
+
+fun main(): void {
+  print_string("Pass")
+}

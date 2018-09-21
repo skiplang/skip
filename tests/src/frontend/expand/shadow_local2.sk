@@ -1,0 +1,13 @@
+module M;
+
+const x: Int = 42;
+
+fun foo(x: String): String {
+  x
+}
+
+module end;
+
+fun main(): void {
+  print_raw(M.foo("Pass\n"))
+}

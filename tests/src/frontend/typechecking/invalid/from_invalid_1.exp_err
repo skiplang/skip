@@ -1,0 +1,7 @@
+File "./typechecking/invalid/from_invalid_1.sk", line 7, characters 16-18:
+Invalid conflict resolution. Foo is not an immediate parent or does not have the corresponding field needed for conflict resolution
+5 | }
+6 | class MyFoo() {
+7 |   fun foo from Foo;
+  |                ^^^
+8 | }

@@ -1,0 +1,30 @@
+base class Hide
+class Foo<T: X & Y>(T) extends Hide
+class Bar<T: Y & X>(T) extends Hide
+
+base class Z
+base class X(i: Int) extends Z
+base class Y(s: String) extends Z
+class A extends X, Y
+class B extends Y, X
+
+fun get_hide(): Hide {
+  Foo(A(0, "Pass\n"))
+}
+
+fun main(): void {
+  a = A(0, "hello");
+  b = B("hello", 42);
+  _fa = Foo(a);
+  _fb = Foo(b);
+  _ba = Bar(a);
+  _bb = Bar(b);
+  print_raw(
+    get_hide() match {
+    | Foo(A(_, s)) -> s
+    | Foo(B(i, _)) -> "FAIL" + i
+    | Bar(A(i, _)) -> "FAIL" + i
+    | Bar(B(s, _)) -> "FAIL" + s
+    },
+  )
+}

@@ -1,0 +1,5 @@
+fun main(): void {
+  ref: Ref<Int> = Ref(42);
+  !ref.value = "hello";
+  print_raw(ref.value)
+}

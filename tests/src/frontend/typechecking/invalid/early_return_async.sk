@@ -1,0 +1,9 @@
+fun main(): void {
+  _: ^Int = async {
+    if (false) {
+      return "Fail\n"
+    };
+    37
+  };
+  print_string("Pass")
+}

@@ -1,0 +1,7 @@
+fun foo(x: Int, f: Int -> String = _ -> "Pass\n"): String {
+  f(x)
+}
+
+fun main(): void {
+  print_raw(foo(0))
+}

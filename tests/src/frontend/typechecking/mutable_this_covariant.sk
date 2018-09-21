@@ -1,0 +1,22 @@
+base class MyBase {
+  children =
+  | Nully()
+  | Inty(val: Int)
+}
+
+mutable class Cov<+T>(mutable v: T) {
+  mutable fun put(v: this): void {
+    this.!v = v.v
+  }
+}
+
+fun main(): void {
+  x = mutable Cov<MyBase>(Inty(42)); // x: Cov<MyBase>
+  x.put(Cov(Nully())); // legal
+  print_raw(
+    x.v match {
+    | Inty(i) -> i.toString()
+    | Nully() -> "Null\n"
+    },
+  )
+}

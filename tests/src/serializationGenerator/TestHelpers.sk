@@ -1,0 +1,67 @@
+fun assertDeserializeSuccess<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+  expected: T,
+): void {
+  result = JSON.deserialize(str, metaClass);
+  assertTrue(result.isSuccess());
+  assertEqual(result.fromSuccess(), expected)
+}
+
+fun assertDeserializeFailure<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+): void {
+  result = JSON.deserialize(str, metaClass);
+  result match {
+  | Success(_) -> assertTrue(result.isFailure())
+  | Failure(_) -> void
+  }
+}
+
+fun assertSerializeSuccess<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  object: T,
+  metaClass: S,
+  expected: String,
+  isPretty: Bool = false,
+): void {
+  result = JSON.serialize(object, metaClass, isPretty);
+  assertTrue(result.isSuccess());
+  assertEqual(result.fromSuccess(), expected)
+}
+
+fun assertSerializeFailure<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  object: T,
+  metaClass: S,
+): void {
+  result = JSON.serialize(object, metaClass);
+  result match {
+  | Success(_) -> assertTrue(result.isFailure())
+  | Failure(_) -> void
+  }
+}
+
+fun assertSerializes<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+  expected: T,
+  isPretty: Bool = false,
+): void {
+  assertDeserializeSuccess(str, metaClass, expected);
+  assertSerializeSuccess(expected, metaClass, str, isPretty)
+}

@@ -1,0 +1,6 @@
+File "./syntax/invalid/for_c_4.sk", line 2, characters 8-12:
+Unexpected 'const'. Variables are declared without a leading keyword: 'for (i in ...)'
+1 | fun main(): void {
+2 |   for (const i = 0; i < 10; ++i) {
+  |        ^^^^^
+3 |     void

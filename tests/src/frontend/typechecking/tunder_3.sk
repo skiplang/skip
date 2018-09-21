@@ -1,0 +1,15 @@
+fun foo(): _ {
+  foo()
+}
+
+fun bar(f: () -> Int): Int {
+  f()
+}
+
+fun baz(): Int {
+  bar(foo)
+}
+
+fun main(): void {
+  print_string("Pass")
+}

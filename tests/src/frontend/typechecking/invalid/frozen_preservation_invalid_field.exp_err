@@ -1,0 +1,24 @@
+File "./typechecking/invalid/frozen_preservation_invalid_field.sk", line 6, characters 28-28:
+Invalid annotation
+Invalid upcast. The frozen status of the type is not preserved.
+4 | fun no(): void {
+5 |   c = C(Ref(0));
+6 |   p: P<mutable Ref<Int>> = c;
+  |                            ^
+7 |   p.v.set(42) // modyfing an immutable object!
+
+File "./typechecking/invalid/frozen_preservation_invalid_field.sk", line 5, characters 7-15:
+The type 'C' is frozen
+3 |
+4 | fun no(): void {
+5 |   c = C(Ref(0));
+  |       ^^^^^^^^^
+6 |   p: P<mutable Ref<Int>> = c;
+
+File "./typechecking/invalid/frozen_preservation_invalid_field.sk", line 5, characters 7-15:
+It was found to necessary to upcast to the type 'P<mutable Ref<Int>>', but this type is not frozen
+3 |
+4 | fun no(): void {
+5 |   c = C(Ref(0));
+  |       ^^^^^^^^^
+6 |   p: P<mutable Ref<Int>> = c;

@@ -1,0 +1,20 @@
+base class D
+base class P extends D
+class B() extends P
+
+base class F {
+  children =
+  | Bar(P)
+  | Baz(B)
+}
+
+fun main(): void {
+  print_raw(
+    (Bar(B()) : F) match {
+    | Bar(x)
+    | Baz(x) ->
+      _ = x;
+      "Pass\n"
+    },
+  )
+}

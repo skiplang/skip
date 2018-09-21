@@ -1,0 +1,13 @@
+base class P {
+  fun foo<T>(T): T;
+}
+
+base class L extends P
+base class R extends P
+
+// fails on check fields without proper subst on L and R for the tparams from P
+base class C extends L, R, P
+
+fun main(): void {
+  print_string("Pass")
+}

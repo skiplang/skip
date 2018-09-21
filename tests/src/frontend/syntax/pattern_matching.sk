@@ -1,0 +1,12 @@
+fun main(): void {
+  print_raw(if (test() == 42) "OK\n" else "FAILED")
+}
+
+fun test(): Int {
+  foo = Foo();
+  foo match {
+  | Foo() -> 42
+  }
+}
+
+class Foo()

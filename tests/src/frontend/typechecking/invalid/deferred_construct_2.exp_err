@@ -1,0 +1,13 @@
+File "./typechecking/invalid/deferred_construct_2.sk", line 6, characters 3-11:
+Invalid Concrete<_> instantiation for B. To instanatiate a Concrete<_> of a base class, the constructor must be final
+4 |
+5 | fun no(c: Concrete<B>): B {
+6 |   c(0, 100)
+  |   ^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/deferred_construct_2.sk", line 1, characters 13-41:
+The constructor was declared as non-final here
+1 | base class B(x: Int, deferred y: this::T) {
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2 |   type T;

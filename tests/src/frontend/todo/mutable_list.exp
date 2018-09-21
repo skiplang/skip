@@ -1,0 +1,6 @@
+File "./typechecking/mutable_list.sk", line 14, characters 3-27:
+Invalid return type
+File "./typechecking/mutable_list.sk", line 2, characters 53-64:
+The type: mutable List<mutable B>
+File "./typechecking/mutable_list.sk", line 12, characters 13-13:
+Is incompatible with: A

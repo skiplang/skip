@@ -1,0 +1,39 @@
+class TestNamed{a: Int} {}
+class TestPositional(a: Int) {}
+class TestInspect() {
+  fun inspect(): Inspect {
+    InspectLiteral("void")
+  }
+}
+
+base class TestUnnamedChildren {
+  children =
+  | TestUnnamedChild(String)
+}
+
+fun main(): void {
+  debug(TestInspect());
+  debug(true);
+  debug(1);
+  debug(1.0);
+  debug("a");
+  debug(Vector[1, 2, 3]);
+  debug(Map["a" => "c"]);
+  debug(UnorderedMap["a" => "c"]);
+  debug(Set[1, 2, 3]);
+  debug(UnorderedSet[1, 2, 3]);
+  debug(None());
+  debug(Some(1.0));
+  debug(Some(Some(true)));
+
+  debug(TestNamed{a => 10});
+  debug(TestPositional(10));
+
+  debug(
+    Vector[
+      Vector[Vector[Vector[Vector[Vector[Vector[Vector[Vector[Vector[]]]]]]]]],
+    ],
+  );
+
+  debug(TestUnnamedChild(""))
+}

@@ -1,0 +1,2 @@
+File "invalid/overlapping_values/skip.project.json"
+File 'invalid/overlapping_values/t.sk' contained in 'lib' is included with binding 'var=v1' as well as with binding 'var=v2'.

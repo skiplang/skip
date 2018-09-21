@@ -1,0 +1,44 @@
+trait T1(t1: Int)
+trait T2(t2: Int)
+
+base class D(d: Int)
+
+base class B1(b1a: Int, b1b: Int) extends D uses T1, T2
+base class B2(b2b: Int, b2a: Int) extends D uses T2, T1
+
+trait Fields {
+  macro fun getFields(): Vector<Int> {
+    result = mutable Vector<Int>[];
+    #forEachField (#field) result.push(this.#field);
+    freeze(result)
+  }
+}
+
+class A(a1: Int, a2: Int) extends B2, B1, D uses Fields {}
+
+class C(c2: Int, c1: Int) extends B1, B2, D uses Fields, T2, T1 {}
+
+class CB1() extends B1 uses Fields
+class CB2() extends B2 uses Fields
+
+fun main(): void {
+  cb1 = CB1(1, 2, 3, 4, 5);
+  print_string(cb1.getFields().toString());
+  print_string(Vector[cb1.b1a, cb1.b1b, cb1.t1, cb1.t2, cb1.d].toString());
+
+  a = A(1, 2, 3, 4, 5, 6, 7, 8, 9);
+  print_string(a.getFields().toString());
+  print_string(
+    Vector[a.a1, a.a2, a.b2b, a.b2a, a.t2, a.t1, a.d, a.b1a, a.b1b].toString(),
+  );
+
+  cb2 = CB2(1, 2, 3, 4, 5);
+  print_string(cb2.getFields().toString());
+  print_string(Vector[cb2.b2b, cb2.b2a, cb2.t2, cb2.t1, cb2.d].toString());
+
+  c = C(1, 2, 3, 4, 5, 6, 7, 8, 9);
+  print_string(c.getFields().toString());
+  print_string(
+    Vector[c.c2, c.c1, c.t2, c.t1, c.b1a, c.b1b, c.d, c.b2b, c.b2a].toString(),
+  );
+}

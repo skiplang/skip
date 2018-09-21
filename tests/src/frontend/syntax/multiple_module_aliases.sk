@@ -1,0 +1,24 @@
+// comment
+
+/* test */
+
+module alias A = M;
+
+// comment
+
+/* test */
+
+module alias B = M;
+
+// comment
+
+/* test */
+
+module M;
+
+const s: String = "s";
+module end;
+
+fun main(): void {
+  print_raw("Pa" + A.s + B.s + "\n")
+}

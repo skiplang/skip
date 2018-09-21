@@ -1,0 +1,48 @@
+//
+// Canary: once we have lower bound tracking, this test will break.
+// what's happening is that since we no longer copy methods down to
+// subclasses, we'll typecheck `contra` in the context of `P` only.
+// This is fine until we add lower bound tracking - but at that point,
+// we'll need to build out our modeling of the `this` type.
+//
+
+base class P() {
+  children =
+  | L(int: Int)
+  | R(str: String)
+  fun contra(): String {
+    c = Contra(_ ~> "");
+    c.set(this).f(L(0))
+  }
+}
+
+class Contra<-T: P>(f: T ~> String) {
+  fun set(x: T): Contra<T> {
+    x match {
+    | L(int) ->
+      Contra(other ~>
+        other match {
+        | L(int2) -> (int + int2).toString()
+        | R _ ->
+          invariant_violation(
+            "ICE once we have lower bound tracking this case is unecessary, since we know T=L",
+          )
+        }
+      )
+    | R(str) ->
+      Contra(other ~>
+        other match {
+        | R(str2) -> str + str2
+        | L _ ->
+          invariant_violation(
+            "ICE once we have lower bound tracking this case is unecessary, since we know T=R",
+          )
+        }
+      )
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

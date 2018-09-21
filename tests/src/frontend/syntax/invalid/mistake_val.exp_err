@@ -1,0 +1,6 @@
+File "./syntax/invalid/mistake_val.sk", line 2, characters 7-11:
+Unexpected 'val'. Variables are declared without a leading keyword: 'myint = ...'
+1 | fun main(): String {
+2 |   val myint = 10;
+  |       ^^^^^
+3 | }

@@ -1,0 +1,6 @@
+File "./syntax/invalid/type_constant_with_constraint_and_initializer.sk", line 2, characters 36-57:
+Type constant initializer not permitted on a type constant with a constraint. Did you mean to use a 'default' clause instead?
+1 | class C {} {
+2 |   type TID  : UNSAFE_TYPE_HH_FIXME = UNSAFE_TYPE_HH_FIXME;
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^
+3 | }

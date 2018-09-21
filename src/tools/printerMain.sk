@@ -1,0 +1,138 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip Printer
+//
+// To run the pretty printer:
+//   ninja -C build skip_printer
+//
+// To play with the printer:
+//   build/bin/skip_printer <source-file>
+//   echo "fun main(): void { void }" | build/bin/skip_printer
+//
+// To pretty print an entire directory:
+//   find my_folder -name '*.sk' | xargs build/bin/skip_printer --write
+
+class PrinterArguments{
+  files: Vector<String>,
+  write: Bool,
+  listDifferent: Bool,
+  stdinFilepath: String = "stdin",
+}
+
+class PrinterSyntaxError(m: String) extends Exception {
+  fun getMessage(): String {
+    this.m
+  }
+}
+
+fun prettyPrint(
+  contents: String,
+  filename: String,
+): Result<String, SkipError.Error> {
+  parsed = SkipParser.parseSource(contents, false);
+  if (parsed.errors.size() > 0) {
+    // Parse errors are expected. Exceptions are bugs.
+    Failure(SkipError.errorFromSyntaxError(parsed.errors[0], filename))
+  } else {
+    Success(SkipPrinter.printTreeToString(parsed.tree, contents) + "\n")
+  }
+}
+
+fun printToStdoutAndReportErrors(contents: String, filename: String): void {
+  prettyPrint(contents, filename) match {
+  | Failure(error) ->
+    print_error_ln(error.toString());
+    exit(1)
+  | Success(formattedContents) -> print_raw(formattedContents)
+  }
+}
+
+fun main(): void {
+  errorMessage = "Usage: skip_printer [--write] [--list-different] <list_of_sk_files>\n";
+  initialArgs = PrinterArguments{
+    files => Vector[],
+    write => false,
+    listDifferent => false,
+  };
+  (args, files, afterDashDash) = Arguments.parse(
+    initialArgs,
+    List[
+      ("--write", Arguments.SetTrue(args ~> args with {write => true})),
+      (
+        "--list-different",
+        Arguments.SetTrue(args ~> args with {listDifferent => true}),
+      ),
+      (
+        "--stdin-filepath",
+        Arguments.SetString((args, path) ~> args with {stdinFilepath => path}),
+      ),
+    ],
+    errorMessage,
+  );
+  if (!afterDashDash.isEmpty()) {
+    print_error_ln("'--' option not supported");
+    exit(1)
+  };
+
+  if (args.listDifferent) {
+    // Check if all the files passed are the same
+    differents = files
+      .collect(Vector)
+      .parallelMap(filename ~> {
+        try {
+          contents = FileSystem.readTextFile(filename);
+          prettyPrint(contents, filename).maybeSuccess().flatMap(formatted ~>
+            if (formatted == contents) None() else Some(filename)
+          )
+        } catch {
+        | e ->
+          // Include filename when reporting parsing bugs
+          print_error(filename + ": ");
+          print_error_ln(e.getMessage());
+          exit(1)
+        }
+      })
+      .filterNone();
+    if (differents.size() > 0) {
+      print_string(differents.join("\n"));
+      exit(1);
+    }
+  } else if (args.write) {
+    // 0 or more files in place
+    // TODO: Should exit with an error code if unable to format all files?
+    _ = files.collect(Vector).parallelMap(filename ~> {
+      print_raw(filename + "\n");
+      try {
+        contents = FileSystem.readTextFile(filename);
+        prettyPrint(contents, filename) match {
+        | Failure(error) -> print_error_ln(error.toString())
+        | Success(formattedContents) ->
+          if (formattedContents != contents) {
+            FileSystem.writeTextFile(filename, formattedContents)
+          }
+        }
+      } catch {
+      | e ->
+        // Include filename when reporting parsing bugs
+        print_error(filename + ": ");
+        print_error_ln(e.getMessage());
+        exit(1)
+      }
+    })
+  } else if (files.isEmpty()) {
+    printToStdoutAndReportErrors(read_stdin(), args.stdinFilepath)
+  } else if (files.size() == 1) {
+    filename = files.getHead();
+    printToStdoutAndReportErrors(FileSystem.readTextFile(filename), filename);
+  } else {
+    // multi-file no write
+    print_error_ln("Use the --write option to print multiple files in place.");
+    exit(1)
+  };
+  void
+}

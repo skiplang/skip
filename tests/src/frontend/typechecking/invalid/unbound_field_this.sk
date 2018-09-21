@@ -1,0 +1,9 @@
+class X(a: Int) {
+  fun b(): void {
+    this.z
+  }
+
+  static fun c(): void {
+    void
+  }
+}

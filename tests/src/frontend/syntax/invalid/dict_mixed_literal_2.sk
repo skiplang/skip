@@ -1,0 +1,4 @@
+fun main(): String {
+  v = Dict [ ("key2", "Fail!"), "key" => "Hello world!\n" ];
+  v["key"]
+}

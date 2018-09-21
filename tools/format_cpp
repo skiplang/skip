@@ -1,0 +1,30 @@
+#!/bin/bash -e
+
+if [ -e "$(dirname $0)/../build/CMakeCache.txt" ]; then
+  clang="$(grep CLANG_EXECUTABLE build/CMakeCache.txt | sed -e 's/CLANG_EXECUTABLE:FILEPATH=//')"
+fi
+
+if [ -n "${clang}" ]; then
+  if [ -x "$(dirname ${clang})/clang-format" ]; then
+      clang_format="$(dirname ${clang})/clang-format"
+  fi
+fi
+
+if [ ! -x "$clang_format" ]; then
+  if [ $(which clang-format 2> /dev/null) ]; then
+    clang_format=clang-format
+  else
+    echo clang-format: command not found >&2
+    exit 1
+  fi
+fi
+
+# run clang-format on runtime files
+$clang_format -i\
+  -style=file\
+  -sort-includes=false\
+  $(find tests -name \*.cpp -o -name \*.h) \
+  $(find apps -name \*.cpp -o -name \*.h)
+
+# sync tests->src
+rsync -a --delete tests/runtime/ src/runtime

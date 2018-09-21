@@ -1,0 +1,7 @@
+class C() {
+  readonly frozen fun m(): String { "Fail" }
+}
+
+fun main(): String {
+  C::m()
+}

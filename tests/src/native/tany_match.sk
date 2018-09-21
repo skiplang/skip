@@ -1,0 +1,11 @@
+fun doMatch<T>(v: ?T): void {
+  v match {
+  | None() -> void
+  | Some(x) -> debug(x)
+  }
+}
+
+fun main(): void {
+  doMatch(None());
+  print_string("Pass")
+}

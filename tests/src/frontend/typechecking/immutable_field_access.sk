@@ -1,0 +1,9 @@
+mutable class Bar(x: mutable Array<Int>)
+mutable class Foo(v: mutable Array<mutable Bar>)
+fun test(f: Foo): Array<Bar> {
+  f.v
+}
+
+fun main(): void {
+  print_string("Pass")
+}

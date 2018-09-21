@@ -1,0 +1,11 @@
+fun tc(i: Int): String {
+  if (i == 0) {
+    "Pass\n"
+  } else {
+    tc(i - 1)
+  }
+}
+
+fun main(): void {
+  print_raw(tc(1000000))
+}

@@ -1,0 +1,29 @@
+base class A{x: Int}
+base class B{y: Bool} extends A
+class C{z: A} extends B
+class Leaf extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A{x => 1} -> "P"
+  | B{y => false} -> "a"
+  | C{z => B{y => true, x => 1}, y => true, x => 2} -> "s1"
+  | C{z => C{x => 1}, y => true, x => 2} -> "s2"
+  | B{y => true, x => 3} -> "s3"
+  | A{x => _} -> "\n"
+  }
+}
+
+fun main(): void {
+  inner1 = C{z => Leaf{x => 1}, y => false, x => 1};
+  inner2 = C{z => Leaf{x => 1}, y => true, x => 1};
+  x = C{z => inner1, x => 1, y => true};
+  y = C{z => inner1, x => 2, y => false};
+  r = C{z => inner1, x => 2, y => true};
+  z = C{z => C{z => Leaf{x => 2}, y => true, x => 1}, x => 2, y => true};
+  t = C{z => inner2, x => 3, y => true};
+  l = C{z => inner1, x => 4, y => true};
+  print_raw(
+    myMatch(x) + myMatch(y) + myMatch(z) + myMatch(r) + myMatch(t) + myMatch(l),
+  )
+}

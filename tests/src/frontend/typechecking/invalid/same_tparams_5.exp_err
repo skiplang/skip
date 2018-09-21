@@ -1,0 +1,18 @@
+File "./typechecking/invalid/same_tparams_5.sk", line 2, characters 3-11:
+The value returned from the function is incompatible with the return type 'T'
+1 | fun no<T>(x: T): T {
+2 |   freeze(x)
+  |   ^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/same_tparams_5.sk", line 1, characters 14-14:
+The type: frozen T
+1 | fun no<T>(x: T): T {
+  |              ^
+2 |   freeze(x)
+
+File "./typechecking/invalid/same_tparams_5.sk", line 1, characters 18-18:
+Is not a subtype of: T
+1 | fun no<T>(x: T): T {
+  |                  ^
+2 |   freeze(x)

@@ -1,0 +1,10 @@
+fun troll<T: Int & Bool>(x: T): void {
+  x match {
+  | Int _ -> void
+  | Bool _ -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

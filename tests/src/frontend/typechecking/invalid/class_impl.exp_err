@@ -1,0 +1,5 @@
+File "./typechecking/invalid/class_impl.sk", line 2, characters 16-16:
+Only traits can be used
+1 | base class X
+2 | class Y() uses X
+  |                ^

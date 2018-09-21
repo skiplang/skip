@@ -1,0 +1,1308 @@
+[
+  {
+    "elapsedTime": 8,
+    "contents": {
+      "params": {
+        "processId": 31508,
+        "trace": "verbose",
+        "rootUri": "file://%CURRENT_DIR%/project1",
+        "rootPath": "%CURRENT_DIR%/project1",
+        "initializationOptions": {},
+        "capabilities": {
+          "window": {
+            "actionRequired": {
+              "dynamicRegistration": false
+            },
+            "status": {
+              "dynamicRegistration": false
+            },
+            "progress": {
+              "dynamicRegistration": false
+            }
+          },
+          "textDocument": {
+            "signatureHelp": {
+              "dynamicRegistration": false
+            },
+            "hover": {
+              "dynamicRegistration": false
+            },
+            "rename": {
+              "dynamicRegistration": false
+            },
+            "completion": {
+              "dynamicRegistration": false,
+              "completionItem": {
+                "snippetSupport": true
+              }
+            },
+            "documentSymbol": {
+              "dynamicRegistration": false
+            },
+            "documentHighlight": {
+              "dynamicRegistration": false
+            },
+            "formatting": {
+              "dynamicRegistration": false
+            },
+            "codeAction": {
+              "dynamicRegistration": false
+            },
+            "synchronization": {
+              "willSaveWaitUntil": false,
+              "dynamicRegistration": false,
+              "willSave": false,
+              "didSave": true
+            },
+            "onTypeFormatting": {
+              "dynamicRegistration": false
+            },
+            "documentLink": {
+              "dynamicRegistration": false
+            },
+            "codeLens": {
+              "dynamicRegistration": false
+            },
+            "definition": {
+              "dynamicRegistration": true
+            },
+            "references": {
+              "dynamicRegistration": false
+            },
+            "rangeFormatting": {
+              "dynamicRegistration": false
+            }
+          },
+          "workspace": {
+            "workspaceEdit": {
+              "documentChanges": true
+            },
+            "executeCommand": {
+              "dynamicRegistration": false
+            },
+            "didChangeConfiguration": {
+              "dynamicRegistration": false
+            },
+            "applyEdit": true,
+            "didChangeWatchedFiles": {
+              "dynamicRegistration": true
+            },
+            "symbol": {
+              "dynamicRegistration": false
+            }
+          }
+        }
+      },
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "id": 0
+    },
+    "deltaTime": 308,
+    "kind": "receive"
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "id": 0,
+      "result": {
+        "capabilities": {
+          "textDocumentSync": {
+            "openClose": true,
+            "change": 1,
+            "willSave": false,
+            "willSaveWaitUntil": true,
+            "save": {
+              "includeText": true
+            }
+          },
+          "hoverProvider": false,
+          "definitionProvider": true,
+          "referencesProvider": false,
+          "documentHighlightProvider": false,
+          "documentSymbolProvider": true,
+          "workspaceSymbolProvider": false,
+          "codeActionProvider": false,
+          "documentFormattingProvider": true,
+          "documentRangeFormattingProvider": false,
+          "renameProvider": false
+        }
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "contents": {
+      "method": "textDocument/didOpen",
+      "jsonrpc": "2.0",
+      "params": {
+        "textDocument": {
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+          "languageId": "skip",
+          "text": "// NOTE: As a NBE optimization this implementation is customized in\n// native/FastOption.sk, and the APIs must be kept in sync.\nbase class Option<+T> uses\n  Show[T: Show],\n  Hashable[T: Hashable],\n  Orderable[T: Orderable],\n  Equality[T: Equality],\n{\n  children =\n  | Some(value: T)\n  | None()\n\n  fun map<T2>(f: T -> T2): ?T2\n  | None() -> None()\n  | Some(x) -> Some(f(x))\n\n  fun flatMap<T2>(f: T -> ?T2): ?T2\n  | None() -> None()\n  | Some(x) -> f(x)\n\n  fun maybe<T2>(nothing: T2, mjust: T -> T2): T2\n  | None() -> nothing\n  | Some(x) -> mjust(x)\n\n  fun default<T2>[T: T2](x: T2): T2\n  | None() -> x\n  | Some(y) -> y\n\n  fun defaultOption<T2>[T: T2](x: ?T2): ?T2\n  | None _ -> x\n  | Some _ as y -> y\n\n  fun test(f: T -> Bool): Bool\n  | None _ -> false\n  | Some(x) -> f(x)\n\n  fun fromSome(msg: String = \"fromSome called on None\"): T\n  | None() -> invariant_violation(msg)\n  | Some(x) -> x\n\n  fun isSome(): Bool\n  | None() -> false\n  | Some _ -> true\n\n  fun isNone(): Bool\n  | None() -> true\n  | Some _ -> false\n\n  fun hash[T: Hashable](): Int\n  | None() -> 1027410261\n  | Some(x) -> x.hash() + 1\n\n  fun each(f: T -> void): void\n  | None() -> void\n  | Some(value) -> f(value)\n\n  fun ==<U: Equality>[T: U](other: ?U): Bool\n  | None() -> other.isNone()\n  | Some(x) ->\n    other match {\n    | Some(y) -> x == y\n    | None() -> false\n    }\n\n  fun !=<U: Equality>[T: U](other: ?U): Bool {\n    !(this == other)\n  }\n\n  fun <<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == LT()\n  }\n\n  fun ><U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == GT()\n  }\n\n  fun <=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != GT()\n  }\n\n  fun >=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != LT()\n  }\n\n  // None() is less than Some().\n  fun compare<U: Orderable>[T: U](other: ?U): Order\n  | None() ->\n    if (other.isNone()) {\n      EQ()\n    } else {\n      LT()\n    }\n  | Some(x) ->\n    other match {\n    | Some(y) -> compare(x, y)\n    | None() -> GT()\n    }\n\n  static fun none(): ?T {\n    None()\n  }\n\n  fun toString[T: Show](): String\n  | None() -> \"None()\"\n  | Some(x) -> `Some(${x.toString()})`\n\n  // async frozen fun gen<U>[T: ^U](): ^Option<U>\n  // | None() -> None()\n  // | Some(x) -> Some(await x)\n\n  async frozen fun genMap<U>(f: T ~> ^U): ^?U\n  | None() -> None()\n  | Some(x) -> Some(await f(x))\n\n  async frozen fun genFilter(p: T ~> ^Bool): ^?T\n  | None() -> None()\n  | Some(x) as option -> if (await p(x)) option else None()\n}\n",
+          "version": 1
+        }
+      }
+    },
+    "deltaTime": 1029,
+    "kind": "receive",
+    "elapsedTime": 47
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+        "diagnostics": []
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "elapsedTime": 18712,
+    "contents": {
+      "method": "textDocument/didChange",
+      "jsonrpc": "2.0",
+      "params": {
+        "contentChanges": [
+          {
+            "text": "// NOTE: As a NBE optimization this implementation is customized in\n// native/FastOption.sk, and the APIs must be kept in sync.\nbase class Option<+T> uses\n  Show[T: Show],\n  Hashable[T: Hashable],\n  Orderable[T: Orderable],\n  Equality[T: Equality],\n{\n  children =\n  | Some(value: T)\n  | None()\n\n  fun map<T2>(f: T -> T2): ?T2\n  | None() -> None()\n  | Some(x) -> Some(f(x))\n\n  fun flatMap<T2>(f: T -> ?T2): ?T2\n  | None() -> None()\n  | Some(x) -> f(x)\n\n  fun maybe<T2>(nothing: T2, mjust: T -> T2): T2\n  | None() -> nothing\n  | Some(x) -> mjust(x)\n\n  fun default<T2>[T: T2](x: T2): T2\n  | None() -> x\n  | Some(y) -> y\n\n  fun defaultOption<T2>[T: T2](x: ?T2): ?T2\n  | None _ -> x\n  | Some _ as y -> y\n\n  fun test(f: T -> Bool): Bool\n  | None _ -> false\n  | Some(x) -> f(x)\n\n  fun fromSome(msg: String = \"fromSome called on None\"): T\n  | None() -> invariant_violation(msg)\n  | Some(x) -> x\n\n  fun isSome(): Bool\n  | None() -> false\n  | Some _ -> true\n\n  fun isNone(): Bool\n  | None() -> true\n  | Some _ -> false\n\n  fun hash[T: Hashable](): Int\n  | None() -> 1027410261\n  | Some(x) -> x.hash() + 1\n\n  fun each(f: T -> void): void\n  | None() -> void\n  | Some(value) -> f(value)\n\n  fun ==<U: Equality>[T: U](other: ?U): Bool\n  | None() -> other.isNone()\n  | Some(x) ->\n    other match {\n    | Some(y) -> x == y\n    | None() -> false\n    }\n\n  fun !=<U: Equality>[T: U](other: ?U): Bool {\n    !(this == other)\n  }\n\n  fun <<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == LT()\n  }\n\n  fun ><U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == GT()\n  }\n\n  fun <=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != GT()\n  }\n\n  fun >=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != LT()\n  }\n\n  // None() is less than Some().\n  fun compare<U: Orderable>[T: U](other: ?U): Order\n  | None() ->\n    if (other.isNone()) {\n      EQ()\n    } else {\n      LT()\n    }\n  | Some(x) ->\n    other match {\n    | Some(y) -> compare(x, y)\n    | None() -> GT()\n    }\n\n  static fun none(): ?T {\n    None()\n  }\n\n  fun toString[T: Show](): String\n  | None() -> \"None()\"\n  | Some(x) -> `Some(${x.toString()})`\n\n  // async frozen fun gen<U>[T: ^U](): ^Option<U>\n  // | None() -> None()\n  // | Some(x) -> Some(await x)\n\n  async frozen fun genMap<U>(f: T ~> ^U): ^?U\n  | None() -> None()\n  | Some(x) -> Some(await f(x))\n\n  async frozen fun genFilter(p: T ~> ^Bool): ^?T\n  | None() -> None()\n  | Some(x) as option -> if (await p(x)) option else None()\n\n"
+          }
+        ],
+        "textDocument": {
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+          "version": 2
+        }
+      }
+    },
+    "kind": "receive",
+    "deltaTime": 925
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 118,
+                "character": 0
+              },
+              "end": {
+                "line": 118,
+                "character": 0
+              }
+            },
+            "severity": 1,
+            "code": 103,
+            "source": "Skip",
+            "message": "Expected '}'. Found 'end of file'.",
+            "relatedLocations": [
+              {
+                "location": {
+                  "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 1
+                    }
+                  }
+                },
+                "message": " For opening '{'"
+              }
+            ]
+          }
+        ]
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "elapsedTime": 19008,
+    "kind": "receive",
+    "deltaTime": 755,
+    "contents": {
+      "method": "textDocument/documentSymbol",
+      "id": 1,
+      "params": {
+        "textDocument": {
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk"
+        }
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "id": 1,
+      "result": [
+        {
+          "name": "Option",
+          "kind": 5,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 118,
+                "character": 0
+              }
+            }
+          }
+        },
+        {
+          "name": "map(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 12,
+                "character": 2
+              },
+              "end": {
+                "line": 14,
+                "character": 25
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "flatMap(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 16,
+                "character": 2
+              },
+              "end": {
+                "line": 18,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "maybe(nothing, mjust)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 20,
+                "character": 2
+              },
+              "end": {
+                "line": 22,
+                "character": 23
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "default(x)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 24,
+                "character": 2
+              },
+              "end": {
+                "line": 26,
+                "character": 16
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "defaultOption(x)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 28,
+                "character": 2
+              },
+              "end": {
+                "line": 30,
+                "character": 20
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "test(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 32,
+                "character": 2
+              },
+              "end": {
+                "line": 34,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "fromSome(msg)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 36,
+                "character": 2
+              },
+              "end": {
+                "line": 38,
+                "character": 16
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "isSome()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 40,
+                "character": 2
+              },
+              "end": {
+                "line": 42,
+                "character": 18
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "isNone()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 44,
+                "character": 2
+              },
+              "end": {
+                "line": 46,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "hash()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 48,
+                "character": 2
+              },
+              "end": {
+                "line": 50,
+                "character": 27
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "each(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 52,
+                "character": 2
+              },
+              "end": {
+                "line": 54,
+                "character": 27
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "==(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 56,
+                "character": 2
+              },
+              "end": {
+                "line": 62,
+                "character": 5
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "!=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 64,
+                "character": 2
+              },
+              "end": {
+                "line": 66,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "<(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 68,
+                "character": 2
+              },
+              "end": {
+                "line": 70,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": ">(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 72,
+                "character": 2
+              },
+              "end": {
+                "line": 74,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "<=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 76,
+                "character": 2
+              },
+              "end": {
+                "line": 78,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": ">=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 80,
+                "character": 2
+              },
+              "end": {
+                "line": 82,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "compare(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 85,
+                "character": 2
+              },
+              "end": {
+                "line": 96,
+                "character": 5
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "none()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 98,
+                "character": 2
+              },
+              "end": {
+                "line": 100,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "toString()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 102,
+                "character": 2
+              },
+              "end": {
+                "line": 104,
+                "character": 38
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "genMap(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 110,
+                "character": 2
+              },
+              "end": {
+                "line": 112,
+                "character": 31
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "genFilter(p)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 114,
+                "character": 2
+              },
+              "end": {
+                "line": 116,
+                "character": 59
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "Expected '}'. Found 'end of file'.",
+          "kind": 17,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 118,
+                "character": 0
+              },
+              "end": {
+                "line": 118,
+                "character": 0
+              }
+            }
+          }
+        }
+      ],
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "elapsedTime": 23100,
+    "deltaTime": 952,
+    "kind": "receive",
+    "contents": {
+      "method": "textDocument/didChange",
+      "params": {
+        "textDocument": {
+          "version": 3,
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk"
+        },
+        "contentChanges": [
+          {
+            "text": "// NOTE: As a NBE optimization this implementation is customized in\n// native/FastOption.sk, and the APIs must be kept in sync.\nbase class Option<+T> uses\n  Show[T: Show],\n  Hashable[T: Hashable],\n  Orderable[T: Orderable],\n  Equality[T: Equality],\n{\n  children =\n  | Some(value: T)\n  | None()\n\n  fun map<T2>(f: T -> T2): ?T2\n  | None() -> None()\n  | Some(x) -> Some(f(x))\n\n  fun flatMap<T2>(f: T -> ?T2): ?T2\n  | None() -> None()\n  | Some(x) -> f(x)\n\n  fun maybe<T2>(nothing: T2, mjust: T -> T2): T2\n  | None() -> nothing\n  | Some(x) -> mjust(x)\n\n  fun default<T2>[T: T2](x: T2): T2\n  | None() -> x\n  | Some(y) -> y\n\n  fun defaultOption<T2>[T: T2](x: ?T2): ?T2\n  | None _ -> x\n  | Some _ as y -> y\n\n  fun test(f: T -> Bool): Bool\n  | None _ -> false\n  | Some(x) -> f(x)\n\n  fun fromSome(msg: String = \"fromSome called on None\"): T\n  | None() -> invariant_violation(msg)\n  | Some(x) -> x\n\n  fun isSome(): Bool\n  | None() -> false\n  | Some _ -> true\n\n  fun isNone(): Bool\n  | None() -> true\n  | Some _ -> false\n\n  fun hash[T: Hashable](): Int\n  | None() -> 1027410261\n  | Some(x) -> x.hash() + 1\n\n  fun each(f: T -> void): void\n  | None() -> void\n  | Some(value) -> f(value)\n\n  fun ==<U: Equality>[T: U](other: ?U): Bool\n  | None() -> other.isNone()\n  | Some(x) ->\n    other match {\n    | Some(y) -> x == y\n    | None() -> false\n    }\n\n  fun !=<U: Equality>[T: U](other: ?U): Bool {\n    !(this == other)\n  }\n\n  fun <<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == LT()\n  }\n\n  fun ><U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) == GT()\n  }\n\n  fun <=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != GT()\n  }\n\n  fun >=<U: Orderable>[T: U](other: ?U): Bool {\n    this.compare(other) != LT()\n  }\n\n  // None() is less than Some().\n  fun compare<U: Orderable>[T: U](other: ?U): Order\n  | None() ->\n    if (other.isNone()) {\n      EQ()\n    } else {\n      LT()\n    }\n  | Some(x) ->\n    other match {\n    | Some(y) -> compare(x, y)\n    | None() -> GT()\n    }\n\n  static fun none(): ?T {\n    None()\n  }\n\n  fun toString[T: Show](): String\n  | None() -> \"None()\"\n  | Some(x) -> `Some(${x.toString()})`\n\n  // async frozen fun gen<U>[T: ^U](): ^Option<U>\n  // | None() -> None()\n  // | Some(x) -> Some(await x)\n\n  async frozen fun genMap<U>(f: T ~> ^U): ^?U\n  | None() -> None()\n  | Some(x) -> Some(await f(x))\n\n  async frozen fun genFilter(p: T ~> ^Bool): ^?T\n  | None() -> None()\n  | Some(x) as option -> if (await p(x)) option else None()\n}\n"
+          }
+        ]
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+        "diagnostics": []
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "deltaTime": 759,
+    "kind": "receive",
+    "contents": {
+      "jsonrpc": "2.0",
+      "params": {
+        "id": 1
+      },
+      "method": "$/cancelRequest"
+    },
+    "elapsedTime": 23399
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "elapsedTime": 23400,
+    "deltaTime": 537,
+    "kind": "receive",
+    "contents": {
+      "jsonrpc": "2.0",
+      "params": {
+        "textDocument": {
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk"
+        }
+      },
+      "id": 2,
+      "method": "textDocument/documentSymbol"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "id": 2,
+      "result": [
+        {
+          "name": "Option",
+          "kind": 5,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 2,
+                "character": 0
+              },
+              "end": {
+                "line": 117,
+                "character": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "map(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 12,
+                "character": 2
+              },
+              "end": {
+                "line": 14,
+                "character": 25
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "flatMap(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 16,
+                "character": 2
+              },
+              "end": {
+                "line": 18,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "maybe(nothing, mjust)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 20,
+                "character": 2
+              },
+              "end": {
+                "line": 22,
+                "character": 23
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "default(x)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 24,
+                "character": 2
+              },
+              "end": {
+                "line": 26,
+                "character": 16
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "defaultOption(x)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 28,
+                "character": 2
+              },
+              "end": {
+                "line": 30,
+                "character": 20
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "test(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 32,
+                "character": 2
+              },
+              "end": {
+                "line": 34,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "fromSome(msg)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 36,
+                "character": 2
+              },
+              "end": {
+                "line": 38,
+                "character": 16
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "isSome()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 40,
+                "character": 2
+              },
+              "end": {
+                "line": 42,
+                "character": 18
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "isNone()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 44,
+                "character": 2
+              },
+              "end": {
+                "line": 46,
+                "character": 19
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "hash()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 48,
+                "character": 2
+              },
+              "end": {
+                "line": 50,
+                "character": 27
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "each(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 52,
+                "character": 2
+              },
+              "end": {
+                "line": 54,
+                "character": 27
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "==(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 56,
+                "character": 2
+              },
+              "end": {
+                "line": 62,
+                "character": 5
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "!=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 64,
+                "character": 2
+              },
+              "end": {
+                "line": 66,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "<(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 68,
+                "character": 2
+              },
+              "end": {
+                "line": 70,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": ">(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 72,
+                "character": 2
+              },
+              "end": {
+                "line": 74,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "<=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 76,
+                "character": 2
+              },
+              "end": {
+                "line": 78,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": ">=(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 80,
+                "character": 2
+              },
+              "end": {
+                "line": 82,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "compare(other)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 85,
+                "character": 2
+              },
+              "end": {
+                "line": 96,
+                "character": 5
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "none()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 98,
+                "character": 2
+              },
+              "end": {
+                "line": 100,
+                "character": 3
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "toString()",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 102,
+                "character": 2
+              },
+              "end": {
+                "line": 104,
+                "character": 38
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "genMap(f)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 110,
+                "character": 2
+              },
+              "end": {
+                "line": 112,
+                "character": 31
+              }
+            }
+          },
+          "containerName": "Option"
+        },
+        {
+          "name": "genFilter(p)",
+          "kind": 6,
+          "deprecated": false,
+          "location": {
+            "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+            "range": {
+              "start": {
+                "line": 114,
+                "character": 2
+              },
+              "end": {
+                "line": 116,
+                "character": 59
+              }
+            }
+          },
+          "containerName": "Option"
+        }
+      ],
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "deltaTime": 854,
+    "kind": "receive",
+    "contents": {
+      "params": {
+        "textDocument": {
+          "uri": "file://%CURRENT_DIR%/project1/Option.sk"
+        }
+      },
+      "jsonrpc": "2.0",
+      "method": "textDocument/didClose"
+    },
+    "elapsedTime": 28707
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "textDocument/publishDiagnostics",
+      "params": {
+        "uri": "file://%CURRENT_DIR%/project1/Option.sk",
+        "diagnostics": []
+      },
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "kind": "send",
+    "contents": {
+      "method": "telemetry/event",
+      "params": "skip_lsp: Done Processing",
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "elapsedTime": 28709,
+    "deltaTime": 476,
+    "kind": "receive",
+    "contents": {
+      "id": 3,
+      "method": "shutdown",
+      "jsonrpc": "2.0",
+      "params": null
+    }
+  }
+]

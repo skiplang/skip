@@ -1,0 +1,6 @@
+fun a(b: Int): Int {
+  b
+}
+fun main(): void {
+  print_raw(_z: Bool = a(1));
+}

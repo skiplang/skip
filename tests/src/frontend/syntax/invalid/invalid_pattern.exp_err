@@ -1,0 +1,7 @@
+File "./syntax/invalid/invalid_pattern.sk", line 3, characters 16-16:
+Expected '->'. Found '@'.
+1 |
+2 | fun test(): void {
+3 |    x match { 0 @ E -> 0 }
+  |                ^
+4 | }

@@ -1,0 +1,71 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Adapted from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/mandelbrot-lua-3.html
+module Mandelbrot;
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  n = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(200);
+
+  m = 2.0 / n.toFloat();
+  ba = 1.shl((n % 8 + 1)) - 1;
+  bb = 1.shl(8 - n % 8);
+  buf = Array::mfill(n / 8, 0);
+  // print_raw(`P4\n${n} ${n}\n`);
+
+  bencher.bench{
+    run => () -> {
+      for (y in Range(0, n)) {
+        ci = y.toFloat() * m - 1.0;
+        b = 1;
+        p = 0;
+
+        for (x in Range(0, n)) {
+          cr = x.toFloat() * m - 1.5;
+          zi = ci;
+          zr = cr;
+          ziq = ci * ci;
+          zrq = cr * cr;
+          !b = b + b;
+
+          i = 0;
+          while ({
+            !zi = zr * zi * 2.0 + ci;
+            !zr = zrq - ziq + cr;
+            !ziq = zi * zi;
+            !zrq = zr * zr;
+            if (zrq + ziq > 4.0) {
+              !b = b + 1;
+              false
+            } else if (i == 50) {
+              false
+            } else {
+              !i = i + 1;
+              true
+            }
+          }) void;
+
+          if (b >= 256) {
+            buf![p] = 511 - b;
+            !p = p + 1;
+            !b = 1;
+          }
+        };
+        if (b != 1) {
+          buf![p] = (ba - b) * bb;
+        };
+        // Note: this won't work because Char(255) will be printed
+        // as c3 bf instead of ff because of unicode. We need to be able to print
+        // binary data.
+        // print_raw(String::fromChars(buf.map(x -> Char::fromCode(x))));
+      }
+    },
+  }
+}
+
+module end;

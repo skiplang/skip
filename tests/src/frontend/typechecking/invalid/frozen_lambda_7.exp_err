@@ -1,0 +1,14 @@
+File "./typechecking/invalid/frozen_lambda_7.sk", line 3, characters 3-11:
+Cannot freeze a mutable lambda
+1 | mutable class Foo<T>(mutable f: T)
+2 | fun no(f: Foo<() -> void>): void {
+3 |   freeze(f).f()
+  |   ^^^^^^^^^
+4 | }
+
+File "./typechecking/invalid/frozen_lambda_7.sk", line 2, characters 15-24:
+This is the lambda you are trying to freeze
+1 | mutable class Foo<T>(mutable f: T)
+2 | fun no(f: Foo<() -> void>): void {
+  |               ^^^^^^^^^^
+3 |   freeze(f).f()

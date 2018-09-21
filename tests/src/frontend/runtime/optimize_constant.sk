@@ -1,0 +1,5 @@
+const constant_init: String = "Pa" + "ss" + "\n";
+
+fun main(): void {
+  print_raw(constant_init)
+}

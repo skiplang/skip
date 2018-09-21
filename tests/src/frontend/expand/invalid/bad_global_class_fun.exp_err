@@ -1,0 +1,6 @@
+File "./expand/invalid/bad_global_class_fun.sk", line 2, characters 7-7:
+Expected function name
+1 | class Foo {
+2 |   fun .bad(): void { void }
+  |       ^
+3 | }

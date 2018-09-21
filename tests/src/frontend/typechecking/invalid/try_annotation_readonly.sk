@@ -1,0 +1,11 @@
+mutable base class Y() {
+  fun parentFunc(): void {
+    void
+  }
+}
+
+mutable class X() extends Y {
+  mutable fun childFunc(): void {
+    this.parentFunc();
+  }
+}

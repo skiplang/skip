@@ -1,0 +1,12 @@
+mutable class Foo(mutable x: String)
+class Cont<T>(v: T)
+
+fun main(): void {
+  mfoo = mutable Foo("Pa");
+  rfoo: readonly Foo = mfoo;
+  c = Cont(rfoo);
+  i = c.v.x;
+  mfoo.!x = "ss";
+  j = c.v.x;
+  print_string(i + j)
+}

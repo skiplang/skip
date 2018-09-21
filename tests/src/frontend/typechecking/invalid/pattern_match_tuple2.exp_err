@@ -1,0 +1,8 @@
+File "./typechecking/invalid/pattern_match_tuple2.sk", line 6, characters 7-7:
+The following pattern is unused:
+ | _
+4 |     p match {
+5 |     | (x, y) -> x.toString() + " " + y
+6 |     | _ -> "dead"
+  |       ^
+7 |     },

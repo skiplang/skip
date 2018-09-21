@@ -1,0 +1,467 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias Ast = SkipAst;
+
+/*****************************************************************************/
+/* File containing utilities on Asts */
+/*****************************************************************************/
+
+module SkipAstUtils;
+
+/*****************************************************************************/
+/* Visitor types */
+/*****************************************************************************/
+
+type Type_visitor<Tenv, Tacc> = (Tenv, Tacc, Ast.Type_) ~> (Tacc, Ast.Type_);
+type Expr_visitor<Tenv, Tacc> = (Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr);
+
+/*****************************************************************************/
+/* Utils */
+/*****************************************************************************/
+fun tparam_id(ty_param: Ast.Type_parameter): String {
+  (_, x, _, _) = ty_param;
+  x
+}
+
+fun tparam_name(ty_param: Ast.Type_parameter): Ast.Name {
+  (_, _, x, _) = ty_param;
+  x
+}
+
+fun targs_of_tparams(tparams: Array<Ast.Type_parameter>): Array<Ast.Type_> {
+  tparams.map((tparam) -> {
+    (_, id, tparam_name, _) = tparam;
+    type = Ast.Tapply(Ast.Tparam(tparam_name, id), Array[]);
+    pos = tparam_name.i0;
+    (pos, type)
+  })
+}
+
+/*****************************************************************************/
+/* Type visitor. */
+/*****************************************************************************/
+
+fun type<Tenv: frozen, Tacc>(
+  f: (Tenv, Tacc, Ast.Type_) ~> (Tacc, Ast.Type_),
+  env: Tenv,
+  acc: Tacc,
+  pos_ty: Ast.Type_,
+): (Tacc, Ast.Type_) {
+  (pos, ty) = pos_ty;
+  (acc2, ty2) = type__(f, env, acc, ty);
+  pty = (pos, ty2);
+  (acc3, pty2) = f(env, acc2, pty);
+  (acc3, pty2)
+}
+
+fun type__<Tenv: frozen, Tacc>(
+  f: (Tenv, Tacc, Ast.Type_) ~> (Tacc, Ast.Type_),
+  env: Tenv,
+  acc: Tacc,
+  pos_ty: Ast.Type__,
+): (Tacc, Ast.Type__) {
+  pos_ty match {
+  | x @ Ast.Tany() -> (acc, x)
+
+  | x @ Ast.Tunder() -> (acc, x)
+
+  | x @ Ast.Tfrozen() -> (acc, x)
+
+  | x @ Ast.TnonNullable() -> (acc, x)
+
+  | x @ Ast.Tinst() -> (acc, x)
+
+  | x @ Ast.Tthis() -> (acc, x)
+
+  | Ast.Tapply(n, tyl) ->
+    (acc2, tyl2) = tyl.mapAcc((acc_p, ty_p) ~> type(f, env, acc_p, ty_p), acc);
+    (acc2, Ast.Tapply(n, tyl2))
+
+  | Ast.Ttuple(tyl) ->
+    (acc2, tyl2) = tyl.mapAcc((acc_p, ty_p) ~> type(f, env, acc_p, ty_p), acc);
+    (acc2, Ast.Ttuple(tyl2))
+
+  | Ast.Tfun(fkind, ty1, ty2) ->
+    (acc2, ty12) = ty1.map_foldl(
+      (acc_p, ty_p) ~> type(f, env, acc_p, ty_p),
+      acc,
+    );
+    (acc3, ty22) = type(f, env, acc2, ty2);
+    (acc3, Ast.Tfun(fkind, ty12, ty22))
+
+  | Ast.Tabstract(cn, tnl) -> (acc, Ast.Tabstract(cn, tnl))
+
+  | Ast.Tmutable(ty) ->
+    (acc2, ty2) = type(f, env, acc, ty);
+    (acc2, Ast.Tmutable(ty2))
+
+  | Ast.Treadonly(ty) ->
+    (acc2, ty2) = type(f, env, acc, ty);
+    (acc2, Ast.Treadonly(ty2))
+
+  | Ast.Tawaitable(ty) ->
+    (acc2, ty2) = type(f, env, acc, ty);
+    (acc2, Ast.Tawaitable(ty2))
+  }
+}
+
+/*****************************************************************************/
+/* Expression visitor */
+/*****************************************************************************/
+
+fun expr<Tenv: frozen, Tacc>(
+  f: (Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  env: Tenv,
+  acc: Tacc,
+  pos_exp: Ast.Expr,
+): (Tacc, Ast.Expr) {
+  (pos, exp) = pos_exp;
+  (acc2, exp2) = expr_(expr, f, env, acc, exp);
+  pexp = (pos, exp2);
+  (acc3, pexp2) = f(env, acc2, pexp);
+  (acc3, pexp2)
+}
+
+fun preorder_expr<Tenv: frozen, Tacc>(
+  f: (Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  env: Tenv,
+  acc: Tacc,
+  pexp: Ast.Expr,
+): (Tacc, Ast.Expr) {
+  (acc2, pexp2) = f(env, acc, pexp);
+  (pos, exp) = pexp2;
+  (acc3, exp2) = expr_(preorder_expr, f, env, acc2, exp);
+  (acc3, (pos, exp2))
+}
+
+fun expr_<Tenv: frozen, Tacc>(
+  k: ((Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr), Tenv, Tacc, Ast.Expr) ~> (
+    Tacc,
+    Ast.Expr,
+  ),
+  f: (Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  env: Tenv,
+  acc: Tacc,
+  orig_e: Ast.Expr_,
+): (Tacc, Ast.Expr_) {
+  orig_e match {
+  | x @ Ast.Literal _ -> (acc, x)
+
+  | x @ Ast.MacroVar _ -> (acc, x)
+
+  | x @ Ast.Var _ -> (acc, x)
+
+  | x @ Ast.Cstr _ -> (acc, x)
+
+  | Ast.If(e1, e2, e3) ->
+    (acc2, e12) = k(f, env, acc, e1);
+    (acc3, e22) = k(f, env, acc2, e2);
+    (acc4, e32) = k(f, env, acc3, e3);
+    (acc4, Ast.If(e12, e22, e32))
+
+  | Ast.Call(e, tyl, params) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc3, params2) = call_args(
+      (acc_p, e_p) ~> k(f, env, acc_p, e_p),
+      acc2,
+      params,
+    );
+    (acc3, Ast.Call(e2, tyl, params2))
+
+  | Ast.CallArray(e, tyl, params) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc3, params2) = call_args(
+      (acc_p, e_p) ~> k(f, env, acc_p, e_p),
+      acc2,
+      params,
+    );
+    (acc3, Ast.CallArray(e2, tyl, params2))
+
+  | Ast.CallMap(e, tyl, args) ->
+    (_acc2, e2) = k(f, env, acc, e);
+    (acc3, args2) = args.mapAcc(
+      (acc_p, arg) ~> {
+        (arg1, arg2) = arg;
+        (acc_p1, arg12) = k(f, env, acc_p, arg1);
+        (acc_p2, arg22) = k(f, env, acc_p1, arg2);
+        (acc_p2, (arg12, arg22))
+      },
+      acc,
+    );
+    (acc3, Ast.CallMap(e2, tyl, args2))
+
+  | Ast.Annotated(e, ty) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Annotated(e2, ty))
+
+  | Ast.Bind(lvalue, rvalue, e) ->
+    (acc2, rvalue2) = k(f, env, acc, rvalue);
+    (acc3, e2) = k(f, env, acc2, e);
+    (acc3, Ast.Bind(lvalue, rvalue2, e2))
+
+  | Ast.Seq(e1, e2) ->
+    (acc2, e12) = k(f, env, acc, e1);
+    (acc3, e22) = k(f, env, acc2, e2);
+    (acc3, Ast.Seq(e12, e22))
+
+  | Ast.Dot(e, n) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Dot(e2, n))
+
+  | Ast.StaticDot(e, n) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.StaticDot(e2, n))
+
+  | Ast.MacroDot(e, n) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.MacroDot(e2, n))
+
+  | Ast.MacroStaticDot(e, n) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.MacroStaticDot(e2, n))
+
+  | Ast.Pipe(e1, e2) ->
+    (acc2, e12) = k(f, env, acc, e1);
+    (acc3, e22) = k(f, env, acc2, e2);
+    (acc3, Ast.Pipe(e12, e22))
+
+  | Ast.Binop(bop, e1, e2) ->
+    (acc2, e12) = k(f, env, acc, e1);
+    (acc3, e22) = k(f, env, acc2, e2);
+    (acc3, Ast.Binop(bop, e12, e22))
+
+  | Ast.Unop(uop, e) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Unop(uop, e2))
+
+  | Ast.Is(e1, pat) ->
+    (acc2, e2) = k(f, env, acc, e1);
+    (acc2, Ast.Is(e2, pat))
+
+  | Ast.As(e1, pat) ->
+    (acc2, e2) = k(f, env, acc, e1);
+    (acc2, Ast.Is(e2, pat))
+
+  | Ast.Match(e, mbl) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc3, mbl2) = mbl.map_foldl(
+      (acc_p, br) ~> match_branch(k, f, env, acc_p, br),
+      acc2,
+    );
+    (acc3, Ast.Match(e2, mbl2))
+
+  | Ast.Lambda(ml, params, e) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Lambda(ml, params, e2))
+
+  | Ast.Tuple(el) ->
+    (acc2, el2) = el.mapAcc((acc_p, e) ~> k(f, env, acc_p, e), acc);
+    (acc2, Ast.Tuple(el2))
+
+  | Ast.TemplateLiteral(params) ->
+    (acc2, params2) = call_args(
+      (acc_p, e_p) ~> k(f, env, acc_p, e_p),
+      acc,
+      params,
+    );
+    (acc2, Ast.TemplateLiteral(params2))
+
+  | Ast.Try(e, mbl) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc3, mbl2) = mbl.map_foldl(
+      (acc_p, br) ~> match_branch(k, f, env, acc_p, br),
+      acc2,
+    );
+    (acc3, Ast.Try(e2, mbl2))
+
+  | Ast.Await(e) ->
+    (acc2, e2) = expr(f, env, acc, e);
+    (acc2, Ast.Await(e2))
+
+  | Ast.Return(e) ->
+    (acc2, e2) = expr(f, env, acc, e);
+    (acc2, Ast.Return(e2))
+
+  | Ast.Yield(e) ->
+    (acc2, e2) = expr(f, env, acc, e);
+    (acc2, Ast.Yield(e2))
+
+  | Ast.YieldBreak() -> (acc, Ast.YieldBreak())
+
+  | Ast.Async(e) ->
+    (acc2, e2) = expr(f, env, acc, e);
+    (acc2, Ast.Async(e2))
+
+  | Ast.Throw(e) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Throw(e2))
+
+  | Ast.With(e, updates) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc3, updates2) = updates.mapAcc(
+      (acc_pp, _, int_exp) ~>
+        ordered_expr((acc_p, e_p) ~> (k(f, env, acc_p, e_p)), acc_pp, int_exp),
+      acc2,
+    );
+    (acc3, Ast.With(e2, updates2))
+
+  | Ast.Mutable(e) ->
+    (acc2, e2) = k(f, env, acc, e);
+    (acc2, Ast.Mutable(e2))
+  | Ast.Continue() -> (acc, Ast.Continue())
+  | Ast.Break(eb) ->
+    (!acc, !eb) = k(f, env, acc, eb);
+    (acc, Ast.Break(eb))
+  | Ast.Loop(eb) ->
+    (!acc, !eb) = k(f, env, acc, eb);
+    (acc, Ast.Loop(eb))
+  | Ast.DoWhile(body, condition, withoutBreak) ->
+    (!acc, !body) = k(f, env, acc, body);
+    (!acc, !condition) = k(f, env, acc, condition);
+    (!acc, !withoutBreak) = k(f, env, acc, withoutBreak);
+    (acc, Ast.DoWhile(body, condition, withoutBreak))
+  | Ast.While(condition, body, withoutBreak) ->
+    (!acc, !condition) = k(f, env, acc, condition);
+    (!acc, !body) = k(f, env, acc, body);
+    (!acc, !withoutBreak) = k(f, env, acc, withoutBreak);
+    (acc, Ast.While(condition, body, withoutBreak))
+  | Ast.ForEach(binding, collection, body, withoutBreak) ->
+    (!acc, !body) = k(f, env, acc, body);
+    (!acc, !collection) = k(f, env, acc, collection);
+    (!acc, !withoutBreak) = k(f, env, acc, withoutBreak);
+    (acc, Ast.ForEach(binding, collection, body, withoutBreak))
+  | Ast.ForEachFieldMacro(field, fieldName, body) ->
+    (!acc, !body) = k(f, env, acc, body);
+    (acc, Ast.ForEachFieldMacro(field, fieldName, body))
+  }
+}
+
+fun ordered_expr<Tacc>(
+  f: (Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  acc: Tacc,
+  int_exp: (Int, Ast.Expr),
+): (Tacc, (Int, Ast.Expr)) {
+  (i, e) = int_exp;
+  (acc2, e2) = f(acc, e);
+  (acc2, (i, e2))
+}
+
+fun call_args<Tacc>(
+  f: (Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  acc: Tacc,
+  params: Ast.Call_args,
+): (Tacc, Ast.Call_args) {
+  params.map_foldl((a, i) ~> ordered_expr(f, a, i), acc)
+}
+
+fun match_branch<Tenv, Tacc>(
+  k: ((Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr), Tenv, Tacc, Ast.Expr) ~> (
+    Tacc,
+    Ast.Expr,
+  ),
+  f: (Tenv, Tacc, Ast.Expr) ~> (Tacc, Ast.Expr),
+  env: Tenv,
+  acc: Tacc,
+  branch: Ast.Match_branch,
+): (Tacc, Ast.Match_branch) {
+  (pat, maybe_guard, action) = branch;
+  (guard_acc, guard_action) = maybe_guard match {
+  | Some(e) ->
+    (acc1, action1) = k(f, env, acc, e);
+    (acc1, Some(action1))
+  | None() -> (acc, None())
+  };
+
+  (acc2, action2) = k(f, env, guard_acc, action);
+  (acc2, (pat, guard_action, action2))
+}
+
+/*****************************************************************************/
+/* Type substitution primitives. */
+/*****************************************************************************/
+fun make_subst(
+  pos: FileRange,
+  ints: Array<String>,
+  tys: Array<Ast.Type_>,
+): SMap<Ast.Type_> {
+  isz = ints.size();
+  tsz = tys.size();
+  compare(isz, tsz) match {
+  | LT() -> SkipError.error(tys[isz].i0, "Too many arguments")
+  | GT() -> SkipError.error(pos, "Missing arguments")
+  | EQ() ->
+    ints.zipReduce(
+      tys,
+      (result, ident, value) -> result.set(ident, value),
+      SortedMap[],
+    )
+  }
+}
+
+fun make_name_subst(
+  pos: FileRange,
+  names: Array<Ast.Name>,
+  tys: Array<Ast.Type_>,
+): UMap<Ast.Type_> {
+  nsz = names.size();
+  tsz = tys.size();
+  compare(nsz, tsz) match {
+  | LT() -> SkipError.error(names[nsz].i0, "Too many arguments")
+  | GT() -> SkipError.error(pos, "Missing arguments")
+  | EQ() ->
+    names.zipReduce(
+      tys,
+      (result, ident, value) -> result.set(ident, value),
+      UMap[],
+    )
+  }
+}
+
+fun type_subst(subst: UMap<Ast.Type_>, ty: Ast.Type_): Ast.Type_ {
+  (_, ty_subsituted) = type(
+    (subst, _void, ty) ~> {
+      ty match {
+      | (_, Ast.Tapply(Ast.Tclass(ident), _))
+      | (_, Ast.Tapply(Ast.Tparam(ident, _), _)) if (
+        subst.containsKey(ident)
+      ) ->
+        (void, subst[ident])
+      | _ -> (void, ty)
+      }
+    },
+    subst,
+    void,
+    ty,
+  );
+  ty_subsituted
+}
+
+fun expr_body_is_none(body: Ast.Expr_body): Bool {
+  body match {
+  | Ast.BNone() -> true
+  | _ -> false
+  }
+}
+
+/*****************************************************************************/
+/* Names. */
+/*****************************************************************************/
+
+fun pos_of_name(n: (FileRange, String)): FileRange {
+  n.i0
+}
+
+fun string_of_name(n: (FileRange, String)): String {
+  n.i1
+}
+
+fun make_name(pos: FileRange, n: String): (FileRange, String) {
+  (pos, n)
+}
+
+module end;

@@ -1,0 +1,4 @@
+File "./typechecking/invalid/positional_default_constructor.sk", line 1, characters 21-22:
+Optional parameters must be placed at the end
+1 | class C(a: String = "", b: String)
+  |                     ^^

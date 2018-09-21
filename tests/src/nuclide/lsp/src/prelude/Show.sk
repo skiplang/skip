@@ -1,0 +1,3 @@
+trait Show {
+  readonly fun toString(): String;
+}

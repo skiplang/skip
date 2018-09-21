@@ -1,0 +1,14 @@
+base class MyParent<-P> {
+  fun eat<P2: Orderable>[P: P2](b: SortedMap<P2, void>): void;
+}
+
+class C<T: Orderable>() extends MyParent<T> {
+  fun eat(x: SortedMap<T, void>): void {
+    _ = x;
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

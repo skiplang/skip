@@ -1,0 +1,9 @@
+base class Foo() {
+  children =
+  | Bar()
+  | Baz()
+
+  fun f(): void
+  | Bar() -> void
+  | Whaaaa() -> void
+}

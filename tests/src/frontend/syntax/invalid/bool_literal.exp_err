@@ -1,0 +1,6 @@
+File "./syntax/invalid/bool_literal.sk", line 2, characters 3-6:
+Invalid LValue
+1 | fun main(): String {
+2 |   true = false;
+  |   ^^^^
+3 |   if (true) {

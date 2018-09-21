@@ -1,0 +1,7 @@
+File "./typechecking/invalid/class_type.sk", line 4, characters 7-10:
+Traits do not have a Class<_> object, and their static members cannot be accessed directly
+2 |
+3 | fun foo(): void {
+4 |   _ = MyTC
+  |       ^^^^
+5 | }

@@ -1,0 +1,31 @@
+class Foo() {
+  fun test(): String {
+    "Pass\n"
+  }
+}
+
+fun foo(): Foo {
+  Foo()
+}
+
+module A;
+
+class Foo() {
+  fun test(): String {
+    "fail"
+  }
+}
+
+fun foo(): Foo {
+  Foo()
+}
+
+fun bar(): .Foo {
+  .foo()
+}
+
+module end;
+
+fun main(): void {
+  print_raw(A.bar().test())
+}

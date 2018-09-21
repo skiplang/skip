@@ -1,0 +1,23 @@
+base class A{a: Int, b: String}
+class B{x: String, t: Int} extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A{a => 1, b => "a"} -> "P"
+  | A{a => 2, b => _} -> "a"
+  | B{x => "Hi", t => 1, b => "b"} -> "s"
+  | A{a => 42, b => "c"} -> "s"
+  | B _ -> "\n"
+  }
+}
+
+fun main(): void {
+  p = B{x => "a", t => 1, a => 1, b => "a"};
+  a = B{x => "a", t => 1, a => 2, b => "hi!"};
+  s1 = B{x => "Hi", t => 1, a => 42, b => "b"};
+  s2 = B{x => "Hi", t => 1, a => 42, b => "c"};
+  newline = B{x => "Hi", t => 1, a => 56, b => "Hello!"};
+  print_raw(
+    myMatch(p) + myMatch(a) + myMatch(s1) + myMatch(s2) + myMatch(newline),
+  )
+}

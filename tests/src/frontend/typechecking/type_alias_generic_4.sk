@@ -1,0 +1,11 @@
+class Bar<T2>{}
+
+type Foo<T> = Bar<T>;
+
+fun test(): Foo<Int> {
+  invariant_violation("")
+}
+
+fun main(): void {
+  print_string("Pass")
+}

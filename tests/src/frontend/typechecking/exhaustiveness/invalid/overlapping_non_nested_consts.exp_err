@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/overlapping_non_nested_consts.sk", line 5, characters 5-11:
+The following pattern is unused:
+ | true
+3 |   true match {
+4 |   | MyConst
+5 |   | MyConst ->
+  |     ^^^^^^^
+6 |     "Fail\n"

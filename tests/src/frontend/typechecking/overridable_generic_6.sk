@@ -1,0 +1,13 @@
+base class MyParent<-P: Orderable> {
+  fun foo<P2: Orderable>[P: P2](): SortedMap<P2, void>;
+}
+
+class C<T: Orderable>() extends MyParent<T> {
+  fun foo(): SortedMap<T, void> {
+    SortedMap[]
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

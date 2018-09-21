@@ -1,0 +1,31 @@
+File "./typechecking/invalid/join_into_readonly_4.sk", line 3, characters 13-35:
+Invalid annotation
+1 | fun no(): void {
+2 |   m: readonly ?Int = Some(42);
+3 |   _: ?Int = if (true) m else None();
+  |             ^^^^^^^^^^^^^^^^^^^^^^^
+4 |   void
+
+File "./typechecking/invalid/join_into_readonly_4.sk", line 2, characters 6-18:
+The type: readonly Option<Int>
+1 | fun no(): void {
+2 |   m: readonly ?Int = Some(42);
+  |      ^^^^^^^^^^^^^
+3 |   _: ?Int = if (true) m else None();
+
+File "./typechecking/invalid/join_into_readonly_4.sk", line 3, characters 6-9:
+Is not a subtype of: Option<Int>
+1 | fun no(): void {
+2 |   m: readonly ?Int = Some(42);
+3 |   _: ?Int = if (true) m else None();
+  |      ^^^^
+4 |   void
+
+File "./typechecking/invalid/join_into_readonly_4.sk", line 3, characters 6-9:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Option<Int>
+1 | fun no(): void {
+2 |   m: readonly ?Int = Some(42);
+3 |   _: ?Int = if (true) m else None();
+  |      ^^^^
+4 |   void

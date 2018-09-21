@@ -1,0 +1,5 @@
+trait MyTC
+class MyDict<Tid: MyTC>()
+base class X<Tid> {
+  fun gen(): MyDict<Tid>;
+}

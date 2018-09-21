@@ -1,0 +1,5 @@
+File "./typechecking/invalid/optional_args2.sk", line 1, characters 28-31:
+Optional parameters must be placed at the end
+1 | fun test(x: Int, b: Bool = true, y: Int): Int {
+  |                            ^^^^
+2 |   if (b) y else x

@@ -1,0 +1,20 @@
+mutable base class FooP<+T: mutable Ref<Int>> final (v: T)
+mutable class FooL extends FooP<mutable Ref<Int>>
+mutable class FooR<+T: mutable Ref<Int>> extends FooP<T>
+
+fun yes(p: mutable FooP<mutable Ref<Int>>): void {
+  p match {
+  | FooL(ref) ->
+    _: mutable Ref<Int> = ref;
+    print_string("Pass")
+  | FooR _ -> void
+  }
+}
+
+fun main(): void {
+  l = mutable FooL(mutable Ref(0));
+  r = mutable FooR(mutable Ref(0));
+  yes(l);
+  yes(r);
+  void
+}

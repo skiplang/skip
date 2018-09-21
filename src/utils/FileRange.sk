@@ -1,0 +1,96 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// A Range in a text file.
+////////////////////////////////////////////////////////////////////////////////
+
+module FileRange;
+
+base class .Pos{
+  filename: String,
+  range: TextRange,
+} uses Hashable, Orderable, Show {
+  static fun create(filename: String, range: TextRange): FileRange {
+    FileRange{filename, range}
+  }
+
+  static fun fromStartEnd(start: FilePosition, end: FilePosition): FileRange {
+    // TODO: invariant(start.filename == end.filename);
+    FileRange.create(
+      start.filename,
+      TextRange.create(start.position, end.position),
+    );
+  }
+
+  fun start(): FilePosition {
+    FilePosition.create(this.filename, this.range.start);
+  }
+
+  fun end(): FilePosition {
+    FilePosition.create(this.filename, this.range.end);
+  }
+
+  fun startPosition(): Position {
+    this.range.start;
+  }
+
+  fun endPosition(): Position {
+    this.range.end;
+  }
+
+  fun contains(position: FilePosition): Bool {
+    // TODO: invariant(this.filename == position.filename);
+    this.range.contains(position.position);
+  }
+
+  protected fun defaultToString(): String {
+    this.filename + this.range.toString()
+  }
+
+  overridable fun toString(): String {
+    this.defaultToString()
+  }
+
+  fun die(msg: String): _;
+
+  fun invariant(flag: Bool, msg: String): void {
+    if (!flag) {
+      this.die(msg)
+    }
+  }
+
+  @always_inline
+  fun lazyInvariant(flag: Bool, msg: () -> String): void {
+    if (!flag) {
+      this.die(msg())
+    }
+  }
+
+  fun inspect(): Inspect {
+    InspectLiteral(this.toString());
+  }
+}
+
+class .FileRange extends Pos {
+  fun die(msg: String): _ {
+    Assert.fail(this, msg);
+  }
+}
+
+const none: FileRange = create("", TextRange.none);
+const builtin: FileRange = create("<builtin>", TextRange.none);
+
+fun create(filename: String, range: TextRange): FileRange {
+  FileRange::create(filename, range);
+}
+
+fun fromStartEnd(start: FilePosition, end: FilePosition): FileRange {
+  FileRange::fromStartEnd(start, end);
+}
+
+module end;

@@ -1,0 +1,15 @@
+File "./syntax/invalid/nested_missing_close.sk", line 11, characters 7-7:
+Expected '}'. Found ')'.
+ 9 |           ]
+10 |         }
+11 |       )
+   |       ^
+12 |     }
+
+File "./syntax/invalid/nested_missing_close.sk", line 5, characters 17-17:
+ For opening '{'
+3 |     {
+4 |       (
+5 |         x match {
+  |                 ^
+6 |         | (a, (b, c)) -> {

@@ -1,0 +1,10 @@
+type MyBool = Bool;
+class BC(x: MyBool)
+fun main(): void {
+  print_raw(
+    BC(true) match {
+    | BC(true) -> "Pass\n"
+    | BC(false) -> "FAIL"
+    },
+  )
+}

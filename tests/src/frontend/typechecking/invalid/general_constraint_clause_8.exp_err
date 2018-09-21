@@ -1,0 +1,23 @@
+File "./typechecking/invalid/general_constraint_clause_8.sk", line 6, characters 5-5:
+The value returned from the function is incompatible with the return type 'U'
+4 | class Tester<T>() {
+5 |   fun no<U>[mutable Ref<L<T>>: mutable Ref<P<U>>](x: T): U {
+6 |     x
+  |     ^
+7 |   }
+
+File "./typechecking/invalid/general_constraint_clause_8.sk", line 5, characters 54-54:
+The type: T
+3 |
+4 | class Tester<T>() {
+5 |   fun no<U>[mutable Ref<L<T>>: mutable Ref<P<U>>](x: T): U {
+  |                                                      ^
+6 |     x
+
+File "./typechecking/invalid/general_constraint_clause_8.sk", line 5, characters 58-58:
+Is not a subtype of: U
+3 |
+4 | class Tester<T>() {
+5 |   fun no<U>[mutable Ref<L<T>>: mutable Ref<P<U>>](x: T): U {
+  |                                                          ^
+6 |     x

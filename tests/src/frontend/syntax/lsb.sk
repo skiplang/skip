@@ -1,0 +1,15 @@
+base class Bar {
+  deferred static fun get(): Int {
+    static::getImpl()
+  }
+  protected static fun getImpl(): Int;
+}
+class Foo() extends Bar {
+  protected static fun getImpl(): Int {
+    42
+  }
+}
+
+fun main(): void {
+  print_raw(if (Foo::get() == 42) "OK\n" else "FAILED")
+}

@@ -1,0 +1,16 @@
+class C<T>(value: T) uses X[T: X] {
+  fun get(): Int {
+    0
+  }
+}
+
+trait X {
+  fun get(): Int;
+  fun getAddOne(): Int {
+    this.get() + 1
+  }
+}
+
+fun no<T>(c: C<T>): Int {
+  c.getAddOne()
+}

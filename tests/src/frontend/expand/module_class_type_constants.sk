@@ -1,0 +1,22 @@
+module M;
+
+class C1() {
+  type T1 = Int;
+}
+
+module end;
+
+class C2() {
+  type T2 = Int;
+}
+
+fun f1(M.C1::T1): void {
+  void
+}
+fun f2(.C2::T2): void {
+  void
+}
+
+fun main(): void {
+  print_string("Pass")
+}

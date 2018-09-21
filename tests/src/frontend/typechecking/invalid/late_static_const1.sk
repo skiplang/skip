@@ -1,0 +1,7 @@
+base class Foo {
+  const x: String;
+}
+
+fun main(): void {
+  print_raw(Foo::x)
+}

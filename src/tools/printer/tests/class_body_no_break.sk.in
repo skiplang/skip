@@ -1,0 +1,1 @@
+class AsmWritable {readonly fun asmWrite(asm: mutable AsmDefBuilder): void;}

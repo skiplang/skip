@@ -1,0 +1,23 @@
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_array.sk", line 13, characters 7-29:
+Constraint not satisfied
+11 | fun main(): void {
+12 |   _ = Vector<Int>[1, 2, 3]; // ok
+13 |   _ = Vector<String>[1, 2, 3]; // error
+   |       ^^^^^^^^^^^^^^^^^^^^^^^
+14 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_array.sk", line 13, characters 22-22:
+The type: Int
+11 | fun main(): void {
+12 |   _ = Vector<Int>[1, 2, 3]; // ok
+13 |   _ = Vector<String>[1, 2, 3]; // error
+   |                      ^
+14 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_array.sk", line 13, characters 14-19:
+Is not a subtype of: String
+11 | fun main(): void {
+12 |   _ = Vector<Int>[1, 2, 3]; // ok
+13 |   _ = Vector<String>[1, 2, 3]; // error
+   |              ^^^^^^
+14 |   print_string("Fail")

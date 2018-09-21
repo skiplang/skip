@@ -1,0 +1,7 @@
+File "./typechecking/invalid/assign_pattern2.sk", line 12, characters 3-8:
+Invalid LValue
+10 | fun main(): String {
+11 |   s = "Fail";
+12 |   Baz(s) = makeFoo();
+   |   ^^^^^^
+13 |   s

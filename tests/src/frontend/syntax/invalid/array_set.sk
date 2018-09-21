@@ -1,0 +1,5 @@
+fun main(): void {
+  v = Vec ["Hello"];
+  v[0] = " world!";
+  print_raw(v[0])
+}

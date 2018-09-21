@@ -1,0 +1,11 @@
+base class Foo {
+  static fun abs(): void;
+  deferred static fun bad(): void {
+    static::abs()
+  }
+}
+
+fun main(): void {
+  Foo::abs();
+  print_raw("Fail")
+}

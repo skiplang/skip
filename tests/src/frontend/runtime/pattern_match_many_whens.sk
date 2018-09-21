@@ -1,0 +1,11 @@
+fun main(): void {
+  print_raw(
+    ("Pa", "ss\n") match {
+    | (x, _) if (x == "A") -> "Fail\n"
+    | (x, _) if (x == "B") -> "Fail\n"
+    | (x, _) if (x == "C") -> "Fail\n"
+    | (x, _) if (x == "D") -> "Fail\n"
+    | (x, y) -> x + y
+    },
+  )
+}

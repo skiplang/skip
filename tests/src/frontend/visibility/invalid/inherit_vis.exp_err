@@ -1,0 +1,15 @@
+File "./visibility/invalid/inherit_vis.sk", line 11, characters 3-9:
+The child visibility of private does not match the parent's
+ 9 |
+10 | class Y() extends X {
+11 |   private fun foo(): void {
+   |   ^^^^^^^
+12 |     void
+
+File "./visibility/invalid/inherit_vis.sk", line 5, characters 15-23:
+The parent visibility was defined here as protected
+3 | }
+4 | base class X {
+5 |   overridable protected fun foo(): void {
+  |               ^^^^^^^^^
+6 |     void

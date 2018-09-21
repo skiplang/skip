@@ -1,0 +1,6 @@
+class A{x: Int}
+extension class A{y: String}
+
+fun main(): void {
+  print_raw(A{x => 0, y => "Ok"}.y);
+}

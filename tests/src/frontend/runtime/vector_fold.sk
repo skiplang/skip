@@ -1,0 +1,5 @@
+fun main(): void {
+  v = Array[1, 2];
+  sum = v.foldl((acc, n) -> acc + n, 0);
+  print_raw(sum.toString() + "\n")
+}

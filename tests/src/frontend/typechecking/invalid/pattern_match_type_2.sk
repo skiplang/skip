@@ -1,0 +1,6 @@
+base class Foo {
+  type T;
+  fun matcher(x : this::T): void {
+    x match { this::T -> void }
+  }
+}

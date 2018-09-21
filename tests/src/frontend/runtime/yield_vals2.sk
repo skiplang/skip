@@ -1,0 +1,21 @@
+fun gen(x: Int): mutable Iterator<String> {
+  v = Vector::fillBy(x, n -> `this is a String: ${n}`);
+  if (v.size() > 0) yield v[0];
+  if (v.size() > 1) yield v[1];
+  if (v.size() > 2) yield v[2];
+  if (v.size() > 3) yield v[3];
+  if (v.size() > 4) yield v[4];
+  if (v.size() > 5) yield v[5];
+  if (v.size() > 6) yield v[6];
+  if (v.size() > 7) yield v[7];
+  if (v.size() > 8) yield v[8];
+  if (v.size() > 9) yield v[9];
+}
+
+fun main(): void {
+  g = gen(8);
+  g.eachWithIndex((i, n) -> {
+    print_string(`${i}: ${n}`);
+    localGC()
+  })
+}

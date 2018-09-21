@@ -1,0 +1,154 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// A Skip Char represents a single Unicode Code Point which represents a valid
+// Unicode character. A Char cannot represent a Unicode (high or low) surrogate code point.
+// code() returns a value in the ranges: U+0000–U+D7FF and U+E000–U+10FFFF.
+// Note that this differs from most languages in which the char type
+// represents a single 8 or 16-bit code unit.
+native value class Char uses Hashable, Orderable, Show, Equality {
+  @intrinsic
+  native fun ==(other: Char): Bool;
+  @intrinsic
+  native fun !=(other: Char): Bool;
+  @intrinsic
+  native fun >=(other: Char): Bool;
+  @intrinsic
+  native fun <=(other: Char): Bool;
+  @intrinsic
+  native fun >(other: Char): Bool;
+  @intrinsic
+  native fun <(other: Char): Bool;
+  @intrinsic
+  native fun code(): Int;
+
+  static fun fromCode(code: Int): Char {
+    code.chr()
+  }
+
+  static fun isValidCharCodePoint(code: Int): Bool {
+    code.ult(0xD800) || (code >= 0xE000 && code < 0x110000)
+  }
+
+  fun toString(): String {
+    String::tabulate(1, _ -> this)
+  }
+
+  fun compare(other: Char): Order {
+    if (this < other) LT() else if (this == other) EQ() else GT()
+  }
+
+  fun utf8Encode(): mutable Array<Int> {
+    code = this.code();
+    if (code < 0) {
+      throw Invalid_utf8_char()
+    } else if (code < 0x80) {
+      mutable Array[code]
+    } else if (code < 0x800) {
+      mutable Array[192 + code / 64, 128 + code % 64]
+    } else if (code < 0x10000) {
+      mutable Array[224 + code / 4096, 128 + code / 64 % 64, 128 + code % 64]
+    } else if (code < 0x110000) {
+      mutable Array[
+        240 + code / 262144,
+        128 + code / 4096 % 64,
+        128 + code / 64 % 64,
+        128 + code % 64,
+      ]
+    } else {
+      throw Invalid_utf8_char()
+    }
+  }
+
+  fun hash(): Int {
+    this.code()
+  }
+
+  fun capitalize(): Char {
+    this match {
+    | 'a' -> 'A'
+    | 'b' -> 'B'
+    | 'c' -> 'C'
+    | 'd' -> 'D'
+    | 'e' -> 'E'
+    | 'f' -> 'F'
+    | 'g' -> 'G'
+    | 'h' -> 'H'
+    | 'i' -> 'I'
+    | 'j' -> 'J'
+    | 'k' -> 'K'
+    | 'l' -> 'L'
+    | 'm' -> 'M'
+    | 'n' -> 'N'
+    | 'o' -> 'O'
+    | 'p' -> 'P'
+    | 'q' -> 'Q'
+    | 'r' -> 'R'
+    | 's' -> 'S'
+    | 't' -> 'T'
+    | 'u' -> 'U'
+    | 'v' -> 'V'
+    | 'w' -> 'W'
+    | 'x' -> 'X'
+    | 'y' -> 'Y'
+    | 'z' -> 'Z'
+    | _ -> this
+    }
+  }
+
+  fun uncapitalize(): Char {
+    this match {
+    | 'A' -> 'a'
+    | 'B' -> 'b'
+    | 'C' -> 'c'
+    | 'D' -> 'd'
+    | 'E' -> 'e'
+    | 'F' -> 'f'
+    | 'G' -> 'g'
+    | 'H' -> 'h'
+    | 'I' -> 'i'
+    | 'J' -> 'j'
+    | 'K' -> 'k'
+    | 'L' -> 'l'
+    | 'M' -> 'm'
+    | 'N' -> 'n'
+    | 'O' -> 'o'
+    | 'P' -> 'p'
+    | 'Q' -> 'q'
+    | 'R' -> 'r'
+    | 'S' -> 's'
+    | 'T' -> 't'
+    | 'U' -> 'u'
+    | 'V' -> 'v'
+    | 'W' -> 'w'
+    | 'X' -> 'x'
+    | 'Y' -> 'y'
+    | 'Z' -> 'z'
+    | _ -> this
+    }
+  }
+
+  fun repeat(count: Int): String {
+    this.toString().repeat(count);
+  }
+
+  fun inspect(): Inspect {
+    InspectCall(
+      "Char",
+      Array[
+        InspectLiteral(this.code().toString()),
+        if (Chars.isPrintableAscii(this)) {
+          InspectString(this.toString())
+        } else {
+          InspectSpecial("unprintable")
+        },
+      ],
+    )
+  }
+}
+
+class Invalid_utf8_char() extends Exception {}

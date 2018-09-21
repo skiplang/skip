@@ -1,0 +1,34 @@
+base class C {
+  children =
+  | A(Int, Bool)
+  | B(Bool, Int)
+}
+
+base class R {
+  children =
+  | L(Int, C)
+  | T(C, (Int, Char))
+}
+
+fun main(): void {
+  a = (L(1, A(2, true)) : R) match {
+  | T(A(x, _), (y, _))
+  | L(y, A(x, _)) ->
+    (y, x)
+  | _ -> (0, 0)
+  };
+
+  b = (T(A(4, true), (3, 'a')) : R) match {
+  | T(A(x, _), (y, _))
+  | L(y, A(x, _)) ->
+    (y, x)
+  | _ -> (0, 0)
+  };
+
+  print_raw(
+    (a, b) match {
+    | ((1, 2), (3, 4)) -> "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

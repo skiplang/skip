@@ -1,0 +1,7 @@
+mutable class X(mutable x: Int)
+
+fun foo(x: mutable X): void {
+  f = () ~> x;
+  _x = f();
+  void
+}

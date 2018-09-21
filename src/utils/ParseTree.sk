@@ -1,0 +1,571 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module ParseTree;
+
+// A ParseTree is (almost) a Concrete Syntax Tree (as opposed to an Abstract
+// Syntax Tree). On an error free parse, the resulting ParseTree includes
+// every Token in the input, exactly once, and in the order they occured
+// in the input tokens. The Parser validates this invariant.
+//
+// Each production in the language is represented by a derived class.
+// Each derived class includes named child ParseTrees.
+// The language specific ParseTrees are generated from src/frontend/trees.json
+// into src/frontend/parseTreeGenerated.sk
+//
+// Each derived class (XTree) adds the following methods to ParseTree:
+//    isX(): Bool - Returns true if a tree is an X
+//    asX(): XTree - Casts the tree to XTree. Asserts if !this.isX().
+//
+// There are several notable sub classes which are defined in this file:
+//    TokenTree - A ParseTree representing a single Token. These are the only
+//                trees which have Tokens (or any non-ParseTrees) as members.
+//    EmptyTree - A ParseTree representing a missing piece of syntax. Used for
+//                optional parts of the syntax which are not there.
+//    ErrorTree - When an error occurs and it gets difficult to construct an
+//                reasonable tree from erroneous input. Note that when an
+//                error occurs ErrorTrees can occur anywhere in the returned tree.
+//    ParseTreeList - The only ParseTree with a variable number of children.
+//                Preserves separator and delimiter TokenTrees if present.
+base class ParseTree{range: TextRange} {
+  // The kind of Parse Tree. Suitable for debugging.
+  fun getKind(): String;
+  // Returns all children in the order they appear in the source text.
+  fun getChildren(): mutable Iterator<ParseTree>;
+  // Like getChildren(), but includes names of child fields names.
+  // Must NOT be called on ParseTreeList or TokenTree as ParseTreeList's
+  // children do not have names, and TokenTree's child is not a ParseTree.
+  fun getNamedFields(): List<(String, ParseTree)>;
+
+  fun transform(codemod: mutable CodeMod): (ParseTree.ParseTree, Vector<Subst>);
+
+  overridable fun isList(): Bool {
+    false
+  }
+  overridable fun isToken(): Bool {
+    false
+  }
+  overridable fun isEmpty(): Bool {
+    false
+  }
+  overridable fun isError(): Bool {
+    false
+  }
+
+  overridable fun asList(): ParseTreeList {
+    invariant_violation("Expected ParseTreeList; found " + this.getKind());
+  }
+  overridable fun asToken(): TokenTree {
+    invariant_violation("Expected TokenTree; found " + this.getKind());
+  }
+  overridable fun asEmpty(): EmptyTree {
+    invariant_violation("Expected EmptyTree; found " + this.getKind());
+  }
+  overridable fun asError(): ErrorTree {
+    invariant_violation("Expected ErrorTree; found " + this.getKind());
+  }
+
+  fun toDebugString(): String {
+    `${this.getKind()} ${if (this.isToken()) {
+      this.getTokenKind().toString()
+    } else {
+      ""
+    }} ${this.range}`;
+  }
+
+  fun print(indent: Int, name: String): String {
+    ' '.repeat(indent) +
+      name +
+      ":" +
+      this.getKind() +
+      " " +
+      this.range +
+      (this match {
+      | ParseTree.ParseTreeList{
+        startDelimiter,
+        elements,
+        separators,
+        endDelimiter,
+      } ->
+        "\n" +
+          startDelimiter.print(indent + 1, "startDelimiter") +
+          elements
+            .mapWithIndex((index, element) -> {
+              element.print(indent + 2, index.toString())
+            })
+            .join("") +
+          separators
+            .mapWithIndex((index, element) -> {
+              element.print(indent + 2, index.toString())
+            })
+            .join("") +
+          endDelimiter.print(indent + 1, "endDelimiter")
+      | ParseTree.TokenTree{token} -> ":" + token.value + "\n"
+      | _ ->
+        childs = this.getNamedFields();
+        if (childs.size() == 0) {
+          "\n"
+        } else {
+          "\n" +
+            this.getNamedFields()
+              .map(child -> {
+                (childName, childTree) = child;
+                childTree.print(indent + 2, childName)
+              })
+              .join("")
+        }
+      })
+  }
+
+  fun getRangeWithComments(): TextRange {
+    result = this.range;
+
+    this.getFirstToken() match {
+    | Some(token) if (token.leadingComments.size() > 0) ->
+      !result = result with {start => token.leadingComments[0].range.start}
+    | _ -> void
+    };
+
+    this.getLastToken() match {
+    | Some(token) if (token.trailingComments.size() > 0) ->
+      !result = result with {
+        end => token.trailingComments.maybeLast().fromSome().range.end,
+      }
+    | _ -> void
+    };
+
+    result
+  }
+
+  overridable fun getFirstToken(): ?Token.Token {
+    for (child in this.getChildren()) {
+      child match {
+      | ParseTree.TokenTree{token} -> break Some(token)
+      | tree ->
+        tree.getFirstToken() match {
+        | token @ Some(_) -> break token
+        | _ -> void
+        }
+      }
+    } else {
+      None()
+    }
+  }
+
+  overridable fun getLastToken(): ?Token.Token {
+    reversed = Vector::reverseFromIterator(this.getChildren());
+    for (child in reversed) {
+      child match {
+      | ParseTree.TokenTree{token} -> break Some(token)
+      | tree ->
+        tree.getLastToken() match {
+        | token @ Some(_) -> break token
+        | _ -> void
+        }
+      }
+    } else {
+      None()
+    }
+  }
+
+  fun getTokens(): Vector<Token.Token> {
+    accumulator = mutable TokenAccumulator{};
+    accumulator.visit(this);
+    freeze(accumulator.tokens)
+  }
+
+  fun getToken(): Token.Token {
+    this.asToken().token;
+  }
+
+  fun getTokenString(): String {
+    this.getToken().value;
+  }
+
+  fun getTokenKind(): TokenKind.TokenKind {
+    this.getToken().kind;
+  }
+
+  fun matchTreeKind(kind: TokenKind.TokenKind): Bool {
+    this.isToken() && this.getTokenKind() == kind;
+  }
+
+  fun getOptList(): Array<ParseTree> {
+    this match {
+    | ParseTree.EmptyTree _ -> Array[]
+    | _ -> this.asList().elements
+    }
+  }
+
+  fun getList(): Array<ParseTree> {
+    this.asList().elements;
+  }
+
+  fun isEmptyList(): Bool {
+    this.isList() && this.getList().isEmpty();
+  }
+}
+
+mutable base class ParseTreeVisitor {
+  mutable fun visitChildren(tree: ParseTree): void {
+    tree.getChildren().each(this.visit);
+  }
+
+  mutable fun visit(tree: ParseTree): void;
+}
+
+mutable class TokenAccumulator{
+  tokens: mutable Vector<Token.Token> = mutable Vector[],
+} extends ParseTreeVisitor {
+  mutable fun visit(tree: ParseTree): void {
+    tree match {
+    | TokenTree{token} -> this.tokens.push(token)
+    | _ -> this.visitChildren(tree)
+    }
+  }
+}
+
+// Delays the moment where we parse the tree
+class LazyTree{builder: () ~> ParseTree} extends ParseTree {
+  fun getNamedFields(): List<(String, ParseTree)> {
+    this.builder().getNamedFields()
+  }
+  fun getKind(): String {
+    this.builder().getKind()
+  }
+  fun getChildren(): mutable Iterator<ParseTree> {
+    this.builder().getChildren()
+  }
+  fun isEmpty(): Bool {
+    this.builder().isEmpty()
+  }
+  fun asEmpty(): EmptyTree {
+    this.builder().asEmpty()
+  }
+  fun transform(_codemod: mutable CodeMod): (ParseTree, Vector<Subst>) {
+    invariant_violation("Should not be transforming LazyTrees")
+  }
+}
+
+// A ParseTree representing a single Token. These are the only
+// trees which have Tokens (or any non-ParseTrees) as members.
+class TokenTree{token: Token.Token} extends ParseTree {
+  fun getNamedFields(): List<(String, ParseTree)> {
+    invariant_violation("Do not get fields of Token");
+  }
+  fun getKind(): String {
+    "Token"
+  }
+  fun getChildren(): mutable Iterator<ParseTree> {
+    yield break;
+  }
+  fun isToken(): Bool {
+    true
+  }
+  fun asToken(): TokenTree {
+    this
+  }
+  fun getFirstToken(): ?Token.Token {
+    Some(this.token)
+  }
+  fun getLastToken(): ?Token.Token {
+    Some(this.token)
+  }
+  fun transform(_codemod: mutable CodeMod): (ParseTree, Vector<Subst>) {
+    (this, Vector[])
+  }
+}
+
+// A ParseTree representing a missing piece of syntax. Used for
+// optional parts of the syntax which are not present in the source.
+class EmptyTree{} extends ParseTree {
+  fun getNamedFields(): List<(String, ParseTree)> {
+    List[];
+  }
+  fun getKind(): String {
+    "Empty"
+  }
+  fun getChildren(): mutable Iterator<ParseTree> {
+    yield break;
+  }
+  fun isEmpty(): Bool {
+    true
+  }
+  fun asEmpty(): EmptyTree {
+    this
+  }
+  fun transform(_codemod: mutable CodeMod): (ParseTree, Vector<Subst>) {
+    (this, Vector[])
+  }
+}
+
+// When an error occurs and it gets difficult to construct a
+// reasonable tree from erroneous input. Note that when a parse
+// error occurs ErrorTrees can occur anywhere in the returned tree.
+//
+// Must not be present in the resulting ParseTree when parsing does not
+// produce any SyntaxErrors.
+class ErrorTree{value: String = ""} extends ParseTree {
+  fun getNamedFields(): List<(String, ParseTree)> {
+    List[];
+  }
+  fun getKind(): String {
+    "Error"
+  }
+  fun getChildren(): mutable Iterator<ParseTree> {
+    yield break;
+  }
+  fun isError(): Bool {
+    true
+  }
+  fun asError(): ErrorTree {
+    this
+  }
+  fun transform(_codemod: mutable CodeMod): (ParseTree, Vector<Subst>) {
+    (this, Vector[])
+  }
+}
+
+// A variable length list of ParseTrees. The only ParseTree with a variable
+// length list of children.
+//
+// Includes optional start/end delimiters (usually ()'s, []'s, {}'s or <>'s)
+// as well as optional separators (usually ,'s or |'s).
+//
+// Clients which don't care about trivia only need to look at elements.
+//
+class ParseTreeList{
+  startDelimiter: ParseTree,
+  elements: Array<ParseTree>,
+  // The kind of separator for this list. This cannot be inferred directly
+  // from the separators when the list is of length 1, and there was no
+  // trailing separator.
+  // Used by the formatter to reduce its knowledge of list context.
+  separatorKind: ?TokenKind.TokenKind,
+  separators: Array<ParseTree>,
+  endDelimiter: ParseTree,
+} extends ParseTree {
+  static fun makeSeparatedList{
+    range: TextRange,
+    elements: Array<ParseTree>,
+    separators: Array<ParseTree>,
+    separatorKind: TokenKind.TokenKind,
+  }: ParseTreeList {
+    ParseTreeList{
+      range,
+      startDelimiter => EmptyTree{range => TextRange.empty(range.start)},
+      elements,
+      separatorKind => Some(separatorKind),
+      separators,
+      endDelimiter => EmptyTree{range => TextRange.empty(range.end)},
+    };
+  }
+
+  static fun makeList{
+    range: TextRange,
+    elements: Array<ParseTree>,
+  }: ParseTreeList {
+    ParseTreeList{
+      range,
+      startDelimiter => EmptyTree{range => TextRange.empty(range.start)},
+      elements,
+      separators => Array[],
+      separatorKind => None(),
+      endDelimiter => EmptyTree{range => TextRange.empty(range.end)},
+    };
+  }
+
+  fun addDelimiters(
+    startDelimiter: ParseTree,
+    endDelimiter: ParseTree,
+  ): ParseTreeList {
+    invariant(
+      this.startDelimiter.isEmpty() && this.endDelimiter.isEmpty(),
+      "Adding Delimiters to existing delimited list",
+    );
+    range = TextRange.create(
+      startDelimiter.range.start,
+      endDelimiter.range.end,
+    );
+    invariant(
+      range.containsRange(this.range),
+      "Delimiters are contained within the list",
+    );
+    this with {range, startDelimiter, endDelimiter}
+  }
+
+  fun getNamedFields(): List<(String, ParseTree)> {
+    invariant_violation("Do not get fields of ParseTreeList");
+  }
+  fun getKind(): String {
+    "ParseTreeList"
+  }
+
+  fun size(): Int {
+    this.elements.size();
+  }
+
+  fun isList(): Bool {
+    true
+  }
+  fun asList(): ParseTreeList {
+    this
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree> {
+    yield this.startDelimiter;
+    if (this.separators.isEmpty()) {
+      // non-separated list
+      for (element in this.elements) {
+        yield element
+      };
+    } else {
+      elements = this.elements;
+      separators = this.separators;
+      invariant(
+        separators.size() == elements.size() ||
+          (separators.size() + 1) == elements.size(),
+      );
+      separatorsIndex = 0;
+      for (element in elements) {
+        yield element;
+        if (separatorsIndex < separators.size()) {
+          yield separators[separatorsIndex];
+          !separatorsIndex = separatorsIndex + 1;
+        }
+      };
+    };
+    yield this.endDelimiter;
+  }
+
+  fun transform(codemod: mutable CodeMod): (ParseTree, Vector<Subst>) {
+    startDelimiter = codemod.transform(this.startDelimiter);
+    elements = this.elements.map(codemod.transform);
+    separators = this.separators.map(codemod.transform);
+    endDelimiter = codemod.transform(this.endDelimiter);
+    (
+      ParseTreeList{
+        range => this.range,
+        startDelimiter => startDelimiter.i0,
+        elements => elements.map(subst ~> subst.i0),
+        separators => separators.map(subst ~> subst.i0),
+        separatorKind => this.separatorKind,
+        endDelimiter => endDelimiter.i0,
+      },
+      Vector[
+        startDelimiter.i1,
+        elements.values().flatMap(subst ~> subst.i1.values()).collect(Vector),
+        separators.values().flatMap(subst ~> subst.i1.values()).collect(Vector),
+        endDelimiter.i1,
+      ].flatten(),
+    );
+  }
+
+  // Preserves the trivia (separators and delimiters);
+  // Maps only the elements.
+  fun map(transformElement: ParseTree -> ParseTree): ParseTreeList {
+    this with {elements => this.elements.map(transformElement)};
+  }
+}
+
+type Subst = (TextRange, ParseTree.ParseTree);
+
+mutable base class CodeMod {
+  mutable fun transformTree(tree: ParseTree.ParseTree): ?ParseTree.ParseTree;
+
+  mutable overridable fun transform(
+    tree: ParseTree.ParseTree,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    (afterChildren, childSubstitions) = this.transformChildren(tree);
+    this.transformTree(afterChildren) match {
+    | None() -> (afterChildren, childSubstitions)
+    | Some(transformedTree) ->
+      // We want to ensure that no comments are lost during this transformDeclaration
+      missingComments = Set::mcreateFromItems(
+        afterChildren
+          .getTokens()
+          .map(token ~> token.comments().collect(Vector))
+          .flatten(),
+      );
+      addedComments = Set::mcreateFromItems(
+        transformedTree
+          .getTokens()
+          .map(token ~> token.comments().collect(Vector))
+          .flatten(),
+      );
+      missingComments.subtract(addedComments);
+
+      if (!missingComments.isEmpty()) {
+        transformedTree.getFirstToken() match {
+        | None() ->
+          // The codemod deleted all the tokens in the original
+          // we'll delete the comments as well, and hope parent transforms to restore them.
+          void
+        | Some(firstToken) ->
+          // Add the missing comments to the leading comments of the first token
+          // of the new tree
+          newFirstToken = firstToken with {
+            leadingComments => missingComments
+              .collect(Vector)
+              .sortedBy(comment ~> comment.range)
+              .concat(firstToken.leadingComments)
+              .collect(Array),
+          };
+          !transformedTree = ReplaceTokenCodeMod::doIt(
+            firstToken,
+            newFirstToken,
+            transformedTree,
+          ).i0
+        }
+      };
+      (transformedTree, Vector[(tree.getRangeWithComments(), transformedTree)])
+    }
+  }
+
+  mutable overridable fun transformChildren(
+    tree: ParseTree.ParseTree,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tree.transform(this);
+  }
+}
+
+mutable class ReplaceTokenCodeMod{
+  mutable search: ?Token.Token,
+  replace: Token.Token,
+} extends CodeMod {
+  static fun doIt(
+    search: Token.Token,
+    replace: Token.Token,
+    tree: ParseTree.ParseTree,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    codemod = mutable ReplaceTokenCodeMod{search => Some(search), replace};
+    codemod.transform(tree)
+  }
+
+  mutable fun transformTree(tree: ParseTree.ParseTree): ?ParseTree.ParseTree {
+    this.search match {
+    | None() -> None()
+    | Some(search) ->
+      tree match {
+      | tokenTree @ TokenTree{token} if (token == search) ->
+        Some(tokenTree with {token => this.replace})
+      | _ -> None()
+      }
+    }
+  }
+
+  mutable fun transform(
+    tree: ParseTree.ParseTree,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    (afterChildren, childSubstitions) = this.transformChildren(tree);
+    this.transformTree(afterChildren) match {
+    | None() -> (afterChildren, childSubstitions)
+    | Some(transformedTree) ->
+      (transformedTree, Vector[(tree.getRangeWithComments(), transformedTree)])
+    }
+  }
+}

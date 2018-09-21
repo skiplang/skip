@@ -1,0 +1,9 @@
+fun main(): void {
+  print_raw(
+    (1, true) match {
+    | (1, true) -> "Pass\n"
+    | (_, true) -> "Fail\n"
+    | (_, _) -> "Fail\n"
+    },
+  )
+}

@@ -1,0 +1,15 @@
+File "./typechecking/invalid/joined_tabstract_2.sk", line 37, characters 13-26:
+Invalid call of deferred method
+35 |   i: AbsC = IntC();
+36 |   s: AbsC = StringC();
+37 |   print_raw(s.add(i.get()))
+   |             ^^^^^^^^^^^^^^
+38 | }
+
+File "./typechecking/invalid/joined_tabstract_2.sk", line 6, characters 3-10:
+'add' was declared as 'deferred' and can only be called  from a 'deferred' method or from 'this'
+4 |   type T;
+5 |   deferred fun get(): Inv<this::T>;
+6 |   deferred fun add(Inv<this::T>): String;
+  |   ^^^^^^^^
+7 | }

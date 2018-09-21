@@ -1,0 +1,29 @@
+File "./typechecking/invalid/infer_frozen_fun_1.sk", line 5, characters 3-5:
+Constraint not satisfied
+3 | }
+4 | fun test(): void {
+5 |   foo(mutable Array[0])
+  |   ^^^
+6 | }
+
+File "./typechecking/invalid/infer_frozen_fun_1.sk", line 5, characters 7-22:
+The mutable type 'mutable Array<Int>' appeared inside an immutable type.
+3 | }
+4 | fun test(): void {
+5 |   foo(mutable Array[0])
+  |       ^^^^^^^^^^^^^^^^
+6 | }
+
+File "./typechecking/invalid/infer_frozen_fun_1.sk", line 1, characters 12-17:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | fun foo<T: frozen>(T): void {
+  |            ^^^^^^
+2 |   void
+
+File "./typechecking/invalid/infer_frozen_fun_1.sk", line 5, characters 15-22:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+3 | }
+4 | fun test(): void {
+5 |   foo(mutable Array[0])
+  |               ^^^^^^^^
+6 | }

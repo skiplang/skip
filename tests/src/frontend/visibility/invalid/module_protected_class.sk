@@ -1,0 +1,3 @@
+module M;
+
+protected class Foo

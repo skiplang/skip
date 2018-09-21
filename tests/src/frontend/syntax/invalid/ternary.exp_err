@@ -1,0 +1,6 @@
+File "./syntax/invalid/ternary.sk", line 2, characters 5-5:
+Unexpected '?' token. If you are trying to write a ternary 'cond ? a : b', you should use an 'if' expression instead: 'if (cond) a else b'.
+1 | fun main(): String {
+2 |   a ? b : c
+  |     ^
+3 | }

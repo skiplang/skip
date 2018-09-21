@@ -1,0 +1,65 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Unsafe;
+
+// RawStorage acts as a by-value container for possibly uninitialized data.
+// It provides a way for trusted system code to create objects like
+// Arrays where not every slot has been given a valid value.
+//
+// A RawStorage object may be created using either uninitialized (containing
+// no defined value) or make (containing the given value).
+//
+// If the RawStorage was created with "make", its value can be extracted
+// with unsafeGet(). But it is undefined behavior to create one with
+// RawStorage::uninitialized() and then extract the value with unsafeGet().
+//
+// Unlike (for example) Option, the point of RawStorage is to use no
+// speed or space overhead to track whether the contained value is actually
+// initialized -- it is a value class taking exactly the same amount of
+// memory as the type it wraps. So the user of this class must use their
+// own logic to know when it is safe to call unsafeGet(); for example,
+// Vector<T> uses an underlying Array<RawStorage<T>> as its
+// representation, and knows not to call unsafeGet() on any slots past the
+// Vector's logical size (even though they may be within the Array's
+// size).
+//
+// As an implementation note, instances of this class must always be safe
+// for the garbage collector to process. Since the GC has no way to know
+// if the contained value is initialized or not, the compiler must guarantee
+// that RawStorage::uninitialized() produces a value legal for GC. In
+// practice this means providing a NULL value for any pointers, rather
+// than using truly uninitialized memory.
+native value class RawStorage<+T> {
+  @intrinsic
+  static native fun uninitialized(): RawStorage<T>;
+  @intrinsic
+  static native fun make(value: T): RawStorage<T>;
+  @intrinsic
+  static native fun unsafeGet(value: readonly this): T;
+
+  fun inspect(): Inspect {
+    InspectObject("RawStorage", Array[])
+  }
+}
+
+// Native function to make an Array of a given size
+// Equivalent to calling Array.unsafe_make()
+@intrinsic
+native fun array_make<T>(size: Int): mutable Array<T>;
+
+// Native function to get the element of a vector at the given index
+// Equivalent to calling Array.unsafe_get()
+@intrinsic
+native fun array_get<T>(v: readonly Array<T>, i: Int): T;
+
+// Native function to set the element of a vector at the given index
+// Equivalent to calling Array.unsafe_set()
+@intrinsic
+native fun array_set<T>(v: mutable Array<T>, i: Int, x: T): void;
+
+module end;

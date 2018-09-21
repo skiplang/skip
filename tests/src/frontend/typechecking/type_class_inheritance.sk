@@ -1,0 +1,11 @@
+trait MyBaseTC
+trait ChildTC extends MyBaseTC
+class MyClass() uses ChildTC
+
+fun foo<T: MyBaseTC>(T): String {
+  "Pass\n"
+}
+
+fun main(): void {
+  print_raw(foo(MyClass()))
+}

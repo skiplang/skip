@@ -1,0 +1,23 @@
+File "./typechecking/invalid/early_return_async.sk", line 2, characters 13-13:
+Invalid async
+1 | fun main(): void {
+2 |   _: ^Int = async {
+  |             ^^^^^^^
+3 |     if (false) {
+  |     ^^^^^^^^^^^^
+
+File "./typechecking/invalid/early_return_async.sk", line 4, characters 14-21:
+The type: String
+2 |   _: ^Int = async {
+3 |     if (false) {
+4 |       return "Fail\n"
+  |              ^^^^^^^^
+5 |     };
+
+File "./typechecking/invalid/early_return_async.sk", line 6, characters 5-6:
+Does not share a common super type with: Int
+4 |       return "Fail\n"
+5 |     };
+6 |     37
+  |     ^^
+7 |   };

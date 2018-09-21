@@ -1,0 +1,21 @@
+File "./typechecking/invalid/pipe_2.sk", line 6, characters 3-11:
+Invalid pipe
+4 |
+5 | fun bar(): void {
+6 |   "" |> foo
+  |   ^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/pipe_2.sk", line 6, characters 3-4:
+The type: String
+4 |
+5 | fun bar(): void {
+6 |   "" |> foo
+  |   ^^
+7 | }
+
+File "./typechecking/invalid/pipe_2.sk", line 1, characters 9-11:
+Is not a subtype of: Int
+1 | fun foo(Int): void {
+  |         ^^^
+2 |   void

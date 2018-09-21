@@ -1,0 +1,9 @@
+mutable class Foo(mutable v: Int) {
+  memoized frozen fun yes(): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

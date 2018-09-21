@@ -1,0 +1,886 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias N = SkipNamedAst;
+module alias T = SkipTypedAst;
+module alias TU = SkipTypedAstUtils;
+module alias AU = SkipAstUtils;
+
+module GetDefinition;
+
+fun exprContainsPos(expr: T.Expr, position: FilePosition): Bool {
+  TU.expr_pos(expr).contains(position)
+}
+
+fun typeContainsPos(ty: T.Type_, position: FilePosition): Bool {
+  TU.get_pos_of_type(ty).contains(position)
+}
+
+fun nameContainsPos(name: T.Name, position: FilePosition): Bool {
+  AU.pos_of_name(name).contains(position)
+}
+
+fun patternContainsPos(pat: T.Pattern, position: FilePosition): Bool {
+  TU.pattern_pos(pat).contains(position);
+}
+
+fun fileOfName(name: T.Name): String {
+  AU.pos_of_name(name).filename;
+}
+
+fun fileOfConst(con: T.Const_def): String {
+  fileOfName(con.name);
+}
+
+fun fileOfFunc(func: T.Fun_def): String {
+  fileOfName(func.name);
+}
+
+fun fileOfMethod(method: T.Method_def): String {
+  fileOfName(method.name);
+}
+
+fun fileOfClass(cls: T.Class_def): String {
+  fileOfName(cls.name);
+}
+
+base class FindContext() {
+  children =
+  | ExpressionContext(expr: T.Expr)
+  | TypeContext(ty: T.Type_)
+  | TypeNameContext(name: T.Name)
+  | FunctionNameContext(name: T.Name)
+  | FieldContext(source: T.Name, fieldName: T.Name)
+  | LocalContext(local: T.Name)
+}
+
+fun searchNone(_position: FilePosition): ?FindContext {
+  None()
+}
+
+fun searchTypeList(tys: Array<T.Type_>, position: FilePosition): ?FindContext {
+  searchArray(tys, (ty, pos) ~> searchType(ty)(pos), position);
+}
+
+fun searchGenericType(
+  name: T.Name,
+  targs: Array<T.Type_>,
+  position: FilePosition,
+): ?FindContext {
+  searchMultiple(
+    List[searchTypeName(name), pos ~> searchTypeList(targs, pos)],
+    position,
+  );
+}
+
+fun searchInterElt(elt: N.InterElt, position: FilePosition): ?FindContext {
+  searchGenericType(elt.name, elt.targs, position);
+}
+
+fun searchParamTypes(
+  paramTypes: Parameters<T.Type_>,
+): FilePosition ~> ?FindContext {
+  makeSearchParams(paramTypes, ty ~> searchType(ty))
+}
+
+fun searchArguments(args: T.Call_args): FilePosition ~> ?FindContext {
+  makeSearchParams(args, ordered ~> searchExpression(ordered.i1))
+}
+
+// we know that position is contained in ty.
+// Find the smallest sub part of ty that contains position.
+fun searchInnerType(ty: T.Type_, position: FilePosition): ?FindContext {
+  TU.type_of__(ty) match {
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything()
+  | N.Tawaitable _ ->
+    Some(TypeContext(ty))
+  | N.Tapply(_, name, targs) -> searchGenericType(name, targs, position)
+  | N.Tfun(_, _, _TODOtys, paramTypes, returnType) ->
+    searchMultiple(
+      List[searchParamTypes(paramTypes), searchType(returnType)],
+      position,
+    )
+  | N.Tparam _ -> Some(TypeContext(ty))
+  | N.Tvar _ -> Some(TypeContext(ty))
+  | N.Tlambda(_, _, _, lambdaType) -> searchInnerType(lambdaType, position)
+  | N.Tdefault(defaultType) -> searchInnerType(defaultType, position)
+
+  | N.Tnamed(_TODONamed_info, namedType) -> searchInnerType(namedType, position)
+  | N.Tpromoted(_, _, _, _, name, targs) ->
+    searchGenericType(name, targs, position)
+  | N.Tset(_, _, _, inter_elts) ->
+    searchArray(inter_elts, searchInterElt, position)
+  }
+}
+
+fun searchType(ty: T.Type_): FilePosition ~> ?FindContext {
+  position ~>
+    if (typeContainsPos(ty, position)) {
+      searchInnerType(ty, position) match {
+      // No inner result is better than this Type
+      | None() -> Some(TypeContext(ty))
+      // An inner result was better ...
+      | innerResult -> innerResult
+      }
+    } else {
+      None()
+    }
+}
+
+fun searchExpressions(exprs: List<T.Expr>): FilePosition ~> ?FindContext {
+  position ~>
+    searchList(
+      exprs,
+      (expr, position) ~> searchExpression(expr)(position),
+      position,
+    );
+}
+
+fun searchExpressionsArray(exprs: Array<T.Expr>): FilePosition ~> ?FindContext {
+  position ~>
+    searchArray(
+      exprs,
+      (expr, position) ~> searchExpression(expr)(position),
+      position,
+    );
+}
+
+fun searchFieldName(
+  source: T.Name,
+  fieldName: T.Name,
+): FilePosition ~> ?FindContext {
+  position ~>
+    if (nameContainsPos(fieldName, position)) {
+      Some(FieldContext(source, fieldName));
+    } else {
+      None();
+    };
+}
+
+fun searchDotInfo(di: T.Dot_info): FilePosition ~> ?FindContext {
+  position ~>
+    searchMultiple(
+      List[searchExpression(di.obj_expr), searchFieldName(di.source, di.field)],
+      position,
+    );
+}
+
+fun searchLocalInfo(localInfo: T.LocalInfo): FilePosition ~> ?FindContext {
+  (_, name) = localInfo;
+  position ~>
+    if (nameContainsPos(name, position)) {
+      Some(LocalContext(name))
+    } else {
+      None()
+    };
+}
+
+fun searchPatternInner(pat: T.Pattern, position: FilePosition): ?FindContext {
+  TU.pattern_of__(pat) match {
+  | T.Pat_var _ -> None()
+  | T.Pat_literal _ -> None()
+  | T.Pat_type(_tid, _castType, _paramPatsOpt) ->
+    None() // TODO: Type
+  | T.Pat_as(asPattern, _) -> searchPattern(asPattern, position)
+  }
+}
+
+fun searchPattern(pat: T.Pattern, position: FilePosition): ?FindContext {
+  if (patternContainsPos(pat, position)) {
+    searchPatternInner(pat, position);
+  } else {
+    None()
+  }
+}
+
+fun searchMatchBranch(
+  mb: T.Match_branch,
+  position: FilePosition,
+): ?FindContext {
+  (pats, whenClauseOpt, target) = mb;
+  searchMultiple(
+    List[
+      pos ~> searchList(pats, searchPattern, pos),
+      searchExpressionOpt(whenClauseOpt),
+      searchExpression(target),
+    ],
+    position,
+  );
+}
+
+fun searchMatchBranches(
+  mbl: List<T.Match_branch>,
+): FilePosition ~> ?FindContext {
+  position ~> searchList(mbl, searchMatchBranch, position)
+}
+
+fun searchWithUpdate(
+  source: T.Name,
+): (T.With_update, FilePosition) ~> ?FindContext {
+  (update: T.With_update, position: FilePosition) ~> {
+    (_, value, fieldName, _) = update;
+    searchMultiple(
+      List[searchExpression(value), searchFieldName(source, fieldName)],
+      position,
+    );
+  };
+}
+
+fun searchWithUpdates(
+  ty: T.Type_,
+  updates: UMap<T.With_update>,
+): FilePosition ~> ?FindContext {
+  source = TU.type_of__(ty) match {
+  | N.Tapply(_, typeName, _) -> typeName
+  | _ -> invariant_violation("Expected Tapply as with object type")
+  };
+  position ~>
+    searchList(
+      updates.values() |> List::createFromIterator,
+      searchWithUpdate(source),
+      position,
+    );
+}
+
+fun searchInnerExpression(expr: T.Expr): FilePosition ~> ?FindContext {
+  TU.expr_of__(expr) match {
+  | T.DefaultArg()
+  | T.Literal _
+  | T.Const _
+  | T.Local _
+  | T.LazyLambda _
+  | T.Continue()
+  | T.YieldBreak _ ->
+    searchNone
+
+  | T.Fun(name, targs) ->
+    position ~>
+      searchMultiple(
+        List[searchFunctionName(name), pos ~> searchTypeList(targs, pos)],
+        position,
+      )
+
+  | T.Object(name, targs, args) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchTypeName(name),
+          pos ~> searchTypeList(targs, pos),
+          searchArguments(args),
+        ],
+        position,
+      )
+
+  | T.DynamicConstruction(ex, name, targs, args) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(ex),
+          searchTypeName(name),
+          pos ~> searchTypeList(targs, pos),
+          searchArguments(args),
+        ],
+        position,
+      )
+
+  | T.Seq(head, tail) ->
+    position ~>
+      searchMultiple(
+        List[searchExpression(head), searchExpression(tail)],
+        position,
+      )
+
+  | T.If(cond, texpr, fexpr) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(cond),
+          searchExpression(texpr),
+          searchExpression(fexpr),
+        ],
+        position,
+      )
+
+  | T.Call(func, args) ->
+    position ~>
+      searchMultiple(
+        List[searchExpression(func), searchArguments(args)],
+        position,
+      )
+
+  /* here so we can have both types */
+  | T.Annotated(ex, ty) ->
+    position ~>
+      searchMultiple(List[searchExpression(ex), searchType(ty)], position)
+
+  | T.Barbar(left, right)
+  | T.Ampamp(left, right) ->
+    position ~>
+      searchMultiple(
+        List[searchExpression(left), searchExpression(right)],
+        position,
+      )
+
+  | T.Bind(_binding, right, body) ->
+    position ~>
+      searchMultiple(
+        List[searchNone, searchExpression(right), searchExpression(body)],
+        position,
+      )
+
+  | T.Assign(local, right) ->
+    position ~>
+      searchMultiple(
+        List[searchLocalInfo(local), searchExpression(right)],
+        position,
+      )
+
+  | T.StaticDot(di)
+  | T.Dot(di) ->
+    searchDotInfo(di)
+
+  | T.Match(cond, mbl) ->
+    position ~>
+      searchMultiple(
+        List[searchExpression(cond), searchMatchBranches(mbl)],
+        position,
+      )
+
+  | T.Lambda(_params, _capturedBindings, body, _yields) ->
+    searchExpression(body)
+
+  | T.Try(body, mbl) ->
+    position ~>
+      searchMultiple(
+        List[searchExpression(body), searchMatchBranches(mbl)],
+        position,
+      )
+
+  | T.Await(ex)
+  | T.Return(ex)
+  | T.Async(_, ex)
+  | T.Throw(ex)
+  | T.GetClass(ex)
+  | T.Freeze(ex)
+  | T.Break(ex)
+  | T.Yield(ex) ->
+    searchExpression(ex)
+
+  | T.Concurrent(exprs) -> searchExpressions(exprs)
+  | T.Array(exprs) -> searchExpressionsArray(exprs)
+
+  | T.Classname(name) -> searchTypeName(name)
+
+  | T.With(obj, updates) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(obj),
+          searchWithUpdates(TU.get_type(obj), updates),
+        ],
+        position,
+      )
+
+  | T.AssignField(obj, source, fieldName, right) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(obj),
+          searchFieldName(source, fieldName),
+          searchExpression(right),
+        ],
+        position,
+      )
+
+  | T.TemplateLiteral(args) -> searchArguments(args)
+  | T.Loop(body) -> searchExpression(body)
+  | T.While(cond, body, else_) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(cond),
+          searchExpression(body),
+          searchExpression(else_),
+        ],
+        position,
+      )
+  | T.DoWhile(body, cond, else_) ->
+    position ~>
+      searchMultiple(
+        List[
+          searchExpression(body),
+          searchExpression(cond),
+          searchExpression(else_),
+        ],
+        position,
+      )
+  }
+}
+
+fun searchExpression(expr: T.Expr): FilePosition ~> ?FindContext {
+  position ~>
+    if (exprContainsPos(expr, position)) {
+      searchInnerExpression(expr)(position) match {
+      // No inner result was better
+      | None() -> Some(ExpressionContext(expr))
+      | innerResult -> innerResult
+      }
+    } else {
+      None()
+    }
+}
+
+fun searchFunctionName(name: T.Name): FilePosition ~> ?FindContext {
+  position ~>
+    if (nameContainsPos(name, position)) {
+      Some(FunctionNameContext(name))
+    } else {
+      None()
+    }
+}
+
+fun searchTypeName(name: T.Name): FilePosition ~> ?FindContext {
+  position ~>
+    if (nameContainsPos(name, position)) {
+      Some(TypeNameContext(name))
+    } else {
+      None()
+    }
+}
+
+fun searchExpressionOpt(expr: ?T.Expr): FilePosition ~> ?FindContext {
+  expr match {
+  | None() -> searchNone
+  | Some(e) -> searchExpression(e)
+  }
+}
+
+fun searchTypeNameOpt(name: ?T.Name): FilePosition ~> ?FindContext {
+  name match {
+  | None() -> searchNone
+  | Some(n) -> searchTypeName(n)
+  }
+}
+
+// Search a heterogenous set of locations
+fun searchMultiple(
+  searches: List<FilePosition ~> ?FindContext>,
+  position: FilePosition,
+): ?FindContext {
+  searches match {
+  | List.Nil() -> None()
+  | List.Cons(head, tail) ->
+    searchHead = head(position);
+    if (searchHead.isSome()) {
+      searchHead
+    } else {
+      searchMultiple(tail, position)
+    }
+  }
+}
+
+// Search a homogeneous list of locations
+fun searchList<V: frozen>(
+  values: List<V>,
+  func: (V, FilePosition) ~> ?FindContext,
+  position: FilePosition,
+): ?FindContext {
+  values match {
+  | List.Nil() -> None()
+  | List.Cons(head, tail) ->
+    func(head, position) match {
+    | None() -> searchList(tail, func, position)
+    | Some(result) -> Some(result)
+    }
+  }
+}
+
+fun searchArray<V: frozen>(
+  values: Array<V>,
+  func: (V, FilePosition) ~> ?FindContext,
+  position: FilePosition,
+): ?FindContext {
+  for (x in values) {
+    cur = func(x, position);
+    if (cur is Some _) break cur;
+  } else {
+    None()
+  }
+}
+
+fun makeSearchParams<V: frozen>(
+  params: Parameters<V>,
+  f: V ~> FilePosition ~> ?FindContext,
+): FilePosition ~> ?FindContext {
+  position ~> {
+    result: ?FindContext = None();
+    _ = params.any(p -> {
+      !result = f(p)(position);
+      result.isSome()
+    });
+    result
+  }
+}
+
+fun searchTParam(
+  tparam: T.Type_parameter,
+  position: FilePosition,
+): ?FindContext {
+  (_, _, _, constraints) = tparam;
+  searchTypeList(constraints, position);
+}
+
+fun searchTParams(
+  tparams: Array<T.Type_parameter>,
+): FilePosition ~> ?FindContext {
+  position ~> searchArray(tparams, searchTParam, position);
+}
+
+fun searchParam(param: T.Parameter, position: FilePosition): ?FindContext {
+  searchMultiple(
+    List[searchType(param.type), searchExpressionOpt(param.value)],
+    position,
+  );
+}
+
+fun searchParams(
+  params: Parameters<T.Parameter>,
+): FilePosition ~> ?FindContext {
+  makeSearchParams(params, p ~> pos ~> searchParam(p, pos))
+}
+
+fun searchExprBody(body: T.Expr_body): FilePosition ~> ?FindContext {
+  body match {
+  | T.Implemented(expr) -> searchExpression(expr)
+  | _ -> searchNone
+  }
+}
+
+fun searchClassParams(params: ?T.Class_params): FilePosition ~> ?FindContext {
+  params match {
+  | None() -> searchNone
+  | Some(ps) -> searchParams(ps.params)
+  }
+}
+
+fun searchParent(p: (T.Name, T.Parent), position: FilePosition): ?FindContext {
+  searchMultiple(
+    List[searchTypeName(p.i0), pos ~> searchTypeList(p.i1.targs, pos)],
+    position,
+  );
+}
+
+fun searchParents(parents: UMap<T.Parent>): FilePosition ~> ?FindContext {
+  position ~> searchList(parents.itemsList(), searchParent, position);
+}
+
+fun searchFieldType(field: N.Field_type, position: FilePosition): ?FindContext {
+  searchType(field.type)(position)
+}
+
+fun searchWhenParam(
+  whenParam: T.Whenclause,
+  position: FilePosition,
+): ?FindContext {
+  (ty, tys) = whenParam;
+  searchTypeList(Array[ty].concat(tys), position);
+}
+
+fun searchWhenParams(
+  whenParams: Array<T.Whenclause>,
+): FilePosition ~> ?FindContext {
+  position ~> searchArray(whenParams, searchWhenParam, position);
+}
+
+fun searchClassFields(
+  fields: UMap<N.Field_type>,
+): FilePosition ~> ?FindContext {
+  position ~>
+    searchArray(fields.values().collect(Array), searchFieldType, position);
+}
+
+fun searchClaTyd(claTyd: T.Cla_tyd): FilePosition ~> ?FindContext {
+  claTyd match {
+  | N.TydAbstract(_, _) -> searchNone
+  | N.TydDefined(ty) -> searchType(ty)
+  }
+}
+
+fun searchTypeDef(classType: T.Type_def, position: FilePosition): ?FindContext {
+  searchMultiple(
+    List[searchClaTyd(classType.body), searchTParams(classType.tparams)],
+    position,
+  );
+}
+
+fun searchClassTypes(
+  classTypes: UMap<T.Type_def>,
+): FilePosition ~> ?FindContext {
+  position ~>
+    searchList(
+      classTypes.values() |> List::createFromIterator,
+      searchTypeDef,
+      position,
+    );
+}
+
+fun searchClassConsts(
+  classConsts: UMap<T.Const_def>,
+): FilePosition ~> ?FindContext {
+  position ~>
+    searchList(
+      classConsts.values() |> List::createFromIterator,
+      findPosInConst,
+      position,
+    );
+}
+
+fun searchMethod(method: T.Method_def, position: FilePosition): ?FindContext {
+  if (fileOfMethod(method) != position.filename) {
+    None();
+  } else {
+    searchMultiple(
+      List[
+        searchWhenParams(method.whenparams),
+        searchTParams(method.tparams),
+        searchParams(method.params),
+        searchType(method.return_),
+        searchExprBody(method.body),
+      ],
+      position,
+    );
+  }
+}
+
+fun searchMethods(methods: UMap<T.Method_def>): FilePosition ~> ?FindContext {
+  position ~>
+    searchList(
+      methods.values() |> List::createFromIterator,
+      searchMethod,
+      position,
+    );
+}
+
+fun findPosInConst(con: T.Const_def, position: FilePosition): ?FindContext {
+  if (fileOfConst(con) != position.filename) {
+    None();
+  } else {
+    searchMultiple(
+      List[
+        searchType(con.type),
+        searchExpressionOpt(con.value),
+        searchTypeNameOpt(con.from_),
+      ],
+      position,
+    );
+  }
+}
+
+fun findPosInFunc(func: T.Fun_def, position: FilePosition): ?FindContext {
+  if (fileOfFunc(func) != position.filename) {
+    None();
+  } else {
+    searchMultiple(
+      List[
+        searchTParams(func.tparams),
+        searchParams(func.params),
+        searchType(func.return_),
+        searchExprBody(func.body),
+      ],
+      position,
+    );
+  }
+}
+
+fun findPosInClass(cls: T.Class_def, position: FilePosition): ?FindContext {
+  if (fileOfClass(cls) != position.filename) {
+    None();
+  } else {
+    searchMultiple(
+      List[
+        searchTParams(cls.tparams),
+        searchClassParams(cls.params),
+        searchParents(cls.extends_),
+        searchParents(cls.use),
+        searchMethods(cls.methods),
+        searchClassFields(cls.fields),
+        searchClassTypes(cls.types),
+        searchClassConsts(cls.consts),
+      ],
+      position,
+    );
+  }
+}
+
+fun findPosInTypeAlias(
+  tya: T.Type_alias_def,
+  position: FilePosition,
+): ?FindContext {
+  searchType(tya.body)(position);
+}
+
+fun findInProgram(program: T.Program, position: FilePosition): ?FindContext {
+  searchMultiple(
+    List[
+      ((pos ~>
+        searchList(
+          program.class_defs.values() |> List::createFromIterator,
+          findPosInClass,
+          pos,
+        )) : FilePosition ~> ?FindContext),
+      pos ~>
+        searchList(
+          program.fun_defs.values() |> List::createFromIterator,
+          findPosInFunc,
+          pos,
+        ),
+      pos ~>
+        searchList(
+          program.const_defs.values() |> List::createFromIterator,
+          findPosInConst,
+          pos,
+        ),
+      pos ~>
+        searchList(
+          program.tya_defs.values() |> List::createFromIterator,
+          findPosInTypeAlias,
+          pos,
+        ),
+    ],
+    position,
+  );
+}
+
+base class Definition() {
+  children =
+  | ClassDef(cls: T.Class_def)
+  | FunctionDef(func: T.Fun_def)
+  | FieldDef(cls: T.Class_def, field: T.Parameter)
+}
+
+fun posOfDefinition(definition: Definition): FileRange {
+  definition match {
+  | ClassDef(cls) -> AU.pos_of_name(cls.name)
+  | FunctionDef(func) -> AU.pos_of_name(func.name)
+  | FieldDef(_, field) -> AU.pos_of_name(field.name)
+  }
+}
+
+fun definitionOfTypeName(program: T.Program, name: T.Name): Definition {
+  ClassDef(program.class_defs[name])
+}
+
+fun definitionOfExpr(_program: T.Program, _expr: T.Expr): ?Definition {
+  // TODO
+  None()
+}
+
+fun definitionOfType(_program: T.Program, _ty: T.Type_): ?Definition {
+  // TODO
+  None()
+}
+
+fun definitionOfFunctionName(program: T.Program, name: T.Name): Definition {
+  FunctionDef(program.fun_defs[name])
+}
+
+fun definitionOfField(
+  program: T.Program,
+  source: T.Name,
+  fieldName: T.Name,
+): Definition {
+  cls = program.class_defs[source];
+  field = cls.params.fromSome().params.find(par ~>
+    AU.string_of_name(par.name) == AU.string_of_name(fieldName)
+  );
+  FieldDef(cls, field.fromSome());
+}
+
+fun definitionOfLocal(_localName: T.Name): Definition {
+  invariant_violation("TODO");
+}
+
+fun definitionOfPos(program: T.Program, position: FilePosition): ?Definition {
+  findInProgram(program, position) match {
+  | None() -> None()
+  | Some(ExpressionContext(expr)) -> definitionOfExpr(program, expr)
+  | Some(TypeContext(ty)) -> definitionOfType(program, ty)
+  | Some(TypeNameContext(name)) -> Some(definitionOfTypeName(program, name))
+  | Some(FunctionNameContext(name)) ->
+    Some(definitionOfFunctionName(program, name))
+  | Some(FieldContext(source, fieldName)) ->
+    Some(definitionOfField(program, source, fieldName))
+  | Some(LocalContext(localName)) -> Some(definitionOfLocal(localName))
+  }
+}
+
+/*
+The JSON expected output:
+
+export type Definition = {
+  // Path of the file in which the definition is located.
+  path: NuclideUri,
+  // First character of the definition's identifier.
+  // e.g. "F" in `class Foo {}`
+  position: atom$Point,
+  // Optional: the range of the entire definition.
+  // e.g. "c" to "}" in `class Foo {}`
+  range?: atom$Range,
+  // Optional: `name` and `projectRoot` can be provided to display a more human-readable title
+  // inside of Hyperclick when there are multiple definitions.
+  name?: string,
+  // If provided, `projectRoot` will be used to display a relativized version of `path`.
+  projectRoot?: NuclideUri,
+  // `language` may be used by consumers to identify the source of definitions.
+  language: string,
+};
+
+// Definition queries supply a point.
+// The returned queryRange is the range within which the returned definition is valid.
+// Typically queryRange spans the containing identifier around the query point.
+export type DefinitionQueryResult = {
+  queryRange: ?PHPArray<atom$Range>,
+  definitions: PHPArray<Definition>,
+};
+*/
+fun createOutputJson(projectRoot: String, definition: FileRange): JSON.Value {
+  JSON.Object::createFromItems(
+    List[
+      ("queryRange", JSON.Null()),
+      (
+        "definitions",
+        JSON.Array::createFromItems(
+          List[
+            JSON.Object::createFromItems(
+              List[
+                ("path", JSON.String(definition.filename)),
+                ("position", createPositionJson(definition)),
+                // TODO: range
+                ("projectRoot", JSON.String(projectRoot)),
+                ("language", JSON.String("skip")),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+// Create an atom$Point JSON object
+fun createPositionJson(pos: FileRange): JSON.Value {
+  JSON.Array::createFromItems(
+    List[
+      JSON.IntNumber(pos.start().line()),
+      JSON.IntNumber(pos.start().column()),
+    ],
+  )
+}
+
+module end;

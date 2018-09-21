@@ -1,0 +1,14 @@
+class Foo() extends Baz, Bar {}
+
+base class Baz {
+  @cpp_extern
+  native fun hello(): void;
+}
+
+base class Bar {
+  fun hello(): void;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

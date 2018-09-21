@@ -1,0 +1,22 @@
+base class A()
+class B extends A {
+  fun s(): String {
+    "FAIL"
+  }
+}
+
+class C extends A
+
+fun maybe_with<T, R>(some: T -> R, none: R, opt: ?T): R {
+  opt match {
+  | None() -> none
+  | Some(x) -> some(x)
+  }
+}
+
+fun main(): void {
+  b = B();
+  ao: ?A = Some(C());
+  z: B = ao.map(id).default(b); // OOPS this is actually a C! Death!
+  print_string(z.s())
+}

@@ -1,0 +1,23 @@
+base class Foo final {x: this::T} {
+  type T: Test.MixedScalar;
+
+  deferred static fun construct(x: this::T): this {
+    static{x => x}
+  }
+
+  fun get(): this::T {
+    this.x
+  }
+}
+
+class Bar extends Foo {
+  type T = Test.MixedString;
+
+  static fun goodmake(): this {
+    static::construct(Test.MixedString("Pass\n"))
+  }
+}
+
+fun main(): void {
+  print_raw(Bar::goodmake().get().asString())
+}

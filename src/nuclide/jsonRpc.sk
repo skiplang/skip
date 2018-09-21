@@ -1,0 +1,149 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip implementation of http://www.jsonrpc.org/specification
+
+module JsonRpc;
+
+const protocolFieldName: String = "jsonrpc";
+const protocolValue: String = "2.0";
+
+fun expectMessage(json: JSON.Value): void {
+  invariant(
+    json.expectMap()[protocolFieldName].expectString() == protocolValue,
+    "Invalid jsonrpc field",
+  );
+}
+
+fun expectId(json: JSON.Value): ?Int {
+  json.expectObject().maybeGetInt("id")
+}
+
+fun idToJson(id: ?Int): JSON.Value {
+  id match {
+  | None() -> JSON.Null()
+  | Some(value) -> JSON.IntNumber(value)
+  }
+}
+
+fun optionToJson(value: ?JSON.Value): JSON.Value {
+  value.default(JSON.Null())
+}
+
+base class Message{jsonrpc: String = "2.0"} uses JsonableObject {
+  overridable static fun fromJson(json: JSON.Value): Message {
+    expectMessage(json);
+    fields = json.expectObject();
+    method = fields.getString("method");
+    params = fields["params"];
+    fields.maybeGetInt("id") match {
+    | None() -> Notification{method, params}
+    | Some(id) -> Request{id, method, params}
+    }
+  }
+}
+
+class Request{id: Int, method: String, params: JSON.Value} extends Message {
+  static fun fromJson(json: JSON.Value): Request {
+    expectMessage(json);
+    fields = json.expectMap();
+    Request{
+      method => fields["method"].expectString(),
+      params => fields["params"],
+      id => fields["id"].expectInt(),
+    }
+  }
+}
+
+// A success ResponseMessage to a request
+class Success{id: Int, result: JSON.Value} extends Message {
+  static fun fromJson(json: JSON.Value): Success {
+    expectMessage(json);
+    fields = json.expectMap();
+    Success{result => fields["result"], id => fields["id"].expectInt()}
+  }
+
+  fun toJson(): JSON.Value {
+    fields = this.toJsonFields();
+    // Allow result to be null if present.
+    if (this.result is JSON.Null()) {
+      addResult = fields.clone();
+      addResult.set("result", this.result);
+      !fields = freeze(addResult);
+    };
+    JSON.Object(fields)
+  }
+}
+
+class ResponseError{
+  /**
+   * A number indicating the error type that occurred.
+   */
+  code: Int,
+
+  /**
+   * A string providing a short description of the error.
+   */
+  message: String,
+
+  /**
+   * A Primitive or Structured value that contains additional
+   * information about the error. Can be omitted.
+   */
+  data: ?JSON.Value = None(),
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): ResponseError {
+    fields = json.expectObject();
+    ResponseError{
+      code => fields.getInt("code"),
+      message => fields.getString("message"),
+      data => fields.maybeGet("data"),
+    }
+  }
+}
+
+// An error ResponseMessage to a request
+class ErrorResponse{id: Int, error: ResponseError} extends Message {
+  static fun fromJson(json: JSON.Value): ErrorResponse {
+    expectMessage(json);
+    fields = json.expectObject();
+    ErrorResponse{
+      id => fields.getInt("id"),
+      error => ResponseError::fromJson(fields["error"]),
+    }
+  }
+}
+
+// An error notification not tied to a request.
+class ErrorNotification{error: ResponseError} extends Message {
+  static fun fromJson(json: JSON.Value): ErrorNotification {
+    expectMessage(json);
+    fields = json.expectObject();
+    ErrorNotification{error => ResponseError::fromJson(fields["error"])}
+  }
+}
+
+class Notification{method: String, params: JSON.Value} extends Message {
+  static fun fromJson(json: JSON.Value): Notification {
+    expectMessage(json);
+    fields = json.expectMap();
+    Notification{
+      method => fields["method"].expectString(),
+      params => fields["params"],
+    }
+  }
+}
+
+const ParseError: Int = -32700;
+const InvalidRequest: Int = -32600;
+const MethodNotFound: Int = -32601;
+const InvalidParams: Int = -32602;
+const InternalError: Int = -32603;
+const ServerErrorStart: Int = -32000;
+const ServerErrorEnd: Int = -32099;
+
+module end;

@@ -1,0 +1,12 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "project1": {
+      "kind": "Library",
+      "sources": [ "." ],
+      "references": [{
+        "path": "../prelude"
+      }]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+File "./syntax/invalid/macro_typeid_type_dot.sk", line 3, characters 21-21:
+'.' not permitted on type macros.
+1 | base class B {
+2 |   macro fun m(): void {
+3 |     (0 : #ThisClass.X)
+  |                     ^
+4 |   }

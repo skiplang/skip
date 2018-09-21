@@ -1,0 +1,13 @@
+File "./visibility/invalid/private_constructor_1.sk", line 4, characters 7-9:
+Invalid constructor call for class X
+2 |
+3 | fun test(): void {
+4 |   _ = X()
+  |       ^^^
+5 | }
+
+File "./visibility/invalid/private_constructor_1.sk", line 1, characters 9-15:
+It was declared as private
+1 | class X private ()
+  |         ^^^^^^^
+2 |

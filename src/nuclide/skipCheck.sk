@@ -1,0 +1,20 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Entry point used for typechecking. Invoke it as
+ *
+ *     skip_check [ROOT_DIR | FILE]
+ *
+ * It will search upward from the given root path (or the current directory) for a
+ * .skipconfig file. See skipConfig.ml for more.
+ */
+/*****************************************************************************/
+
+untracked fun main(): void {
+  print_raw(SkipAnalyze.analyzeFile(SkipAnalyze.pathOfArguments()).join("\n"))
+}

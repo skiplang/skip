@@ -1,0 +1,14 @@
+base class Foo{f1: Int}
+base class Foo2{f2: Int} extends Foo
+class Bar extends Foo2
+class Baz{f3: String} extends Foo
+
+fun main(): void {
+  x: Foo = Baz{f1 => 0, f3 => "Pass\n"};
+  print_raw(
+    x match {
+    | Foo2{f1 => _, f2 => _} -> "No"
+    | Baz{f3} -> f3
+    },
+  )
+}

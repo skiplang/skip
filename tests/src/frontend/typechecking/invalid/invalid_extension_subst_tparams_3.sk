@@ -1,0 +1,19 @@
+trait Foo<T>
+
+trait XIntable {
+  fun xintable(): Int;
+}
+
+module M;
+mutable base class .XSeq<+T>(value: T)
+module end;
+mutable class XCSeq<V> extends XSeq<V>
+
+extension base class XSeq {
+  fun no1(): void {
+    T
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

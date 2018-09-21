@@ -1,0 +1,24 @@
+File "./typechecking/invalid/async_block_mutation.sk", line 5, characters 7-7:
+You cannot capture this variable
+3 |   f = () ->
+4 |     async {
+5 |       r.!value = ""
+  |       ^
+6 |     };
+
+File "./typechecking/invalid/async_block_mutation.sk", line 2, characters 7-31:
+Mutable because of this position
+1 | async fun asyncMain(): ^void {
+2 |   r = mutable Ref<String>("No");
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |   f = () ->
+
+File "./typechecking/invalid/async_block_mutation.sk", line 4, characters 5-5:
+Because of this `async` block.
+Inside, locals cannot be modified and mutables cannot be captured
+2 |   r = mutable Ref<String>("No");
+3 |   f = () ->
+4 |     async {
+  |     ^^^^^^^
+5 |       r.!value = ""
+  |       ^^^^^^^^^^^^^

@@ -1,0 +1,2 @@
+trait X<+T>
+class Foo<+T, +U, +V>() uses X<T>, X<U>[T: U], X<V>[T: V]

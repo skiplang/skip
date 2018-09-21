@@ -1,0 +1,27 @@
+base class A {
+  children =
+  | B()
+  | C()
+}
+
+base class Parent {
+  type T: A;
+
+  fun foo(A): void;
+}
+
+class Child1() extends Parent {
+  type T = B;
+
+  fun foo(B): void {
+    void
+  }
+}
+
+class Child2() extends Parent {
+  type T = C;
+
+  fun foo(C): void {
+    void
+  }
+}

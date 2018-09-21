@@ -1,0 +1,126 @@
+File "./typechecking/invalid/yield1.sk", line 4, characters 3-9:
+Generators must return 'mutable Iterator<_>'
+This function is a generator because of 'yield'
+2 |
+3 | fun bad(x: Int): Int {
+4 |   yield x
+  |   ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/yield1.sk", line 3, characters 18-20:
+The type: Int
+1 | base class IteratorSubclass<T>() extends Iterator<T>
+2 |
+3 | fun bad(x: Int): Int {
+  |                  ^^^
+4 |   yield x
+
+File "./typechecking/invalid/yield1.sk", line 4, characters 3-9:
+Is incompatible with the invariant type: mutable Iterator<_>
+2 |
+3 | fun bad(x: Int): Int {
+4 |   yield x
+  |   ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/yield1.sk", line 8, characters 3-9:
+Generators must return 'mutable Iterator<_>'
+This function is a generator because of 'yield'
+ 6 |
+ 7 | fun bad2(x: Int): Iterator<Int> {
+ 8 |   yield x
+   |   ^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/yield1.sk", line 7, characters 19-26:
+The type: Iterator<Int>
+5 | }
+6 |
+7 | fun bad2(x: Int): Iterator<Int> {
+  |                   ^^^^^^^^
+8 |   yield x
+
+File "./typechecking/invalid/yield1.sk", line 8, characters 3-9:
+Is incompatible with the invariant type: mutable Iterator<_>
+ 6 |
+ 7 | fun bad2(x: Int): Iterator<Int> {
+ 8 |   yield x
+   |   ^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/yield1.sk", line 8, characters 3-9:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Iterator<Int>
+ 6 |
+ 7 | fun bad2(x: Int): Iterator<Int> {
+ 8 |   yield x
+   |   ^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/yield1.sk", line 12, characters 3-9:
+Generators must return 'mutable Iterator<_>'
+This function is a generator because of 'yield'
+10 |
+11 | fun bad3(x: Int): readonly Iterator<Int> {
+12 |   yield x
+   |   ^^^^^^^
+13 | }
+
+File "./typechecking/invalid/yield1.sk", line 11, characters 19-40:
+The type: readonly Iterator<Int>
+ 9 | }
+10 |
+11 | fun bad3(x: Int): readonly Iterator<Int> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+12 |   yield x
+
+File "./typechecking/invalid/yield1.sk", line 12, characters 3-9:
+Is incompatible with the invariant type: mutable Iterator<_>
+10 |
+11 | fun bad3(x: Int): readonly Iterator<Int> {
+12 |   yield x
+   |   ^^^^^^^
+13 | }
+
+File "./typechecking/invalid/yield1.sk", line 12, characters 3-9:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Iterator<Int>
+10 |
+11 | fun bad3(x: Int): readonly Iterator<Int> {
+12 |   yield x
+   |   ^^^^^^^
+13 | }
+
+File "./typechecking/invalid/yield1.sk", line 16, characters 3-9:
+Generators must return 'mutable Iterator<_>'
+This function is a generator because of 'yield'
+14 |
+15 | fun bad4(x: Int): readonly IteratorSubclass<Int> {
+16 |   yield x
+   |   ^^^^^^^
+17 | }
+
+File "./typechecking/invalid/yield1.sk", line 15, characters 19-48:
+The type: readonly IteratorSubclass<Int>
+13 | }
+14 |
+15 | fun bad4(x: Int): readonly IteratorSubclass<Int> {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |   yield x
+
+File "./typechecking/invalid/yield1.sk", line 16, characters 3-9:
+Is incompatible with the invariant type: mutable Iterator<_>
+14 |
+15 | fun bad4(x: Int): readonly IteratorSubclass<Int> {
+16 |   yield x
+   |   ^^^^^^^
+17 | }
+
+File "./typechecking/invalid/yield1.sk", line 16, characters 3-9:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Iterator<Int>
+14 |
+15 | fun bad4(x: Int): readonly IteratorSubclass<Int> {
+16 |   yield x
+   |   ^^^^^^^
+17 | }

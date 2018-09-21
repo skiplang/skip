@@ -1,0 +1,12 @@
+File "./syntax/invalid/name_collision_2.sk", line 4, characters 7-9:
+foo was already defined as a function
+2 |   void
+3 | }
+4 | const foo: Int = 0;
+  |       ^^^
+
+File "./syntax/invalid/name_collision_2.sk", line 1, characters 5-7:
+Defined here
+1 | fun foo(): void {
+  |     ^^^
+2 |   void

@@ -1,0 +1,7 @@
+fun main(): void {
+  `${s(
+    // comment
+    1
+  )}`;
+  `${s}`;
+}

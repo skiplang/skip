@@ -1,0 +1,23 @@
+File "./typechecking/invalid/memo_mut_1.sk", line 1, characters 17-17:
+Invalid parameter. All parameters to a 'memoized' function must be frozen
+1 | memoized fun no(mutable Ref<Int>): void {
+  |                 ^
+2 |   void
+
+File "./typechecking/invalid/memo_mut_1.sk", line 1, characters 1-8:
+The function was declared 'memoized' here
+1 | memoized fun no(mutable Ref<Int>): void {
+  | ^^^^^^^^
+2 |   void
+
+File "./typechecking/invalid/memo_mut_1.sk", line 1, characters 17-32:
+The following type is not frozen: mutable Ref<Int>
+1 | memoized fun no(mutable Ref<Int>): void {
+  |                 ^^^^^^^^^^^^^^^^
+2 |   void
+
+File "./typechecking/invalid/memo_mut_1.sk", line 1, characters 17-32:
+Try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+1 | memoized fun no(mutable Ref<Int>): void {
+  |                 ^^^^^^^^^^^^^^^^
+2 |   void

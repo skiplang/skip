@@ -1,0 +1,6 @@
+fun main(): void {
+  s = "Pass\n";
+  x = s;
+  !s = "unread";
+  print_raw(x)
+}

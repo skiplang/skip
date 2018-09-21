@@ -1,0 +1,16 @@
+trait MyTrait {
+  fun foo<T>(_x: T): void {
+    void
+  }
+}
+
+fun die<U: MyTrait>(x: U): void {
+  x.foo(0)
+}
+
+class X() uses MyTrait
+
+fun main(): void {
+  die(X());
+  print_string("Pass")
+}

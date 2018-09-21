@@ -1,0 +1,5 @@
+// it's an error to call an untracked lambda from a tracked context
+fun main(): void {
+  inc = untracked x -> x + 1;
+  print_raw(if (inc(0) == 1) "Pass\n" else "Fail")
+}

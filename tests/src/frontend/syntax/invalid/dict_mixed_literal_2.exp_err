@@ -1,0 +1,6 @@
+File "./syntax/invalid/dict_mixed_literal_2.sk", line 2, characters 33-57:
+Expected an expression, found map element (key => value)
+1 | fun main(): String {
+2 |   v = Dict [ ("key2", "Fail!"), "key" => "Hello world!\n" ];
+  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |   v["key"]

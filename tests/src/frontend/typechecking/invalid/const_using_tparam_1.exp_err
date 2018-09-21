@@ -1,0 +1,7 @@
+File "./typechecking/invalid/const_using_tparam_1.sk", line 3, characters 9-9:
+Generics cannot be used as expressions
+1 | class B<T: String>() {
+2 |   const x: String = {
+3 |     _ = T;
+  |         ^
+4 |     "FAIL"

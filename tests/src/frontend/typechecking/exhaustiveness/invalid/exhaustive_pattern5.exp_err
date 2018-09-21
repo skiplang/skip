@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern5.sk", line 9, characters 5-5:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | Baz()
+ 7 |   foo: Foo = Baz();
+ 8 |   print_raw(
+ 9 |     foo match {
+   |     ^^^^^^^^^^^
+10 |     | Bar() -> "Fail"
+   |     ^^^^^^^^^^^^^^^^^

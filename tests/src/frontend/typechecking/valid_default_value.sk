@@ -1,0 +1,40 @@
+mutable base class P {
+  children =
+  | L()
+  | R()
+}
+
+fun yes1{x: R = R()}: void {
+  void
+}
+fun yes2{x: P = R()}: void {
+  void
+}
+fun yes3{x: mutable L = mutable L()}: void {
+  void
+}
+fun yes4{x: readonly L = L()}: void {
+  void
+}
+class Yes1{x: R = R()}
+class Yes2{x: P = R()}
+mutable class Yes3{x: mutable L = mutable L()}
+mutable class Yes4{x: readonly L = L()}
+mutable class Test() {
+  fun yes1{x: R = R()}: void {
+    void
+  }
+  static fun yes2{x: P = R()}: void {
+    void
+  }
+  readonly fun yes3{x: mutable L = mutable L()}: void {
+    void
+  }
+  mutable fun yes4{x: readonly L = L()}: void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

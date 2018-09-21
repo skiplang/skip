@@ -1,0 +1,238 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// This module handles testing for various properties of Chars.
+// TODO: Currently is only correct for ASCII chars, update to include Unicode.
+
+module Chars;
+
+const null: Char = '\x00';
+const forwardSlash: Char = '/';
+const star: Char = '*';
+
+const tab: Char = '\x09';
+const lineFeed: Char = '\x0A';
+const verticalTab: Char = '\x0B';
+const formFeed: Char = '\x0C';
+const carriageReturn: Char = '\x0D';
+const escape: Char = '\x0E';
+const space: Char = ' ';
+
+fun isWhitespace(ch: Char): Bool {
+  ch match {
+  | ' ' | '\x09' | '\x0A' | '\x0C' | '\x0D' -> true
+  | _ -> false
+  }
+}
+
+fun isNewLine(ch: Char): Bool {
+  ch == lineFeed || ch == carriageReturn
+}
+
+// Decimal
+const zeroCode: Int = '0'.code();
+const nineCode: Int = '9'.code();
+
+fun isDigitCode(code: Int): Bool {
+  code >= zeroCode && code <= nineCode
+}
+
+fun isDigit(ch: Char): Bool {
+  isDigitCode(ch.code())
+}
+
+// Octal
+const sevenCode: Int = '7'.code();
+fun isOctalDigitCode(code: Int): Bool {
+  code >= zeroCode && code <= sevenCode
+}
+
+fun isOctalDigit(ch: Char): Bool {
+  isOctalDigitCode(ch.code())
+}
+
+// Hexadecimal
+fun isHexDigit(ch: Char): Bool {
+  ch match {
+  | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | 'a' | 'b' | 'c'
+  | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' ->
+    true
+  | _ -> false
+  }
+}
+
+fun hexDigitToInt(digit: Char): Int {
+  digit match {
+  | '0' -> 0
+  | '1' -> 1
+  | '2' -> 2
+  | '3' -> 3
+  | '4' -> 4
+  | '5' -> 5
+  | '6' -> 6
+  | '7' -> 7
+  | '8' -> 8
+  | '9' -> 9
+  | 'a' -> 10
+  | 'b' -> 11
+  | 'c' -> 12
+  | 'd' -> 13
+  | 'e' -> 14
+  | 'f' -> 15
+  | 'A' -> 10
+  | 'B' -> 11
+  | 'C' -> 12
+  | 'D' -> 13
+  | 'E' -> 14
+  | 'F' -> 15
+  | _ -> invariant_violation("Unexpected hex digit")
+  }
+}
+
+const hexDigitChars: Array<Char> = Array[
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'f',
+];
+
+fun intToHexDigit(value: Int): Char {
+  hexDigitChars[value];
+}
+
+fun hexDigitsToInt(digits: String): Int {
+  digits.foldl((current, digit) -> current * 16 + hexDigitToInt(digit), 0)
+}
+
+fun intToHexDigits(n: Int, numDigits: Int): String {
+  if (numDigits == 0) {
+    invariant(n == 0, "intToHexDigits - not enough digits for value");
+    ""
+  } else {
+    loBits = n.and(0xF);
+    ch = intToHexDigit(loBits);
+    intToHexDigits(n.shr(4), numDigits - 1) + ch;
+  }
+}
+
+const aLowerCode: Int = 'a'.code();
+const zLowerCode: Int = 'z'.code();
+const aUpperCode: Int = 'A'.code();
+const zUpperCode: Int = 'Z'.code();
+const underscoreCode: Int = '_'.code();
+
+fun isLowerCode(code: Int): Bool {
+  code >= aLowerCode && code <= zLowerCode
+}
+
+fun isUpperCode(code: Int): Bool {
+  code >= aUpperCode && code <= zUpperCode
+}
+
+fun isLowerCaseLetter(ch: Char): Bool {
+  isLowerCode(ch.code())
+}
+
+fun isUpperCaseLetter(ch: Char): Bool {
+  isUpperCode(ch.code())
+}
+
+fun isPrintableAscii(ch: Char): Bool {
+  code = ch.code();
+  code >= 32 && code < 127
+}
+
+fun isControlC0(ch: Char): Bool {
+  ch.code() < 32;
+}
+
+fun isControlC1(ch: Char): Bool {
+  code = ch.code();
+  code >= 128 && code < 160;
+}
+
+// Unicode Character Class Other, Control Cc
+fun isControlCharacter(ch: Char): Bool {
+  isControlC0(ch) || isControlC1(ch);
+}
+
+// UTF16 - https://en.wikipedia.org/wiki/UTF-16
+//
+// UTF16 Represents Unicode Code Points with either 1 or 2 16-bit Code Units.
+//
+// Code points in the range 0 - 0xD7FF and 0xE000 - 0xFFFF are assigned to the
+// 'Basic Multi Lingual Plane' aka (BMP) and are represented by a single
+// UTF16 code unit.
+// Code points in the range 0x10000 - 0x10FFFF are in one of the
+// 'Supplementary Plane's and are represented by a 'Surrogate Pair'
+// of UTF16 Code Units.
+//
+// Code Units in the range 0xD800 - 0xDBFF are called 'High' or 'Leading'
+// surrogates.
+// Code Units in the range 0xDC00 - 0xDFFF are called 'Low' or 'Trailing'
+// surrogates.
+//
+// A valid surrogate pair is made up of a leading surrogate followed by a
+// trailing surrogate.
+//
+// It is not possible to represent a Unicode code point in the range
+// 0xD800 - 0xDFFF in a Skip Char.
+
+// AKA can the char be represented by a single UTF16 Code Unit
+fun isBasicMultiLingualPlane(ch: Char): Bool {
+  ch.code() < 0x10000;
+}
+
+// Does the Char require 2 UTF16 Code Units
+fun isSupplementaryPlane(ch: Char): Bool {
+  !isBasicMultiLingualPlane(ch);
+}
+
+// Returns (leading, trailing) surrogate pair.
+// Also known as (high, low) surrogate pair.
+fun toUTF16SurrogatePair(ch: Char): (Int, Int) {
+  invariant(isSupplementaryPlane(ch));
+  bits = ch.code() - 0x10000;
+  loBits = bits.and(0x3FF);
+  hiBits = bits.ushr(10);
+  high = 0xD800 + hiBits;
+  low = 0xDC00 + loBits;
+  (high, low);
+}
+
+fun fromSurrogatePair(highCode: Int, lowCode: Int): Char {
+  invariant(isHighSurrogate(highCode), "Expected high surrogate");
+  invariant(isLowSurrogate(lowCode), "Expected low surrogate");
+  Char::fromCode(0x10000 + (highCode - 0xD800).shl(10) + (lowCode - 0xDC00));
+}
+
+// Unicode Character class Other, Surrogate Cs
+fun isSurrogate(code: Int): Bool {
+  code >= 0xD800 && code < 0xE000;
+}
+
+fun isHighSurrogate(code: Int): Bool {
+  code >= 0xD800 && code < 0xDC00;
+}
+
+fun isLowSurrogate(code: Int): Bool {
+  code >= 0xDC00 && code < 0xE000;
+}
+
+module end;

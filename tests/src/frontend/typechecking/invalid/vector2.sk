@@ -1,0 +1,6 @@
+fun main(): void {
+  void
+}
+fun test(): Array<Int> {
+  Array[1, "", 3]
+}

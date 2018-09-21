@@ -1,0 +1,8 @@
+fun main(): void {
+  try {
+    Array[1, 2].each(_ -> void)
+  } catch {
+  | Exception _ -> void
+  };
+  print_string("Pass")
+}

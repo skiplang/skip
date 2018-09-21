@@ -1,0 +1,4 @@
+File "./syntax/invalid/value_trait.sk", line 1, characters 1-5:
+Invalid modifier 'value' on trait
+1 | value trait V1
+  | ^^^^^

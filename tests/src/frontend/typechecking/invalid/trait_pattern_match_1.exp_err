@@ -1,0 +1,21 @@
+File "./typechecking/invalid/trait_pattern_match_1.sk", line 4, characters 7-7:
+Invalid pattern
+2 |   fun no(): void {
+3 |     this match {
+4 |     | X() -> void
+  |       ^
+5 |     | _ -> void
+
+File "./typechecking/invalid/trait_pattern_match_1.sk", line 1, characters 7-7:
+The type: Z
+1 | trait Z {
+  |       ^
+2 |   fun no(): void {
+
+File "./typechecking/invalid/trait_pattern_match_1.sk", line 4, characters 7-9:
+Does not share a common super type with: X
+2 |   fun no(): void {
+3 |     this match {
+4 |     | X() -> void
+  |       ^^^
+5 |     | _ -> void

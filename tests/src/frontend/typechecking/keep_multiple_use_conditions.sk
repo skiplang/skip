@@ -1,0 +1,24 @@
+trait OrderableIsh extends EqualityIsh
+trait EqualityIsh
+
+// also has EqualityIsh[T: OrderableIsh]
+class CFoo<+T>(
+  T,
+) uses OrderableIsh[T: OrderableIsh], EqualityIsh[T: EqualityIsh]
+
+class MyEqualityIsh() uses EqualityIsh
+class MyOrderableIsh() uses OrderableIsh
+
+fun t1<T: OrderableIsh>(T): void {
+  void
+}
+fun t2<T: EqualityIsh>(T): void {
+  void
+}
+
+fun main(): void {
+  t1(CFoo(MyOrderableIsh()));
+  t2(CFoo(MyOrderableIsh()));
+  t2(CFoo(MyEqualityIsh()));
+  print_string("Pass")
+}

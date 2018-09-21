@@ -1,0 +1,6 @@
+File "./typechecking/invalid/fun_generic_as_expression.sk", line 2, characters 7-7:
+Generics cannot be used as expressions
+1 | fun foo<T>(): void {
+2 |   _ = T;
+  |       ^
+3 |   void

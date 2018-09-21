@@ -1,0 +1,11 @@
+base class B final (x: Int, deferred y: this::T) {
+  type T;
+
+  deferred fun yes(c: Concrete<this>): B {
+    c(0, 100)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

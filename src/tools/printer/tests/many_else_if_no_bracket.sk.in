@@ -1,0 +1,26 @@
+fun digit(d: Int): String {
+  call(
+    if (d == 0) "0" else { "1" }
+  );
+  call(
+    if (d == 0) "0" else "1"
+  );
+  call(
+    if (d == 0) "0"
+  );
+  call(
+    if (d == 0) { "0" }
+  );
+  call(
+    if (d == 0) { "0" }
+    else if (d == 1) "1"
+    else if (d == 2) "2"
+    else if (d == 3) "3"
+    else if (d == 4) "4"
+    else if (d == 5) "5"
+    else if (d == 6) "6"
+    else if (d == 7) "7"
+    else if (d == 8) "8"
+    else "9"
+  )
+}

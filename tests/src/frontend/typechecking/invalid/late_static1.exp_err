@@ -1,0 +1,14 @@
+File "./typechecking/invalid/late_static1.sk", line 4, characters 5-17:
+Invalid abstract call
+2 |   static fun abs(): void;
+3 |   static fun bad(): void {
+4 |     static::abs()
+  |     ^^^^^^^^^^^^^
+5 |   }
+
+File "./typechecking/invalid/late_static1.sk", line 2, characters 14-16:
+'abs' is abstract. It can be used only from 'static' or a Concrete<_> object
+1 | base class Foo {
+2 |   static fun abs(): void;
+  |              ^^^
+3 |   static fun bad(): void {

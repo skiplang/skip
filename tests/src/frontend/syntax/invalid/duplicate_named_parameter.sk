@@ -1,0 +1,8 @@
+fun foo{t: Int}: void {
+  void
+}
+
+fun main(): void {
+  foo{t => 0, t => 0};
+  void
+}

@@ -1,0 +1,20 @@
+File "./typechecking/invalid/type_annotation_1.sk", line 2, characters 13-26:
+Invalid annotation
+1 | fun main(): void {
+2 |   print_raw(("Fail" : Int))
+  |             ^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/type_annotation_1.sk", line 2, characters 14-19:
+The type: String
+1 | fun main(): void {
+2 |   print_raw(("Fail" : Int))
+  |              ^^^^^^
+3 | }
+
+File "./typechecking/invalid/type_annotation_1.sk", line 2, characters 23-25:
+Is not a subtype of: Int
+1 | fun main(): void {
+2 |   print_raw(("Fail" : Int))
+  |                       ^^^
+3 | }

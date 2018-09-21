@@ -1,0 +1,11 @@
+module alias M = SuperReallyLongNameM;
+
+module SuperReallyLongNameM;
+
+const str: String = "Pass\n";
+
+module end;
+
+fun main(): void {
+  print_raw(M.str)
+}

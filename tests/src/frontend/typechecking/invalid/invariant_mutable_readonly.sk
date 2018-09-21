@@ -1,0 +1,11 @@
+mutable class Foo(mutable x: Int)
+mutable class Cont<T>(mutable x: T)
+
+fun main(): void {
+  mf = mutable Foo(42);
+  rf: readonly Foo = Foo(0);
+  mc = mutable Cont(mf);
+  rc = mutable Cont(rf);
+  _ = if (true) mc else rc;
+  print_raw("FAIL")
+}

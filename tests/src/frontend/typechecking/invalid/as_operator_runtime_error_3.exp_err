@@ -1,0 +1,22 @@
+File "./typechecking/invalid/as_operator_runtime_error_3.sk", line 3, characters 13-16:
+Invalid pattern
+1 | fun main(): void {
+2 |   x = 5;
+3 |   _y = x as Bool _
+  |             ^^^^
+4 | }
+
+File "./typechecking/invalid/as_operator_runtime_error_3.sk", line 2, characters 7-7:
+The type: Int
+1 | fun main(): void {
+2 |   x = 5;
+  |       ^
+3 |   _y = x as Bool _
+
+File "./typechecking/invalid/as_operator_runtime_error_3.sk", line 3, characters 13-18:
+Does not share a common super type with: Bool
+1 | fun main(): void {
+2 |   x = 5;
+3 |   _y = x as Bool _
+  |             ^^^^^^
+4 | }

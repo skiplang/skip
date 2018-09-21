@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_lambda_2.sk", line 10, characters 3-3:
+The value returned from the function is incompatible with the return type '(() ~> void)'
+ 8 |     }
+ 9 |   );
+10 |   f
+   |   ^
+11 | }
+
+File "./typechecking/invalid/mutable_lambda_2.sk", line 5, characters 6-15:
+The type: (() -> void)
+3 | fun no(): () ~> void {
+4 |   x = mutable Foo(5);
+5 |   f: () -> void = (
+  |      ^^^^^^^^^^
+6 |     () -> {
+
+File "./typechecking/invalid/mutable_lambda_2.sk", line 3, characters 11-20:
+Is not a subtype of: (() ~> void)
+1 | mutable class Foo(mutable x: Int)
+2 |
+3 | fun no(): () ~> void {
+  |           ^^^^^^^^^^
+4 |   x = mutable Foo(5);
+
+File "./typechecking/invalid/mutable_lambda_2.sk", line 3, characters 11-20:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: (() -> void)
+1 | mutable class Foo(mutable x: Int)
+2 |
+3 | fun no(): () ~> void {
+  |           ^^^^^^^^^^
+4 |   x = mutable Foo(5);

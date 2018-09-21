@@ -1,0 +1,30 @@
+File "./typechecking/invalid/abstract_type_const3.sk", line 7, characters 12-18:
+Type constant values cannot use abstract type constants
+5 |
+6 | class Bar() {
+7 |   type T = Foo::T2;
+  |            ^^^^^^^
+8 | }
+
+File "./typechecking/invalid/abstract_type_const3.sk", line 3, characters 8-9:
+This type is, or contains, an uninistantiated type constant
+1 | class Foo() {
+2 |   type T;
+3 |   type T2: this::T;
+  |        ^^
+4 | }
+
+File "./typechecking/invalid/abstract_type_const3.sk", line 3, characters 12-18:
+Only `this` can use abstract type constants in constraints
+1 | class Foo() {
+2 |   type T;
+3 |   type T2: this::T;
+  |            ^^^^^^^
+4 | }
+
+File "./typechecking/invalid/abstract_type_const3.sk", line 2, characters 8-8:
+This type is, or contains, an uninistantiated type constant
+1 | class Foo() {
+2 |   type T;
+  |        ^
+3 |   type T2: this::T;

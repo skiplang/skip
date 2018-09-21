@@ -1,0 +1,51 @@
+module M;
+
+const C: Int = 1;
+
+class MC() {
+  const C: Int = 2;
+}
+
+/*
+TODO: Enable matching on non-overridable class constants.
+fun main(): void {
+  (1, 1, 2, 2, 3, 4) match {
+  | (C, M.C, MC::C, M.MC::C, C::C, GC) -> print_string("Pass");
+  | _ -> void;
+  };
+}
+*/
+
+fun main(): void {
+  (1, 1, 1, 4, 4) match {
+  | (C, M.C, .M.C, GC, .GC) -> print_string("Pass")
+  | _ -> void
+  };
+}
+
+module end;
+
+class C() {
+  const C: Int = 3;
+}
+
+const GC: Int = 4;
+
+/*
+TODO: Enable matching on non-overridable class constants.
+fun main(): void {
+  M.main();
+  (1, 2, 3, 4) match {
+  | (M.C, M.MC::C, C::C, GC) -> print_string("Pass");
+  | _ -> void;
+  };
+}
+*/
+
+fun main(): void {
+  M.main();
+  (1, 1, 4, 4) match {
+  | (M.C, .M.C, GC, .GC) -> print_string("Pass")
+  | _ -> void
+  };
+}

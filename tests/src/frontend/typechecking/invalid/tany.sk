@@ -1,0 +1,12 @@
+fun score_name(name: String): Int {
+  name.chars().map(c -> c.code() - 64).foldl((x, y) -> x + y, 0)
+}
+
+fun main(): void {
+  sortedNames = Vector[].sorted();
+  debug(
+    sortedNames
+      .mapWithIndex((i, name) ~> (i + 1) * score_name(name))
+      .reduce((x, y) -> x + y, 0),
+  )
+}

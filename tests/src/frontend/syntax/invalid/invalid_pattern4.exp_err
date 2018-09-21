@@ -1,0 +1,7 @@
+File "./syntax/invalid/invalid_pattern4.sk", line 3, characters 8-8:
+name pattern not permitted in 'as' expression. Did you mean '_', a wildcard pattern, to match any value?
+1 |
+2 | fun test(): void {
+3 |   x as y
+  |        ^
+4 | }

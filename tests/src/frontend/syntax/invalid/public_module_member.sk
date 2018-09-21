@@ -1,0 +1,10 @@
+
+module M;
+
+fun f1(): void { void }
+public
+fun f2(): void { void }
+
+module end;
+
+fun main(): String { "Fail" }

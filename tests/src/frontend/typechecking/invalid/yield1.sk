@@ -1,0 +1,21 @@
+base class IteratorSubclass<T>() extends Iterator<T>
+
+fun bad(x: Int): Int {
+  yield x
+}
+
+fun bad2(x: Int): Iterator<Int> {
+  yield x
+}
+
+fun bad3(x: Int): readonly Iterator<Int> {
+  yield x
+}
+
+fun bad4(x: Int): readonly IteratorSubclass<Int> {
+  yield x
+}
+
+fun main(): void {
+  void
+}

@@ -1,0 +1,10 @@
+untracked fun myPrint(): void {
+  print_string("here")
+}
+
+untracked fun main(): void {
+  myPrint();
+  myPrint();
+  myPrint();
+  void
+}

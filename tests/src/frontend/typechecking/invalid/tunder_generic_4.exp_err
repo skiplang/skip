@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tunder_generic_4.sk", line 10, characters 3-7:
+The value returned from the function is incompatible with the return type 'Foo<_[0]>'
+ 8 |
+ 9 | fun get_bar(): Foo<_> {
+10 |   Bar()
+   |   ^^^^^
+11 | }
+
+File "./typechecking/invalid/tunder_generic_4.sk", line 9, characters 20-20:
+The invariant type: _[0]
+ 7 | class Bar() extends Foo<Int>
+ 8 |
+ 9 | fun get_bar(): Foo<_> {
+   |                    ^
+10 |   Bar()
+
+File "./typechecking/invalid/tunder_generic_4.sk", line 7, characters 25-27:
+Is incompatible with the invariant type: Int
+5 | }
+6 |
+7 | class Bar() extends Foo<Int>
+  |                         ^^^
+8 |

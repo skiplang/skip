@@ -1,0 +1,13 @@
+base class P<+T>(value: T) uses Show[T: Show] {
+  fun toString[T: Show](): String {
+    "" + this.value
+  }
+}
+
+class C extends P<NoShow>
+
+class NoShow()
+
+fun no(c: C): String {
+  "" + c
+}

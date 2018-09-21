@@ -1,0 +1,14 @@
+File "./typechecking/exhaustiveness/invalid/nested_subtype_counterexample1.sk", line 24, characters 3-3:
+Non-exhaustive pattern match found.
+The following are the structures of values that won't be matched:
+ | T(Int _, B _)
+ | T(Int _, C _)
+ | T(Int _, D())
+ | T(Int _, H())
+ | T(Int _, J())
+22 |
+23 | fun shouldFail(x: R): void {
+24 |   x match {
+   |   ^^^^^^^^^
+25 |   | L _
+   |   ^^^^^

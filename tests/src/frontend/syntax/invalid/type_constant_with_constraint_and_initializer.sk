@@ -1,0 +1,7 @@
+class C {} {
+  type TID  : UNSAFE_TYPE_HH_FIXME = UNSAFE_TYPE_HH_FIXME;
+}
+
+fun main(): String {
+  ""
+}

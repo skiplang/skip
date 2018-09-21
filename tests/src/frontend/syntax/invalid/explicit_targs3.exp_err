@@ -1,0 +1,23 @@
+File "./syntax/invalid/explicit_targs3.sk", line 6, characters 17-17:
+Invalid argument
+4 |
+5 | fun test(): void {
+6 |   _ = foo<Bool>(0);
+  |                 ^
+7 |   void
+
+File "./syntax/invalid/explicit_targs3.sk", line 6, characters 17-17:
+The type: Int
+4 |
+5 | fun test(): void {
+6 |   _ = foo<Bool>(0);
+  |                 ^
+7 |   void
+
+File "./syntax/invalid/explicit_targs3.sk", line 6, characters 11-14:
+Is not a subtype of: Bool
+4 |
+5 | fun test(): void {
+6 |   _ = foo<Bool>(0);
+  |           ^^^^
+7 |   void

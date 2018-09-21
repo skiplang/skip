@@ -1,0 +1,18 @@
+File "./typechecking/invalid/traits_noleak_existential2.sk", line 8, characters 7-7:
+Invalid pattern binding. Cannot bind this expression to a local.
+Try replacing with '_'
+ 6 |   x = e match {
+ 7 |   | L(v) -> v
+ 8 |   | R(v) -> v
+   |       ^
+ 9 |   };
+
+File "./typechecking/invalid/traits_noleak_existential2.sk", line 3, characters 9-9:
+This type parameter was unknown when downcasting from the parent type.
+And it has no concrete upper bounds (base or normal classes).
+As such, the type cannot be inferred and cannot be interacted with.
+1 | base class P<T>
+2 | class L<T, U: Equality & T>(x: T) extends P<U>
+3 | class R<T, U: Equality & T>(x: T) extends P<U>
+  |         ^
+4 |

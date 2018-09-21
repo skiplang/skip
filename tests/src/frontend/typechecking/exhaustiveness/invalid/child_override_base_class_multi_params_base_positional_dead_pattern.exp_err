@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/child_override_base_class_multi_params_base_positional_dead_pattern.sk", line 8, characters 5-11:
+The following pattern is unused:
+ | A(2, _)
+ 6 |   | A(1, "a") -> "P"
+ 7 |   | B _ -> "\n"
+ 8 |   | A(2, _) -> "a"
+   |     ^^^^^^^
+ 9 |   | B("Hi", 1, _, "b") -> "s"

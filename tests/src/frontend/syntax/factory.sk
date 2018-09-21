@@ -1,0 +1,18 @@
+fun main(): void {
+  foo = Foo.Factory()[42];
+  print_raw(if (foo.getAttr() == 42) "OK\n" else "FAILED")
+}
+
+module Foo;
+
+class .Foo{private attr: Int} {
+  fun getAttr(): Int {
+    this.attr
+  }
+}
+
+class Factory() {
+  fun get(attr: Int): Foo {
+    Foo{attr => attr}
+  }
+}

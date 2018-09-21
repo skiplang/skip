@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/class_nested_tuple1.sk", line 7, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | MyPair(1, (true, ("a", ('c', Int _))))
+5 | fun test(): String {
+6 |   x = MyPair(1, (true, ("a", ('c', 1))));
+7 |   x match {
+  |   ^^^^^^^^^
+8 |   | MyPair(1, (true, ("a", ('c', 1)))) -> "Fail\n"
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

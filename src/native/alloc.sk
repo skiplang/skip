@@ -1,0 +1,180 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Alloc;
+
+// Don't want to coalesce ObstackAllocs up to this size, or we will end up
+// with interior pointers into malloc()ed blocks of memory in the runtime,
+// which the GC cannot handle.
+//
+// Must equal LARGE_ALLOC_SIZE from the runtime.
+private const kCoalesceSizeLimit: Int = 2048;
+
+// This represents how we coalesce multiple fixed-size ObstackAllocs
+// into one "Chunk".
+//
+// For example, if we had 3 ObstackAllocs of sizes 32, 40 and 64, we would
+// end up with:
+//
+// - "Chunk" of 32+40+64 bytes (also address of object #1).
+// - "Piece" of 40 bytes, starting 32 bytes into the Chunk (object #2).
+// - "Piece" of 64 bytes, starting 32+40 bytes into the Chunk (object #3).
+//
+// After this transformation we do just one ObstackAlloc to allocate the
+// entire Chunk, followed by two BytePointerAdds to compute the addresses of
+// the second and and third objects.
+private base class ObstackAllocCoalesceInfo {
+  children =
+  | Chunk(size: Int, zero: Bool)
+  | Piece(chunk: InstrID, offset: Int)
+}
+
+mutable class .Alloc{
+  alloca: mutable UnorderedMap<InstrID, Int> = mutable UnorderedMap[],
+  remap: mutable UnorderedMap<
+    InstrID,
+    ObstackAllocCoalesceInfo,
+  > = mutable UnorderedMap[],
+  anythingEscapes: Bool,
+} extends Rewrite {
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    anythingEscapes = (
+      f.funType.params.any(t -> t.isMutable()) ||
+      f.funType.returnType.any(t -> t.getScalarType(env).isGCPointer())
+    );
+
+    // TODO: Something could escape via an exception which we aren't smart
+    // enough to determine yet, so use of Alloca is disabled by this line.
+    !anythingEscapes = true;
+
+    optinfo = OptimizerInfo::make(f);
+    d = mutable static{optinfo, env, pos => f.pos, anythingEscapes};
+    d.go("alloc", true)
+  }
+
+  private mutable fun canEscape(_alloc: ObstackAlloc): Bool {
+    // Super-simple algorithm for now.
+    this.anythingEscapes
+  }
+
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    // Look ahead at all the upcoming allocations so we can decide what
+    // to bundle together into a Chunk.
+
+    this.alloca.clear();
+    this.remap.clear();
+
+    // Initial state: no Chunk being built up.
+    chunk = InstrID::none;
+    needsZero = false;
+    size = 0;
+    count = 0;
+
+    flush = () -> {
+      if (chunk != InstrID::none) {
+        if (count > 1) {
+          // Only bother creating a Chunk if there's more than one object.
+          this.remap.set(chunk, Chunk(size, needsZero))
+        };
+
+        !chunk = InstrID::none;
+        !needsZero = false;
+        !size = 0;
+        !count = 0;
+      }
+    };
+
+    // Analyze any allocations we may have and build up a map of which
+    // get grouped together where.
+    for (instr in b.instrs) {
+      instr match {
+      | NamedCall{mayRelocatePointers} if (mayRelocatePointers) ->
+        // We cannot batch ObstackAlloc calls across a LocalGC as addresses
+        // allocated for the "other side" of the LocalGC would be invalid.
+        flush()
+      | Suspend _
+      | Yield _ ->
+        // TODO: These must have been lowered away already, can we delete?
+        flush()
+      | alloc @ ObstackAlloc{id, byteSize, zero, pinned => false} ->
+        this.getInstr(byteSize).constantInteger() match {
+        | Some(nn) if (roundUp(nn, 8) < kCoalesceSizeLimit) ->
+          n = roundUp(nn, 8);
+
+          if (!this.canEscape(alloc)) {
+            // TODO: We should probably only do this when not inside a loop.
+            this.alloca.set(id, n)
+          } else {
+            if (size + n >= kCoalesceSizeLimit) {
+              flush()
+            };
+
+            if (chunk == InstrID::none) {
+              !chunk = id
+            } else {
+              this.remap.set(id, Piece(chunk, size))
+            };
+
+            if (zero) {
+              // If any allocation needs zeroing just zero them all.
+              // We could partition them, and maybe should, but it's
+              // more complex and fewer allocations with some being
+              // unnecessarily zeroed will often be faster than doing
+              // two allocations, since zeroing is so fast.
+              !needsZero = true
+            };
+
+            !size = size + n;
+            !count = count + 1;
+          }
+        | _ -> void
+        }
+      | _ -> void
+      }
+    };
+
+    flush()
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    // Use the info computed in beginOptimizeBlock() to optimize allocations.
+    instr match {
+    | alloc @ ObstackAlloc{id, typ, pos, zero} ->
+      this.alloca.maybeGet(id) match {
+      | Some(byteSize) ->
+        _ = this.emitInstr(
+          Alloca{id, typ, pos, byteSize, byteAlignment => 8, zero},
+        );
+        true
+      | _ ->
+        this.remap.maybeGet(id) match {
+        | None() -> false
+        | Some(info) ->
+          newAlloc = info match {
+          | chunk @ Chunk _ ->
+            alloc with {
+              byteSize => this.constantTypedInt(tIntPtr, chunk.size).id,
+              zero => chunk.zero,
+            }
+          | Piece(chunk, offset) ->
+            BytePointerAdd{
+              id,
+              typ,
+              pos,
+              addr => chunk,
+              offset => this.constantInt(offset).id,
+            }
+          };
+
+          _ = this.emitInstr(newAlloc);
+          true
+        }
+      }
+    | _ -> false
+    }
+  }
+}

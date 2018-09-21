@@ -1,0 +1,19 @@
+mutable class FooBar<T>() uses Equality[T: Equality] {
+  readonly fun ==(FooBar<T>): Bool {
+    true
+  }
+  mutable fun push(T): void {
+    void
+  }
+}
+
+fun selfEq<T: readonly Equality>(x: T): void {
+  _ = x == x
+}
+
+fun main(): void {
+  x = mutable FooBar();
+  selfEq(x);
+  x.push(0);
+  print_string("Pass");
+}

@@ -1,0 +1,14 @@
+base class Foo<T>{x: T}
+class Bar extends Foo<String>
+
+fun bar_as_foo(x: Bar): Foo<String> {
+  x
+}
+
+fun main(): void {
+  print_raw(
+    bar_as_foo(Bar{x => "Pass\n"}) match {
+    | Bar{x} -> x
+    },
+  )
+}

@@ -1,0 +1,25 @@
+File "./typechecking/invalid/capture_mutable_inside_mutable_lam_inside_lam.sk", line 7, characters 16-16:
+You cannot capture this variable
+5 | fun mkEvil(r: mutable Ref<Int>): () ~> Int {
+6 |   () ~> {
+7 |     mf = () -> r.value; // This should be an error
+  |                ^
+8 |     call(mf)
+
+File "./typechecking/invalid/capture_mutable_inside_mutable_lam_inside_lam.sk", line 5, characters 15-30:
+Mutable because of this position
+3 | }
+4 |
+5 | fun mkEvil(r: mutable Ref<Int>): () ~> Int {
+  |               ^^^^^^^^^^^^^^^^
+6 |   () ~> {
+
+File "./typechecking/invalid/capture_mutable_inside_mutable_lam_inside_lam.sk", line 6, characters 3-3:
+Because this closure was declared as pure (~>)
+Try '->' instead
+4 |
+5 | fun mkEvil(r: mutable Ref<Int>): () ~> Int {
+6 |   () ~> {
+  |   ^^^^^^^
+7 |     mf = () -> r.value; // This should be an error
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

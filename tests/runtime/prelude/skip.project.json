@@ -1,0 +1,27 @@
+{
+  "skipVersion": "1.0",
+  "variables": {
+    "backend": {
+      "values": ["native", "nonnative"],
+      "default": "native"
+    }
+  },
+  "programUnits": {
+    "prelude": {
+      "kind": "Library",
+      "sources": [
+        ".",
+        "core/**",
+        "php",
+        "stdlib/**"
+      ],
+      "parameters": {
+        "backend": {
+            "native": {"sources": ["native"]},
+            "nonnative": {"sources": ["nonnative"]}
+        }
+      },
+      "references": []
+    }
+  }
+}

@@ -1,0 +1,2514 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Generic transformers for OuterIst nodes                                   */
+/*****************************************************************************/
+module alias O = OuterIst;
+module alias AU = SkipAstUtils;
+
+module SkipOuterIstUtils;
+
+// ------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+
+// OuterIst visitor.
+// Visits exprs, statements and definitions.
+// Doesn't visit types or names as freestanding nodes.
+//
+// For most statement or expr nodes `Foo`, there will be
+// overridable methods `foo()` and `fooChildren()`, each
+// taking a `Foo` and returning `(Bool, Foo)`, the bool
+// indicating whether the input node has been replaced.
+//
+// The default `foo()` just calls `fooChildren()`. In your
+// override, call `fooChildren()` first for postorder,
+// last for preorder.
+//
+// Top-level definitions don't have `defChildren()` methods,
+// but typically have overridable intermediate methods for
+// visiting collections of subdefinitions and so on.
+//
+// Visitors can be pipelined together, see `FunctionLevelVisitorPipeline'
+//
+mutable base class Visitor {
+  readonly fun getVisitorName(): String;
+
+  overridable mutable fun eLiteral(e: O.ELiteral): (Bool, O.Expr_) {
+    (false, e)
+  }
+
+  overridable mutable fun const_(c: O.Const): (Bool, O.Expr_) {
+    (false, c)
+  }
+
+  overridable mutable fun local(l: O.Local): (Bool, O.Expr_) {
+    (false, l)
+  }
+
+  mutable fun acc_expr(acc: Bool, e: O.Expr): (Bool, O.Expr) {
+    (new, e1) = this.expr(e);
+    (acc || new, e1)
+  }
+
+  mutable fun arguments(args: Parameters<O.Expr>): (Bool, Parameters<O.Expr>) {
+    (new, args1) = args.map_foldl(this.acc_expr, false);
+    (new, if (new) args1 else args)
+  }
+
+  mutable fun dynamicConstructionChildren(
+    dc: O.DynamicConstruction,
+  ): (Bool, O.DynamicConstruction) {
+    (this.expr(dc.expr), this.arguments(dc.args)) match {
+    | ((false, _), (false, _)) -> (false, dc)
+    | ((_, expr), (_, args)) ->
+      (true, O.DynamicConstruction(expr, dc.name, dc.types, args))
+    }
+  }
+
+  overridable mutable fun dynamicConstruction(
+    dc: O.DynamicConstruction,
+  ): (Bool, O.Expr_) {
+    this.dynamicConstructionChildren(dc)
+  }
+
+  mutable fun objectChildren(obj: O.Object): (Bool, O.Object) {
+    this.arguments(obj.args) match {
+    | (false, _) -> (false, obj)
+    | (_, args) -> (true, O.Object(obj.name, obj.types, args))
+    }
+  }
+
+  overridable mutable fun object(o: O.Object): (Bool, O.Expr_) {
+    this.objectChildren(o)
+  }
+
+  mutable fun callChildren(c: O.Call): (Bool, O.Call) {
+    (this.expr(c.expr), this.arguments(c.args)) match {
+    | ((false, _), (false, _)) -> (false, c)
+    | ((_, expr), (_, args)) -> (true, O.Call(expr, args))
+    }
+  }
+
+  overridable mutable fun call(c: O.Call): (Bool, O.Expr_) {
+    this.callChildren(c)
+  }
+
+  mutable fun funCallChildren(fc: O.FunCall): (Bool, O.FunCall) {
+    this.arguments(fc.args) match {
+    | (false, _) -> (false, fc)
+    | (_, args) -> (true, O.FunCall(fc.name, fc.types, args))
+    }
+  }
+
+  overridable mutable fun funCall(f: O.FunCall): (Bool, O.Expr_) {
+    this.funCallChildren(f)
+  }
+
+  mutable fun dotInfo(di: O.DotInfo): (Bool, O.DotInfo) {
+    this.expr(di.obj_expr) match {
+    | (false, _) -> (false, di)
+    | (_, obj_expr) -> (true, di with {obj_expr})
+    }
+  }
+
+  mutable fun methodCallChildren(mc: O.MethodCall): (Bool, O.MethodCall) {
+    (this.dotInfo(mc.di), this.arguments(mc.args)) match {
+    | ((false, _), (false, _)) -> (false, mc)
+    | ((_, di), (_, args)) -> (true, O.MethodCall(di, args))
+    }
+  }
+
+  overridable mutable fun methodCall(m: O.MethodCall): (Bool, O.Expr_) {
+    this.methodCallChildren(m)
+  }
+
+  mutable fun staticCallChildren(sc: O.StaticCall): (Bool, O.StaticCall) {
+    (this.dotInfo(sc.di), this.arguments(sc.args)) match {
+    | ((false, _), (false, _)) -> (false, sc)
+    | ((_, di), (_, args)) -> (true, O.StaticCall(di, args))
+    }
+  }
+
+  overridable mutable fun staticCall(sc: O.StaticCall): (Bool, O.Expr_) {
+    this.staticCallChildren(sc)
+  }
+
+  mutable fun dotChildren(d: O.Dot): (Bool, O.Dot) {
+    this.dotInfo(d.di) match {
+    | (false, _) -> (false, d)
+    | (_, di) -> (true, O.Dot(di))
+    }
+  }
+
+  overridable mutable fun dot(d: O.Dot): (Bool, O.Expr_) {
+    this.dotChildren(d)
+  }
+
+  mutable fun staticDotChildren(sd: O.StaticDot): (Bool, O.StaticDot) {
+    this.dotInfo(sd.di) match {
+    | (false, _) -> (false, sd)
+    | (_, di) -> (true, O.StaticDot(di))
+    }
+  }
+
+  overridable mutable fun staticDot(sd: O.StaticDot): (Bool, O.Expr_) {
+    this.staticDotChildren(sd)
+  }
+
+  mutable fun lambdaChildren(l: O.Lambda): (Bool, O.Lambda) {
+    this.stmt(l.stmt) match {
+    | (false, _) -> (false, l)
+    | (_, s) -> (true, O.Lambda(l.params, l.type_, l.bindings, s, l.yields))
+    }
+  }
+
+  overridable mutable fun lambda(l: O.Lambda): (Bool, O.Expr_) {
+    this.lambdaChildren(l)
+  }
+
+  mutable fun exprs(exprs: List<O.Expr>): (Bool, List<O.Expr>) {
+    (new, exprs1) = exprs.map_foldl(this.acc_expr, false);
+    (new, if (new) exprs1 else exprs)
+  }
+
+  mutable fun exprArray(exprs: Array<O.Expr>): (Bool, Array<O.Expr>) {
+    (new, exprs1) = exprs.mapAcc(this.acc_expr, false);
+    (new, if (new) exprs1 else exprs)
+  }
+
+  mutable fun eVectorChildren(v: O.EArray): (Bool, O.EArray) {
+    this.exprArray(v.exprs) match {
+    | (false, _) -> (false, v)
+    | (_, exprs) -> (true, O.EArray(exprs))
+    }
+  }
+
+  overridable mutable fun eVector(v: O.EArray): (Bool, O.Expr_) {
+    this.eVectorChildren(v)
+  }
+
+  mutable fun awaitChildren(a: O.Await): (Bool, O.Await) {
+    this.expr(a.expr) match {
+    | (false, _) -> (false, a)
+    | (_, e) -> (true, O.Await(e))
+    }
+  }
+
+  overridable mutable fun await_(a: O.Await): (Bool, O.Expr_) {
+    this.awaitChildren(a)
+  }
+
+  mutable fun asyncChildren(a: O.Async): (Bool, O.Async) {
+    (this.stmt(a.stmt), this.expr(a.expr)) match {
+    | ((false, _), (false, _)) -> (false, a)
+    | ((_, stmt), (_, expr)) -> (true, O.Async(stmt, expr))
+    }
+  }
+
+  overridable mutable fun async_(a: O.Async): (Bool, O.Expr_) {
+    this.asyncChildren(a)
+  }
+
+  mutable fun freezeChildren(f: O.Freeze): (Bool, O.Freeze) {
+    this.expr(f.expr) match {
+    | (false, _) -> (false, f)
+    | (_, expr) -> (true, O.Freeze(expr))
+    }
+  }
+
+  overridable mutable fun freeze_(f: O.Freeze): (Bool, O.Expr_) {
+    this.freezeChildren(f)
+  }
+
+  mutable fun getClassChildren(gc: O.GetClass): (Bool, O.GetClass) {
+    this.expr(gc.expr) match {
+    | (false, _) -> (false, gc)
+    | (_, expr) -> (true, O.GetClass(expr))
+    }
+  }
+
+  overridable mutable fun getClass(gc: O.GetClass): (Bool, O.Expr_) {
+    this.getClassChildren(gc)
+  }
+
+  overridable mutable fun classname(cn: O.Classname): (Bool, O.Expr_) {
+    (false, cn)
+  }
+
+  mutable fun with_update(up: O.WithUpdate): (Bool, O.WithUpdate) {
+    this.expr(up.expr) match {
+    | (false, _) -> (false, up)
+    | (_, expr) -> (true, O.WithUpdate(expr, up.source, up.cast_opt))
+    }
+  }
+
+  mutable fun acc_update(acc: Bool, u: O.WithUpdate): (Bool, O.WithUpdate) {
+    (new, u1) = this.with_update(u);
+    (acc || new, u1)
+  }
+
+  mutable fun with_updates(ups: O.WithUpdates): (Bool, O.WithUpdates) {
+    (new, ups1) = ups.mapAcc((b, _, u) -> this.acc_update(b, u), false);
+    (new, if (new) ups1 else ups)
+  }
+
+  mutable fun withChildren(w: O.With): (Bool, O.With) {
+    (this.expr(w.expr), this.with_updates(w.updates)) match {
+    | ((false, _), (false, _)) -> (false, w)
+    | ((_, expr), (_, updates)) -> (true, O.With(expr, updates))
+    }
+  }
+
+  overridable mutable fun with_(w: O.With): (Bool, O.Expr_) {
+    this.withChildren(w)
+  }
+
+  mutable fun castChildren(c: O.Cast): (Bool, O.Cast) {
+    this.expr(c.expr) match {
+    | (false, _) -> (false, c)
+    | (_, expr) -> (true, O.Cast(c.type_, expr))
+    }
+  }
+
+  overridable mutable fun cast(c: O.Cast): (Bool, O.Expr_) {
+    this.castChildren(c)
+  }
+
+  mutable fun expr(expr: O.Expr): (Bool, O.Expr) {
+    (ty, pos, expr__) = (expr.ty, expr.pos, expr.expr);
+    (new, !expr__) = expr__ match {
+    | O.Unreachable()
+    | O.DefaultArg() ->
+      (false, expr__)
+    | elit @ O.ELiteral _ -> this.eLiteral(elit)
+    | con @ O.Const _ -> this.const_(con)
+    | loc @ O.Local _ -> this.local(loc)
+    | dc @ O.DynamicConstruction _ -> this.dynamicConstruction(dc)
+    | obj @ O.Object _ -> this.object(obj)
+    | call @ O.Call _ -> this.call(call)
+    | fc @ O.FunCall _ -> this.funCall(fc)
+    | mc @ O.MethodCall _ -> this.methodCall(mc)
+    | sc @ O.StaticCall _ -> this.staticCall(sc)
+    | dot @ O.Dot _ -> this.dot(dot)
+    | sd @ O.StaticDot _ -> this.staticDot(sd)
+    | lam @ O.Lambda _ -> this.lambda(lam)
+    | ev @ O.EArray _ -> this.eVector(ev)
+    | a @ O.Await _ -> this.await_(a)
+    | a @ O.Async _ -> this.async_(a)
+    | f @ O.Freeze _ -> this.freeze_(f)
+    | gc @ O.GetClass _ -> this.getClass(gc)
+    | cn @ O.Classname _ -> this.classname(cn)
+    | w @ O.With _ -> this.with_(w)
+    | c @ O.Cast _ -> this.cast(c)
+    };
+    (new, if (new) O.Expr(ty, pos, expr__) else expr)
+  }
+
+  overridable mutable fun jumpTo(j: O.JumpTo): (Bool, O.JumpTo) {
+    (false, j)
+  }
+
+  mutable fun singleExprChildren(se: O.SingleExpr): (Bool, O.SingleExpr) {
+    this.expr(se.expr) match {
+    | (false, _) -> (false, se)
+    | (_, expr) -> (true, O.SingleExpr(expr))
+    }
+  }
+
+  overridable mutable fun singleExpr(s: O.SingleExpr): (Bool, O.Stmt) {
+    this.singleExprChildren(s)
+  }
+
+  mutable fun expr_opt(e_opt: ?O.Expr): (Bool, ?O.Expr) {
+    e_opt match {
+    | Some(e) ->
+      (new, e1) = this.expr(e);
+      (new, Some(e1))
+    | None() -> (false, e_opt)
+    }
+  }
+
+  mutable fun bindChildren(b: O.Bind): (Bool, O.Bind) {
+    this.expr_opt(b.expr_opt) match {
+    | (false, _) -> (false, b)
+    | (_, expr_opt) -> (true, O.Bind(b.binding, expr_opt))
+    }
+  }
+
+  overridable mutable fun bind(b: O.Bind): (Bool, O.Stmt) {
+    this.bindChildren(b)
+  }
+
+  mutable fun assignChildren(a: O.Assign): (Bool, O.Assign) {
+    this.expr(a.expr) match {
+    | (false, _) -> (false, a)
+    | (_, expr) -> (true, O.Assign(a.localVar, expr))
+    }
+  }
+
+  overridable mutable fun assign(a: O.Assign): (Bool, O.Stmt) {
+    this.assignChildren(a)
+  }
+
+  mutable fun assignFieldChildren(af: O.AssignField): (Bool, O.AssignField) {
+    this.expr(af.expr) match {
+    | (false, _) -> (false, af)
+    | (_, expr) -> (true, O.AssignField(af.localVar, af.source, af.name, expr))
+    }
+  }
+
+  overridable mutable fun assignField(af: O.AssignField): (Bool, O.Stmt) {
+    this.assignFieldChildren(af)
+  }
+
+  mutable fun acc_stmt(acc: Bool, s: O.Stmt): (Bool, O.Stmt) {
+    (new, s1) = this.stmt(s);
+    (acc || new, s1)
+  }
+
+  mutable fun stmts(stmts: List<O.Stmt>): (Bool, List<O.Stmt>) {
+    (new, stmts1) = stmts.map_foldl(this.acc_stmt, false);
+    (new, if (new) stmts1 else stmts)
+  }
+
+  overridable mutable fun seq(s: O.Seq): (Bool, O.Stmt) {
+    this.stmts(s.stmts) match {
+    | (false, _) -> (false, s)
+    | (_, stmts) -> (true, O.Seq(stmts))
+    }
+  }
+
+  mutable fun ifChildren(i: O.If): (Bool, O.If) {
+    (this.expr(i.expr), this.stmt(i.t), this.stmt(i.f)) match {
+    | ((false, _), (false, _), (false, _)) -> (false, i)
+    | ((_, expr), (_, t), (_, f)) -> (true, O.If(expr, t, f))
+    }
+  }
+
+  overridable mutable fun if_(i: O.If): (Bool, O.Stmt) {
+    this.ifChildren(i)
+  }
+
+  mutable fun stmt_opt(s_opt: ?O.Stmt): (Bool, ?O.Stmt) {
+    s_opt match {
+    | Some(s) ->
+      (new, s1) = this.stmt(s);
+      (new, Some(s1))
+    | None() -> (false, s_opt)
+    }
+  }
+
+  mutable fun match_branch(b: O.MatchBranch): (Bool, O.MatchBranch) {
+    (this.stmt_opt(b.guard), this.stmt(b.action)) match {
+    | ((false, _), (false, _)) -> (false, b)
+    | ((_, guard), (_, action)) -> (true, O.MatchBranch(b.pats, guard, action))
+    }
+  }
+
+  mutable fun acc_match_branch(
+    acc: Bool,
+    b: O.MatchBranch,
+  ): (Bool, O.MatchBranch) {
+    (new, b1) = this.match_branch(b);
+    (acc || new, b1)
+  }
+
+  mutable fun match_branches(
+    bs: List<O.MatchBranch>,
+  ): (Bool, List<O.MatchBranch>) {
+    (new, bs1) = bs.map_foldl(this.acc_match_branch, false);
+    (new, if (new) bs1 else bs)
+  }
+
+  mutable fun matchChildren(m: O.Match): (Bool, O.Match) {
+    (this.expr(m.expr), this.match_branches(m.branches)) match {
+    | ((false, _), (false, _)) -> (false, m)
+    | ((_, expr), (_, bs)) -> (true, O.Match(expr, bs))
+    }
+  }
+
+  overridable mutable fun match_(m: O.Match): (Bool, O.Stmt) {
+    this.matchChildren(m)
+  }
+
+  mutable fun switch_branch(b: O.SwitchBranch): (Bool, O.SwitchBranch) {
+    this.stmt(b.action) match {
+    | (false, _) -> (false, b)
+    | (_, stmt) -> (true, O.SwitchBranch(b.cases, stmt))
+    }
+  }
+
+  mutable fun acc_switch_branch(
+    acc: Bool,
+    b: O.SwitchBranch,
+  ): (Bool, O.SwitchBranch) {
+    (new, b1) = this.switch_branch(b);
+    (acc || new, b1)
+  }
+
+  mutable fun switch_branches(
+    bs: List<O.SwitchBranch>,
+  ): (Bool, List<O.SwitchBranch>) {
+    (new, bs1) = bs.map_foldl(this.acc_switch_branch, false);
+    (new, if (new) bs1 else bs)
+  }
+
+  mutable fun switchChildren(s: O.Switch): (Bool, O.Switch) {
+    (
+      this.expr(s.expr),
+      this.switch_branches(s.branches),
+      this.stmt_opt(s.default_opt),
+    ) match {
+    | ((false, _), (false, _), (false, _)) -> (false, s)
+    | ((_, expr), (_, bs), (_, d_opt)) -> (true, O.Switch(expr, bs, d_opt))
+    }
+  }
+
+  overridable mutable fun switch(s: O.Switch): (Bool, O.Stmt) {
+    this.switchChildren(s)
+  }
+
+  mutable fun type_switch_branch(
+    b: O.TypeSwitchBranch,
+  ): (Bool, O.TypeSwitchBranch) {
+    this.stmt(b.action) match {
+    | (false, _) -> (false, b)
+    | (_, stmt) -> (true, O.TypeSwitchBranch(b.cases, stmt))
+    }
+  }
+
+  mutable fun acc_type_switch_branch(
+    acc: Bool,
+    b: O.TypeSwitchBranch,
+  ): (Bool, O.TypeSwitchBranch) {
+    (new, b1) = this.type_switch_branch(b);
+    (acc || new, b1)
+  }
+
+  mutable fun type_switch_branches(
+    bs: List<O.TypeSwitchBranch>,
+  ): (Bool, List<O.TypeSwitchBranch>) {
+    (new, bs1) = bs.map_foldl(this.acc_type_switch_branch, false);
+    (new, if (new) bs1 else bs)
+  }
+
+  mutable fun typeSwitchChildren(s: O.TypeSwitch): (Bool, O.TypeSwitch) {
+    (
+      this.expr(s.expr),
+      this.type_switch_branches(s.branches),
+      this.stmt_opt(s.default_opt),
+    ) match {
+    | ((false, _), (false, _), (false, _)) -> (false, s)
+    | ((_, expr), (_, bs), (_, d_opt)) -> (true, O.TypeSwitch(expr, bs, d_opt))
+    }
+  }
+
+  overridable mutable fun typeSwitch(ts: O.TypeSwitch): (Bool, O.Stmt) {
+    this.typeSwitchChildren(ts)
+  }
+
+  mutable fun labeled_stmt(ls: O.LabeledStmt): (Bool, O.LabeledStmt) {
+    this.stmt(ls.stmt) match {
+    | (false, _) -> (false, ls)
+    | (_, stmt) -> (true, O.LabeledStmt(ls.label, stmt))
+    }
+  }
+
+  mutable fun acc_labeled_stmt(
+    acc: Bool,
+    s: O.LabeledStmt,
+  ): (Bool, O.LabeledStmt) {
+    (new, s1) = this.labeled_stmt(s);
+    (acc || new, s1)
+  }
+
+  mutable fun labeled_stmts(
+    stmts: List<O.LabeledStmt>,
+  ): (Bool, List<O.LabeledStmt>) {
+    (new, stmts1) = stmts.map_foldl(this.acc_labeled_stmt, false);
+    (new, if (new) stmts1 else stmts)
+  }
+
+  mutable fun jumpBlockChildren(jb: O.JumpBlock): (Bool, O.JumpBlock) {
+    this.labeled_stmts(jb.stmts) match {
+    | (false, _) -> (false, jb)
+    | (_, stmts1) -> (true, O.JumpBlock(stmts1, jb.loopBlock))
+    }
+  }
+
+  overridable mutable fun jumpBlock(jb: O.JumpBlock): (Bool, O.Stmt) {
+    this.jumpBlockChildren(jb)
+  }
+
+  mutable fun tryChildren(t: O.Try): (Bool, O.Try) {
+    (this.stmt(t.stmt), this.match_branches(t.branches)) match {
+    | ((false, _), (false, _)) -> (false, t)
+    | ((_, stmt1), (_, branches1)) -> (true, O.Try(t.pos, stmt1, branches1))
+    }
+  }
+
+  overridable mutable fun try_(t: O.Try): (Bool, O.Stmt) {
+    this.tryChildren(t)
+  }
+
+  mutable fun tryCatchChildren(tc: O.TryCatch): (Bool, O.TryCatch) {
+    (this.stmt(tc.stmt), this.stmt(tc.catch_stmt)) match {
+    | ((false, _), (false, _)) -> (false, tc)
+    | ((_, stmt1), (_, catch_stmt1)) ->
+      (true, O.TryCatch(tc.pos, stmt1, tc.binding, catch_stmt1))
+    }
+  }
+
+  overridable mutable fun tryCatch(t: O.TryCatch): (Bool, O.Stmt) {
+    this.tryCatchChildren(t)
+  }
+
+  mutable fun throwChildren(t: O.Throw): (Bool, O.Throw) {
+    this.expr(t.expr) match {
+    | (false, _) -> (false, t)
+    | (_, expr1) -> (true, O.Throw(expr1))
+    }
+  }
+
+  overridable mutable fun throw_(t: O.Throw): (Bool, O.Stmt) {
+    this.throwChildren(t)
+  }
+
+  mutable fun returnChildren(r: O.Return): (Bool, O.Return) {
+    this.expr(r.expr) match {
+    | (false, _) -> (false, r)
+    | (_, expr1) -> (true, O.Return(expr1))
+    }
+  }
+
+  overridable mutable fun return_(r: O.Return): (Bool, O.Stmt) {
+    this.returnChildren(r)
+  }
+
+  mutable fun loopForeverChildren(l: O.LoopForever): (Bool, O.LoopForever) {
+    this.stmt(l.stmt) match {
+    | (false, _) -> (false, l)
+    | (_, stmt1) -> (true, O.LoopForever(l.pos, stmt1))
+    }
+  }
+
+  overridable mutable fun loopForever(l: O.LoopForever): (Bool, O.Stmt) {
+    this.loopForeverChildren(l)
+  }
+
+  mutable fun yieldChildren(r: O.Yield): (Bool, O.Yield) {
+    this.expr(r.expr) match {
+    | (false, _) -> (false, r)
+    | (_, expr1) -> (true, O.Yield(expr1))
+    }
+  }
+
+  overridable mutable fun yield_(r: O.Yield): (Bool, O.Stmt) {
+    this.yieldChildren(r)
+  }
+
+  overridable mutable fun yieldBreak_(y: O.YieldBreak): (Bool, O.YieldBreak) {
+    (false, y)
+  }
+
+  overridable mutable fun stmt(s: O.Stmt): (Bool, O.Stmt) {
+    s match {
+    | j @ O.JumpTo _ -> this.jumpTo(j)
+    | se @ O.SingleExpr _ -> this.singleExpr(se)
+    | b @ O.Bind _ -> this.bind(b)
+    | a @ O.Assign _ -> this.assign(a)
+    | af @ O.AssignField _ -> this.assignField(af)
+    | seq @ O.Seq _ -> this.seq(seq)
+    | i @ O.If _ -> this.if_(i)
+    | m @ O.Match _ -> this.match_(m)
+    | sw @ O.Switch _ -> this.switch(sw)
+    | ts @ O.TypeSwitch _ -> this.typeSwitch(ts)
+    | jb @ O.JumpBlock _ -> this.jumpBlock(jb)
+    | t @ O.Try _ -> this.try_(t)
+    | tc @ O.TryCatch _ -> this.tryCatch(tc)
+    | t @ O.Throw _ -> this.throw_(t)
+    | r @ O.Return _ -> this.return_(r)
+    | l @ O.LoopForever _ -> this.loopForever(l)
+    | y @ O.Yield _ -> this.yield_(y)
+    | y @ O.YieldBreak _ -> this.yieldBreak_(y)
+    }
+  }
+
+  mutable fun initializerChildren(init: O.Initializer): (Bool, O.Initializer) {
+    init match {
+    | O.TypedInit _ -> (false, init)
+    | O.OuterInit((s, e)) ->
+      (this.stmt(s), this.expr(e)) match {
+      | ((false, _), (false, _)) -> (false, init)
+      | ((_, s1), (_, e1)) -> (true, O.OuterInit((s1, e1)))
+      }
+    }
+  }
+
+  overridable mutable fun initializer(
+    init: O.Initializer,
+  ): (Bool, O.Initializer) {
+    this.initializerChildren(init)
+  }
+
+  mutable fun initializer_opt(i_opt: ?O.Initializer): (Bool, ?O.Initializer) {
+    i_opt match {
+    | Some(i) ->
+      (new, i1) = this.initializer(i);
+      (new, Some(i1))
+    | None() -> (false, i_opt)
+    }
+  }
+
+  overridable mutable fun const_def(c: O.ConstDef): (Bool, O.ConstDef) {
+    this.initializer_opt(c.value) match {
+    | (false, _) -> (false, c)
+    | (_, value) -> (true, c with {value})
+    }
+  }
+
+  mutable fun acc_const_def(acc: Bool, c: O.ConstDef): (Bool, O.ConstDef) {
+    (new, c1) = this.const_def(c);
+    (acc || new, c1)
+  }
+
+  @gc
+  overridable mutable fun const_defs(
+    cds: UMap<O.ConstDef>,
+  ): (Bool, UMap<O.ConstDef>) {
+    (new, cds1) = cds.mapAcc((b, _, c) -> this.acc_const_def(b, c), false);
+    (new, if (new) cds1 else cds)
+  }
+
+  mutable fun parameterChildren(p: O.Parameter): (Bool, O.Parameter) {
+    (this.initializer_opt(p.value)) match {
+    | (false, _) -> (false, p)
+    | (_, value) -> (true, p with {value})
+    }
+  }
+
+  overridable mutable fun parameter(p: O.Parameter): (Bool, O.Parameter) {
+    this.parameterChildren(p)
+  }
+
+  mutable fun acc_param(acc: Bool, p: O.Parameter): (Bool, O.Parameter) {
+    (new, p1) = this.parameter(p);
+    (acc || new, p1)
+  }
+
+  overridable mutable fun parameters(
+    params: Parameters<O.Parameter>,
+  ): (Bool, Parameters<O.Parameter>) {
+    (new, params1) = params.map_foldl(this.acc_param, false);
+    (new, if (new) params1 else params)
+  }
+
+  overridable mutable fun body(b: O.Body): (Bool, O.Body) {
+    b match {
+    | O.TypedBody _ -> (false, b)
+    | O.OuterBody(s) ->
+      this.stmt(s) match {
+      | (false, _) -> (false, b)
+      | (_, s1) -> (true, O.OuterBody(s1))
+      }
+    }
+  }
+
+  mutable fun body_opt(b_opt: ?O.Body): (Bool, ?O.Body) {
+    b_opt match {
+    | Some(b) ->
+      (new, b1) = this.body(b);
+      (new, Some(b1))
+    | None() -> (false, b_opt)
+    }
+  }
+
+  @gc
+  overridable mutable fun fun_def(f: O.FunDef): (Bool, O.FunDef) {
+    (this.body_opt(f.body), this.parameters(f.params)) match {
+    | ((false, _), (false, _)) -> (false, f)
+    | ((_, body), (_, params)) -> (true, f with {body, params})
+    }
+  }
+
+  mutable fun acc_fun_def(acc: Bool, f: O.FunDef): (Bool, O.FunDef) {
+    (new, f1) = this.fun_def(f);
+    (acc || new, f1)
+  }
+
+  @gc
+  overridable mutable fun fun_defs(
+    fds: UMap<O.FunDef>,
+  ): (Bool, UMap<O.FunDef>) {
+    (new, fds1) = fds.mapAcc((b, _, f) -> this.acc_fun_def(b, f), false);
+    (new, if (new) fds1 else fds)
+  }
+
+  overridable mutable fun class_params(
+    cp: O.ClassParams,
+  ): (Bool, O.ClassParams) {
+    this.parameters(cp.params) match {
+    | (false, _) -> (false, cp)
+    | (_, params) -> (true, cp with {params})
+    }
+  }
+
+  mutable fun class_params_opt(cp_opt: ?O.ClassParams): (Bool, ?O.ClassParams) {
+    cp_opt match {
+    | Some(cp) ->
+      (new, cp1) = this.class_params(cp);
+      (new, Some(cp1))
+    | None() -> (false, cp_opt)
+    }
+  }
+
+  @gc
+  overridable mutable fun method_def(m: O.MethodDef): (Bool, O.MethodDef) {
+    (this.body_opt(m.body), this.parameters(m.params)) match {
+    | ((false, _), (false, _)) -> (false, m)
+    | ((_, body), (_, params)) -> (true, m with {body, params})
+    }
+  }
+
+  mutable fun acc_method_def(acc: Bool, m: O.MethodDef): (Bool, O.MethodDef) {
+    (new, m1) = this.method_def(m);
+    (acc || new, m1)
+  }
+
+  @gc
+  overridable mutable fun method_defs(
+    mds: UMap<O.MethodDef>,
+  ): (Bool, UMap<O.MethodDef>) {
+    (new, mds1) = mds.mapAcc((b, _, m) -> this.acc_method_def(b, m), false);
+    (new, if (new) mds1 else mds)
+  }
+
+  @gc
+  overridable mutable fun class_const_defs(
+    ccds: UMap<O.ConstDef>,
+  ): (Bool, UMap<O.ConstDef>) {
+    (new, ccds1) = ccds.mapAcc((b, _, c) -> this.acc_const_def(b, c), false);
+    (new, if (new) ccds1 else ccds)
+  }
+
+  @gc
+  overridable mutable fun class_def(c: O.ClassDef): (Bool, O.ClassDef) {
+    (
+      this.method_defs(c.methods),
+      this.class_params_opt(c.params),
+      this.class_const_defs(c.consts),
+    ) match {
+    | ((false, _), (false, _), (false, _)) -> (false, c)
+    | ((_, methods), (_, params), (_, consts)) ->
+      (true, c with {methods, params, consts})
+    }
+  }
+
+  mutable fun acc_class_def(acc: Bool, c: O.ClassDef): (Bool, O.ClassDef) {
+    (new, c1) = this.class_def(c);
+    (acc || new, c1)
+  }
+
+  @gc
+  overridable mutable fun class_defs(
+    cds: UMap<O.ClassDef>,
+  ): (Bool, UMap<O.ClassDef>) {
+    (new, cds1) = cds.mapAcc((b, _, c) -> this.acc_class_def(b, c), false);
+    (new, if (new) cds1 else cds)
+  }
+
+  @gc
+  overridable mutable fun program(p: O.Program): (Bool, O.Program) {
+    (
+      this.class_defs(p.class_defs),
+      this.const_defs(p.const_defs),
+      this.fun_defs(p.fun_defs),
+    ) match {
+    | ((false, _), (false, _), (false, _)) -> (false, p)
+    | ((_, class_defs), (_, const_defs), (_, fun_defs)) ->
+      (true, p with {class_defs, const_defs, fun_defs})
+    }
+  }
+}
+
+// pipeline a sequence of visits to function-level definitions
+// (method_def, fun_def, const_def, and class_params for initializers).
+// Note that overrides of visitor methods above these in the hierarchy
+// (program, class_defs, class_def, etc.) will not be called.
+//
+mutable class FunctionLevelVisitorPipeline(
+  visitors: Array<mutable Visitor>,
+) extends Visitor {
+  readonly fun getVisitorName(): String {
+    "FunctionLevelVisitorPipeline";
+  }
+
+  mutable fun visit_def<TDef: O.SymbolDef>(
+    def: TDef,
+    visit: (mutable Visitor, TDef) -> (Bool, TDef),
+  ): (Bool, TDef) {
+    acc = false;
+    debugDef = location -> {
+      if (shouldDebugSymbol(def.getName())) {
+        debug(location);
+        debug(def);
+      };
+    };
+    debugDef("Before optimization");
+    for (v in this.visitors) {
+      (new, !def) = visit(v, def);
+      debugDef(v.getVisitorName());
+      !acc = acc || new;
+    };
+    (acc, def)
+  }
+
+  @gc
+  mutable fun const_def(c: O.ConstDef): (Bool, O.ConstDef) {
+    this.visit_def(c, (v, c) -> v.const_def(c));
+  }
+
+  @gc
+  mutable fun class_params(cp: O.ClassParams): (Bool, O.ClassParams) {
+    acc = false;
+    for (v in this.visitors) {
+      (new, !cp) = v.class_params(cp);
+      !acc = acc || new;
+    };
+    (acc, cp)
+  }
+
+  @gc
+  mutable fun method_def(m: O.MethodDef): (Bool, O.MethodDef) {
+    this.visit_def(m, (v, m) -> v.method_def(m));
+  }
+
+  @gc
+  mutable fun fun_def(f: O.FunDef): (Bool, O.FunDef) {
+    this.visit_def(f, (v, f) -> v.fun_def(f));
+  }
+}
+
+// TODO remove when last callers have been ported to Visitor.
+// (There are a couple of non-NBE lowering passes remaining)
+fun map_program(
+  map_class_def: O.ClassDef -> O.ClassDef,
+  map_const_def: O.ConstDef -> O.ConstDef,
+  map_fun_def: O.FunDef -> O.FunDef,
+  map_type_alias_def: O.TypeAliasDef -> O.TypeAliasDef,
+  prog: O.Program,
+): O.Program {
+  O.Program{
+    class_defs => prog.class_defs.map((_, x) -> map_class_def(x)),
+    const_defs => prog.const_defs.map((_, x) -> map_const_def(x)),
+    fun_defs => prog.fun_defs.map((_, x) -> map_fun_def(x)),
+    tya_defs => prog.tya_defs.map((_, x) -> map_type_alias_def(x)),
+  }
+}
+
+// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+
+//
+// TODO the lowering passes are currently hosted by visitors, but
+// the transform logic at the statement/expr level is still implemented
+// using these legacy transforms in many of them.
+// Once they have been completely ported over to visitors, which should
+// make them simpler and eliminate lots of gratuitous copying, this
+// entire  group of functions can go away
+//
+
+fun transform_stmt_children(
+  map_expr: ((O.Expr) -> O.Expr),
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  s: O.Stmt,
+): O.Stmt {
+  map_match_branch_list = mbl ->
+    mbl.map(mb ->
+      O.MatchBranch(mb.pats, mb.guard.map(map_stmt), map_stmt(mb.action))
+    );
+  map_switch_branch_list = sbl ->
+    sbl.map(sb -> O.SwitchBranch(sb.cases, map_stmt(sb.action)));
+  map_type_switch_branch_list = tsbl ->
+    tsbl.map(tsb -> O.TypeSwitchBranch(tsb.cases, map_stmt(tsb.action)));
+  map_labeled_stmt_list = lstl ->
+    lstl.map(ls -> O.LabeledStmt(ls.label, map_stmt(ls.stmt)));
+  s match {
+  | O.JumpTo _
+  | O.YieldBreak _ ->
+    s
+  | O.SingleExpr(e) -> O.SingleExpr(map_expr(e))
+  | O.Bind(b, e) -> O.Bind(b, e.map(map_expr))
+  | O.Assign(l, e) -> O.Assign(l, map_expr(e))
+  | O.AssignField(l, source, n, e) -> O.AssignField(l, source, n, map_expr(e))
+  | O.Seq(ss) -> O.Seq(ss.map(map_stmt))
+  | O.If(e, st, sf) -> O.If(map_expr(e), map_stmt(st), map_stmt(sf))
+  | O.Match(e, mbl) -> O.Match(map_expr(e), map_match_branch_list(mbl))
+  | O.Switch(e, sbl, d) ->
+    O.Switch(map_expr(e), map_switch_branch_list(sbl), d.map(map_stmt))
+  | O.TypeSwitch(e, tsbl, d) ->
+    O.TypeSwitch(
+      map_expr(e),
+      map_type_switch_branch_list(tsbl),
+      d.map(map_stmt),
+    )
+  | O.JumpBlock(lstl, loopb) -> O.JumpBlock(map_labeled_stmt_list(lstl), loopb)
+  | O.Try(pos, b, mbl) -> O.Try(pos, map_stmt(b), map_match_branch_list(mbl))
+  | O.TryCatch(pos, b, n, c) -> O.TryCatch(pos, map_stmt(b), n, map_stmt(c))
+  | O.Throw(e) -> O.Throw(map_expr(e))
+  | O.Return(e) -> O.Return(map_expr(e))
+  | O.Yield(e) -> O.Yield(map_expr(e))
+  | O.LoopForever(pos, b) -> O.LoopForever(pos, map_stmt(b))
+  }
+}
+
+fun stmt_map_to_method_map(
+  map_stmt: O.Stmt -> O.Stmt,
+): O.MethodDef -> O.MethodDef {
+  met -> {
+    met with {
+      body => met.body.map(b -> b.mapOuter(map_stmt)),
+      params => stmt_map_to_parameters_map(map_stmt, met.params),
+    }
+  }
+}
+
+fun stmt_map_to_class_params_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+): ((O.ClassParams) -> O.ClassParams) {
+  cp -> {
+    cp with {params => stmt_map_to_parameters_map(map_stmt, cp.params)}
+  }
+}
+
+fun initializer_map_to_class_params_map(
+  map_initializer: ((O.Stmt, O.Expr)) -> (O.Stmt, O.Expr),
+): ((O.ClassParams) -> O.ClassParams) {
+  cp -> {
+    cp with {
+      params => initializer_map_to_parameters_map(map_initializer, cp.params),
+    }
+  }
+}
+
+fun make_expr___map(
+  map_expr: ((O.Expr) -> O.Expr),
+  map_stmt: ((O.Stmt) -> O.Stmt),
+): ((O.Expr_) -> O.Expr_) {
+  map_params = p -> p.map(map_expr);
+  map_with_up = (_, p) -> map_with_update(map_expr, p);
+  map_di = (di: O.DotInfo) -> di with {obj_expr => map_expr(di.obj_expr)};
+  expr -> {
+    expr match {
+    | O.Unreachable()
+    | O.DefaultArg()
+    | O.ELiteral _
+    | O.Const _
+    | O.Local _ ->
+      expr
+    | O.DynamicConstruction(e, n, tys, params) ->
+      O.DynamicConstruction(map_expr(e), n, tys, map_params(params))
+    | O.Object(n, tys, params) -> O.Object(n, tys, map_params(params))
+    | O.Call(func, params) -> O.Call(map_expr(func), map_params(params))
+    | O.FunCall(n, tys, params) -> O.FunCall(n, tys, map_params(params))
+    | O.MethodCall(di, params) -> O.MethodCall(map_di(di), map_params(params))
+    | O.StaticCall(di, params) -> O.StaticCall(map_di(di), map_params(params))
+    | O.Dot(di) -> O.Dot(map_di(di))
+    | O.StaticDot(di) -> O.StaticDot(map_di(di))
+    | O.Lambda(params, ty, bindings, s, yields) ->
+      O.Lambda(params, ty, bindings, map_stmt(s), yields)
+    | O.EArray(es) -> O.EArray(es.map(map_expr))
+    | O.Await(e) -> O.Await(map_expr(e))
+    | O.Async(s, e) -> O.Async(map_stmt(s), map_expr(e))
+    | O.Freeze(e) -> O.Freeze(map_expr(e))
+    | O.GetClass(e) -> O.GetClass(map_expr(e))
+    | O.Classname _ -> expr
+    | O.With(e, es) -> O.With(map_expr(e), es.map(map_with_up))
+    | O.Cast(ty, e) -> O.Cast(ty, map_expr(e))
+    }
+  }
+}
+
+fun map_with_update(
+  map_expr: O.Expr -> O.Expr,
+  wu: O.WithUpdate,
+): O.WithUpdate {
+  O.WithUpdate(map_expr(wu.expr), wu.source, wu.cast_opt)
+}
+
+fun map_match_branch_list(
+  map_expr: ((O.Expr) -> O.Expr),
+  mbl: List<O.MatchBranch>,
+): List<O.MatchBranch> {
+  mbl.map(mb ->
+    O.MatchBranch(
+      mb.pats,
+      mb.guard.map(p -> map_stmt(map_expr, p)),
+      map_stmt(map_expr, mb.action),
+    )
+  )
+}
+
+fun map_switch_branch_list(
+  map_expr: ((O.Expr) -> O.Expr),
+  sbl: List<O.SwitchBranch>,
+): List<O.SwitchBranch> {
+  sbl.map(sb -> O.SwitchBranch(sb.cases, map_stmt(map_expr, sb.action)))
+}
+
+fun map_type_switch_branch_list(
+  map_expr: O.Expr -> O.Expr,
+  tsbl: List<O.TypeSwitchBranch>,
+): List<O.TypeSwitchBranch> {
+  tsbl.map(tsb -> O.TypeSwitchBranch(tsb.cases, map_stmt(map_expr, tsb.action)))
+}
+
+fun map_labeled_stmt_list(
+  map_expr: O.Expr -> O.Expr,
+  lstl: List<O.LabeledStmt>,
+): List<O.LabeledStmt> {
+  lstl.map(ls -> O.LabeledStmt(ls.label, map_stmt(map_expr, ls.stmt)))
+}
+
+fun map_stmt(map_expr: ((O.Expr) -> O.Expr), s: O.Stmt): O.Stmt {
+  s match {
+  | O.JumpTo _
+  | O.YieldBreak _ ->
+    s
+  | O.SingleExpr(e) -> O.SingleExpr(map_expr(e))
+  | O.Bind(b, e) -> O.Bind(b, e.map(map_expr))
+  | O.Assign(l, e) -> O.Assign(l, map_expr(e))
+  | O.AssignField(l, source, n, e) -> O.AssignField(l, source, n, map_expr(e))
+  | O.Seq(ss) -> O.Seq(ss.map(cur1 -> map_stmt(map_expr, cur1)))
+  | O.If(e, st, sf) ->
+    O.If(map_expr(e), map_stmt(map_expr, st), map_stmt(map_expr, sf))
+  | O.Match(e, mbl) ->
+    O.Match(map_expr(e), map_match_branch_list(map_expr, mbl))
+  | O.Switch(e, sbl, d) ->
+    O.Switch(
+      map_expr(e),
+      map_switch_branch_list(map_expr, sbl),
+      d.map(p -> map_stmt(map_expr, p)),
+    )
+  | O.TypeSwitch(e, tsbl, d) ->
+    O.TypeSwitch(
+      map_expr(e),
+      map_type_switch_branch_list(map_expr, tsbl),
+      d.map(p -> map_stmt(map_expr, p)),
+    )
+  | O.JumpBlock(lstl, loopb) ->
+    O.JumpBlock(map_labeled_stmt_list(map_expr, lstl), loopb)
+  | O.Try(pos, b, mbl) ->
+    O.Try(pos, map_stmt(map_expr, b), map_match_branch_list(map_expr, mbl))
+  | O.TryCatch(pos, b, n, c) ->
+    O.TryCatch(pos, map_stmt(map_expr, b), n, map_stmt(map_expr, c))
+  | O.Throw(e) -> O.Throw(map_expr(e))
+  | O.Return(e) -> O.Return(map_expr(e))
+  | O.LoopForever(pos, b) -> O.LoopForever(pos, map_stmt(map_expr, b))
+  | O.Yield(e) -> O.Yield(map_expr(e))
+  }
+}
+
+fun expr_map_to_stmt_map(map_expr: ((O.Expr) -> O.Expr), s: O.Stmt): O.Stmt {
+  map_stmt(map_expr, s)
+}
+
+fun transform_expr_children(
+  map_expr: (O.Expr) -> O.Expr,
+  map_stmt: (O.Stmt) -> O.Stmt,
+  e: O.Expr,
+): O.Expr {
+  expr__map = make_expr___map(map_expr, map_stmt);
+  e match {
+  | O.Expr(ty, pos, e__) -> O.Expr(ty, pos, expr__map(e__))
+  }
+}
+
+fun stmt_map_to_expr_map(map_stmt: O.Stmt -> O.Stmt, ex: O.Expr): O.Expr {
+  O.Expr(
+    ex.ty,
+    ex.pos,
+    make_expr___map(e -> stmt_map_to_expr_map(map_stmt, e), map_stmt)(ex.expr),
+  )
+}
+
+fun stmt_map_to_parameters_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  params: Parameters<O.Parameter>,
+): Parameters<O.Parameter> {
+  params.map(p -> stmt_map_to_parameter_map(map_stmt, p))
+}
+
+fun stmt_map_to_parameter_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  par: O.Parameter,
+): O.Parameter {
+  par with {
+    value => par.value.map(init ->
+      init.mapOuter(stex -> stmt_map_to_stmt_expr_map(map_stmt, stex))
+    ),
+  }
+}
+
+fun initializer_map_to_parameters_map(
+  map_initializer: ((O.Stmt, O.Expr)) -> (O.Stmt, O.Expr),
+  params: Parameters<O.Parameter>,
+): Parameters<O.Parameter> {
+  params.map(p -> initializer_map_to_parameter_map(map_initializer, p))
+}
+
+fun initializer_map_to_parameter_map(
+  map_initializer: ((O.Stmt, O.Expr)) -> (O.Stmt, O.Expr),
+  par: O.Parameter,
+): O.Parameter {
+  par with {value => par.value.map(init -> init.mapOuter(map_initializer))}
+}
+
+fun stmt_map_to_class_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  cls: O.ClassDef,
+): O.ClassDef {
+  cls with {
+    methods => cls.methods.map((_, cur1) ->
+      stmt_map_to_method_map(map_stmt)(cur1)
+    ),
+    params => cls.params.map(stmt_map_to_class_params_map(map_stmt)),
+  }
+}
+
+fun stmt_map_to_const_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  con: O.ConstDef,
+): O.ConstDef {
+  con with {
+    value => con.value.map(init ->
+      init.mapOuter(stex -> stmt_map_to_stmt_expr_map(map_stmt, stex))
+    ),
+  }
+}
+
+fun initializer_map_to_const_map(
+  map_initializer: ((O.Stmt, O.Expr)) -> (O.Stmt, O.Expr),
+  con: O.ConstDef,
+): O.ConstDef {
+  con with {value => con.value.map(init -> init.mapOuter(map_initializer))}
+}
+
+fun stmt_map_to_stmt_expr_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  se: (O.Stmt, O.Expr),
+): (O.Stmt, O.Expr) {
+  (stmt, expr) = se;
+  (map_stmt(stmt), stmt_map_to_expr_map(map_stmt, expr))
+}
+
+fun stmt_map_to_fun_map(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  func: O.FunDef,
+): O.FunDef {
+  func with {
+    body => func.body.map(b -> b.mapOuter(map_stmt)),
+    params => stmt_map_to_parameters_map(map_stmt, func.params),
+  }
+}
+
+fun map_program_stmts(
+  map_stmt: ((O.Stmt) -> O.Stmt),
+  prog: O.Program,
+): O.Program {
+  map_program(
+    p -> stmt_map_to_class_map(map_stmt, p),
+    p -> stmt_map_to_const_map(map_stmt, p),
+    p -> stmt_map_to_fun_map(map_stmt, p),
+    id,
+    prog,
+  )
+}
+
+/*****************************************************************************/
+/* Set explicit return */
+/*****************************************************************************/
+fun set_return(ret: ((O.Expr) -> O.Stmt), s: O.Stmt): O.Stmt {
+  s match {
+  | O.JumpTo _
+  | O.Throw _
+  | O.YieldBreak _ ->
+    s
+  | O.SingleExpr(e)
+  | O.Yield(e) ->
+    ret(e)
+  | O.Bind _ ->
+    invariant_violation("there should have been a void following this")
+  | O.Assign(lv, _) -> O.Seq(List[s, return_void(lv.name.pos)])
+  | O.AssignField(lv, _, _, _) -> O.Seq(List[s, return_void(lv.name.pos)])
+  | O.Seq(l) -> O.Seq(set_return_(ret, l))
+  | O.If(e, st, sf) -> O.If(e, set_return(ret, st), set_return(ret, sf))
+  | O.Return(e) -> ret(e)
+  | O.Match(e, branches) -> O.Match(e, set_return_branches(ret, branches))
+  | O.Try(pos, s1, branches) ->
+    O.Try(pos, set_return(ret, s1), set_return_branches(ret, branches))
+  | O.Switch(e, branches, default) ->
+    O.Switch(
+      e,
+      set_return_switch_branches(ret, branches),
+      default.map(p -> set_return(ret, p)),
+    )
+  | O.TypeSwitch(e, branches, default) ->
+    O.TypeSwitch(
+      e,
+      set_return_type_switch_branches(ret, branches),
+      default.map(p -> set_return(ret, p)),
+    )
+  | O.JumpBlock(lstl, loopb) ->
+    O.JumpBlock(set_return_labeled_stmts(ret, lstl), loopb)
+  | O.TryCatch(pos, s1, ex, c) ->
+    O.TryCatch(pos, set_return(ret, s1), ex, set_return(ret, c))
+  | O.LoopForever(pos, b) -> O.LoopForever(pos, set_return(ret, b))
+  }
+}
+
+fun set_return_default(s: O.Stmt): O.Stmt {
+  set_return((e -> O.Return(e)), s)
+}
+
+fun set_return_switch_branches(
+  ret: ((O.Expr) -> O.Stmt),
+  branches: List<O.SwitchBranch>,
+): List<O.SwitchBranch> {
+  branches.map(b -> O.SwitchBranch(b.cases, set_return(ret, b.action)))
+}
+
+fun set_return_type_switch_branches(
+  ret: O.Expr -> O.Stmt,
+  branches: List<O.TypeSwitchBranch>,
+): List<O.TypeSwitchBranch> {
+  branches.map(ps -> O.TypeSwitchBranch(ps.cases, set_return(ret, ps.action)))
+}
+
+fun set_return_labeled_stmts(
+  ret: O.Expr -> O.Stmt,
+  stmts: List<O.LabeledStmt>,
+): List<O.LabeledStmt> {
+  stmts.map(ls -> O.LabeledStmt(ls.label, set_return(ret, ls.stmt)))
+}
+
+fun set_return_(ret: ((O.Expr) -> O.Stmt), ss: List<O.Stmt>): List<O.Stmt> {
+  ss match {
+  | List.Nil() -> List[]
+  | List.Cons(s, List.Nil()) -> List[set_return(ret, s)]
+  | List.Cons(s, l) -> List.Cons(s, set_return_(ret, l))
+  }
+}
+
+fun set_return_branches(
+  ret: (O.Expr) -> O.Stmt,
+  bs: List<O.MatchBranch>,
+): List<O.MatchBranch> {
+  bs.map(mb -> O.MatchBranch(mb.pats, mb.guard, set_return(ret, mb.action)))
+}
+
+fun return_void(pos: FileRange): O.Stmt {
+  O.Return(make_void(pos))
+}
+
+/*****************************************************************************/
+/* Rename locals */
+/*****************************************************************************/
+fun rename_name(names: SMap<String>, name: O.Name): O.Name {
+  names.maybeGet(name.id) match {
+  | Some(str) -> O.Name(name.pos, str)
+  | None() -> name
+  }
+}
+
+fun new_name(
+  new_id: () -> Int,
+  names: SMap<String>,
+  orig: O.Name,
+): (SMap<String>, O.Name) {
+  n1 = orig.id + "_" + new_id();
+  names1 = names.set(orig.id, n1);
+  (names1, O.Name(orig.pos, n1))
+}
+
+fun rename_binds(new_id: () -> Int, s: O.Stmt): O.Stmt {
+  rename_binds_stmt(new_id, SortedMap[], s);
+}
+
+fun rename_binds_stmt(
+  new_id: () -> Int,
+  names: SMap<String>,
+  stmt: O.Stmt,
+): O.Stmt {
+  rename_binds_stmt_(new_id, names, stmt).i1
+}
+
+fun rename_binding(
+  new_id: () -> Int,
+  names: SMap<String>,
+  binding: O.Binding,
+): (SMap<String>, O.Binding) {
+  (names1, n1) = new_name(new_id, names, binding.name);
+  (names1, O.Binding(binding.ty, n1, binding.info));
+}
+
+fun rename_binds_stmt_(
+  new_id: () -> Int,
+  names: SMap<String>,
+  stmt: O.Stmt,
+): (SMap<String>, O.Stmt) {
+  stmt match {
+  | O.JumpTo _
+  | O.YieldBreak _ ->
+    (names, stmt)
+  | O.SingleExpr(e) ->
+    (names, O.SingleExpr(rename_binds_expr(new_id, names, e)))
+  | O.Throw(e) -> (names, O.Throw(rename_binds_expr(new_id, names, e)))
+  | O.Bind(binding, rval) ->
+    (names1, binding1) = rename_binding(new_id, names, binding);
+    (
+      names1,
+      O.Bind(
+        binding1,
+        rval match {
+        | Some(e) -> Some(rename_binds_expr(new_id, names1, e))
+        | None() -> None()
+        },
+      ),
+    )
+  | O.Assign(lv, rval) ->
+    (
+      names,
+      O.Assign(
+        O.LocalVar(lv.ty, rename_name(names, lv.name)),
+        rename_binds_expr(new_id, names, rval),
+      ),
+    )
+  | O.AssignField(lv, src, fn, rval) ->
+    (
+      names,
+      O.AssignField(
+        O.LocalVar(lv.ty, rename_name(names, lv.name)),
+        src,
+        fn,
+        rename_binds_expr(new_id, names, rval),
+      ),
+    )
+  | O.Seq(l) ->
+    (names1, l1) = l.map_foldl(
+      (names, s) -> rename_binds_stmt_(new_id, names, s),
+      names,
+    );
+    (names1, O.Seq(l1))
+  | O.If(e, st, sf) ->
+    e1 = rename_binds_expr(new_id, names, e);
+    st1 = rename_binds_stmt(new_id, names, st);
+    sf1 = rename_binds_stmt(new_id, names, sf);
+    (names, O.If(e1, st1, sf1))
+  | O.Return(e) -> (names, O.Return(rename_binds_expr(new_id, names, e)))
+  | O.Yield(e) -> (names, O.Yield(rename_binds_expr(new_id, names, e)))
+  | O.Match(e, branches) ->
+    e1 = rename_binds_expr(new_id, names, e);
+    branches1 = rename_binds_match_branch_list(new_id, names, branches);
+    (names, O.Match(e1, branches1))
+  | O.Try(pos, s, branches) ->
+    s1 = rename_binds_stmt(new_id, names, s);
+    branches1 = rename_binds_match_branch_list(new_id, names, branches);
+    (names, O.Try(pos, s1, branches1))
+  | O.Switch(e, branches, default) ->
+    e1 = rename_binds_expr(new_id, names, e);
+    branches1 = rename_binds_switch_branch_list(new_id, names, branches);
+    default1 = default.map(s -> rename_binds_stmt(new_id, names, s));
+    (names, O.Switch(e1, branches1, default1))
+  | O.TypeSwitch(e, branches, default) ->
+    e1 = rename_binds_expr(new_id, names, e);
+    branches1 = rename_binds_type_switch_branch_list(new_id, names, branches);
+    default1 = default.map(s -> rename_binds_stmt(new_id, names, s));
+    (names, O.TypeSwitch(e1, branches1, default1))
+  | O.JumpBlock(l, loopb) ->
+    l1 = rename_binds_labeled_stmt_list(new_id, names, l);
+    (names, O.JumpBlock(l1, loopb))
+  | O.TryCatch(pos, s, binding, c) ->
+    s1 = rename_binds_stmt(new_id, names, s);
+    (names1, binding1) = rename_binding(new_id, names, binding);
+    c1 = rename_binds_stmt(new_id, names1, c);
+    (names, O.TryCatch(pos, s1, binding1, c1))
+  | O.LoopForever(pos, b) ->
+    (names, O.LoopForever(pos, rename_binds_stmt(new_id, names, b)))
+  }
+}
+
+fun rename_binds_match_branch_list(
+  new_id: () -> Int,
+  names: SMap<String>,
+  mbl: List<O.MatchBranch>,
+): List<O.MatchBranch> {
+  mbl.map(mb ->
+    O.MatchBranch(
+      mb.pats,
+      mb.guard.map(g -> rename_binds_stmt(new_id, names, g)),
+      rename_binds_stmt(new_id, names, mb.action),
+    )
+  )
+}
+
+fun rename_binds_switch_branch_list(
+  new_id: () -> Int,
+  names: SMap<String>,
+  sbl: List<O.SwitchBranch>,
+): List<O.SwitchBranch> {
+  sbl.map(b ->
+    O.SwitchBranch(b.cases, rename_binds_stmt(new_id, names, b.action))
+  )
+}
+
+fun rename_binds_type_switch_branch_list(
+  new_id: () -> Int,
+  names: SMap<String>,
+  tsbl: List<O.TypeSwitchBranch>,
+): List<O.TypeSwitchBranch> {
+  tsbl.map(tsb ->
+    O.TypeSwitchBranch(tsb.cases, rename_binds_stmt(new_id, names, tsb.action))
+  )
+}
+
+fun rename_binds_labeled_stmt_list(
+  new_id: () -> Int,
+  names: SMap<String>,
+  lstl: List<O.LabeledStmt>,
+): List<O.LabeledStmt> {
+  lstl.map(ls ->
+    O.LabeledStmt(ls.label, rename_binds_stmt(new_id, names, ls.stmt))
+  )
+}
+
+fun rename_binds_expr(
+  new_id: () -> Int,
+  names: SMap<String>,
+  expr: O.Expr,
+): O.Expr {
+  map_expr = e -> rename_binds_expr(new_id, names, e);
+  map_stmt = s -> rename_binds_stmt(new_id, names, s);
+  map_params = p -> p.map(map_expr);
+  map_with_up = (_, p) -> map_with_update(map_expr, p);
+  map_di = (di: O.DotInfo) -> di with {obj_expr => map_expr(di.obj_expr)};
+  (ety, epos, expr__) = (expr.ty, expr.pos, expr.expr);
+  expr__1 = expr__ match {
+  | O.Unreachable()
+  | O.DefaultArg()
+  | O.ELiteral _
+  | O.Const _ ->
+    expr__
+  | O.Local(pn) -> O.Local(rename_name(names, pn))
+  | O.DynamicConstruction(e, n, tys, params) ->
+    O.DynamicConstruction(map_expr(e), n, tys, map_params(params))
+  | O.Object(n, tys, params) -> O.Object(n, tys, map_params(params))
+  | O.Call(func, params) -> O.Call(map_expr(func), map_params(params))
+  | O.FunCall(n, tys, params) -> O.FunCall(n, tys, map_params(params))
+  | O.MethodCall(di, params) -> O.MethodCall(map_di(di), map_params(params))
+  | O.StaticCall(di, params) -> O.StaticCall(map_di(di), map_params(params))
+  | O.Dot(di) -> O.Dot(map_di(di))
+  | O.StaticDot(di) -> O.StaticDot(map_di(di))
+  | O.Lambda(params, ty, bindings, s, yields) ->
+    O.Lambda(params, ty, bindings, map_stmt(s), yields)
+  | O.EArray(es) -> O.EArray(es.map(map_expr))
+  | O.Await(e) -> O.Await(map_expr(e))
+  | O.Async(s, e) -> O.Async(map_stmt(s), map_expr(e))
+  | O.Freeze(e) -> O.Freeze(map_expr(e))
+  | O.GetClass(e) -> O.GetClass(map_expr(e))
+  | O.Classname _ -> expr__
+  | O.With(e, es) -> O.With(map_expr(e), es.map(map_with_up))
+  | O.Cast(ty, e) -> O.Cast(ty, map_expr(e))
+  };
+  O.Expr(ety, epos, expr__1)
+}
+
+/*****************************************************************************/
+/* types */
+/*****************************************************************************/
+fun unwrap_tnamed(ty: O.Type): O.Type {
+  ty match {
+  | O.Type(_, O.Tnamed(_, ty1)) -> unwrap_tnamed(ty1)
+  | ty1 -> ty1
+  }
+}
+
+/*****************************************************************************/
+/* Predefined types */
+/*****************************************************************************/
+fun make_predefined_type(pos: FileRange, name: String): O.Type {
+  O.Type(pos, O.Tapply(O.Name(pos, name), Array[]))
+}
+
+fun make_exception_type(pos: FileRange): O.Type {
+  make_predefined_type(pos, "Exception")
+}
+
+/*****************************************************************************/
+/* Query Operators */
+/*****************************************************************************/
+const bool_type_name: String = "Bool";
+const string_type_name: String = "String";
+const int_type_name: String = "Int";
+const float_type_name: String = "Float";
+const char_type_name: String = "Char";
+
+/* type */
+fun is_bool_type(t: O.Type): Bool {
+  t.ty match {
+  | O.TsetElt(_, O.Name(_, "Bool"), targs)
+  | O.Tapply(
+    O.Name(_, "Bool"),
+    targs,
+  ) if (targs.isEmpty()) ->
+    true
+  | O.Tmutable(inner)
+  | O.Treadonly(inner)
+  | O.Tnamed(_, inner)
+  | O.Tdefault(inner) ->
+    is_bool_type(inner)
+  | _ -> false
+  }
+}
+
+/* expr */
+fun is_local_expr(e: O.Expr): Bool {
+  e.expr is O.Local _
+}
+
+fun this_arg_of_method_call(e: O.Expr): O.Expr {
+  e.expr match {
+  | O.MethodCall(di, _) -> di.obj_expr
+  | _ -> e.pos.die("Expected MethodCall")
+  }
+}
+
+fun is_default_arg_expr(e: O.Expr): Bool {
+  e.expr is O.DefaultArg _
+}
+
+/* binding */
+fun binding_needs_ref(binding: O.BindingInfo): Bool {
+  binding is O.BindingInfo{captured => true, updated => true}
+}
+
+fun is_underscore_binding(b: O.Binding): Bool {
+  b.name.id == "_"
+}
+
+/* parameters */
+fun parameter_is_default(parameter: O.Parameter): Bool {
+  parameter.value.isSome()
+}
+
+fun default_parameters(parameters: Parameters<O.Parameter>): List<O.Parameter> {
+  parameters.toList().filter(parameter_is_default).sortedBy(p ~> p.index)
+}
+
+fun set_param_updated(param: O.Parameter): O.Parameter {
+  frozen_ = param.frozen_;
+  frozen_1 = frozen_ with {updated => true};
+  param with {frozen_ => frozen_1}
+}
+
+fun get_instance_method_of_type(
+  class_defs: UMap<O.ClassDef>,
+  ty: O.Type,
+  met: String,
+  arg_ty: Parameters<O.Type>,
+): (O.Type, O.Type_, O.Name, Array<O.Type>) {
+  ty.ty match {
+  | O.Tapply(n, targs) ->
+    cla = class_defs.getOrCrash(n.id);
+    met1 = cla.methods.getOrCrash(met);
+    /* TODO: need to substitute targs through the method signature */
+    purity = O.Fpure(); /* just tapply so no mutable */
+    tracking = {
+      met1.untracked_ match {
+      | None() -> O.Ftracked()
+      | Some _ -> O.Funtracked()
+      }
+    };
+    met_ty_ = O.Tfun(O.TfunModifiers(purity, tracking), arg_ty, met1.return_);
+    (met1.return_, met_ty_, n, targs)
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+/* MethodDef */
+fun method_is_static(met: O.MethodDef): Bool {
+  met.kind is SkipNamedAst.FKStatic _
+}
+
+fun method_is_instance(met: O.MethodDef): Bool {
+  met.kind is SkipNamedAst.FKDynamic _
+}
+
+fun tparams_matches_tyl(
+  tparams: Array<O.TypeParameter>,
+  tyl: Array<O.Type>,
+): Bool {
+  tparam_matches_ty = p -> {
+    (tparam, ty) = p;
+    ty.ty match {
+    | O.Tparam(_, ty_id, _, _) -> ty_id == tparam.id
+    | _ -> false
+    }
+  };
+  tparams.zip(tyl).all(tparam_matches_ty)
+}
+
+fun method_matches_dot_info(
+  method_def: O.MethodDef,
+  dot_info: O.DotInfo,
+): Bool {
+  dot_info.elt_kind is O.EMethod() &&
+    dot_info.source.id == method_def.met_class.id &&
+    dot_info.field.id == method_def.name.id &&
+    tparams_matches_tyl(method_def.tparams, dot_info.field_targs)
+}
+
+fun function_is_native(global_function: O.FunDef): Bool {
+  global_function.body.isNone()
+}
+
+fun extract_classname_of_expr(e: O.Expr): ?O.Name {
+  e.ty match {
+  | O.Type(_, O.Tapply(cname, _)) -> Some(cname)
+  | _ -> None()
+  }
+}
+
+/*****************************************************************************/
+/* Factories */
+/*****************************************************************************/
+fun make_named_type(pos: FileRange, type_name: String): O.Type {
+  O.Type(pos, O.Tapply(O.Name(pos, type_name), Array[]))
+}
+
+fun make_bool_type(pos: FileRange): O.Type {
+  make_named_type(pos, bool_type_name)
+}
+
+fun make_int_type(pos: FileRange): O.Type {
+  make_named_type(pos, int_type_name)
+}
+
+fun make_string_type(pos: FileRange): O.Type {
+  make_named_type(pos, string_type_name)
+}
+
+fun make_char_type(pos: FileRange): O.Type {
+  make_named_type(pos, char_type_name)
+}
+
+fun make_float_type(pos: FileRange): O.Type {
+  make_named_type(pos, float_type_name)
+}
+
+fun make_expr(ty: O.Type_, pos: FileRange, ex__: O.Expr_): O.Expr {
+  O.Expr(O.Type(pos, ty), pos, ex__)
+}
+
+fun type_of_literal(pos: FileRange, v: O.Literal): O.Type {
+  v match {
+  | O.LBool _ -> make_bool_type(pos)
+  | O.LInt _ -> make_int_type(pos)
+  | O.LString _ -> make_string_type(pos)
+  | O.LChar _ -> make_char_type(pos)
+  | O.LFloat _ -> make_float_type(pos)
+  | O.LVoid() -> make_void_type(pos)
+  }
+}
+
+fun make_const_expr(ty: O.Type, pos: FileRange, v: O.Name): O.Expr {
+  O.Expr(ty, pos, O.Const(v))
+}
+
+fun make_literal_expr(pos: FileRange, v: O.Literal): O.Expr {
+  O.Expr(type_of_literal(pos, v), pos, O.ELiteral(v))
+}
+
+fun make_bool_expr(pos: FileRange, v: Bool): O.Expr {
+  O.Expr(make_bool_type(pos), pos, O.ELiteral(O.LBool(v)))
+}
+
+fun make_true_expr(pos: FileRange): O.Expr {
+  make_bool_expr(pos, true)
+}
+
+fun make_false_expr(pos: FileRange): O.Expr {
+  make_bool_expr(pos, false)
+}
+
+fun make_void_statement(pos: FileRange): O.Stmt {
+  O.SingleExpr(make_void(pos))
+}
+
+fun make_void(pos: FileRange): O.Expr {
+  O.Expr(make_void_type(pos), pos, O.ELiteral(O.LVoid()))
+}
+
+fun make_void_type(pos: FileRange): O.Type {
+  O.Type(pos, O.Tapply(O.Name(pos, "Void"), Array[]))
+}
+
+fun make_local_expr_pos(pos: FileRange, n: O.Name, ty: O.Type): O.Expr {
+  make_expr(ty.ty, pos, O.Local(O.Name(pos, n.id)))
+}
+
+fun make_positional_arg(arg: O.Expr): Parameters<O.Expr> {
+  Positional(Array[arg])
+}
+
+fun make_get_field(
+  ty: O.Type,
+  pos: FileRange,
+  cls_name: O.Name,
+  obj_expr: O.Expr,
+  field_name: O.Name,
+): O.Expr {
+  O.Expr(
+    ty,
+    pos,
+    O.Dot(
+      O.DotInfo{
+        field => field_name,
+        elt_kind => O.EProperty(),
+        field_targs => /* TODO ? */ Array[],
+        field_type => ty,
+        obj_expr,
+        source => cls_name,
+      },
+    ),
+  )
+}
+
+fun make_method_call_expr(
+  class_defs: UMap<O.ClassDef>,
+  pos: FileRange,
+  obj: O.Expr,
+  met: O.Name,
+  args: Parameters<O.Expr>,
+): O.Expr {
+  (ret_ty, met_ty_, source, targs) = get_instance_method_of_type(
+    class_defs,
+    obj.ty,
+    met.id,
+    args.map(e ~> e.ty),
+  );
+  O.Expr(
+    ret_ty,
+    pos,
+    O.MethodCall(
+      O.DotInfo{
+        obj_expr => obj,
+        field => met,
+        field_targs => targs,
+        source,
+        elt_kind => O.EMethod(),
+        field_type => O.Type(pos, met_ty_),
+      },
+      args,
+    ),
+  )
+}
+
+fun make_eqeq_call(
+  class_defs: UMap<O.ClassDef>,
+  pos: FileRange,
+  left: O.Expr,
+  right: O.Expr,
+): O.Expr {
+  make_method_call_expr(
+    class_defs,
+    pos,
+    left,
+    O.Name(pos, "=="),
+    make_positional_arg(right),
+  )
+}
+
+fun make_not_test(
+  class_defs: UMap<O.ClassDef>,
+  pos: FileRange,
+  e: O.Expr,
+): O.Expr {
+  make_eqeq_call(class_defs, pos, e, make_bool_expr(pos, false))
+}
+
+const unused_binding_info: O.BindingInfo = O.BindingInfo{
+  updated => false,
+  captured => false,
+  read => false,
+};
+const const_binding_info: O.BindingInfo = O.BindingInfo{
+  updated => false,
+  captured => false,
+  read => true,
+};
+const nonconst_binding_info: O.BindingInfo = O.BindingInfo{
+  updated => true,
+  captured => false,
+  read => true,
+};
+
+fun make_value_binding(ty: O.Type, n: O.Name, info: O.BindingInfo): O.Binding {
+  O.Binding(ty, n, info)
+}
+
+fun make_bind_statement(b: O.Binding, e: ?O.Expr): O.Bind {
+  (b, e) match {
+  | (
+    O.Binding(_, O.Name(pos, name), O.BindingInfo{updated => false}),
+    None(),
+  ) ->
+    pos.die(
+      `make_bind_statement: updated = false, initializer = None, name = ${name}`,
+    )
+  | _ -> void
+  };
+  O.Bind(b, e)
+}
+
+fun set_info_of_binding(b: O.Binding, info: O.BindingInfo): O.Binding {
+  O.Binding(b.ty, b.name, info)
+}
+
+fun set_binding_updated(b: O.Binding): O.Binding {
+  set_info_of_binding(b, b.info with {updated => true})
+}
+
+fun make_local_expr(n: O.Name, ty: O.Type): O.Expr {
+  make_expr(ty.ty, n.pos, O.Local(n))
+}
+
+const make_empty_statement: O.Stmt = O.Seq(List[]);
+
+fun is_statement_empty(s: O.Stmt): Bool {
+  s match {
+  | O.Seq(List.Nil()) -> true
+  | _ -> false
+  }
+}
+
+fun stmt_to_seq(s: O.Stmt): List<O.Stmt> {
+  s match {
+  | O.Seq(sl) -> sl
+  | _ -> List[s]
+  }
+}
+
+fun prepend_stmt_to_list(head: O.Stmt, tail: List<O.Stmt>): List<O.Stmt> {
+  head_list = stmt_to_seq(head);
+  head_list.concat(tail);
+}
+
+fun make_seq(s1: O.Stmt, s2: O.Stmt): O.Stmt {
+  O.Seq(prepend_stmt_to_list(s1, stmt_to_seq(s2)))
+}
+
+fun make_seq_opt(s1: ?O.Stmt, s2: O.Stmt): O.Stmt {
+  s1 match {
+  | None() -> s2
+  | Some(s) -> make_seq(s, s2)
+  }
+}
+
+fun make_statement_of_list(ss: List<O.Stmt>): O.Stmt {
+  ss match {
+  | List.Cons(s, List.Nil()) -> s
+  | _ -> O.Seq(ss)
+  }
+}
+
+fun flatten_statement_sequence(statements: List<O.Stmt>): O.Stmt {
+  make_statement_of_list(statements.map(stmt_to_seq).flatten())
+}
+
+fun make_assign_local(var: O.LocalVar, e: O.Expr): O.Stmt {
+  O.Assign(var, e)
+}
+
+fun make_new_named_var(
+  new_id: () -> Int,
+  name: String,
+  ty: O.Type,
+  info: O.BindingInfo,
+): (O.Bind, O.Expr, O.Name) {
+  n = O.Name(ty.pos, sk_new_var(new_id, name));
+  (
+    make_bind_statement(O.Binding(ty, n, info), None()),
+    make_local_expr(n, ty),
+    n,
+  )
+}
+
+fun make_new_local_var(
+  new_id: () -> Int,
+  ty: O.Type,
+  info: O.BindingInfo,
+): (O.Bind, O.Expr, O.Name) {
+  n = O.name(sk_new_var_name(new_id, ty.pos));
+  (
+    make_bind_statement(O.Binding(ty, n, info), None()),
+    make_local_expr(n, ty),
+    n,
+  )
+}
+
+fun make_new_local_init(
+  new_id: () -> Int,
+  e: O.Expr,
+  info: O.BindingInfo,
+): (O.Bind, O.Expr, O.Name) {
+  n = O.name(sk_new_var_name(new_id, e.pos));
+  ty = e.ty;
+  (
+    make_bind_statement(O.Binding(ty, n, info), Some(e)),
+    make_local_expr(n, ty),
+    n,
+  )
+}
+
+fun make_bind_assign(b: O.Binding, e: O.Expr): (O.Bind, O.Stmt) {
+  (
+    make_bind_statement(b, None()),
+    make_assign_local(O.LocalVar(b.ty, b.name), e),
+  )
+}
+
+/*
+  Ensure's that an expr is a local var.
+  Returns a statement which binds the variable,
+  the expression for the variable,
+  and the name of the variable.
+*/
+fun ensure_var_expr(new_id: () -> Int, e: O.Expr): (?O.Stmt, O.Expr, O.Name) {
+  e.expr match {
+  | O.Local(n) -> (None(), e, n)
+  | _ ->
+    (s, e1, n) = make_new_local_init(new_id, e, const_binding_info);
+    (Some(s), e1, n)
+  }
+}
+
+/* statement reachability */
+fun is_statement_end_reachable(s: O.Stmt): Bool {
+  s match {
+  | O.SingleExpr _
+  | O.Bind _
+  | O.Assign _
+  | O.AssignField _
+  | O.Yield _ ->
+    true
+  | O.LoopForever(_, stmt) -> has_outer_jump(stmt)
+  | O.Seq(ss) -> is_statement_list_end_reachable(ss)
+  | O.If(_, st, sf) ->
+    is_statement_end_reachable(st) || is_statement_end_reachable(sf)
+  | O.Match(_, mbl) -> is_match_branch_list_end_reachable(mbl)
+  | O.Switch(_, sbl, d) ->
+    is_switch_branch_list_end_reachable(sbl) ||
+      is_statement_opt_end_reachable(d)
+  | O.TypeSwitch(_, tsbl, d) ->
+    is_type_switch_branch_list_end_reachable(tsbl) ||
+      is_statement_opt_end_reachable(d)
+  | O.JumpBlock(lstmts, isLoop) ->
+    f = p -> is_statement_end_reachable(p.stmt);
+    if (isLoop) lstmts.all(f) else lstmts.any(f)
+  | O.Try(_, body, mbl) ->
+    is_statement_end_reachable(body) || is_match_branch_list_end_reachable(mbl)
+  | O.TryCatch(_, body, _, catch_clause) ->
+    is_statement_end_reachable(body) || is_statement_end_reachable(catch_clause)
+  | O.Throw _
+  | O.Return _
+  | O.JumpTo _
+  | O.YieldBreak _ ->
+    false
+  }
+}
+
+fun is_statement_opt_end_reachable(so: ?O.Stmt): Bool {
+  so match {
+  | None() -> false
+  | Some(s) -> is_statement_end_reachable(s)
+  }
+}
+
+fun is_statement_list_end_reachable(ss: List<O.Stmt>): Bool {
+  ss match {
+  | List.Nil() -> true
+  | List.Cons(hd, ss1) ->
+    is_statement_end_reachable(hd) && is_statement_list_end_reachable(ss1)
+  }
+}
+
+fun is_type_switch_branch_list_end_reachable(
+  tsbl: List<O.TypeSwitchBranch>,
+): Bool {
+  tsbl.any(is_type_switch_branch_end_reachable)
+}
+
+fun is_type_switch_branch_end_reachable(tsb: O.TypeSwitchBranch): Bool {
+  is_statement_end_reachable(tsb.action)
+}
+
+fun is_switch_branch_list_end_reachable(sbl: List<O.SwitchBranch>): Bool {
+  sbl.any(is_switch_branch_end_reachable)
+}
+
+fun is_switch_branch_end_reachable(sb: O.SwitchBranch): Bool {
+  is_statement_end_reachable(sb.action)
+}
+
+fun is_match_branch_list_end_reachable(mbl: List<O.MatchBranch>): Bool {
+  mbl.any(is_match_branch_end_reachable)
+}
+
+fun is_match_branch_end_reachable(mb: O.MatchBranch): Bool {
+  is_statement_end_reachable(mb.action)
+}
+
+fun has_outer_jump(stmt: O.Stmt): Bool {
+  vis = mutable HasOuterJumpVisitor();
+  _ = vis.stmt(stmt);
+  vis.answer
+}
+
+mutable class HasOuterJumpVisitor(
+  mutable labels: SSet = SSet[],
+  mutable answer: Bool = false,
+) extends Visitor {
+  readonly fun getVisitorName(): String {
+    "HasOuterJumpVisitor"
+  }
+
+  mutable fun jumpBlock(jb: O.JumpBlock): (Bool, O.Stmt) {
+    oldLabels = this.labels;
+    additionalLabels = jb.stmts
+      .values()
+      .map(lstmt -> lstmt.label.id)
+      .collect(SSet);
+    this.!labels = this.labels.union(additionalLabels);
+    res = this.jumpBlockChildren(jb);
+    this.!labels = oldLabels;
+    res
+  }
+
+  mutable fun jumpTo(j: O.JumpTo): (Bool, O.JumpTo) {
+    this.!answer = this.answer || !this.labels.contains(j.name.id);
+    (false, j)
+  }
+
+  mutable fun stmt(s: O.Stmt): (Bool, O.Stmt) {
+    if (this.answer) return (false, s);
+
+    s match {
+    | j @ O.JumpTo _ -> this.jumpTo(j)
+    | se @ O.SingleExpr _ -> this.singleExpr(se)
+    | b @ O.Bind _ -> this.bind(b)
+    | a @ O.Assign _ -> this.assign(a)
+    | af @ O.AssignField _ -> this.assignField(af)
+    | seq @ O.Seq _ -> this.seq(seq)
+    | i @ O.If _ -> this.if_(i)
+    | m @ O.Match _ -> this.match_(m)
+    | sw @ O.Switch _ -> this.switch(sw)
+    | ts @ O.TypeSwitch _ -> this.typeSwitch(ts)
+    | jb @ O.JumpBlock _ -> this.jumpBlock(jb)
+    | t @ O.Try _ -> this.try_(t)
+    | tc @ O.TryCatch _ -> this.tryCatch(tc)
+    | t @ O.Throw _ -> this.throw_(t)
+    | r @ O.Return _ -> this.return_(r)
+    | l @ O.LoopForever _ -> this.loopForever(l)
+    | y @ O.Yield _ -> this.yield_(y)
+    | y @ O.YieldBreak _ -> this.yieldBreak_(y)
+    }
+  }
+}
+
+// Iterate through statements and expressions
+base class IterationControl {
+  children =
+  | StopIteration()
+  // Continue iteration, but do not recurse into children
+  | NoChildren()
+  // Continue iteration, do recurse into children
+  | Continue()
+}
+
+// Returns true if the iteration was Stopped, false if it completed to the end
+fun iterate_expression(
+  test_expr: O.Expr -> IterationControl,
+  test_stmt: O.Stmt -> IterationControl,
+  e: O.Expr,
+): Bool {
+  iter_s = s -> iterate_stmt(test_expr, test_stmt, s);
+  iter_e = (e1: O.Expr) -> iterate_expression(test_expr, test_stmt, e1);
+  iterate_exprs = es -> es.any(iter_e);
+
+  iterate_params = params -> params.any(iter_e);
+  iterate_dot_info = (dot_info: O.DotInfo) -> iter_e(dot_info.obj_expr);
+  iterate_in_with_updates = map -> map.values().any(wu -> iter_e(wu.expr));
+
+  test_expr(e) match {
+  | StopIteration() -> true
+  | NoChildren() -> false
+  | Continue() ->
+    e.expr match {
+    | O.Unreachable()
+    | O.DefaultArg()
+    | O.ELiteral _
+    | O.Const _
+    | O.Local _ ->
+      false
+    | O.DynamicConstruction(e1, _, _, params) ->
+      iter_e(e1) || iterate_params(params)
+    | O.Object(_, _, params) -> iterate_params(params)
+    | O.Call(e1, params) -> iter_e(e1) || iterate_params(params)
+    | O.FunCall(_, _, params) -> iterate_params(params)
+    | O.MethodCall(dot_info, params) ->
+      iterate_dot_info(dot_info) || iterate_params(params)
+    | O.StaticCall(dot_info, params) ->
+      iterate_dot_info(dot_info) || iterate_params(params)
+    | O.Dot(dot_info) -> iterate_dot_info(dot_info)
+    | O.StaticDot(dot_info) -> iterate_dot_info(dot_info)
+    | O.Lambda(_, _, _, s, _) -> iter_s(s)
+    | O.EArray(es) -> iterate_exprs(es)
+    | O.Await(e1) -> iter_e(e1)
+    | O.Async(s, e1) -> iter_s(s) || iter_e(e1)
+    | O.Freeze(e1) -> iter_e(e1)
+    | O.GetClass(e1) -> iter_e(e1)
+    | O.Classname _ -> false
+    | O.Cast(_, e1) -> iter_e(e1)
+    | O.With(e1, updates) -> iter_e(e1) || iterate_in_with_updates(updates)
+    }
+  }
+}
+
+// Returns true if the iteration was Stopped, false if it completed to the end
+fun iterate_stmt(
+  test_expr: O.Expr -> IterationControl,
+  test_stmt: O.Stmt -> IterationControl,
+  s: O.Stmt,
+): Bool {
+  iter_s = s1 -> iterate_stmt(test_expr, test_stmt, s1);
+  maybe_iterate_stmt = s_opt -> s_opt.map(iter_s).default(false);
+  iter_e = (e: O.Expr) -> iterate_expression(test_expr, test_stmt, e);
+  maybe_iterate_expr = e_opt -> e_opt.map(iter_e).default(false);
+  iterate_match_branch = mb ->
+    maybe_iterate_stmt(mb.guard) || iter_s(mb.action);
+  iterate_match_branch_list = mbl -> mbl.any(iterate_match_branch);
+  test_stmt(s) match {
+  | StopIteration() -> true
+  | NoChildren() -> false
+  | Continue() ->
+    s match {
+    | O.Bind(_, e_opt) -> maybe_iterate_expr(e_opt)
+    | O.Seq(ss) -> ss.any(iter_s)
+    | O.If(c, st, sf) -> iter_e(c) || iter_s(st) || iter_s(sf)
+    | O.Match(c, mbl) -> iter_e(c) || iterate_match_branch_list(mbl)
+    | O.Switch(c, sbl, d) ->
+      iterate_switch_branch = sb -> iter_s(sb.action);
+      iter_e(c) || sbl.any(iterate_switch_branch) || maybe_iterate_stmt(d)
+    | O.TypeSwitch(c, tsbl, d) ->
+      iterate_type_switch_branch = tsb -> iter_s(tsb.action);
+      iter_e(c) || tsbl.any(iterate_type_switch_branch) || maybe_iterate_stmt(d)
+    | O.JumpBlock(lstmts, _) ->
+      iterate_labeled_stmts = lstmt -> iter_s(lstmt.stmt);
+      lstmts.any(iterate_labeled_stmts)
+    | O.Try(_, body, mbl) -> iter_s(body) || iterate_match_branch_list(mbl)
+    | O.TryCatch(_, body, _, catch_clause) ->
+      iter_s(body) || iter_s(catch_clause)
+    | O.SingleExpr(e)
+    | O.Assign(_, e)
+    | O.AssignField(_, _, _, e)
+    | O.Throw(e)
+    | O.Return(e)
+    | O.Yield(e) ->
+      iter_e(e)
+    | O.JumpTo _
+    | O.YieldBreak _ ->
+      false
+    | O.LoopForever(_, body) -> iter_s(body)
+    }
+  }
+}
+
+/* Search for expresssions */
+type Search_result = IterationControl;
+
+const not_found_stop: IterationControl = NoChildren();
+const not_found_recurse: IterationControl = Continue();
+const found: IterationControl = StopIteration();
+
+fun find_in_expr(
+  test_expr: O.Expr -> Search_result,
+  test_stmt: O.Stmt -> Search_result,
+  e: O.Expr,
+): Bool {
+  iterate_expression(test_expr, test_stmt, e)
+}
+
+fun find_in_stmt(
+  test_expr: O.Expr -> Search_result,
+  test_stmt: O.Stmt -> Search_result,
+  s: O.Stmt,
+): Bool {
+  iterate_stmt(test_expr, test_stmt, s)
+}
+
+fun contains_jump_to_label(s: O.Stmt, lbl: O.Name): Bool {
+  /* Don't search lambda bodies */
+  test_expr = _ -> not_found_stop;
+  test_stmt = s1 -> {
+    s1 match {
+    | O.JumpTo(O.Name(_, jumpLbl)) if (lbl.id == jumpLbl) -> found
+    | _ -> not_found_recurse
+    }
+  };
+  find_in_stmt(test_expr, test_stmt, s)
+}
+
+/* bindings in statements */
+fun statement_contains_captured_locals(s: O.Stmt): Bool {
+  test_expression = (e: O.Expr) -> {
+    e.expr match {
+    | O.Lambda(_, _, captured_variables, _, _) ->
+      if (!captured_variables.isEmpty()) {
+        found
+      } else {
+        not_found_stop
+      }
+    | _ -> not_found_recurse
+    }
+  };
+  test_statement = _ -> not_found_recurse;
+  find_in_stmt(test_expression, test_statement, s)
+}
+
+fun combine_binding_infos(
+  left: SMap<O.BindingInfo>,
+  right: SMap<O.BindingInfo>,
+): SMap<O.BindingInfo> {
+  left.mergeWith(right, (_s, l, r) ~>
+    (l, r) match {
+    | (None(), None()) -> invariant_violation("must merge one")
+    | (None(), _) -> r
+    | (_, None()) -> l
+    | (Some(ls), Some(rs)) ->
+      Some(
+        O.BindingInfo{
+          captured => ls.captured || rs.captured,
+          updated => ls.updated || rs.updated,
+          read => ls.read || rs.read,
+        },
+      )
+    }
+  )
+}
+
+fun combine_captures(
+  infos: SMap<O.BindingInfo>,
+  captures: SMap<O.Binding>,
+): SMap<O.BindingInfo> {
+  combine_binding_infos(infos, captures.map((_, b) ~> b.info))
+}
+
+fun captured_locals_of_statement(s: O.Stmt): SMap<O.BindingInfo> {
+  result = mutable Ref(SortedMap[]);
+  _ = iterate_stmt(
+    expr -> {
+      expr.expr match {
+      | O.Lambda(_, _, captured_locals, _, _yields) ->
+        result.!value = combine_captures(result.value, captured_locals);
+        NoChildren()
+      | _ -> Continue()
+      }
+    },
+    _stmt -> Continue(),
+    s,
+  );
+  result.value
+}
+
+fun base_class_names(class_def: O.ClassDef): List<String> {
+  class_def.extends_.rawKeys() |> List::createFromIterator
+}
+
+fun class_is_native(class_def: O.ClassDef): Bool {
+  class_def.native_.isSome()
+}
+
+fun class_has_fields(class_def: O.ClassDef): Bool {
+  class_def.params.isSome() && !class_def.params.fromSome().params.isEmpty()
+}
+
+// Are all instances of this class indistinguishable from each other
+fun class_is_singleton(class_def: O.ClassDef): Bool {
+  !class_has_fields(class_def) &&
+    !class_is_native(class_def) &&
+    class_def.kind == O.KClass()
+}
+
+// Creates a map from class name to the set of immediate sub classes of a class
+// Note that a class may have more than one direct base class.
+fun create_derived_classes(class_defs: UMap<O.ClassDef>): SMap<SSet> {
+  // Add empty sets of derived classes for all bases
+  empty_deriveds = class_defs.reduce(
+    (result, _, class_def) ~> {
+      if (class_def.kind == O.KClass()) {
+        result
+      } else {
+        result.set(class_def.name.id, SSet[])
+      }
+    },
+    SortedMap[],
+  );
+
+  add_edge = (base_class, derived_class_name, map) ~> {
+    // base_class = base_class_name.i1;
+    derived_class = derived_class_name.id;
+
+    if (base_class == derived_class) {
+      map
+    } else {
+      derived_set = map[base_class];
+      map.set(base_class, derived_set.set(derived_class));
+    }
+  };
+
+  class_defs.reduce(
+    (result, _, class_def) ~> {
+      base_class_names(class_def).foldl(
+        (r, parent_name) ~> {
+          add_edge(parent_name, class_def.name, r)
+        },
+        result,
+      )
+    },
+    empty_deriveds,
+  )
+}
+
+// Given a map from base class to derived classes, assign each class an ID
+// suitable for implementing typeswitch on.
+//
+// The characteristics we are looking for in ID assignment are:
+// - ids must be uniquely assigned to all KClasses (non-base, aka leaf) classes.
+// - base classes and traits are assigned -1 as they should never be switch targets
+// - all of the leaf classes of a given base class should be assigned
+//   sequential Ids. This improves the odds that the underlying code generater
+//   can turn the switch into a contiguous jump table.
+//
+// Assign ids, by iterating over the classes with no base, then assign ids to
+// all children of a class. When assigning ids to children, do children which are
+// also bases first which assigns contiguous ids to all remaining leaf classes.
+fun assign_type_switch_ids(
+  class_defs: UMap<O.ClassDef>,
+  base_to_derived_classes: SMap<SSet>,
+): SMap<Int> {
+  new_id = sk_create_counter();
+  class_defs.reduce(
+    (ids, _, class_def) -> {
+      if (is_root_class(class_def)) {
+        assign_type_switch_ids_rec(
+          class_defs,
+          new_id,
+          base_to_derived_classes,
+          ids,
+          class_def.name.id,
+        )
+      } else {
+        ids
+      }
+    },
+    SortedMap[],
+  )
+}
+
+private const base_class_id: Int = -1;
+
+private fun is_root_class(class_def: O.ClassDef): Bool {
+  base_class_names(class_def).isEmpty()
+}
+
+private fun assign_type_switch_ids_rec(
+  class_defs: UMap<O.ClassDef>,
+  new_id: () -> Int,
+  base_to_derived_classes: SMap<SSet>,
+  ids: SMap<Int>,
+  class_name: String,
+): SMap<Int> {
+  // Note that a leaf class may derive from multiple bases, so be defensive here.
+  if (ids.containsKey(class_name)) {
+    ids
+  } else {
+    // Assign current class's id
+    id = if (is_base_class(base_to_derived_classes, class_name)) {
+      base_class_id
+    } else {
+      new_id()
+    };
+    ids_with_current = ids.set(class_name, id);
+
+    if (is_base_class(base_to_derived_classes, class_name)) {
+      derived_classes =
+        base_to_derived_classes[class_name].values() |>
+        List::createFromIterator;
+
+      // Assign derived bases first
+      derived_bases = derived_classes.filter(n ~>
+        is_base_class(base_to_derived_classes, n)
+      );
+      ids_with_bases = derived_bases.reduce(
+        (ids, derived_class) ->
+          assign_type_switch_ids_rec(
+            class_defs,
+            new_id,
+            base_to_derived_classes,
+            ids,
+            derived_class,
+          ),
+        ids_with_current,
+      );
+
+      // Assign derived leaves last so that they are allocated contiguously
+      derived_leaves = derived_classes.filter(n ~>
+        is_leaf_class(base_to_derived_classes, n)
+      );
+      derived_leaves.foldl(
+        (ids, derived_class) ->
+          assign_type_switch_ids_rec(
+            class_defs,
+            new_id,
+            base_to_derived_classes,
+            ids,
+            derived_class,
+          ),
+        ids_with_bases,
+      );
+    } else {
+      ids_with_current
+    }
+  }
+}
+
+private fun is_base_class(
+  base_to_derived_classes: SMap<SSet>,
+  class_name: String,
+): Bool {
+  base_to_derived_classes.containsKey(class_name)
+}
+
+private fun is_leaf_class(
+  base_to_derived_classes: SMap<SSet>,
+  class_name: String,
+): Bool {
+  !is_base_class(base_to_derived_classes, class_name)
+}

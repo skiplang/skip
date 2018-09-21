@@ -1,0 +1,23 @@
+File "./typechecking/invalid/no_common_base.sk", line 8, characters 3-21:
+Incompatible branches
+ 6 |
+ 7 | fun test(c: Bool): _ {
+ 8 |   if (c) X() else Y()
+   |   ^^^^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/no_common_base.sk", line 8, characters 10-12:
+The type: X
+ 6 |
+ 7 | fun test(c: Bool): _ {
+ 8 |   if (c) X() else Y()
+   |          ^^^
+ 9 | }
+
+File "./typechecking/invalid/no_common_base.sk", line 8, characters 19-21:
+Does not share a common super type with: Y
+ 6 |
+ 7 | fun test(c: Bool): _ {
+ 8 |   if (c) X() else Y()
+   |                   ^^^
+ 9 | }

@@ -1,0 +1,5 @@
+class C<T> {
+  fun m<U>[T](): void { void }
+}
+
+fun main(): String {""}

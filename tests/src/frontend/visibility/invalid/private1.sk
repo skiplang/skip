@@ -1,0 +1,13 @@
+fun main(): void {
+  void
+}
+class X() {
+  private fun foo(): void {
+    void
+  }
+}
+
+fun test(): void {
+  x = X();
+  x.foo()
+}

@@ -1,0 +1,12 @@
+base class A final (f: Bool)
+class C extends A
+class B extends A
+
+fun myMatch(b: A): String {
+  b match {
+  | A(false) -> "0"
+  | B(true) -> "1"
+  // Overlapping with A(false)
+  | C(false) -> "1"
+  }
+}

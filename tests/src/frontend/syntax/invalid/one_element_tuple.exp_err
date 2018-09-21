@@ -1,0 +1,7 @@
+File "./syntax/invalid/one_element_tuple.sk", line 3, characters 3-5:
+A tuple must have at least two elements
+1 | fun main(): String {
+2 |   tuple = ("a", "b", "c");
+3 |   (x) = tuple;
+  |   ^^^
+4 | }

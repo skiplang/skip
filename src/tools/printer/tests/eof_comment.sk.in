@@ -1,0 +1,7 @@
+base class IGraphQLInputValue {
+  value: ?this::TValue,
+} uses Show {
+  type TValue : Mixed.Base;
+}
+
+// TODO: Input object values

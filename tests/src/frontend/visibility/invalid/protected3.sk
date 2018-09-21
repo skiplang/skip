@@ -1,0 +1,14 @@
+fun main(): void {
+  void
+}
+class X() {
+  protected fun foo(): void {
+    this.foo()
+  }
+}
+
+class Z() {
+  protected fun bar(x: X): void {
+    x.foo()
+  }
+}

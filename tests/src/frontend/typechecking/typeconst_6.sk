@@ -1,0 +1,30 @@
+base class MyGrandParent final {x: this::T} {
+  type T: Test.MixedScalar;
+  deferred fun set(x: this::T): this {
+    !this.x = x;
+    this
+  }
+  fun get(): this::T {
+    this.x
+  }
+}
+
+base class MyParent extends MyGrandParent {
+  type T = Test.MixedString;
+  fun set from MyGrandParent;
+}
+
+class MyChild extends MyParent
+
+fun as_myparent(x: MyParent): MyParent {
+  x
+}
+
+fun main(): void {
+  print_raw(
+    as_myparent(MyChild{x => Test.MixedString("Fail")})
+      .set(Test.MixedString("Pass\n"))
+      .get()
+      .toString(),
+  )
+}

@@ -1,0 +1,9 @@
+class Tester() {
+  fun foo<T: frozen, U: Array<T>>(T): void {
+    void
+  }
+}
+
+fun test(): void {
+  Tester().foo(mutable Array[0])
+}

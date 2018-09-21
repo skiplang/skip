@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable_const1.sk", line 6, characters 9-9:
+Cannot override a final constant. Class Bar attempted to override constant x from parent Foo
+4 |
+5 | class Bar() extends Foo {
+6 |   const x: Int = 43;
+  |         ^
+7 | }
+
+File "./typechecking/invalid/overridable_const1.sk", line 2, characters 9-9:
+To override the constant, Foo::x must have the modifier 'overridable'
+1 | base class Foo {
+2 |   const x: Int = 42;
+  |         ^
+3 | }

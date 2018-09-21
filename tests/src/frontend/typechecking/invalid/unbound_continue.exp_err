@@ -1,0 +1,46 @@
+File "./typechecking/invalid/unbound_continue.sk", line 2, characters 3-10:
+Unexpected 'continue' found outside a loop
+1 | fun no1(): Int {
+2 |   continue
+  |   ^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/unbound_continue.sk", line 6, characters 9-18:
+Unexpected 'continue' found outside a loop
+4 |
+5 | fun no2(): void {
+6 |   while (continue) void
+  |         ^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/unbound_continue.sk", line 10, characters 17-26:
+Unexpected 'continue' found outside a loop
+ 8 |
+ 9 | fun no3(): void {
+10 |   do void while (continue)
+   |                 ^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/unbound_continue.sk", line 14, characters 37-44:
+Unexpected 'continue' found outside a loop
+12 |
+13 | fun no4(): void {
+14 |   for (_ in Vector[1, 2]) void else continue
+   |                                     ^^^^^^^^
+15 | }
+
+File "./typechecking/invalid/unbound_continue.sk", line 18, characters 24-31:
+Unexpected 'continue' found outside a loop
+16 |
+17 | fun no5(): void {
+18 |   while (false) (() -> continue)()
+   |                        ^^^^^^^^
+19 | }
+
+File "./typechecking/invalid/unbound_continue.sk", line 24, characters 7-14:
+Unexpected 'continue' found outside a loop
+22 |   while (false) {
+23 |     async {
+24 |       continue
+   |       ^^^^^^^^
+25 |     }

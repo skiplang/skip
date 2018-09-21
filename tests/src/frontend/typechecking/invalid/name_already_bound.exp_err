@@ -1,0 +1,7 @@
+File "./typechecking/invalid/name_already_bound.sk", line 3, characters 3-7:
+value is already bound in this scope. A name may be bound only once in a given scope. Use '!value = ...' to assign a new value to an existing name.
+1 | fun main(): void {
+2 |   value = 10;
+3 |   value = 10;
+  |   ^^^^^
+4 |   print_raw("a")

@@ -1,0 +1,24 @@
+base class B {
+  children =
+  | X()
+  | Y()
+  | Z()
+}
+base class L {
+  children =
+  | R()
+  | G()
+  | H()
+}
+
+fun main(): void {
+  print_raw(
+    ((Y() : B), (G() : L)) match {
+    | (X(), R()) -> "One\n"
+    | (Z(), H()) -> "Two\n"
+    | (B _, H()) -> "Three\n"
+    | (Y(), G()) -> "Pass\n"
+    | (B _, L _) -> "Four\n"
+    },
+  )
+}

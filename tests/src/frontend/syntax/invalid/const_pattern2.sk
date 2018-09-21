@@ -1,0 +1,11 @@
+const My_bool: Bool = true;
+
+// Make sure we check for duplicate constant patterns
+fun shouldFail(x: Bool): String {
+  x match {
+  | My_bool -> "True\n"
+  | My_bool -> "False\n"
+  | false -> "Really false\n"
+  | true -> "Really true\n"
+  }
+}

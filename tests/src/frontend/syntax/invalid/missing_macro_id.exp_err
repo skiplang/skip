@@ -1,0 +1,7 @@
+File "./syntax/invalid/missing_macro_id.sk", line 3, characters 5-5:
+Expected letter after '#'
+1 | class C {
+2 |   macro fun m(): void {
+3 |     #
+  |     ^
+4 |   }

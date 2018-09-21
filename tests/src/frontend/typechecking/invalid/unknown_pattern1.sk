@@ -1,0 +1,8 @@
+base class Foo
+class Bar<T>(T) extends Foo
+
+fun doit<T_>(x: Foo): T_ {
+  x match {
+  | Bar(y) -> y
+  }
+}

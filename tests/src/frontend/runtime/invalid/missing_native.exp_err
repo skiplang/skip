@@ -1,0 +1,12 @@
+File "./runtime/invalid/missing_native.sk", line 1, characters 14-16:
+Missing implementation for the method getBar
+1 | native class Foo {
+  |              ^^^
+2 |   fun getBar(): void;
+
+File "./runtime/invalid/missing_native.sk", line 2, characters 7-12:
+Defined here
+1 | native class Foo {
+2 |   fun getBar(): void;
+  |       ^^^^^^
+3 | }

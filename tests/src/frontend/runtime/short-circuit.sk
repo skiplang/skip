@@ -1,0 +1,43 @@
+@debug
+fun a(): Bool {
+  print_string("a");
+  false
+}
+
+@debug
+fun b(): Bool {
+  print_string("b");
+  true
+}
+
+fun main(): void {
+  print_string(
+    if (a() && b()) {
+      "Nok"
+    } else {
+      "Ok"
+    },
+  );
+  print_string(
+    if (a() || b()) {
+      "Ok"
+    } else {
+      "Nok"
+    },
+  );
+  print_string(
+    if (b() && a()) {
+      "Nok"
+    } else {
+      "Ok"
+    },
+  );
+  print_string(
+    if (b() || a()) {
+      "Ok"
+    } else {
+      "Nok"
+    },
+  );
+  print_string("Pass")
+}

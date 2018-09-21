@@ -1,0 +1,26 @@
+base class Foo {
+  children =
+  | Bar()
+  | Baz()
+}
+
+fun myFoo(x: ?Foo): Int {
+  x match {
+  | Some(Bar()) -> 1
+  | Some(Baz()) -> 2
+  | None() -> 3
+  }
+}
+
+fun myBar(x: ??Foo): Int {
+  x match {
+  | Some(Some(Bar())) -> 1
+  | Some(Some(Baz())) -> 2
+  | Some(None()) -> 3
+  | None() -> 4
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

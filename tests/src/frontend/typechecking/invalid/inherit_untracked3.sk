@@ -1,0 +1,16 @@
+// but not ok to override tracked with untracked
+untracked fun main(): void {
+  print_raw(Y().foo())
+}
+
+base class X {
+  overridable fun foo(): String {
+    "I'm X"
+  }
+}
+
+class Y() extends X {
+  untracked fun foo(): String {
+    "I'm Y"
+  }
+}

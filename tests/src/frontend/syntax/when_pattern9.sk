@@ -1,0 +1,35 @@
+base class Bar {
+  children =
+  | Foo(Int)
+  | Baz(Bool)
+}
+
+base class Zanzibar {
+  children =
+  | Zaz(Bar)
+}
+
+fun main(): void {
+  print_raw(
+    Zaz(Foo(1)) match {
+    | Zaz(
+      x,
+    ) if (
+      x match {
+      | i @ Foo(_) if (
+        i match {
+        | Foo(3) -> false
+        | Foo(z) if (z == 4) -> true
+        | _ -> false
+        }
+      ) ->
+        true
+      | Foo(z) if (z == 1) -> true
+      | _ -> false
+      }
+    ) ->
+      "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

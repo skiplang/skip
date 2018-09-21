@@ -1,0 +1,8 @@
+class Foo<T: Orderable>(x: T) {
+  fun add<U: Orderable>[T: U](x: U): Foo<U> {
+    Foo(x)
+  }
+  fun inty(x: Int): Foo<Int> {
+    this.add(x)
+  }
+}

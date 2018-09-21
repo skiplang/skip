@@ -1,0 +1,4476 @@
+// DO NOT EDIT.
+// This file is generated from trees.json.
+// After editing trees.json you must 'ninja -C build update_parse_tree'
+// to update this file.
+
+module ParseTree;
+
+extension base class ParseTree{}
+class AnnotationTree{
+  at: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("at", this.at),
+      ("name", this.name),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "Annotation";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.at;
+    yield this.name;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_at = codemod.transform(this.at);
+    tx_name = codemod.transform(this.name);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      AnnotationTree{
+        range => this.range,
+        at => tx_at.i0,
+        name => tx_name.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_at.i1, tx_name.i1, tx_arguments.i1].flatten(),
+    );
+  }
+}
+class AsExpressionTree{
+  value: ParseTree.ParseTree,
+  asKeyword: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("value", this.value),
+      ("asKeyword", this.asKeyword),
+      ("pattern", this.pattern),
+    ];
+  }
+
+  fun getKind(): String {
+    "AsExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.value;
+    yield this.asKeyword;
+    yield this.pattern;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_value = codemod.transform(this.value);
+    tx_asKeyword = codemod.transform(this.asKeyword);
+    tx_pattern = codemod.transform(this.pattern);
+    (
+      AsExpressionTree{
+        range => this.range,
+        value => tx_value.i0,
+        asKeyword => tx_asKeyword.i0,
+        pattern => tx_pattern.i0,
+      },
+      Vector[tx_value.i1, tx_asKeyword.i1, tx_pattern.i1].flatten(),
+    );
+  }
+}
+class AtPatternTree{
+  identifier: ParseTree.ParseTree,
+  at: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("identifier", this.identifier),
+      ("at", this.at),
+      ("pattern", this.pattern),
+    ];
+  }
+
+  fun getKind(): String {
+    "AtPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.identifier;
+    yield this.at;
+    yield this.pattern;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_identifier = codemod.transform(this.identifier);
+    tx_at = codemod.transform(this.at);
+    tx_pattern = codemod.transform(this.pattern);
+    (
+      AtPatternTree{
+        range => this.range,
+        identifier => tx_identifier.i0,
+        at => tx_at.i0,
+        pattern => tx_pattern.i0,
+      },
+      Vector[tx_identifier.i1, tx_at.i1, tx_pattern.i1].flatten(),
+    );
+  }
+}
+class AwaitableTypeSpecifierTree{
+  caret: ParseTree.ParseTree,
+  elementType: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("caret", this.caret),
+      ("elementType", this.elementType),
+    ];
+  }
+
+  fun getKind(): String {
+    "AwaitableTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.caret;
+    yield this.elementType;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_caret = codemod.transform(this.caret);
+    tx_elementType = codemod.transform(this.elementType);
+    (
+      AwaitableTypeSpecifierTree{
+        range => this.range,
+        caret => tx_caret.i0,
+        elementType => tx_elementType.i0,
+      },
+      Vector[tx_caret.i1, tx_elementType.i1].flatten(),
+    );
+  }
+}
+class BinaryExpressionTree{
+  left: ParseTree.ParseTree,
+  operator: ParseTree.ParseTree,
+  right: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("left", this.left),
+      ("operator", this.operator),
+      ("right", this.right),
+    ];
+  }
+
+  fun getKind(): String {
+    "BinaryExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.left;
+    yield this.operator;
+    yield this.right;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_left = codemod.transform(this.left);
+    tx_operator = codemod.transform(this.operator);
+    tx_right = codemod.transform(this.right);
+    (
+      BinaryExpressionTree{
+        range => this.range,
+        left => tx_left.i0,
+        operator => tx_operator.i0,
+        right => tx_right.i0,
+      },
+      Vector[tx_left.i1, tx_operator.i1, tx_right.i1].flatten(),
+    );
+  }
+}
+class BlockTree{
+  openCurly: ParseTree.ParseTree,
+  expressions: ParseTree.ParseTree,
+  closeCurly: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openCurly", this.openCurly),
+      ("expressions", this.expressions),
+      ("closeCurly", this.closeCurly),
+    ];
+  }
+
+  fun getKind(): String {
+    "Block";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openCurly;
+    yield this.expressions;
+    yield this.closeCurly;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openCurly = codemod.transform(this.openCurly);
+    tx_expressions = codemod.transform(this.expressions);
+    tx_closeCurly = codemod.transform(this.closeCurly);
+    (
+      BlockTree{
+        range => this.range,
+        openCurly => tx_openCurly.i0,
+        expressions => tx_expressions.i0,
+        closeCurly => tx_closeCurly.i0,
+      },
+      Vector[tx_openCurly.i1, tx_expressions.i1, tx_closeCurly.i1].flatten(),
+    );
+  }
+}
+class BreakExpressionTree{
+  breakKeyword: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("breakKeyword", this.breakKeyword),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "BreakExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.breakKeyword;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_breakKeyword = codemod.transform(this.breakKeyword);
+    tx_value = codemod.transform(this.value);
+    (
+      BreakExpressionTree{
+        range => this.range,
+        breakKeyword => tx_breakKeyword.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_breakKeyword.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class CallArrayExpressionTree{
+  func: ParseTree.ParseTree,
+  typeArguments: ParseTree.ParseTree,
+  bang: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("func", this.func),
+      ("typeArguments", this.typeArguments),
+      ("bang", this.bang),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "CallArrayExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.func;
+    yield this.typeArguments;
+    yield this.bang;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_func = codemod.transform(this.func);
+    tx_typeArguments = codemod.transform(this.typeArguments);
+    tx_bang = codemod.transform(this.bang);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      CallArrayExpressionTree{
+        range => this.range,
+        func => tx_func.i0,
+        typeArguments => tx_typeArguments.i0,
+        bang => tx_bang.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[
+        tx_func.i1,
+        tx_typeArguments.i1,
+        tx_bang.i1,
+        tx_arguments.i1,
+      ].flatten(),
+    );
+  }
+}
+class CallExpressionTree{
+  func: ParseTree.ParseTree,
+  typeArguments: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("func", this.func),
+      ("typeArguments", this.typeArguments),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "CallExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.func;
+    yield this.typeArguments;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_func = codemod.transform(this.func);
+    tx_typeArguments = codemod.transform(this.typeArguments);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      CallExpressionTree{
+        range => this.range,
+        func => tx_func.i0,
+        typeArguments => tx_typeArguments.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_func.i1, tx_typeArguments.i1, tx_arguments.i1].flatten(),
+    );
+  }
+}
+class CallMapExpressionTree{
+  func: ParseTree.ParseTree,
+  typeArguments: ParseTree.ParseTree,
+  bang: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("func", this.func),
+      ("typeArguments", this.typeArguments),
+      ("bang", this.bang),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "CallMapExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.func;
+    yield this.typeArguments;
+    yield this.bang;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_func = codemod.transform(this.func);
+    tx_typeArguments = codemod.transform(this.typeArguments);
+    tx_bang = codemod.transform(this.bang);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      CallMapExpressionTree{
+        range => this.range,
+        func => tx_func.i0,
+        typeArguments => tx_typeArguments.i0,
+        bang => tx_bang.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[
+        tx_func.i1,
+        tx_typeArguments.i1,
+        tx_bang.i1,
+        tx_arguments.i1,
+      ].flatten(),
+    );
+  }
+}
+class CatchClauseTree{
+  catchKeyword: ParseTree.ParseTree,
+  branches: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("catchKeyword", this.catchKeyword),
+      ("branches", this.branches),
+    ];
+  }
+
+  fun getKind(): String {
+    "CatchClause";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.catchKeyword;
+    yield this.branches;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_catchKeyword = codemod.transform(this.catchKeyword);
+    tx_branches = codemod.transform(this.branches);
+    (
+      CatchClauseTree{
+        range => this.range,
+        catchKeyword => tx_catchKeyword.i0,
+        branches => tx_branches.i0,
+      },
+      Vector[tx_catchKeyword.i1, tx_branches.i1].flatten(),
+    );
+  }
+}
+class ChildClassTree{
+  annotations: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  constructor: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("annotations", this.annotations),
+      ("name", this.name),
+      ("constructor", this.constructor),
+    ];
+  }
+
+  fun getKind(): String {
+    "ChildClass";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.annotations;
+    yield this.name;
+    yield this.constructor;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_annotations = codemod.transform(this.annotations);
+    tx_name = codemod.transform(this.name);
+    tx_constructor = codemod.transform(this.constructor);
+    (
+      ChildClassTree{
+        range => this.range,
+        annotations => tx_annotations.i0,
+        name => tx_name.i0,
+        constructor => tx_constructor.i0,
+      },
+      Vector[tx_annotations.i1, tx_name.i1, tx_constructor.i1].flatten(),
+    );
+  }
+}
+class ChildrenTree{
+  childrenKeyword: ParseTree.ParseTree,
+  equal: ParseTree.ParseTree,
+  bar: ParseTree.ParseTree,
+  childClasses: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("childrenKeyword", this.childrenKeyword),
+      ("equal", this.equal),
+      ("bar", this.bar),
+      ("childClasses", this.childClasses),
+    ];
+  }
+
+  fun getKind(): String {
+    "Children";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.childrenKeyword;
+    yield this.equal;
+    yield this.bar;
+    yield this.childClasses;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_childrenKeyword = codemod.transform(this.childrenKeyword);
+    tx_equal = codemod.transform(this.equal);
+    tx_bar = codemod.transform(this.bar);
+    tx_childClasses = codemod.transform(this.childClasses);
+    (
+      ChildrenTree{
+        range => this.range,
+        childrenKeyword => tx_childrenKeyword.i0,
+        equal => tx_equal.i0,
+        bar => tx_bar.i0,
+        childClasses => tx_childClasses.i0,
+      },
+      Vector[
+        tx_childrenKeyword.i1,
+        tx_equal.i1,
+        tx_bar.i1,
+        tx_childClasses.i1,
+      ].flatten(),
+    );
+  }
+}
+class ClassConstructorDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  parameters: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("parameters", this.parameters),
+    ];
+  }
+
+  fun getKind(): String {
+    "ClassConstructorDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.parameters;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_parameters = codemod.transform(this.parameters);
+    (
+      ClassConstructorDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        parameters => tx_parameters.i0,
+      },
+      Vector[tx_modifiers.i1, tx_parameters.i1].flatten(),
+    );
+  }
+}
+class ClassDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  classKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  constructor: ParseTree.ParseTree,
+  extendsUses: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("classKeyword", this.classKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("constructor", this.constructor),
+      ("extendsUses", this.extendsUses),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "ClassDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.classKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.constructor;
+    yield this.extendsUses;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_classKeyword = codemod.transform(this.classKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_constructor = codemod.transform(this.constructor);
+    tx_extendsUses = codemod.transform(this.extendsUses);
+    tx_body = codemod.transform(this.body);
+    (
+      ClassDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        classKeyword => tx_classKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        constructor => tx_constructor.i0,
+        extendsUses => tx_extendsUses.i0,
+        body => tx_body.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_classKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_constructor.i1,
+        tx_extendsUses.i1,
+        tx_body.i1,
+      ].flatten(),
+    );
+  }
+}
+class ClassPatternTree{
+  typeName: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("typeName", this.typeName),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "ClassPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.typeName;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_typeName = codemod.transform(this.typeName);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      ClassPatternTree{
+        range => this.range,
+        typeName => tx_typeName.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_typeName.i1, tx_arguments.i1].flatten(),
+    );
+  }
+}
+class ColonColonQualifiedTypeNameTree{
+  left: ParseTree.ParseTree,
+  colonColon: ParseTree.ParseTree,
+  right: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("left", this.left),
+      ("colonColon", this.colonColon),
+      ("right", this.right),
+    ];
+  }
+
+  fun getKind(): String {
+    "ColonColonQualifiedTypeName";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.left;
+    yield this.colonColon;
+    yield this.right;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_left = codemod.transform(this.left);
+    tx_colonColon = codemod.transform(this.colonColon);
+    tx_right = codemod.transform(this.right);
+    (
+      ColonColonQualifiedTypeNameTree{
+        range => this.range,
+        left => tx_left.i0,
+        colonColon => tx_colonColon.i0,
+        right => tx_right.i0,
+      },
+      Vector[tx_left.i1, tx_colonColon.i1, tx_right.i1].flatten(),
+    );
+  }
+}
+class ColonTypeConstraintTree{
+  colon: ParseTree.ParseTree,
+  constraint: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("colon", this.colon),
+      ("constraint", this.constraint),
+    ];
+  }
+
+  fun getKind(): String {
+    "ColonTypeConstraint";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.colon;
+    yield this.constraint;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_colon = codemod.transform(this.colon);
+    tx_constraint = codemod.transform(this.constraint);
+    (
+      ColonTypeConstraintTree{
+        range => this.range,
+        colon => tx_colon.i0,
+        constraint => tx_constraint.i0,
+      },
+      Vector[tx_colon.i1, tx_constraint.i1].flatten(),
+    );
+  }
+}
+class ColonTypeParameterConstraintsTree{
+  colon: ParseTree.ParseTree,
+  constraints: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("colon", this.colon),
+      ("constraints", this.constraints),
+    ];
+  }
+
+  fun getKind(): String {
+    "ColonTypeParameterConstraints";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.colon;
+    yield this.constraints;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_colon = codemod.transform(this.colon);
+    tx_constraints = codemod.transform(this.constraints);
+    (
+      ColonTypeParameterConstraintsTree{
+        range => this.range,
+        colon => tx_colon.i0,
+        constraints => tx_constraints.i0,
+      },
+      Vector[tx_colon.i1, tx_constraints.i1].flatten(),
+    );
+  }
+}
+class ColonTypeSpecifierTree{
+  colon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("colon", this.colon),
+      ("typeSpecifier", this.typeSpecifier),
+    ];
+  }
+
+  fun getKind(): String {
+    "ColonTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.colon;
+    yield this.typeSpecifier;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_colon = codemod.transform(this.colon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    (
+      ColonTypeSpecifierTree{
+        range => this.range,
+        colon => tx_colon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+      },
+      Vector[tx_colon.i1, tx_typeSpecifier.i1].flatten(),
+    );
+  }
+}
+class CompoundBindingExpressionTree{
+  left: ParseTree.ParseTree,
+  operator: ParseTree.ParseTree,
+  right: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("left", this.left),
+      ("operator", this.operator),
+      ("right", this.right),
+    ];
+  }
+
+  fun getKind(): String {
+    "CompoundBindingExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.left;
+    yield this.operator;
+    yield this.right;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_left = codemod.transform(this.left);
+    tx_operator = codemod.transform(this.operator);
+    tx_right = codemod.transform(this.right);
+    (
+      CompoundBindingExpressionTree{
+        range => this.range,
+        left => tx_left.i0,
+        operator => tx_operator.i0,
+        right => tx_right.i0,
+      },
+      Vector[tx_left.i1, tx_operator.i1, tx_right.i1].flatten(),
+    );
+  }
+}
+class ConditionalUseTree{
+  typeName: ParseTree.ParseTree,
+  conditions: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("typeName", this.typeName),
+      ("conditions", this.conditions),
+    ];
+  }
+
+  fun getKind(): String {
+    "ConditionalUse";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.typeName;
+    yield this.conditions;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_typeName = codemod.transform(this.typeName);
+    tx_conditions = codemod.transform(this.conditions);
+    (
+      ConditionalUseTree{
+        range => this.range,
+        typeName => tx_typeName.i0,
+        conditions => tx_conditions.i0,
+      },
+      Vector[tx_typeName.i1, tx_conditions.i1].flatten(),
+    );
+  }
+}
+class ConstantTree{
+  modifiers: ParseTree.ParseTree,
+  constKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  colonTypeSpecifier: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("constKeyword", this.constKeyword),
+      ("name", this.name),
+      ("colonTypeSpecifier", this.colonTypeSpecifier),
+      ("value", this.value),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "Constant";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.constKeyword;
+    yield this.name;
+    yield this.colonTypeSpecifier;
+    yield this.value;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_constKeyword = codemod.transform(this.constKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_colonTypeSpecifier = codemod.transform(this.colonTypeSpecifier);
+    tx_value = codemod.transform(this.value);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      ConstantTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        constKeyword => tx_constKeyword.i0,
+        name => tx_name.i0,
+        colonTypeSpecifier => tx_colonTypeSpecifier.i0,
+        value => tx_value.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_constKeyword.i1,
+        tx_name.i1,
+        tx_colonTypeSpecifier.i1,
+        tx_value.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class ConstPatternTree{value: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("value", this.value)];
+  }
+
+  fun getKind(): String {
+    "ConstPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_value = codemod.transform(this.value);
+    (
+      ConstPatternTree{range => this.range, value => tx_value.i0},
+      Vector[tx_value.i1].flatten(),
+    );
+  }
+}
+class DefaultTypeConstantValueTree{
+  defaultKeyword: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("defaultKeyword", this.defaultKeyword),
+      ("typeSpecifier", this.typeSpecifier),
+    ];
+  }
+
+  fun getKind(): String {
+    "DefaultTypeConstantValue";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.defaultKeyword;
+    yield this.typeSpecifier;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_defaultKeyword = codemod.transform(this.defaultKeyword);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    (
+      DefaultTypeConstantValueTree{
+        range => this.range,
+        defaultKeyword => tx_defaultKeyword.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+      },
+      Vector[tx_defaultKeyword.i1, tx_typeSpecifier.i1].flatten(),
+    );
+  }
+}
+class DoLoopExpressionTree{
+  doKeyword: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+  whileKeyword: ParseTree.ParseTree,
+  condition: ParseTree.ParseTree,
+  elseOpt: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("doKeyword", this.doKeyword),
+      ("body", this.body),
+      ("whileKeyword", this.whileKeyword),
+      ("condition", this.condition),
+      ("elseOpt", this.elseOpt),
+    ];
+  }
+
+  fun getKind(): String {
+    "DoLoopExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.doKeyword;
+    yield this.body;
+    yield this.whileKeyword;
+    yield this.condition;
+    yield this.elseOpt;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_doKeyword = codemod.transform(this.doKeyword);
+    tx_body = codemod.transform(this.body);
+    tx_whileKeyword = codemod.transform(this.whileKeyword);
+    tx_condition = codemod.transform(this.condition);
+    tx_elseOpt = codemod.transform(this.elseOpt);
+    (
+      DoLoopExpressionTree{
+        range => this.range,
+        doKeyword => tx_doKeyword.i0,
+        body => tx_body.i0,
+        whileKeyword => tx_whileKeyword.i0,
+        condition => tx_condition.i0,
+        elseOpt => tx_elseOpt.i0,
+      },
+      Vector[
+        tx_doKeyword.i1,
+        tx_body.i1,
+        tx_whileKeyword.i1,
+        tx_condition.i1,
+        tx_elseOpt.i1,
+      ].flatten(),
+    );
+  }
+}
+class DottedQualifiedTypeNameTree{
+  left: ParseTree.ParseTree,
+  period: ParseTree.ParseTree,
+  right: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("left", this.left),
+      ("period", this.period),
+      ("right", this.right),
+    ];
+  }
+
+  fun getKind(): String {
+    "DottedQualifiedTypeName";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.left;
+    yield this.period;
+    yield this.right;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_left = codemod.transform(this.left);
+    tx_period = codemod.transform(this.period);
+    tx_right = codemod.transform(this.right);
+    (
+      DottedQualifiedTypeNameTree{
+        range => this.range,
+        left => tx_left.i0,
+        period => tx_period.i0,
+        right => tx_right.i0,
+      },
+      Vector[tx_left.i1, tx_period.i1, tx_right.i1].flatten(),
+    );
+  }
+}
+class ElseBranchTree{
+  elseKeyword: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("elseKeyword", this.elseKeyword),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "ElseBranch";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elseKeyword;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elseKeyword = codemod.transform(this.elseKeyword);
+    tx_value = codemod.transform(this.value);
+    (
+      ElseBranchTree{
+        range => this.range,
+        elseKeyword => tx_elseKeyword.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_elseKeyword.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class ExtendsTree{
+  extendsKeyword: ParseTree.ParseTree,
+  baseTypes: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("extendsKeyword", this.extendsKeyword),
+      ("baseTypes", this.baseTypes),
+    ];
+  }
+
+  fun getKind(): String {
+    "Extends";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.extendsKeyword;
+    yield this.baseTypes;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_extendsKeyword = codemod.transform(this.extendsKeyword);
+    tx_baseTypes = codemod.transform(this.baseTypes);
+    (
+      ExtendsTree{
+        range => this.range,
+        extendsKeyword => tx_extendsKeyword.i0,
+        baseTypes => tx_baseTypes.i0,
+      },
+      Vector[tx_extendsKeyword.i1, tx_baseTypes.i1].flatten(),
+    );
+  }
+}
+class ForEachFieldMacroTree{
+  keyword: ParseTree.ParseTree,
+  params: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("keyword", this.keyword),
+      ("params", this.params),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "ForEachFieldMacro";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.keyword;
+    yield this.params;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_keyword = codemod.transform(this.keyword);
+    tx_params = codemod.transform(this.params);
+    tx_body = codemod.transform(this.body);
+    (
+      ForEachFieldMacroTree{
+        range => this.range,
+        keyword => tx_keyword.i0,
+        params => tx_params.i0,
+        body => tx_body.i0,
+      },
+      Vector[tx_keyword.i1, tx_params.i1, tx_body.i1].flatten(),
+    );
+  }
+}
+class ForEachKeyValueTree{
+  key: ParseTree.ParseTree,
+  fatArrow: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("key", this.key),
+      ("fatArrow", this.fatArrow),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "ForEachKeyValue";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.key;
+    yield this.fatArrow;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_key = codemod.transform(this.key);
+    tx_fatArrow = codemod.transform(this.fatArrow);
+    tx_value = codemod.transform(this.value);
+    (
+      ForEachKeyValueTree{
+        range => this.range,
+        key => tx_key.i0,
+        fatArrow => tx_fatArrow.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_key.i1, tx_fatArrow.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class ForEachLoopExpressionTree{
+  forEachKeyword: ParseTree.ParseTree,
+  openParen: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  inKeyword: ParseTree.ParseTree,
+  collection: ParseTree.ParseTree,
+  closeParen: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+  elseOpt: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("forEachKeyword", this.forEachKeyword),
+      ("openParen", this.openParen),
+      ("value", this.value),
+      ("inKeyword", this.inKeyword),
+      ("collection", this.collection),
+      ("closeParen", this.closeParen),
+      ("body", this.body),
+      ("elseOpt", this.elseOpt),
+    ];
+  }
+
+  fun getKind(): String {
+    "ForEachLoopExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.forEachKeyword;
+    yield this.openParen;
+    yield this.value;
+    yield this.inKeyword;
+    yield this.collection;
+    yield this.closeParen;
+    yield this.body;
+    yield this.elseOpt;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_forEachKeyword = codemod.transform(this.forEachKeyword);
+    tx_openParen = codemod.transform(this.openParen);
+    tx_value = codemod.transform(this.value);
+    tx_inKeyword = codemod.transform(this.inKeyword);
+    tx_collection = codemod.transform(this.collection);
+    tx_closeParen = codemod.transform(this.closeParen);
+    tx_body = codemod.transform(this.body);
+    tx_elseOpt = codemod.transform(this.elseOpt);
+    (
+      ForEachLoopExpressionTree{
+        range => this.range,
+        forEachKeyword => tx_forEachKeyword.i0,
+        openParen => tx_openParen.i0,
+        value => tx_value.i0,
+        inKeyword => tx_inKeyword.i0,
+        collection => tx_collection.i0,
+        closeParen => tx_closeParen.i0,
+        body => tx_body.i0,
+        elseOpt => tx_elseOpt.i0,
+      },
+      Vector[
+        tx_forEachKeyword.i1,
+        tx_openParen.i1,
+        tx_value.i1,
+        tx_inKeyword.i1,
+        tx_collection.i1,
+        tx_closeParen.i1,
+        tx_body.i1,
+        tx_elseOpt.i1,
+      ].flatten(),
+    );
+  }
+}
+class FromTree{
+  from: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("from", this.from),
+      ("name", this.name),
+    ];
+  }
+
+  fun getKind(): String {
+    "From";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.from;
+    yield this.name;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_from = codemod.transform(this.from);
+    tx_name = codemod.transform(this.name);
+    (
+      FromTree{range => this.range, from => tx_from.i0, name => tx_name.i0},
+      Vector[tx_from.i1, tx_name.i1].flatten(),
+    );
+  }
+}
+class FrozenTypeTree{token: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "FrozenType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      FrozenTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class FunctionDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  funKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  parameters: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+  returnType: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("funKeyword", this.funKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("parameters", this.parameters),
+      ("colon", this.colon),
+      ("returnType", this.returnType),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "FunctionDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.funKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.parameters;
+    yield this.colon;
+    yield this.returnType;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_funKeyword = codemod.transform(this.funKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_parameters = codemod.transform(this.parameters);
+    tx_colon = codemod.transform(this.colon);
+    tx_returnType = codemod.transform(this.returnType);
+    tx_body = codemod.transform(this.body);
+    (
+      FunctionDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        funKeyword => tx_funKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        parameters => tx_parameters.i0,
+        colon => tx_colon.i0,
+        returnType => tx_returnType.i0,
+        body => tx_body.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_funKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_parameters.i1,
+        tx_colon.i1,
+        tx_returnType.i1,
+        tx_body.i1,
+      ].flatten(),
+    );
+  }
+}
+class GenericTypeNameTree{
+  name: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("name", this.name),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "GenericTypeName";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      GenericTypeNameTree{
+        range => this.range,
+        name => tx_name.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_name.i1, tx_arguments.i1].flatten(),
+    );
+  }
+}
+class GlobalConstantTree{
+  modifiers: ParseTree.ParseTree,
+  constKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+  initializer: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("constKeyword", this.constKeyword),
+      ("name", this.name),
+      ("colon", this.colon),
+      ("typeSpecifier", this.typeSpecifier),
+      ("initializer", this.initializer),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "GlobalConstant";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.constKeyword;
+    yield this.name;
+    yield this.colon;
+    yield this.typeSpecifier;
+    yield this.initializer;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_constKeyword = codemod.transform(this.constKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_colon = codemod.transform(this.colon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    tx_initializer = codemod.transform(this.initializer);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      GlobalConstantTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        constKeyword => tx_constKeyword.i0,
+        name => tx_name.i0,
+        colon => tx_colon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+        initializer => tx_initializer.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_constKeyword.i1,
+        tx_name.i1,
+        tx_colon.i1,
+        tx_typeSpecifier.i1,
+        tx_initializer.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class GlobalExpressionTree{} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[];
+  }
+
+  fun getKind(): String {
+    "GlobalExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    _ = codemod;
+    (GlobalExpressionTree{range => this.range}, Vector[].flatten());
+  }
+}
+class GlobalQualifiedTypeNameTree{
+  period: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("period", this.period),
+      ("name", this.name),
+    ];
+  }
+
+  fun getKind(): String {
+    "GlobalQualifiedTypeName";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.period;
+    yield this.name;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_period = codemod.transform(this.period);
+    tx_name = codemod.transform(this.name);
+    (
+      GlobalQualifiedTypeNameTree{
+        range => this.range,
+        period => tx_period.i0,
+        name => tx_name.i0,
+      },
+      Vector[tx_period.i1, tx_name.i1].flatten(),
+    );
+  }
+}
+class IfClauseTree{
+  ifKeyword: ParseTree.ParseTree,
+  expression: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("ifKeyword", this.ifKeyword),
+      ("expression", this.expression),
+    ];
+  }
+
+  fun getKind(): String {
+    "IfClause";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.ifKeyword;
+    yield this.expression;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_ifKeyword = codemod.transform(this.ifKeyword);
+    tx_expression = codemod.transform(this.expression);
+    (
+      IfClauseTree{
+        range => this.range,
+        ifKeyword => tx_ifKeyword.i0,
+        expression => tx_expression.i0,
+      },
+      Vector[tx_ifKeyword.i1, tx_expression.i1].flatten(),
+    );
+  }
+}
+class IfExpressionTree{
+  ifKeyword: ParseTree.ParseTree,
+  ifControl: ParseTree.ParseTree,
+  trueBranch: ParseTree.ParseTree,
+  falseBranch: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("ifKeyword", this.ifKeyword),
+      ("ifControl", this.ifControl),
+      ("trueBranch", this.trueBranch),
+      ("falseBranch", this.falseBranch),
+    ];
+  }
+
+  fun getKind(): String {
+    "IfExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.ifKeyword;
+    yield this.ifControl;
+    yield this.trueBranch;
+    yield this.falseBranch;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_ifKeyword = codemod.transform(this.ifKeyword);
+    tx_ifControl = codemod.transform(this.ifControl);
+    tx_trueBranch = codemod.transform(this.trueBranch);
+    tx_falseBranch = codemod.transform(this.falseBranch);
+    (
+      IfExpressionTree{
+        range => this.range,
+        ifKeyword => tx_ifKeyword.i0,
+        ifControl => tx_ifControl.i0,
+        trueBranch => tx_trueBranch.i0,
+        falseBranch => tx_falseBranch.i0,
+      },
+      Vector[
+        tx_ifKeyword.i1,
+        tx_ifControl.i1,
+        tx_trueBranch.i1,
+        tx_falseBranch.i1,
+      ].flatten(),
+    );
+  }
+}
+class InfiniteLoopExpressionTree{
+  loopKeyword: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("loopKeyword", this.loopKeyword),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "InfiniteLoopExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.loopKeyword;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_loopKeyword = codemod.transform(this.loopKeyword);
+    tx_body = codemod.transform(this.body);
+    (
+      InfiniteLoopExpressionTree{
+        range => this.range,
+        loopKeyword => tx_loopKeyword.i0,
+        body => tx_body.i0,
+      },
+      Vector[tx_loopKeyword.i1, tx_body.i1].flatten(),
+    );
+  }
+}
+class InitializerTree{
+  equal: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("equal", this.equal),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "Initializer";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.equal;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_equal = codemod.transform(this.equal);
+    tx_value = codemod.transform(this.value);
+    (
+      InitializerTree{
+        range => this.range,
+        equal => tx_equal.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_equal.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class InstTypeTree{token: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "InstType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      InstTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class IsExpressionTree{
+  value: ParseTree.ParseTree,
+  is: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("value", this.value),
+      ("is", this.is),
+      ("pattern", this.pattern),
+    ];
+  }
+
+  fun getKind(): String {
+    "IsExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.value;
+    yield this.is;
+    yield this.pattern;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_value = codemod.transform(this.value);
+    tx_is = codemod.transform(this.is);
+    tx_pattern = codemod.transform(this.pattern);
+    (
+      IsExpressionTree{
+        range => this.range,
+        value => tx_value.i0,
+        is => tx_is.i0,
+        pattern => tx_pattern.i0,
+      },
+      Vector[tx_value.i1, tx_is.i1, tx_pattern.i1].flatten(),
+    );
+  }
+}
+class LambdaExpressionTree{
+  modifierOpt: ParseTree.ParseTree,
+  parameters: ParseTree.ParseTree,
+  arrow: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifierOpt", this.modifierOpt),
+      ("parameters", this.parameters),
+      ("arrow", this.arrow),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "LambdaExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifierOpt;
+    yield this.parameters;
+    yield this.arrow;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifierOpt = codemod.transform(this.modifierOpt);
+    tx_parameters = codemod.transform(this.parameters);
+    tx_arrow = codemod.transform(this.arrow);
+    tx_body = codemod.transform(this.body);
+    (
+      LambdaExpressionTree{
+        range => this.range,
+        modifierOpt => tx_modifierOpt.i0,
+        parameters => tx_parameters.i0,
+        arrow => tx_arrow.i0,
+        body => tx_body.i0,
+      },
+      Vector[
+        tx_modifierOpt.i1,
+        tx_parameters.i1,
+        tx_arrow.i1,
+        tx_body.i1,
+      ].flatten(),
+    );
+  }
+}
+class LambdaParameterTree{
+  name: ParseTree.ParseTree,
+  colonTypeSpecifier: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("name", this.name),
+      ("colonTypeSpecifier", this.colonTypeSpecifier),
+    ];
+  }
+
+  fun getKind(): String {
+    "LambdaParameter";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield this.colonTypeSpecifier;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    tx_colonTypeSpecifier = codemod.transform(this.colonTypeSpecifier);
+    (
+      LambdaParameterTree{
+        range => this.range,
+        name => tx_name.i0,
+        colonTypeSpecifier => tx_colonTypeSpecifier.i0,
+      },
+      Vector[tx_name.i1, tx_colonTypeSpecifier.i1].flatten(),
+    );
+  }
+}
+class LambdaParameterTypeTree{
+  nameColon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("nameColon", this.nameColon),
+      ("typeSpecifier", this.typeSpecifier),
+    ];
+  }
+
+  fun getKind(): String {
+    "LambdaParameterType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.nameColon;
+    yield this.typeSpecifier;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_nameColon = codemod.transform(this.nameColon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    (
+      LambdaParameterTypeTree{
+        range => this.range,
+        nameColon => tx_nameColon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+      },
+      Vector[tx_nameColon.i1, tx_typeSpecifier.i1].flatten(),
+    );
+  }
+}
+class LambdaTypeSpecifierTree{
+  modifierOpt: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+  arrow: ParseTree.ParseTree,
+  returnType: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifierOpt", this.modifierOpt),
+      ("arguments", this.arguments),
+      ("arrow", this.arrow),
+      ("returnType", this.returnType),
+    ];
+  }
+
+  fun getKind(): String {
+    "LambdaTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifierOpt;
+    yield this.arguments;
+    yield this.arrow;
+    yield this.returnType;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifierOpt = codemod.transform(this.modifierOpt);
+    tx_arguments = codemod.transform(this.arguments);
+    tx_arrow = codemod.transform(this.arrow);
+    tx_returnType = codemod.transform(this.returnType);
+    (
+      LambdaTypeSpecifierTree{
+        range => this.range,
+        modifierOpt => tx_modifierOpt.i0,
+        arguments => tx_arguments.i0,
+        arrow => tx_arrow.i0,
+        returnType => tx_returnType.i0,
+      },
+      Vector[
+        tx_modifierOpt.i1,
+        tx_arguments.i1,
+        tx_arrow.i1,
+        tx_returnType.i1,
+      ].flatten(),
+    );
+  }
+}
+class MapElementTree{
+  key: ParseTree.ParseTree,
+  fatArrow: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("key", this.key),
+      ("fatArrow", this.fatArrow),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "MapElement";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.key;
+    yield this.fatArrow;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_key = codemod.transform(this.key);
+    tx_fatArrow = codemod.transform(this.fatArrow);
+    tx_value = codemod.transform(this.value);
+    (
+      MapElementTree{
+        range => this.range,
+        key => tx_key.i0,
+        fatArrow => tx_fatArrow.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_key.i1, tx_fatArrow.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class MatchExpressionTree{
+  value: ParseTree.ParseTree,
+  match: ParseTree.ParseTree,
+  branches: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("value", this.value),
+      ("match", this.match),
+      ("branches", this.branches),
+    ];
+  }
+
+  fun getKind(): String {
+    "MatchExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.value;
+    yield this.match;
+    yield this.branches;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_value = codemod.transform(this.value);
+    tx_match = codemod.transform(this.match);
+    tx_branches = codemod.transform(this.branches);
+    (
+      MatchExpressionTree{
+        range => this.range,
+        value => tx_value.i0,
+        match => tx_match.i0,
+        branches => tx_branches.i0,
+      },
+      Vector[tx_value.i1, tx_match.i1, tx_branches.i1].flatten(),
+    );
+  }
+}
+class MemberSelectionExpressionTree{
+  object: ParseTree.ParseTree,
+  operator: ParseTree.ParseTree,
+  member: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("object", this.object),
+      ("operator", this.operator),
+      ("member", this.member),
+    ];
+  }
+
+  fun getKind(): String {
+    "MemberSelectionExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.object;
+    yield this.operator;
+    yield this.member;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_object = codemod.transform(this.object);
+    tx_operator = codemod.transform(this.operator);
+    tx_member = codemod.transform(this.member);
+    (
+      MemberSelectionExpressionTree{
+        range => this.range,
+        object => tx_object.i0,
+        operator => tx_operator.i0,
+        member => tx_member.i0,
+      },
+      Vector[tx_object.i1, tx_operator.i1, tx_member.i1].flatten(),
+    );
+  }
+}
+class MethodDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  funKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  whenParameters: ParseTree.ParseTree,
+  parameters: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+  returnType: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("funKeyword", this.funKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("whenParameters", this.whenParameters),
+      ("parameters", this.parameters),
+      ("colon", this.colon),
+      ("returnType", this.returnType),
+      ("body", this.body),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "MethodDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.funKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.whenParameters;
+    yield this.parameters;
+    yield this.colon;
+    yield this.returnType;
+    yield this.body;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_funKeyword = codemod.transform(this.funKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_whenParameters = codemod.transform(this.whenParameters);
+    tx_parameters = codemod.transform(this.parameters);
+    tx_colon = codemod.transform(this.colon);
+    tx_returnType = codemod.transform(this.returnType);
+    tx_body = codemod.transform(this.body);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      MethodDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        funKeyword => tx_funKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        whenParameters => tx_whenParameters.i0,
+        parameters => tx_parameters.i0,
+        colon => tx_colon.i0,
+        returnType => tx_returnType.i0,
+        body => tx_body.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_funKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_whenParameters.i1,
+        tx_parameters.i1,
+        tx_colon.i1,
+        tx_returnType.i1,
+        tx_body.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class ModuleTree{
+  moduleKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+  declarations: ParseTree.ParseTree,
+  end: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("moduleKeyword", this.moduleKeyword),
+      ("name", this.name),
+      ("semiColon", this.semiColon),
+      ("declarations", this.declarations),
+      ("end", this.end),
+    ];
+  }
+
+  fun getKind(): String {
+    "Module";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.moduleKeyword;
+    yield this.name;
+    yield this.semiColon;
+    yield this.declarations;
+    yield this.end;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_moduleKeyword = codemod.transform(this.moduleKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_semiColon = codemod.transform(this.semiColon);
+    tx_declarations = codemod.transform(this.declarations);
+    tx_end = codemod.transform(this.end);
+    (
+      ModuleTree{
+        range => this.range,
+        moduleKeyword => tx_moduleKeyword.i0,
+        name => tx_name.i0,
+        semiColon => tx_semiColon.i0,
+        declarations => tx_declarations.i0,
+        end => tx_end.i0,
+      },
+      Vector[
+        tx_moduleKeyword.i1,
+        tx_name.i1,
+        tx_semiColon.i1,
+        tx_declarations.i1,
+        tx_end.i1,
+      ].flatten(),
+    );
+  }
+}
+class ModuleAliasTree{
+  moduleKeyword: ParseTree.ParseTree,
+  aliasKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  equals: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("moduleKeyword", this.moduleKeyword),
+      ("aliasKeyword", this.aliasKeyword),
+      ("name", this.name),
+      ("equals", this.equals),
+      ("value", this.value),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "ModuleAlias";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.moduleKeyword;
+    yield this.aliasKeyword;
+    yield this.name;
+    yield this.equals;
+    yield this.value;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_moduleKeyword = codemod.transform(this.moduleKeyword);
+    tx_aliasKeyword = codemod.transform(this.aliasKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_equals = codemod.transform(this.equals);
+    tx_value = codemod.transform(this.value);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      ModuleAliasTree{
+        range => this.range,
+        moduleKeyword => tx_moduleKeyword.i0,
+        aliasKeyword => tx_aliasKeyword.i0,
+        name => tx_name.i0,
+        equals => tx_equals.i0,
+        value => tx_value.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_moduleKeyword.i1,
+        tx_aliasKeyword.i1,
+        tx_name.i1,
+        tx_equals.i1,
+        tx_value.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class ModuleEndTree{
+  moduleKeyword: ParseTree.ParseTree,
+  end: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("moduleKeyword", this.moduleKeyword),
+      ("end", this.end),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "ModuleEnd";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.moduleKeyword;
+    yield this.end;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_moduleKeyword = codemod.transform(this.moduleKeyword);
+    tx_end = codemod.transform(this.end);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      ModuleEndTree{
+        range => this.range,
+        moduleKeyword => tx_moduleKeyword.i0,
+        end => tx_end.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[tx_moduleKeyword.i1, tx_end.i1, tx_semiColon.i1].flatten(),
+    );
+  }
+}
+class MutableTypeSpecifierTree{
+  mutableKeyword: ParseTree.ParseTree,
+  elementType: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("mutableKeyword", this.mutableKeyword),
+      ("elementType", this.elementType),
+    ];
+  }
+
+  fun getKind(): String {
+    "MutableTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.mutableKeyword;
+    yield this.elementType;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_mutableKeyword = codemod.transform(this.mutableKeyword);
+    tx_elementType = codemod.transform(this.elementType);
+    (
+      MutableTypeSpecifierTree{
+        range => this.range,
+        mutableKeyword => tx_mutableKeyword.i0,
+        elementType => tx_elementType.i0,
+      },
+      Vector[tx_mutableKeyword.i1, tx_elementType.i1].flatten(),
+    );
+  }
+}
+class NamedArgumentTree{
+  name: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("name", this.name),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "NamedArgument";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    tx_value = codemod.transform(this.value);
+    (
+      NamedArgumentTree{
+        range => this.range,
+        name => tx_name.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_name.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class NamedArgumentPatternTree{
+  name: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("name", this.name),
+      ("pattern", this.pattern),
+    ];
+  }
+
+  fun getKind(): String {
+    "NamedArgumentPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield this.pattern;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    tx_pattern = codemod.transform(this.pattern);
+    (
+      NamedArgumentPatternTree{
+        range => this.range,
+        name => tx_name.i0,
+        pattern => tx_pattern.i0,
+      },
+      Vector[tx_name.i1, tx_pattern.i1].flatten(),
+    );
+  }
+}
+class NamedArgumentsTree{
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("arguments", this.arguments)];
+  }
+
+  fun getKind(): String {
+    "NamedArguments";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      NamedArgumentsTree{range => this.range, arguments => tx_arguments.i0},
+      Vector[tx_arguments.i1].flatten(),
+    );
+  }
+}
+class NamedArgumentValueTree{
+  fatArrow: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("fatArrow", this.fatArrow),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "NamedArgumentValue";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.fatArrow;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_fatArrow = codemod.transform(this.fatArrow);
+    tx_value = codemod.transform(this.value);
+    (
+      NamedArgumentValueTree{
+        range => this.range,
+        fatArrow => tx_fatArrow.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_fatArrow.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class NamedArgumentValuePatternTree{
+  fatArrow: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("fatArrow", this.fatArrow),
+      ("pattern", this.pattern),
+    ];
+  }
+
+  fun getKind(): String {
+    "NamedArgumentValuePattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.fatArrow;
+    yield this.pattern;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_fatArrow = codemod.transform(this.fatArrow);
+    tx_pattern = codemod.transform(this.pattern);
+    (
+      NamedArgumentValuePatternTree{
+        range => this.range,
+        fatArrow => tx_fatArrow.i0,
+        pattern => tx_pattern.i0,
+      },
+      Vector[tx_fatArrow.i1, tx_pattern.i1].flatten(),
+    );
+  }
+}
+class NamedParameterTree{
+  modifiers: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+  defaultValue: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("name", this.name),
+      ("colon", this.colon),
+      ("typeSpecifier", this.typeSpecifier),
+      ("defaultValue", this.defaultValue),
+    ];
+  }
+
+  fun getKind(): String {
+    "NamedParameter";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.name;
+    yield this.colon;
+    yield this.typeSpecifier;
+    yield this.defaultValue;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_name = codemod.transform(this.name);
+    tx_colon = codemod.transform(this.colon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    tx_defaultValue = codemod.transform(this.defaultValue);
+    (
+      NamedParameterTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        name => tx_name.i0,
+        colon => tx_colon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+        defaultValue => tx_defaultValue.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_name.i1,
+        tx_colon.i1,
+        tx_typeSpecifier.i1,
+        tx_defaultValue.i1,
+      ].flatten(),
+    );
+  }
+}
+class NamedParametersTree{
+  parameters: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("parameters", this.parameters)];
+  }
+
+  fun getKind(): String {
+    "NamedParameters";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.parameters;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_parameters = codemod.transform(this.parameters);
+    (
+      NamedParametersTree{range => this.range, parameters => tx_parameters.i0},
+      Vector[tx_parameters.i1].flatten(),
+    );
+  }
+}
+class NamedPatternArgumentsTree{
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("arguments", this.arguments)];
+  }
+
+  fun getKind(): String {
+    "NamedPatternArguments";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      NamedPatternArgumentsTree{
+        range => this.range,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_arguments.i1].flatten(),
+    );
+  }
+}
+class NamePatternTree{name: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("name", this.name)];
+  }
+
+  fun getKind(): String {
+    "NamePattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    (
+      NamePatternTree{range => this.range, name => tx_name.i0},
+      Vector[tx_name.i1].flatten(),
+    );
+  }
+}
+class NegativeLiteralPatternTree{
+  minus: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("minus", this.minus),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "NegativeLiteralPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.minus;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_minus = codemod.transform(this.minus);
+    tx_value = codemod.transform(this.value);
+    (
+      NegativeLiteralPatternTree{
+        range => this.range,
+        minus => tx_minus.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_minus.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class NonNullableTypeTree{
+  token: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "NonNullableType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      NonNullableTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class OptionTypeSpecifierTree{
+  question: ParseTree.ParseTree,
+  elementType: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("question", this.question),
+      ("elementType", this.elementType),
+    ];
+  }
+
+  fun getKind(): String {
+    "OptionTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.question;
+    yield this.elementType;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_question = codemod.transform(this.question);
+    tx_elementType = codemod.transform(this.elementType);
+    (
+      OptionTypeSpecifierTree{
+        range => this.range,
+        question => tx_question.i0,
+        elementType => tx_elementType.i0,
+      },
+      Vector[tx_question.i1, tx_elementType.i1].flatten(),
+    );
+  }
+}
+class ParameterNameColonTree{
+  name: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("name", this.name),
+      ("colon", this.colon),
+    ];
+  }
+
+  fun getKind(): String {
+    "ParameterNameColon";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield this.colon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    tx_colon = codemod.transform(this.colon);
+    (
+      ParameterNameColonTree{
+        range => this.range,
+        name => tx_name.i0,
+        colon => tx_colon.i0,
+      },
+      Vector[tx_name.i1, tx_colon.i1].flatten(),
+    );
+  }
+}
+class ParenExpressionTree{
+  openParen: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  closeParen: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openParen", this.openParen),
+      ("value", this.value),
+      ("closeParen", this.closeParen),
+    ];
+  }
+
+  fun getKind(): String {
+    "ParenExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openParen;
+    yield this.value;
+    yield this.closeParen;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openParen = codemod.transform(this.openParen);
+    tx_value = codemod.transform(this.value);
+    tx_closeParen = codemod.transform(this.closeParen);
+    (
+      ParenExpressionTree{
+        range => this.range,
+        openParen => tx_openParen.i0,
+        value => tx_value.i0,
+        closeParen => tx_closeParen.i0,
+      },
+      Vector[tx_openParen.i1, tx_value.i1, tx_closeParen.i1].flatten(),
+    );
+  }
+}
+class ParenPatternTree{
+  openParen: ParseTree.ParseTree,
+  pattern: ParseTree.ParseTree,
+  closeParen: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openParen", this.openParen),
+      ("pattern", this.pattern),
+      ("closeParen", this.closeParen),
+    ];
+  }
+
+  fun getKind(): String {
+    "ParenPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openParen;
+    yield this.pattern;
+    yield this.closeParen;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openParen = codemod.transform(this.openParen);
+    tx_pattern = codemod.transform(this.pattern);
+    tx_closeParen = codemod.transform(this.closeParen);
+    (
+      ParenPatternTree{
+        range => this.range,
+        openParen => tx_openParen.i0,
+        pattern => tx_pattern.i0,
+        closeParen => tx_closeParen.i0,
+      },
+      Vector[tx_openParen.i1, tx_pattern.i1, tx_closeParen.i1].flatten(),
+    );
+  }
+}
+class ParenTypeSpecifierTree{
+  openParen: ParseTree.ParseTree,
+  element: ParseTree.ParseTree,
+  closeParen: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openParen", this.openParen),
+      ("element", this.element),
+      ("closeParen", this.closeParen),
+    ];
+  }
+
+  fun getKind(): String {
+    "ParenTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openParen;
+    yield this.element;
+    yield this.closeParen;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openParen = codemod.transform(this.openParen);
+    tx_element = codemod.transform(this.element);
+    tx_closeParen = codemod.transform(this.closeParen);
+    (
+      ParenTypeSpecifierTree{
+        range => this.range,
+        openParen => tx_openParen.i0,
+        element => tx_element.i0,
+        closeParen => tx_closeParen.i0,
+      },
+      Vector[tx_openParen.i1, tx_element.i1, tx_closeParen.i1].flatten(),
+    );
+  }
+}
+class PatternBranchTree{
+  patterns: ParseTree.ParseTree,
+  ifClause: ParseTree.ParseTree,
+  arrow: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("patterns", this.patterns),
+      ("ifClause", this.ifClause),
+      ("arrow", this.arrow),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "PatternBranch";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.patterns;
+    yield this.ifClause;
+    yield this.arrow;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_patterns = codemod.transform(this.patterns);
+    tx_ifClause = codemod.transform(this.ifClause);
+    tx_arrow = codemod.transform(this.arrow);
+    tx_value = codemod.transform(this.value);
+    (
+      PatternBranchTree{
+        range => this.range,
+        patterns => tx_patterns.i0,
+        ifClause => tx_ifClause.i0,
+        arrow => tx_arrow.i0,
+        value => tx_value.i0,
+      },
+      Vector[
+        tx_patterns.i1,
+        tx_ifClause.i1,
+        tx_arrow.i1,
+        tx_value.i1,
+      ].flatten(),
+    );
+  }
+}
+class PatternBranchBlockTree{
+  openCurly: ParseTree.ParseTree,
+  branches: ParseTree.ParseTree,
+  closeCurly: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openCurly", this.openCurly),
+      ("branches", this.branches),
+      ("closeCurly", this.closeCurly),
+    ];
+  }
+
+  fun getKind(): String {
+    "PatternBranchBlock";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openCurly;
+    yield this.branches;
+    yield this.closeCurly;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openCurly = codemod.transform(this.openCurly);
+    tx_branches = codemod.transform(this.branches);
+    tx_closeCurly = codemod.transform(this.closeCurly);
+    (
+      PatternBranchBlockTree{
+        range => this.range,
+        openCurly => tx_openCurly.i0,
+        branches => tx_branches.i0,
+        closeCurly => tx_closeCurly.i0,
+      },
+      Vector[tx_openCurly.i1, tx_branches.i1, tx_closeCurly.i1].flatten(),
+    );
+  }
+}
+class PatternBranchListTree{
+  bar: ParseTree.ParseTree,
+  branches: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("bar", this.bar),
+      ("branches", this.branches),
+    ];
+  }
+
+  fun getKind(): String {
+    "PatternBranchList";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.bar;
+    yield this.branches;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_bar = codemod.transform(this.bar);
+    tx_branches = codemod.transform(this.branches);
+    (
+      PatternBranchListTree{
+        range => this.range,
+        bar => tx_bar.i0,
+        branches => tx_branches.i0,
+      },
+      Vector[tx_bar.i1, tx_branches.i1].flatten(),
+    );
+  }
+}
+class PositionalArgumentsTree{
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("arguments", this.arguments)];
+  }
+
+  fun getKind(): String {
+    "PositionalArguments";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      PositionalArgumentsTree{
+        range => this.range,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_arguments.i1].flatten(),
+    );
+  }
+}
+class PositionalParameterTree{
+  modifiers: ParseTree.ParseTree,
+  nameColon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+  defaultValue: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("nameColon", this.nameColon),
+      ("typeSpecifier", this.typeSpecifier),
+      ("defaultValue", this.defaultValue),
+    ];
+  }
+
+  fun getKind(): String {
+    "PositionalParameter";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.nameColon;
+    yield this.typeSpecifier;
+    yield this.defaultValue;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_nameColon = codemod.transform(this.nameColon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    tx_defaultValue = codemod.transform(this.defaultValue);
+    (
+      PositionalParameterTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        nameColon => tx_nameColon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+        defaultValue => tx_defaultValue.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_nameColon.i1,
+        tx_typeSpecifier.i1,
+        tx_defaultValue.i1,
+      ].flatten(),
+    );
+  }
+}
+class PositionalParametersTree{
+  parameters: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("parameters", this.parameters)];
+  }
+
+  fun getKind(): String {
+    "PositionalParameters";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.parameters;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_parameters = codemod.transform(this.parameters);
+    (
+      PositionalParametersTree{
+        range => this.range,
+        parameters => tx_parameters.i0,
+      },
+      Vector[tx_parameters.i1].flatten(),
+    );
+  }
+}
+class PositionalPatternArgumentsTree{
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("arguments", this.arguments)];
+  }
+
+  fun getKind(): String {
+    "PositionalPatternArguments";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      PositionalPatternArgumentsTree{
+        range => this.range,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_arguments.i1].flatten(),
+    );
+  }
+}
+class ReadonlyTypeSpecifierTree{
+  readonlyKeyword: ParseTree.ParseTree,
+  elementType: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("readonlyKeyword", this.readonlyKeyword),
+      ("elementType", this.elementType),
+    ];
+  }
+
+  fun getKind(): String {
+    "ReadonlyTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.readonlyKeyword;
+    yield this.elementType;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_readonlyKeyword = codemod.transform(this.readonlyKeyword);
+    tx_elementType = codemod.transform(this.elementType);
+    (
+      ReadonlyTypeSpecifierTree{
+        range => this.range,
+        readonlyKeyword => tx_readonlyKeyword.i0,
+        elementType => tx_elementType.i0,
+      },
+      Vector[tx_readonlyKeyword.i1, tx_elementType.i1].flatten(),
+    );
+  }
+}
+class ReturnExpressionTree{
+  returnKeyword: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("returnKeyword", this.returnKeyword),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "ReturnExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.returnKeyword;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_returnKeyword = codemod.transform(this.returnKeyword);
+    tx_value = codemod.transform(this.value);
+    (
+      ReturnExpressionTree{
+        range => this.range,
+        returnKeyword => tx_returnKeyword.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_returnKeyword.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class SimpleBindingExpressionTree{
+  left: ParseTree.ParseTree,
+  colonTypeSpecifier: ParseTree.ParseTree,
+  equal: ParseTree.ParseTree,
+  right: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("left", this.left),
+      ("colonTypeSpecifier", this.colonTypeSpecifier),
+      ("equal", this.equal),
+      ("right", this.right),
+    ];
+  }
+
+  fun getKind(): String {
+    "SimpleBindingExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.left;
+    yield this.colonTypeSpecifier;
+    yield this.equal;
+    yield this.right;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_left = codemod.transform(this.left);
+    tx_colonTypeSpecifier = codemod.transform(this.colonTypeSpecifier);
+    tx_equal = codemod.transform(this.equal);
+    tx_right = codemod.transform(this.right);
+    (
+      SimpleBindingExpressionTree{
+        range => this.range,
+        left => tx_left.i0,
+        colonTypeSpecifier => tx_colonTypeSpecifier.i0,
+        equal => tx_equal.i0,
+        right => tx_right.i0,
+      },
+      Vector[
+        tx_left.i1,
+        tx_colonTypeSpecifier.i1,
+        tx_equal.i1,
+        tx_right.i1,
+      ].flatten(),
+    );
+  }
+}
+class SourceUnitTree{
+  begin: ParseTree.ParseTree,
+  moduleAliases: ParseTree.ParseTree,
+  declarations: ParseTree.ParseTree,
+  end: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("begin", this.begin),
+      ("moduleAliases", this.moduleAliases),
+      ("declarations", this.declarations),
+      ("end", this.end),
+    ];
+  }
+
+  fun getKind(): String {
+    "SourceUnit";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.begin;
+    yield this.moduleAliases;
+    yield this.declarations;
+    yield this.end;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_begin = codemod.transform(this.begin);
+    tx_moduleAliases = codemod.transform(this.moduleAliases);
+    tx_declarations = codemod.transform(this.declarations);
+    tx_end = codemod.transform(this.end);
+    (
+      SourceUnitTree{
+        range => this.range,
+        begin => tx_begin.i0,
+        moduleAliases => tx_moduleAliases.i0,
+        declarations => tx_declarations.i0,
+        end => tx_end.i0,
+      },
+      Vector[
+        tx_begin.i1,
+        tx_moduleAliases.i1,
+        tx_declarations.i1,
+        tx_end.i1,
+      ].flatten(),
+    );
+  }
+}
+class TemplateLiteralExpressionTree{
+  elements: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("elements", this.elements)];
+  }
+
+  fun getKind(): String {
+    "TemplateLiteralExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elements;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elements = codemod.transform(this.elements);
+    (
+      TemplateLiteralExpressionTree{
+        range => this.range,
+        elements => tx_elements.i0,
+      },
+      Vector[tx_elements.i1].flatten(),
+    );
+  }
+}
+class TemplateLiteralExpressionElementTree{
+  dollar: ParseTree.ParseTree,
+  expression: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("dollar", this.dollar),
+      ("expression", this.expression),
+    ];
+  }
+
+  fun getKind(): String {
+    "TemplateLiteralExpressionElement";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.dollar;
+    yield this.expression;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_dollar = codemod.transform(this.dollar);
+    tx_expression = codemod.transform(this.expression);
+    (
+      TemplateLiteralExpressionElementTree{
+        range => this.range,
+        dollar => tx_dollar.i0,
+        expression => tx_expression.i0,
+      },
+      Vector[tx_dollar.i1, tx_expression.i1].flatten(),
+    );
+  }
+}
+class ThisTypeTree{token: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "ThisType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      ThisTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class ThrowExpressionTree{
+  throwKeyword: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("throwKeyword", this.throwKeyword),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "ThrowExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.throwKeyword;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_throwKeyword = codemod.transform(this.throwKeyword);
+    tx_value = codemod.transform(this.value);
+    (
+      ThrowExpressionTree{
+        range => this.range,
+        throwKeyword => tx_throwKeyword.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_throwKeyword.i1, tx_value.i1].flatten(),
+    );
+  }
+}
+class TraitDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  traitKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  constructor: ParseTree.ParseTree,
+  extendsUses: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("traitKeyword", this.traitKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("constructor", this.constructor),
+      ("extendsUses", this.extendsUses),
+      ("body", this.body),
+    ];
+  }
+
+  fun getKind(): String {
+    "TraitDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.traitKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.constructor;
+    yield this.extendsUses;
+    yield this.body;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_traitKeyword = codemod.transform(this.traitKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_constructor = codemod.transform(this.constructor);
+    tx_extendsUses = codemod.transform(this.extendsUses);
+    tx_body = codemod.transform(this.body);
+    (
+      TraitDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        traitKeyword => tx_traitKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        constructor => tx_constructor.i0,
+        extendsUses => tx_extendsUses.i0,
+        body => tx_body.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_traitKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_constructor.i1,
+        tx_extendsUses.i1,
+        tx_body.i1,
+      ].flatten(),
+    );
+  }
+}
+class TryExpressionTree{
+  tryKeyword: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+  catchClause: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("tryKeyword", this.tryKeyword),
+      ("body", this.body),
+      ("catchClause", this.catchClause),
+    ];
+  }
+
+  fun getKind(): String {
+    "TryExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.tryKeyword;
+    yield this.body;
+    yield this.catchClause;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_tryKeyword = codemod.transform(this.tryKeyword);
+    tx_body = codemod.transform(this.body);
+    tx_catchClause = codemod.transform(this.catchClause);
+    (
+      TryExpressionTree{
+        range => this.range,
+        tryKeyword => tx_tryKeyword.i0,
+        body => tx_body.i0,
+        catchClause => tx_catchClause.i0,
+      },
+      Vector[tx_tryKeyword.i1, tx_body.i1, tx_catchClause.i1].flatten(),
+    );
+  }
+}
+class TupleExpressionTree{
+  values: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("values", this.values)];
+  }
+
+  fun getKind(): String {
+    "TupleExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.values;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_values = codemod.transform(this.values);
+    (
+      TupleExpressionTree{range => this.range, values => tx_values.i0},
+      Vector[tx_values.i1].flatten(),
+    );
+  }
+}
+class TuplePatternTree{
+  elements: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("elements", this.elements)];
+  }
+
+  fun getKind(): String {
+    "TuplePattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elements;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elements = codemod.transform(this.elements);
+    (
+      TuplePatternTree{range => this.range, elements => tx_elements.i0},
+      Vector[tx_elements.i1].flatten(),
+    );
+  }
+}
+class TupleTypeSpecifierTree{
+  elements: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("elements", this.elements)];
+  }
+
+  fun getKind(): String {
+    "TupleTypeSpecifier";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elements;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elements = codemod.transform(this.elements);
+    (
+      TupleTypeSpecifierTree{range => this.range, elements => tx_elements.i0},
+      Vector[tx_elements.i1].flatten(),
+    );
+  }
+}
+class TypeAliasDeclarationTree{
+  modifiers: ParseTree.ParseTree,
+  typeKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  initializer: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("typeKeyword", this.typeKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("initializer", this.initializer),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "TypeAliasDeclaration";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.typeKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.initializer;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_typeKeyword = codemod.transform(this.typeKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_initializer = codemod.transform(this.initializer);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      TypeAliasDeclarationTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        typeKeyword => tx_typeKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        initializer => tx_initializer.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_typeKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_initializer.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class TypeAnnotatedExpressionTree{
+  openParen: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  colon: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+  closeParen: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("openParen", this.openParen),
+      ("value", this.value),
+      ("colon", this.colon),
+      ("typeSpecifier", this.typeSpecifier),
+      ("closeParen", this.closeParen),
+    ];
+  }
+
+  fun getKind(): String {
+    "TypeAnnotatedExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.openParen;
+    yield this.value;
+    yield this.colon;
+    yield this.typeSpecifier;
+    yield this.closeParen;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_openParen = codemod.transform(this.openParen);
+    tx_value = codemod.transform(this.value);
+    tx_colon = codemod.transform(this.colon);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    tx_closeParen = codemod.transform(this.closeParen);
+    (
+      TypeAnnotatedExpressionTree{
+        range => this.range,
+        openParen => tx_openParen.i0,
+        value => tx_value.i0,
+        colon => tx_colon.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+        closeParen => tx_closeParen.i0,
+      },
+      Vector[
+        tx_openParen.i1,
+        tx_value.i1,
+        tx_colon.i1,
+        tx_typeSpecifier.i1,
+        tx_closeParen.i1,
+      ].flatten(),
+    );
+  }
+}
+class TypeConstantTree{
+  modifiers: ParseTree.ParseTree,
+  typeKeyword: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  typeParameters: ParseTree.ParseTree,
+  colonConstraint: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+  semiColon: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("modifiers", this.modifiers),
+      ("typeKeyword", this.typeKeyword),
+      ("name", this.name),
+      ("typeParameters", this.typeParameters),
+      ("colonConstraint", this.colonConstraint),
+      ("value", this.value),
+      ("semiColon", this.semiColon),
+    ];
+  }
+
+  fun getKind(): String {
+    "TypeConstant";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.modifiers;
+    yield this.typeKeyword;
+    yield this.name;
+    yield this.typeParameters;
+    yield this.colonConstraint;
+    yield this.value;
+    yield this.semiColon;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_modifiers = codemod.transform(this.modifiers);
+    tx_typeKeyword = codemod.transform(this.typeKeyword);
+    tx_name = codemod.transform(this.name);
+    tx_typeParameters = codemod.transform(this.typeParameters);
+    tx_colonConstraint = codemod.transform(this.colonConstraint);
+    tx_value = codemod.transform(this.value);
+    tx_semiColon = codemod.transform(this.semiColon);
+    (
+      TypeConstantTree{
+        range => this.range,
+        modifiers => tx_modifiers.i0,
+        typeKeyword => tx_typeKeyword.i0,
+        name => tx_name.i0,
+        typeParameters => tx_typeParameters.i0,
+        colonConstraint => tx_colonConstraint.i0,
+        value => tx_value.i0,
+        semiColon => tx_semiColon.i0,
+      },
+      Vector[
+        tx_modifiers.i1,
+        tx_typeKeyword.i1,
+        tx_name.i1,
+        tx_typeParameters.i1,
+        tx_colonConstraint.i1,
+        tx_value.i1,
+        tx_semiColon.i1,
+      ].flatten(),
+    );
+  }
+}
+class TypeInitializerTree{
+  equal: ParseTree.ParseTree,
+  typeSpecifier: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("equal", this.equal),
+      ("typeSpecifier", this.typeSpecifier),
+    ];
+  }
+
+  fun getKind(): String {
+    "TypeInitializer";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.equal;
+    yield this.typeSpecifier;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_equal = codemod.transform(this.equal);
+    tx_typeSpecifier = codemod.transform(this.typeSpecifier);
+    (
+      TypeInitializerTree{
+        range => this.range,
+        equal => tx_equal.i0,
+        typeSpecifier => tx_typeSpecifier.i0,
+      },
+      Vector[tx_equal.i1, tx_typeSpecifier.i1].flatten(),
+    );
+  }
+}
+class TypeNameTree{name: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("name", this.name)];
+  }
+
+  fun getKind(): String {
+    "TypeName";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.name;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_name = codemod.transform(this.name);
+    (
+      TypeNameTree{range => this.range, name => tx_name.i0},
+      Vector[tx_name.i1].flatten(),
+    );
+  }
+}
+class TypeParameterTree{
+  variance: ParseTree.ParseTree,
+  name: ParseTree.ParseTree,
+  constraints: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("variance", this.variance),
+      ("name", this.name),
+      ("constraints", this.constraints),
+    ];
+  }
+
+  fun getKind(): String {
+    "TypeParameter";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.variance;
+    yield this.name;
+    yield this.constraints;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_variance = codemod.transform(this.variance);
+    tx_name = codemod.transform(this.name);
+    tx_constraints = codemod.transform(this.constraints);
+    (
+      TypeParameterTree{
+        range => this.range,
+        variance => tx_variance.i0,
+        name => tx_name.i0,
+        constraints => tx_constraints.i0,
+      },
+      Vector[tx_variance.i1, tx_name.i1, tx_constraints.i1].flatten(),
+    );
+  }
+}
+class TypeParametersTree{
+  elements: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("elements", this.elements)];
+  }
+
+  fun getKind(): String {
+    "TypeParameters";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elements;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elements = codemod.transform(this.elements);
+    (
+      TypeParametersTree{range => this.range, elements => tx_elements.i0},
+      Vector[tx_elements.i1].flatten(),
+    );
+  }
+}
+class UnaryExpressionTree{
+  operator: ParseTree.ParseTree,
+  operand: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("operator", this.operator),
+      ("operand", this.operand),
+    ];
+  }
+
+  fun getKind(): String {
+    "UnaryExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.operator;
+    yield this.operand;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_operator = codemod.transform(this.operator);
+    tx_operand = codemod.transform(this.operand);
+    (
+      UnaryExpressionTree{
+        range => this.range,
+        operator => tx_operator.i0,
+        operand => tx_operand.i0,
+      },
+      Vector[tx_operator.i1, tx_operand.i1].flatten(),
+    );
+  }
+}
+class UnderscoreTypeTree{
+  token: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "UnderscoreType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      UnderscoreTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class UsesTree{
+  usesKeyword: ParseTree.ParseTree,
+  typeClasses: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("usesKeyword", this.usesKeyword),
+      ("typeClasses", this.typeClasses),
+    ];
+  }
+
+  fun getKind(): String {
+    "Uses";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.usesKeyword;
+    yield this.typeClasses;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_usesKeyword = codemod.transform(this.usesKeyword);
+    tx_typeClasses = codemod.transform(this.typeClasses);
+    (
+      UsesTree{
+        range => this.range,
+        usesKeyword => tx_usesKeyword.i0,
+        typeClasses => tx_typeClasses.i0,
+      },
+      Vector[tx_usesKeyword.i1, tx_typeClasses.i1].flatten(),
+    );
+  }
+}
+class VoidPatternTree{
+  voidKeyword: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("voidKeyword", this.voidKeyword)];
+  }
+
+  fun getKind(): String {
+    "VoidPattern";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.voidKeyword;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_voidKeyword = codemod.transform(this.voidKeyword);
+    (
+      VoidPatternTree{range => this.range, voidKeyword => tx_voidKeyword.i0},
+      Vector[tx_voidKeyword.i1].flatten(),
+    );
+  }
+}
+class VoidTypeTree{token: ParseTree.ParseTree} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("token", this.token)];
+  }
+
+  fun getKind(): String {
+    "VoidType";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.token;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_token = codemod.transform(this.token);
+    (
+      VoidTypeTree{range => this.range, token => tx_token.i0},
+      Vector[tx_token.i1].flatten(),
+    );
+  }
+}
+class WhenParametersTree{
+  elements: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[("elements", this.elements)];
+  }
+
+  fun getKind(): String {
+    "WhenParameters";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.elements;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_elements = codemod.transform(this.elements);
+    (
+      WhenParametersTree{range => this.range, elements => tx_elements.i0},
+      Vector[tx_elements.i1].flatten(),
+    );
+  }
+}
+class WhenTypeClauseTree{
+  subtype: ParseTree.ParseTree,
+  supertypes: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("subtype", this.subtype),
+      ("supertypes", this.supertypes),
+    ];
+  }
+
+  fun getKind(): String {
+    "WhenTypeClause";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.subtype;
+    yield this.supertypes;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_subtype = codemod.transform(this.subtype);
+    tx_supertypes = codemod.transform(this.supertypes);
+    (
+      WhenTypeClauseTree{
+        range => this.range,
+        subtype => tx_subtype.i0,
+        supertypes => tx_supertypes.i0,
+      },
+      Vector[tx_subtype.i1, tx_supertypes.i1].flatten(),
+    );
+  }
+}
+class WhileLoopExpressionTree{
+  whileKeyword: ParseTree.ParseTree,
+  condition: ParseTree.ParseTree,
+  body: ParseTree.ParseTree,
+  elseOpt: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("whileKeyword", this.whileKeyword),
+      ("condition", this.condition),
+      ("body", this.body),
+      ("elseOpt", this.elseOpt),
+    ];
+  }
+
+  fun getKind(): String {
+    "WhileLoopExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.whileKeyword;
+    yield this.condition;
+    yield this.body;
+    yield this.elseOpt;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_whileKeyword = codemod.transform(this.whileKeyword);
+    tx_condition = codemod.transform(this.condition);
+    tx_body = codemod.transform(this.body);
+    tx_elseOpt = codemod.transform(this.elseOpt);
+    (
+      WhileLoopExpressionTree{
+        range => this.range,
+        whileKeyword => tx_whileKeyword.i0,
+        condition => tx_condition.i0,
+        body => tx_body.i0,
+        elseOpt => tx_elseOpt.i0,
+      },
+      Vector[
+        tx_whileKeyword.i1,
+        tx_condition.i1,
+        tx_body.i1,
+        tx_elseOpt.i1,
+      ].flatten(),
+    );
+  }
+}
+class WithExpressionTree{
+  value: ParseTree.ParseTree,
+  withKeyword: ParseTree.ParseTree,
+  arguments: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("value", this.value),
+      ("withKeyword", this.withKeyword),
+      ("arguments", this.arguments),
+    ];
+  }
+
+  fun getKind(): String {
+    "WithExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.value;
+    yield this.withKeyword;
+    yield this.arguments;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_value = codemod.transform(this.value);
+    tx_withKeyword = codemod.transform(this.withKeyword);
+    tx_arguments = codemod.transform(this.arguments);
+    (
+      WithExpressionTree{
+        range => this.range,
+        value => tx_value.i0,
+        withKeyword => tx_withKeyword.i0,
+        arguments => tx_arguments.i0,
+      },
+      Vector[tx_value.i1, tx_withKeyword.i1, tx_arguments.i1].flatten(),
+    );
+  }
+}
+class YieldBreakExpressionTree{
+  yieldKeyword: ParseTree.ParseTree,
+  breakKeyword: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("yieldKeyword", this.yieldKeyword),
+      ("breakKeyword", this.breakKeyword),
+    ];
+  }
+
+  fun getKind(): String {
+    "YieldBreakExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.yieldKeyword;
+    yield this.breakKeyword;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_yieldKeyword = codemod.transform(this.yieldKeyword);
+    tx_breakKeyword = codemod.transform(this.breakKeyword);
+    (
+      YieldBreakExpressionTree{
+        range => this.range,
+        yieldKeyword => tx_yieldKeyword.i0,
+        breakKeyword => tx_breakKeyword.i0,
+      },
+      Vector[tx_yieldKeyword.i1, tx_breakKeyword.i1].flatten(),
+    );
+  }
+}
+class YieldExpressionTree{
+  yieldKeyword: ParseTree.ParseTree,
+  value: ParseTree.ParseTree,
+} extends ParseTree.ParseTree {
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {
+    List<(String, ParseTree.ParseTree)>[
+      ("yieldKeyword", this.yieldKeyword),
+      ("value", this.value),
+    ];
+  }
+
+  fun getKind(): String {
+    "YieldExpression";
+  }
+
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {
+    yield this.yieldKeyword;
+    yield this.value;
+    yield break;
+  }
+
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {
+    tx_yieldKeyword = codemod.transform(this.yieldKeyword);
+    tx_value = codemod.transform(this.value);
+    (
+      YieldExpressionTree{
+        range => this.range,
+        yieldKeyword => tx_yieldKeyword.i0,
+        value => tx_value.i0,
+      },
+      Vector[tx_yieldKeyword.i1, tx_value.i1].flatten(),
+    );
+  }
+}

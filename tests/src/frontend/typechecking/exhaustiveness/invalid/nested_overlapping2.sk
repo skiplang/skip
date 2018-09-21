@@ -1,0 +1,18 @@
+base class B {
+  children =
+  | A(B)
+  | C(Int)
+}
+base class X {
+  children =
+  | Y(B)
+}
+fun test(): String {
+  Y(A(C(1))) match {
+  | Y(A(C(1))) -> "Fail\n"
+  | Y(A(_)) -> "Fail\n"
+  | Y(A(C(Int _))) -> "Fail\n"
+  | Y(C(1)) -> "Fail\n"
+  | Y(C(Int _)) -> "Fail\n"
+  }
+}

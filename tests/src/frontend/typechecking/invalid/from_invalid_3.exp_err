@@ -1,0 +1,7 @@
+File "./typechecking/invalid/from_invalid_3.sk", line 20, characters 16-16:
+Invalid conflict resolution. L is not an immediate parent or does not have the corresponding field needed for conflict resolution
+18 |
+19 | class D() extends C, R {
+20 |   fun foo from L;
+   |                ^
+21 | }

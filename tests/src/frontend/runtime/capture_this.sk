@@ -1,0 +1,9 @@
+class C(x: String) {
+  fun m(): () ~> C {
+    () ~> this
+  }
+}
+
+fun main(): void {
+  print_raw(C("Pass\n").m()().x)
+}

@@ -1,0 +1,23 @@
+File "./typechecking/invalid/dependent_generic_args3.sk", line 8, characters 7-9:
+Constraint not satisfied
+ 6 |
+ 7 | fun test<T3>(x: Foo<T3>): void {
+ 8 |   _ = foo(x, x)
+   |       ^^^
+ 9 | }
+
+File "./typechecking/invalid/dependent_generic_args3.sk", line 7, characters 21-22:
+The invariant type: T3
+5 | }
+6 |
+7 | fun test<T3>(x: Foo<T3>): void {
+  |                     ^^
+8 |   _ = foo(x, x)
+
+File "./typechecking/invalid/dependent_generic_args3.sk", line 7, characters 17-19:
+Is incompatible with the invariant type: Foo<T3>
+5 | }
+6 |
+7 | fun test<T3>(x: Foo<T3>): void {
+  |                 ^^^
+8 |   _ = foo(x, x)

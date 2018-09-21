@@ -1,0 +1,6 @@
+File "./syntax/invalid/readonly_frozen_method.sk", line 2, characters 3-17:
+Invalid modifiers. Methods cannot be both 'readonly' and 'frozen'
+1 | class C() {
+2 |   readonly frozen fun m(): String { "Fail" }
+  |   ^^^^^^^^^^^^^^^
+3 | }

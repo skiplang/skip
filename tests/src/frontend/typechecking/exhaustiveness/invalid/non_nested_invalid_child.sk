@@ -1,0 +1,10 @@
+base class A {
+  children =
+  | X()
+  | Y()
+}
+fun test(): String {
+  X() match {
+  | Y() -> "Fail\n"
+  }
+}

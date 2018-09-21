@@ -1,0 +1,15 @@
+mutable class Foo(mutable v: Int) {
+  untracked async fun t1(): ^void {
+    void
+  }
+  untracked frozen async fun t2(mutable Ref<Int>): ^void {
+    void
+  }
+  untracked frozen async fun t3(): ^mutable Ref<Int> {
+    mutable Ref(0)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,1 @@
+fun no(x : frozen): void { void }

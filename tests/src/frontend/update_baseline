@@ -1,0 +1,4 @@
+#!/bin/bash -e
+
+# Updates a baseline for a test. Pass in the path to the test without the file extension.
+cp $1.out $1.exp

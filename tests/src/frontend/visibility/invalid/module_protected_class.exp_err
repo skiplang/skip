@@ -1,0 +1,6 @@
+File "./visibility/invalid/module_protected_class.sk", line 3, characters 1-9:
+Expected 'module end;' or end of file
+1 | module M;
+2 |
+3 | protected class Foo
+  | ^^^^^^^^^

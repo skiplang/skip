@@ -1,0 +1,6 @@
+File "./syntax/invalid/invalid_if.sk", line 2, characters 6-9:
+Expected '(' but encountered 'true' at the start of a conditional expression. Conditional expressions must be parenthesized.
+1 | fun test(): void {
+2 |   if true {
+  |      ^^^^
+3 |     void

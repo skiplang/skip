@@ -1,0 +1,23 @@
+base class High
+base class Mid extends High
+class Low() extends Mid {
+  fun foo(): void {
+    void
+  }
+}
+class Boom() extends Mid
+
+base class MyParent<-P> {
+  fun eat<P2: Mid>[P: P2](_: P2): void;
+}
+
+class C<T: Low>() extends MyParent<T> {
+  fun eat(x: T): void {
+    x.foo()
+  }
+}
+
+fun main(): void {
+  (C<Low>() : MyParent<Low>).eat<Mid>(Boom());
+  print_raw("FAIL")
+}

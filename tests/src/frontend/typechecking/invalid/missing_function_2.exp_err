@@ -1,0 +1,15 @@
+File "./typechecking/invalid/missing_function_2.sk", line 9, characters 13-25:
+The field wut is undefined
+ 7 |
+ 8 | fun main(): void {
+ 9 |   print_raw((Foo()).wut())
+   |             ^^^^^^^^^^^^^
+10 | }
+
+File "./typechecking/invalid/missing_function_2.sk", line 9, characters 13-19:
+For the expression of type Foo
+ 7 |
+ 8 | fun main(): void {
+ 9 |   print_raw((Foo()).wut())
+   |             ^^^^^^^
+10 | }

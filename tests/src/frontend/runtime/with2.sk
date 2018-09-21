@@ -1,0 +1,11 @@
+class Foo(x: Int, y: Int)
+
+fun updateY(x: Foo): Foo {
+  x with {y => 112}
+}
+
+fun main(): void {
+  f = Foo(0, 42);
+  _ = updateY(f);
+  print_raw(if (f.y == 42) "Pass\n" else "Fail")
+}

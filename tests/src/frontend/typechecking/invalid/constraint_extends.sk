@@ -1,0 +1,7 @@
+trait X
+base class Y<T: X>
+class Z<T>() extends Y<T>
+
+fun foo<T>(Z<T>): void {
+  void
+}

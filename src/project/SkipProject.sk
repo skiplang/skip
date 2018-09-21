@@ -1,0 +1,479 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias Config = SkipProjectConfig;
+
+module SkipProject;
+
+const loggingEnabled: Bool = false;
+
+fun log<T>(value: T): void {
+  if (loggingEnabled) {
+    debug(value);
+  }
+}
+
+class Variable{
+  name: String,
+  project: Project,
+  values: Set<String>,
+  default: String,
+}
+
+class ProgramUnitKey private {
+  projectPath: String,
+  name: String,
+} uses Hashable, Equality {
+  static fun create(projectPath: String, name: String): ProgramUnitKey {
+    invariant(Path.isNormalized(projectPath), "Expected normalized path");
+    ProgramUnitKey{projectPath, name};
+  }
+}
+
+class Parameter{name: String, valueToSources: Map<String, Set<String>>}
+
+class ProgramUnit{
+  key: ProgramUnitKey,
+  kind: Config.ProgramUnitKind,
+  isDefault: Bool,
+  project: Project,
+  files: Set<String>,
+  references: Vector<ProgramUnitKey>,
+  parameters: Vector<Parameter>,
+} uses Hashable, Equality {
+  fun name(): String {
+    this.key.name;
+  }
+
+  fun hash(): Int {
+    this.key.hash();
+  }
+
+  fun ==(other: ProgramUnit): Bool {
+    this.key == other.key;
+  }
+
+  fun getFiles(bindings: Map<String, String>): Set<String> {
+    this.parameters.reduce(
+      (files, parameter) ~>
+        files.union(parameter.valueToSources[bindings[parameter.name]]),
+      this.files,
+    );
+  }
+}
+
+// A project defines a set of ProgramUnits.
+// ProgramUnits are either Libraries, or Programs.
+// ProgramUnits may depend on other Library ProgramUnits which may be
+// in other Projects.
+class Project{
+  dirpath: String, // The directory containing the skip.project.json file.
+  config: Config.Project,
+} uses Equality {
+  fun ==(other: Project): Bool {
+    this.dirpath == other.dirpath;
+  }
+
+  fun getRelativePath(referencedPath: String): String {
+    Path.join(this.dirpath, referencedPath);
+  }
+
+  fun getPathOfReference(reference: Config.ProgramUnitReference): String {
+    this.getRelativePath(reference.path);
+  }
+
+  fun allReferencedProjects(): Set<String> {
+    this.config.programUnits.items()
+      .collect(Vector)
+      .flatMap(nameUnit -> {
+        nameUnit.i1.references.map(reference ~>
+          this.getRelativePath(reference.path)
+        )
+      })
+      .collect(Set);
+  }
+
+  fun getDefaultProgramUnitName(): ?String {
+    this.config.default match {
+    | None() ->
+      if (this.config.programUnits.size() == 1) {
+        Some(this.config.programUnits.keys().next().fromSome());
+      } else {
+        None();
+      }
+    | Some(name) -> Some(name)
+    }
+  }
+
+  fun getDefaultOrFirstProgramUnitName(): String {
+    this.config.default match {
+    | None() -> this.config.programUnits.keys().next().fromSome()
+    | Some(name) -> name
+    }
+  }
+
+  fun getDefaultOrFirstProgramUnitKey(): ProgramUnitKey {
+    ProgramUnitKey::create(
+      this.dirpath,
+      this.getDefaultOrFirstProgramUnitName(),
+    );
+  }
+}
+
+// Binds a variable to a value.
+class Binding{variable: String, value: String} uses Show {
+  fun toString(): String {
+    `${this.variable}=${this.value}`;
+  }
+}
+
+// Which ProgramUnit+Binding is required to analyze a file.
+class FileInfo{key: ProgramUnitKey, binding: ?Binding}
+
+// A solution is a set of Projects, including a root project,
+// and all of the projects that the root project depends upon.
+class Solution{
+  projects: Map<String, Project>,
+  rootProjectPath: String,
+  programUnits: Map<ProgramUnitKey, ProgramUnit>,
+  fileToInfo: Map<String, FileInfo>,
+  variables: Map<String, Variable>,
+} {
+  fun validateBindings(bindings: Map<String, String>): Vector<SkipError.Error> {
+    bindings
+      .keys()
+      .map(key ~>
+        if (this.variables.containsKey(key)) {
+          None();
+        } else {
+          Some(
+            createError(
+              this.rootProjectPath,
+              `No variable named '${key}' in project.`,
+            ),
+          );
+        }
+      )
+      .concat(
+        // Each variable must have a binding, and each binding must be valid
+        this.variables.values().map(variable ~> {
+          bindings.maybeGet(variable.name) match {
+          | None() ->
+            Some(
+              createError(
+                this.rootProjectPath,
+                `Missing binding for variable '${variable.name}'`,
+                Vector[variable.project.dirpath],
+              ),
+            )
+          | Some(value) ->
+            if (variable.values.contains(value)) {
+              None();
+            } else {
+              Some(
+                createError(
+                  this.rootProjectPath,
+                  `Invalid value '${value}' for variable '${variable.name}'. ` +
+                    `Valid values are '${variable.values.join(", ")}'.`,
+                  Vector[variable.project.dirpath],
+                ),
+              );
+            }
+          };
+        }),
+      )
+      .collect(Vector)
+      .filterNone();
+  }
+
+  fun getAllSourceFilesFor(
+    programUnitKey: ProgramUnitKey,
+    bindings: Map<String, String>,
+  ): Result<Set<String>, Vector<SkipError.Error>> {
+    bindingErrors = this.validateBindings(bindings);
+    if (bindingErrors.isEmpty()) {
+      files = this.getFilesForProgramUnitRec(programUnitKey, bindings).collect(
+        Set,
+      );
+      log(files);
+      Success(files);
+    } else {
+      Failure(bindingErrors);
+    }
+  }
+
+  fun getDefaultBindings(): Map<String, String> {
+    this.variables.map((_, variable) ~> variable.default);
+  }
+
+  fun getProgramUnits(): Vector<ProgramUnit> {
+    this.programUnits.values().collect(Vector);
+  }
+
+  fun maybeGetProgramUnit(projectPath: String, name: String): ?ProgramUnit {
+    this.programUnits.maybeGet(ProgramUnitKey::create(projectPath, name));
+  }
+
+  fun containsProgramUnit(projectPath: String, name: String): Bool {
+    this.maybeGetProgramUnit(projectPath, name).isSome();
+  }
+
+  fun getProject(projectPath: String): Project {
+    this.projects[projectPath];
+  }
+
+  // If name is the empty string, then return the default or first program unit.
+  fun getProgramUnit(
+    projectPath: String,
+    name: String,
+  ): Result<ProgramUnit, Vector<SkipError.Error>> {
+    invariant(Path.isNormalized(projectPath));
+    if (name.isEmpty()) {
+      if (this.projects.containsKey(projectPath)) {
+        Success(
+          this.programUnits[
+            this.getProject(projectPath).getDefaultOrFirstProgramUnitKey(),
+          ],
+        );
+      } else {
+        Failure(
+          Vector[
+            createError(
+              projectPath,
+              `Directory '${projectPath}' does not contain a skip.project.json file.`,
+            ),
+          ],
+        );
+      }
+    } else {
+      this.maybeGetProgramUnit(projectPath, name) match {
+      | None() ->
+        Failure(
+          Vector[
+            createError(
+              projectPath,
+              `Project does not contain a program unit named '${name}'.`,
+            ),
+          ],
+        )
+      | Some(programUnit) -> Success(programUnit)
+      }
+    }
+  }
+
+  fun getProgramUnitGraph(): DirectedGraph<ProgramUnitKey> {
+    DirectedGraph.create(
+      this.getProgramUnits().map(unit ~> (unit.key, unit.references)),
+    )
+  }
+
+  fun getFilesForProgramUnitRec(
+    root: ProgramUnitKey,
+    bindings: Map<String, String>,
+  ): Vector<String> {
+    this.getProgramUnitGraph()
+      .reachableFromDFS(root)
+      .flatMap(key ~> this.getFilesForProgramUnit(key, bindings))
+      .collect(Vector);
+  }
+
+  fun getFilesForProgramUnit(
+    key: ProgramUnitKey,
+    bindings: Map<String, String>,
+  ): Set<String> {
+    this.programUnits.get(key).getFiles(bindings);
+  }
+
+  fun getProjectFilesForProgramUnit(key: ProgramUnitKey): Set<String> {
+    this.getProgramUnitGraph()
+      .reachableFromDFS(key)
+      .map(key -> Path.join(key.projectPath, PROJECT_FILENAME))
+      .collect(Set);
+  }
+
+  fun getDefaultOrFirstProgramUnitKey(): ProgramUnitKey {
+    this.getRootProject().getDefaultOrFirstProgramUnitKey();
+  }
+
+  fun getRootProject(): Project {
+    this.projects.get(this.rootProjectPath);
+  }
+
+  // Used by the IDE only.
+  fun defaultProgramUnitAndBindingsOfFile(
+    filename: String,
+  ): (ProgramUnitKey, Map<String, String>) {
+    defaultBindings = this.getDefaultBindings();
+    this.fileToInfo.maybeGet(filename) match {
+    | None() -> (this.getDefaultOrFirstProgramUnitKey(), defaultBindings)
+    | Some(info) ->
+      (
+        info.key,
+        info.binding match {
+        | None() -> defaultBindings
+        | Some(binding) ->
+          bindings = defaultBindings.clone();
+          bindings.set(binding.variable, binding.value);
+          freeze(bindings)
+        },
+      )
+    };
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// IDE Entrypoints
+
+untracked fun getFilesToAnalyze(
+  // Either an .sk file, or a directory contaiing a skip.project.json file.
+  filename: String,
+): Result<Set<String>, Vector<SkipError.Error>> {
+  findProjectFileOfPath(filename)
+    .flatMap(projectPath ->
+      SolutionLoader::load(projectPath).flatMap(solution ~> {
+        (key, bindings) = solution.defaultProgramUnitAndBindingsOfFile(
+          Path.resolve(filename),
+        );
+        solution.getAllSourceFilesFor(key, bindings)
+      })
+    )
+    .map(files ->
+      files.union(
+        if (isSkipFile(filename)) {
+          Vector[Path.resolve(filename)]
+        } else {
+          Vector[]
+        },
+      )
+    )
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Main Entrypoints
+//
+// To be used by backends, or other non-IDE tools.
+
+const targetSeparator: String = ":";
+
+fun isTarget(value: String): Bool {
+  value.contains(targetSeparator);
+}
+
+fun targetToProjectProgramUnit(target: String): (String, String) {
+  invariant(isTarget(target), "Expected target");
+  target.splitLast(targetSeparator);
+}
+
+// A target is (in order of precedence):
+//  - project-directory:program-unit
+//  - project-directory:  (uses default program unit)
+//  - :program-unit  (same as .:program-unit)
+//  - file.sk
+//  - project-directory (same as project-directory:)
+//  - program-unit (same as .:program-unit)
+base class TargetArgument {
+  static fun parse(argument: String): ?TargetArgument {
+    if (isTarget(argument)) {
+      (projectPath, programUnitName) = targetToProjectProgramUnit(argument);
+      Some(ProgramUnitArgument::create(projectPath, programUnitName));
+    } else if (FileSystem.isDirectory(argument)) {
+      Some(ProgramUnitArgument::create(argument, ""));
+    } else if (FileSystem.exists(argument)) {
+      Some(SourceFileArgument{filename => argument});
+    } else if (
+      FileSystem.exists(projectFilenameOfDirectory(Path.currentDirectory))
+    ) {
+      Some(ProgramUnitArgument::create(Path.currentDirectory, argument));
+    } else {
+      None();
+    };
+  }
+}
+
+class SourceFileArgument{filename: String} extends TargetArgument
+
+class ProgramUnitArgument{
+  projectPath: String,
+  programUnit: String,
+} extends TargetArgument {
+  static fun create(
+    projectPath: String,
+    programUnit: String,
+  ): ProgramUnitArgument {
+    ProgramUnitArgument{projectPath => Path.normalize(projectPath), programUnit}
+  }
+}
+
+// projectPath of "" uses the current directory.
+// programUnitName of "" means the default program unit in the project.
+fun loadProjectProgramUnit(
+  projectPath: String,
+  programUnitName: String,
+): Result<(Solution, ProgramUnitKey), Vector<SkipError.Error>> {
+  SolutionLoader::load(projectPath).flatMap(solution ~>
+    solution.getProgramUnit(projectPath, programUnitName).map(programUnit ~>
+      (solution, programUnit.key)
+    )
+  );
+}
+
+fun filesOfProjectProgramUnit(
+  bindings: Map<String, String>,
+  projectPath: String,
+  programUnitName: String,
+): Result<Set<String>, Vector<SkipError.Error>> {
+  loadProjectProgramUnit(projectPath, programUnitName).flatMap(solutionKey ~> {
+    solutionKey.i0.getAllSourceFilesFor(solutionKey.i1, bindings);
+  });
+}
+
+// Gets the set of files for a compilation target.
+fun getFilesForTarget(
+  bindings: Map<String, String>,
+  target: String,
+): Result<Set<String>, Vector<SkipError.Error>> {
+  TargetArgument::parse(target) match {
+  | None() ->
+    Failure(
+      Vector[
+        SkipError.Error{
+          traces => List[
+            getTraceForMessage(
+              `'${target}' is not a source file, project directory, or compilation target.`,
+            ),
+          ],
+          fix => None(),
+        },
+      ],
+    )
+  | Some(SourceFileArgument{filename}) -> Success(Set[filename])
+  | Some(ProgramUnitArgument{projectPath, programUnit}) ->
+    filesOfProjectProgramUnit(bindings, projectPath, programUnit)
+  };
+}
+
+fun getFilesForTargets(
+  bindings: Map<String, String>,
+  targets: Vector<String>,
+): Set<String> {
+  // TODO: Reuse a single SolutionLoader for performance.
+  // Shouldn't be a significant issue in practice, as most of the time there
+  // will be exactly one target.
+  targets
+    .map(target ~>
+      SkipError.doAndReportErrors(() ~> getFilesForTarget(bindings, target))
+    )
+    .reduce((t1, t2) ~> t1.union(t2), Set[]);
+}
+
+// Keep these in sync with runtime/prelude/skip.project.json
+const nativePreludeBindings: Map<String, String> = Map["backend" => "native"];
+const nonnativePreludeBindings: Map<String, String> = Map[
+  "backend" => "nonnative",
+];
+
+module end;

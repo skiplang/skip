@@ -1,0 +1,5 @@
+File "./runtime/invalid/main_awaitable_void.sk", line 1, characters 19-23:
+main must return void: 'fun main(): void {'. The normal way to call an asynchronous function is to prepend the call with 'await'. But in order to call the very first asynchronous function, you need to wrap the call with 'awaitSynchronously()'.
+1 | async fun main(): ^void {
+  |                   ^^^^^
+2 |   await something()

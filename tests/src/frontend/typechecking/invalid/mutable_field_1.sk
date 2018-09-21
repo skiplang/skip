@@ -1,0 +1,6 @@
+mutable class Cell(value: String) {
+  mutable fun set(v: String): void {
+    this.!value = v; // error, this.value is immutable
+    void
+  }
+}

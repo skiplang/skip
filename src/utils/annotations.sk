@@ -1,0 +1,81 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Look through the annotations for the given named annotation.  If
+// allowParameters is true then allow the name to be in the form name(param).
+// If the annotation is missing then returns None().  If the annotation is
+// present then return the parameter.  If a parameter is not allowed it will be
+// "".
+fun annotationsContainHelper(
+  annotations: SSet,
+  name: String,
+  pos: Pos,
+  allowParameters: Bool = false,
+  requireParameters: Bool = false,
+): ?String {
+  param = if (annotations.contains(name)) {
+    Some("")
+  } else if (allowParameters) {
+    open = name + "(\"";
+    annotations.reduce(
+      (param, annotation) -> {
+        if (annotation.startsWith(open)) {
+          if (!annotation.endsWith("\")")) {
+            pos.die(`Annotation ${name} missing closing parenthesis`);
+          };
+          if (param.isSome()) {
+            pos.die(`Annotation ${name} specified multiple times`);
+          };
+
+          Some(annotation.stripPrefix(open).stripSuffix("\")"))
+        } else {
+          param
+        }
+      },
+      (None() : ?String),
+    )
+  } else {
+    None()
+  };
+
+  if (requireParameters && param.test(s -> s.isEmpty())) {
+    pos.die(`Annotation ${name} requires parameters`);
+  };
+
+  param
+}
+
+fun getAnnotationParams(
+  annotations: SSet,
+  name: String,
+  pos: Pos,
+): Vector<String> {
+  results = mutable Vector[];
+  open = name + "(\"";
+  for (annotation in annotations) {
+    if (annotation.startsWith(open)) {
+      if (!annotation.endsWith("\")")) {
+        pos.die(`Annotation ${name} missing closing parenthesis`);
+      };
+      results.push(annotation.stripPrefix(open).stripSuffix("\")"))
+    }
+  };
+  results.chill()
+}
+
+fun annotationsContainParam(
+  annotations: SSet,
+  name: String,
+  pos: Pos,
+  requireParameters: Bool = false,
+): ?String {
+  annotationsContainHelper(annotations, name, pos, true, requireParameters)
+}
+
+fun annotationsContain(annotations: SSet, name: String, pos: Pos): Bool {
+  annotationsContainHelper(annotations, name, pos, false, false).isSome()
+}

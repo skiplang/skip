@@ -1,0 +1,11 @@
+async fun xxx(): ^String {
+  ""
+}
+
+async fun yyy(): ^String {
+  await xxx()
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,117 @@
+class C(x: String) {
+  fun n(): String {
+    "n"
+  }
+
+  fun r(): String {
+    this.x
+  }
+
+  fun u(): String {
+    !this = C("Cu");
+    "Cu";
+  }
+
+  fun c(): String {
+    lam = () -> {
+      this.x
+    };
+    lam();
+  }
+
+  fun cu(): String {
+    lam = () -> {
+      !this = C("C!cu");
+    };
+    lam();
+    "cu";
+  }
+
+  fun u_c(): String {
+    lam = () -> {
+      this.x;
+    };
+    !this = C("C!u_c");
+    lam();
+  }
+
+  fun r_c(): String {
+    lam = () -> {
+      this.x;
+    };
+    this.x + lam();
+  }
+
+  fun cu_c(): String {
+    lam = () -> {
+      !this = C("C!cu-C");
+      this.x;
+    };
+    lam();
+  }
+
+  fun r_u(): String {
+    !this = C("C!r_u");
+    this.x;
+  }
+
+  fun r_u_c(): String {
+    lam = () -> {
+      this.x;
+    };
+    !this = C("C!r_u_c");
+    lam() + this.x;
+  }
+}
+
+fun func(
+  _: String,
+
+  r: String,
+  u: String,
+  cu: String,
+  c: String,
+
+  u_c: String,
+  r_c: String,
+  cu_c: String,
+  r_u: String,
+
+  r_u_c: String,
+): String {
+  lam = () -> {
+    // cu
+    !cu = "!cu";
+    !cu_c = "!cu_c";
+
+    // c
+    c + u_c + r_c + cu_c + r_u_c + "\n";
+  };
+
+  // u
+  !u = "!u";
+  !u_c = "!u_c";
+  !r_u = "!r_u";
+  !r_u_c = "!r_u_c";
+
+  // r
+  lam() + r + r_c + r_u + r_u_c + "\n";
+}
+
+fun main(): void {
+  c = C("");
+  print_raw(
+    func("_", "r", "u", "cu", "c", "u_c", "r_c", "cu_c", "r_u", "r_u_c") +
+      c.n() +
+      c.r() +
+      c.u() +
+      c.c() +
+      c.cu() +
+      c.u_c() +
+      c.r_c() +
+      c.cu_c() +
+      c.r_u() +
+      c.r_u_c() +
+      "\n",
+  );
+}

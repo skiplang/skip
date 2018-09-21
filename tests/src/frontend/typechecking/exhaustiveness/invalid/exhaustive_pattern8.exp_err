@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern8.sk", line 5, characters 5-6:
+The following pattern is unused:
+ | 42
+3 |   | 42 -> 42
+4 |   | 3 -> 101
+5 |   | 42 ->
+  |     ^^
+6 |     112 // duplicate pattern

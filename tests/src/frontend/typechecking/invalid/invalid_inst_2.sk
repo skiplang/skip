@@ -1,0 +1,3 @@
+base class Foo {
+  fun bar(x: inst): void;
+}

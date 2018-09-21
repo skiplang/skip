@@ -1,0 +1,7 @@
+File "./syntax/invalid/empty_match.sk", line 3, characters 3-3:
+Pattern expected
+1 | fun shouldFail(v : void) : String {
+2 |   v match {
+3 |   }
+  |   ^
+4 | }

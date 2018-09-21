@@ -1,0 +1,5 @@
+mutable value class Foo<T>(mutable x: T)
+fun foo(): void {
+  o = mutable Foo(42);
+  o.!x = 0
+}

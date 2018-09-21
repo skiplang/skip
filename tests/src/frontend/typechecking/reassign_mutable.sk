@@ -1,0 +1,16 @@
+mutable class Foo(mutable x: Int) {
+  mutable fun setX(x: Int): mutable this {
+    this.!x = x;
+    this
+  }
+}
+
+fun f(): String {
+  x = mutable Foo(100);
+  !x = x.setX(20);
+  x.x.toString()
+}
+
+fun main(): void {
+  print_string("Pass")
+}

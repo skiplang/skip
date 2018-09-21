@@ -1,0 +1,9 @@
+mutable class A(mutable x: Int) {
+  readonly fun y(): void {
+    void
+  }
+}
+
+fun test(a: mutable A): void {
+  a.z
+}

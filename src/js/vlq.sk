@@ -1,0 +1,80 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Base64-encoded VLQ (variable-length quantity)
+   https://en.wikipedia.org/wiki/Variable-length_quantity */
+/**
+ * A single base 64 digit can contain 6 bits of data. For the base 64 variable
+ * length quantities we use in the source map spec, the first bit is the sign,
+ * the next four bits are the actual value, and the 6th bit is the
+ * continuation bit. The continuation bit tells us whether there are more
+ * digits in this value following this digit.
+ *
+ *   Continuation
+ *   |    Sign
+ *   |    |
+ *   V    V
+ *   101011
+ */
+module Vlq;
+
+const vlq_base_shift: Int = 5;
+
+/* binary: 100000 */
+const vlq_base: Int = 32;
+
+/* binary: 011111 */
+const vlq_base_mask: Int = 31;
+
+/* binary: 100000 */
+const vlq_continuation_bit: Int = vlq_base;
+
+/**
+ * Converts from a two-complement value to a value where the sign bit is
+ * placed in the least significant bit.  For example, as decimals:
+ *   1 becomes 2 (10 binary), -1 becomes 3 (11 binary)
+ *   2 becomes 4 (100 binary), -2 becomes 5 (101 binary)
+ */
+fun vlq_signed_of_int(value: Int): Int {
+  if (value < 0) {
+    (-value).shl(1) + 1
+  } else {
+    value.shl(1)
+  }
+}
+
+/* Base64 mapping */
+const base64: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Encode an integer in the range of 0 to 63 to a single base 64 digit */
+fun base64_char_of_int(number: Int): Char {
+  if ((0 <= number) && (number < base64.length())) {
+    base64[number]
+  } else {
+    invariant_violation("Must be between 0 and 63: " + number)
+  }
+}
+
+/* Write the value to the vector, as multiple base64 characters as necessary */
+fun encode_vlq(vector: mutable Vector<Char>, vlq: Int): void {
+  digit = vlq.and(vlq_base_mask);
+  vlq1 = vlq.ushr(vlq_base_shift);
+  if (vlq1 == 0) {
+    vector.push(base64_char_of_int(digit))
+  } else {
+    /* There are still more digits in this value, so we must make sure the
+       continuation bit is marked. */
+    vector.push(base64_char_of_int(digit.or(vlq_continuation_bit)));
+    encode_vlq(vector, vlq1)
+  }
+}
+
+/* Encodes `value` as a base 64 VLQ and writes it to `vector` */
+fun encode(vector: mutable Vector<Char>, value: Int): void {
+  vlq = vlq_signed_of_int(value);
+  encode_vlq(vector, vlq)
+}

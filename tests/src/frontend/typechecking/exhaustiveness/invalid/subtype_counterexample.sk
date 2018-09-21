@@ -1,0 +1,12 @@
+base class F {
+  children =
+  | A{x: Int, y: Bool}
+  | B{t: Int}
+  | C(Int)
+}
+
+fun test(x: F): void {
+  x match {
+  | B _ -> void
+  }
+}

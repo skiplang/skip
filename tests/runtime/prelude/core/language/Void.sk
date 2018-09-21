@@ -1,0 +1,39 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+native value class Void uses Orderable, Hashable, Show {
+  fun toString(): String {
+    "void"
+  }
+  fun hash(): Int {
+    0
+  }
+  fun compare(_: Void): Order {
+    EQ()
+  }
+  fun ==(Void): Bool {
+    true
+  }
+  fun !=(Void): Bool {
+    false
+  }
+  fun <(Void): Bool {
+    false
+  }
+  fun <=(Void): Bool {
+    true
+  }
+  fun >(Void): Bool {
+    false
+  }
+  fun >=(Void): Bool {
+    true
+  }
+  fun inspect(): Inspect {
+    InspectLiteral("void")
+  }
+}

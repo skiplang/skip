@@ -1,0 +1,4 @@
+File "./syntax/invalid/missing_const_truncated.sk", line 1, characters 9-9:
+Missing constant type annotation. ': ConstType ='
+1 | const x = 10
+  |         ^

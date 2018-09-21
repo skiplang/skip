@@ -1,0 +1,11 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+module MyAweseomModule;
+
+base class Nat {
+  children =
+  | Zero()
+  | Succ(Nat)
+}

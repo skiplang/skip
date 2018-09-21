@@ -1,0 +1,11 @@
+File "./typechecking/invalid/variance_extend_3.sk", line 1, characters 12-12:
+Invalid variance annotation
+1 | class Foo<-T> extends Bar<T> {}
+  |            ^
+2 | base class Bar<+T>{}
+
+File "./typechecking/invalid/variance_extend_3.sk", line 1, characters 27-27:
+The parameter appears in a covariant position
+1 | class Foo<-T> extends Bar<T> {}
+  |                           ^
+2 | base class Bar<+T>{}

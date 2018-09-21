@@ -1,0 +1,421 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+const bencherOptions: Bencher.Options = Bencher.Options{minIterations => 100};
+
+// random seed used for all operations
+const randomSeed: Int = 972384579;
+
+// each pair of implementation/operation will be measured on
+// a random input of each of the following sizes
+const sizes: Array<Int> = Array[
+  1,
+  4,
+  8,
+  16,
+  32,
+  50,
+  100,
+  500,
+  1000,
+  10000,
+  50000,
+];
+
+// pre-randomnly generate inputs of the above sizes
+const inputs: Array<Array<(Int, Int)>> = {
+  rng = Random::mcreate(randomSeed);
+  sizes.map(size -> {
+    Array::fillBy(size, _ -> {
+      (rng.next(), rng.next())
+    });
+  })
+};
+
+// Use a trait to ensure that benchmark methods are specialized
+trait Maplike<+K: Hashable & Equality, +V> {
+  readonly fun containsKey<K2: Hashable & Equality>[K: K2](key: K2): Bool;
+  readonly fun get<K2: Hashable & Equality>[K: K2](key: K2): V;
+  mutable fun set(key: K, value: V): void;
+  mutable fun maybeRemove(key: K): Bool;
+}
+
+extension class Map uses Maplike<K, V>
+extension class UnorderedMap uses Maplike<K, V>
+extension class HashMap uses Maplike<K, V>
+
+fun main(): void {
+  // Unsized Map Creation
+  printStatsGroup(
+    "Map Creation (Unsized)",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          map = mutable UnorderedMap[];
+          for (x in items) {
+            map.set(x, x)
+          };
+          map
+        });
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          map = mutable Map[];
+          for (x in items) {
+            map.set(x, x)
+          };
+          map
+        });
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          map = mutable HashMap[];
+          for (x in items) {
+            map.set(x, x)
+          };
+          map
+        });
+      }),
+    ],
+  );
+
+  // Pre-sized Map Creation
+  printStatsGroup(
+    "Map Creation (pre-sized)",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          UnorderedMap::createFromItems(items)
+        });
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          Map::createFromItems(items)
+        });
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        bencher.run(() -> {
+          HashMap::createFromItems(items)
+        });
+      }),
+    ],
+  );
+
+  // Read Existing: access each (known to exist) key once and check its value
+  printStatsGroup(
+    "Read (Existing Keys)",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::createFromItems(items);
+        bencher.run(() -> {
+          readExisting(map, items)
+        });
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::createFromItems(items);
+        bencher.run(() -> {
+          readExisting(map, items)
+        });
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::createFromItems(items);
+        bencher.run(() -> {
+          readExisting(map, items)
+        });
+      }),
+    ],
+  );
+
+  // Read Missing: access each (known to exist) key once and check its value
+  // build a set of missing items for each set of inputs
+  missingInputs = inputs.map(items ~> {
+    keys = items.values().map(x ~> x.i0).collect(Set);
+    rng = Random::mcreate(randomSeed);
+    missing = mutable Set[];
+    while (missing.size() < items.size()) {
+      candidate = rng.next();
+      if (!keys.contains(candidate) && !missing.contains(candidate)) {
+        missing.add(candidate)
+      }
+    };
+    (items, missing.collect(Array))
+  });
+  printStatsGroup(
+    "Read (Missing Keys)",
+    Map[
+      "UnorderedMap" => missingInputs.map(inputs ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::createFromItems(inputs.i0);
+        bencher.run(() -> {
+          readMissing(map, inputs.i1)
+        });
+      }),
+      "Map" => missingInputs.map(inputs ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::createFromItems(inputs.i0);
+        bencher.run(() -> {
+          readMissing(map, inputs.i1)
+        });
+      }),
+      "HashMap" => missingInputs.map(inputs ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::createFromItems(inputs.i0);
+        bencher.run(() -> {
+          readMissing(map, inputs.i1)
+        });
+      }),
+    ],
+  );
+
+  // Remove all items
+  printStatsGroup(
+    "Remove (Existing Keys)",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAll(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAll(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAll(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+    ],
+  );
+
+  // Remove and reinsert all items, one at a time
+  printStatsGroup(
+    "Remove and reinsert (iterative)",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsert(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsert(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsert(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+    ],
+  );
+
+  // Remove all items, then reinsert all items
+  printStatsGroup(
+    "Remove all items, then reinsert all items",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsertBatched(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsertBatched(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::mcreateFromItems(items);
+        result = false;
+        bencher.bench{
+          run => () -> {
+            !result = removeAndReinsertBatched(map, items)
+          },
+          afterEach => () -> assertTrue(result),
+        };
+      }),
+    ],
+  );
+
+  // Iterate all items
+  printStatsGroup(
+    "Iterate & Collect All Items",
+    Map[
+      "UnorderedMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = UnorderedMap::mcreateFromItems(items);
+        bencher.bench{
+          run => () -> {
+            map.items().collect(Array)
+          },
+        };
+      }),
+      "Map" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = Map::mcreateFromItems(items);
+        bencher.bench{
+          run => () -> {
+            map.items().collect(Array)
+          },
+        };
+      }),
+      "HashMap" => inputs.map(items ~> {
+        bencher = Bencher(bencherOptions);
+        map = HashMap::mcreateFromItems(items);
+        bencher.bench{
+          run => () -> {
+            map.items().collect(Array)
+          },
+        };
+      }),
+    ],
+  );
+}
+
+// Attempts to read all of the key/value items from map,
+// throwing if any key is missing, returning false if any value
+// does not match, and returning true if all key/values are
+// as expected
+fun readExisting<M: Maplike<Int, Int>>(map: M, items: Array<(Int, Int)>): Bool {
+  for ((k, v) in items) {
+    if (map[k] != v) {
+      break false
+    }
+  } else {
+    true
+  }
+}
+
+// Attempts to read all of the keys in items from map,
+// returning false if any of the keys exist or true otherwise
+fun readMissing<M: Maplike<Int, Int>>(map: M, keys: Array<Int>): Bool {
+  for (k in keys) {
+    if (map.containsKey(k)) {
+      break false
+    }
+  } else {
+    true
+  }
+}
+
+// Attempts to remove all of the keys in items from map,
+// returning false if any key was not found or true if all keys
+// were found
+fun removeAll<M: mutable Maplike<Int, Int>>(
+  map: M,
+  items: Array<(Int, Int)>,
+): Bool {
+  for ((k, _) in items) {
+    _ = map.maybeRemove(k);
+  };
+  true
+}
+
+// Removes and then reinserts each entry in items, one at a time.
+fun removeAndReinsert<M: mutable Maplike<Int, Int>>(
+  map: M,
+  items: Array<(Int, Int)>,
+): Bool {
+  for ((k, v) in items) {
+    _ = map.maybeRemove(k);
+    map.set(k, v)
+  };
+  true
+}
+
+// Removes all the entries in items, then reinserts all the items
+fun removeAndReinsertBatched<M: mutable Maplike<Int, Int>>(
+  map: M,
+  items: Array<(Int, Int)>,
+): Bool {
+  for ((k, _) in items) {
+    _ = map.maybeRemove(k);
+  };
+  for ((k, v) in items) {
+    map.set(k, v)
+  };
+  true
+}
+
+fun printStatsGroup(
+  name: String,
+  stats: Map<String, Array<Bencher.BenchmarkStats>>,
+): void {
+  print_string(name);
+  print_raw("<collection>".padLeft(12));
+  for (size in sizes) {
+    print_raw(`<${size}>`.padLeft(10));
+  };
+  print_raw("\n");
+  for (collectionName => collectionStats in stats) {
+    print_raw(collectionName.padLeft(12));
+    for (sizeStats in collectionStats) {
+      stat = sizeStats.min;
+      print_raw(stat.toString().padLeft(10))
+    };
+    print_raw("\n")
+  };
+}

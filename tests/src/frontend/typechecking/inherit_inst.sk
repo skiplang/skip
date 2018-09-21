@@ -1,0 +1,24 @@
+fun main(): void {
+  e: MyEnum = MyEnumA();
+  print_string(e.toString());
+}
+
+trait MyEnumTrait<T> {
+  static fun fromString(str: String): inst;
+  fun toString(): String;
+}
+
+base class MyEnum() uses MyEnumTrait<String> {
+  static fun fromString(str: String): MyEnum {
+    str match {
+    | "MyEnumA" -> MyEnumA()
+    | _ -> invariant_violation("invalid")
+    }
+  }
+}
+
+class MyEnumA() extends MyEnum {
+  fun toString(): String {
+    "Pass"
+  }
+}

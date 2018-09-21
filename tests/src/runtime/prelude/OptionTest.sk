@@ -1,0 +1,84 @@
+@test
+// map()
+fun testMapSome(): void {
+  x = Some(42).map(x ~> x * 2 + 1);
+  assertTrue(x is Some(85))
+}
+
+@test
+fun testMapNone(): void {
+  x = None<Int>().map(x ~> x * 2 + 1);
+  assertTrue(x is None());
+}
+
+@test
+// flatMap()
+fun testFlatMapSome(): void {
+  x = Some(42).flatMap(x ~> Some(x * 2 + 1));
+  assertTrue(x is Some(85));
+}
+
+@test
+fun testFlatMapNone(): void {
+  x = None<Int>().flatMap(x ~> Some(x * 2 + 1));
+  assertTrue(x is None());
+}
+
+@test
+// isSome/isNone
+fun testIsSome(): void {
+  assertTrue(Some(42).isSome());
+  assertFalse(Some(42).isNone());
+  assertFalse(None().isSome());
+  assertTrue(None().isNone());
+}
+
+@test
+// fromSome()
+fun testFromSome(): void {
+  x = Some(42).fromSome();
+  assertEqual(x, 42);
+
+  throws = false;
+  try {
+    _ = None().fromSome();
+  } catch {
+  | _ -> !throws = true
+  };
+  assertTrue(throws);
+}
+
+@test
+// == / !=
+fun testEquals(): void {
+  assertTrue(Some(42) == Some(42));
+  assertFalse(Some(42) != Some(42));
+  assertFalse(Some(42) == Some(24));
+  assertTrue(Some(42) != Some(24));
+}
+
+@test
+// compare()
+fun testCompare(): void {
+  results = Array[None(), Some(3), Some(4), Some(5)];
+  for (i => left in results) {
+    for (j in Range(0, i + 1)) {
+      right = results[j];
+      if (i < j) {
+        assertTrue(left.compare(right) is LT())
+      } else if (i > j) {
+        assertTrue(left.compare(right) is GT())
+      } else {
+        assertTrue(left.compare(right) is EQ())
+      }
+    }
+  }
+}
+
+@test
+// toString()
+fun testToString(): void {
+  assertEqual(Some("string").toString(), "Some(string)");
+  assertEqual(Some(1).toString(), "Some(1)");
+  assertEqual(None().toString(), "None()");
+}

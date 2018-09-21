@@ -1,0 +1,19 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+fun test(): Foo<ParentClass> {
+  foo = Foo{value => Null()};
+  foo
+}
+
+base class ParentClass
+class ChildClass1() extends ParentClass
+class ChildClass2() extends ParentClass
+
+class Foo<T: ParentClass>{value: Nullable<T> = Null()} {
+  fun set(value: T): this {
+    !this.value = Box(value);
+    this
+  }
+}

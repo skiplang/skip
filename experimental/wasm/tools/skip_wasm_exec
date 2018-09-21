@@ -1,0 +1,11 @@
+#!/bin/bash -e
+
+#
+# Script that combines skip_to_wasm and runSkWasm.js into a
+# single step, for compatibility with the other back ends.
+
+WASM_TOOLS_DIR=$(dirname "${0}")
+WASMFILE=./out/sk.wasm
+
+${WASM_TOOLS_DIR}/skip_to_wasm -o ${WASMFILE} "$@"
+exec ${NODE:-node} ${WASM_TOOLS_DIR}/../runtime/runSkipWasm.js ${WASMFILE}

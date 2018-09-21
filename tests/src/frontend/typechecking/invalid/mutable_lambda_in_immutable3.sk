@@ -1,0 +1,8 @@
+mutable class Foo(f: () -> void)
+
+fun test(): void {
+  foo = mutable Foo(() -> void);
+  _ = freeze(foo) match {
+  | Foo(f) -> f
+  }
+}

@@ -1,0 +1,21 @@
+File "./typechecking/invalid/overridable_const4.sk", line 9, characters 7-9:
+Inheritance conflict needs resolution
+ 7 | }
+ 8 |
+ 9 | class Baz() extends Foo, Bar
+   |       ^^^
+
+File "./typechecking/invalid/overridable_const4.sk", line 2, characters 9-9:
+This constant
+1 | base class Foo {
+2 |   const x: Int = 42;
+  |         ^
+3 | }
+
+File "./typechecking/invalid/overridable_const4.sk", line 6, characters 9-9:
+Conflicts with this one
+4 |
+5 | base class Bar {
+6 |   const x: Int = 32;
+  |         ^
+7 | }

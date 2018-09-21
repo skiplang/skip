@@ -1,0 +1,265 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AP = ArgumentParser;
+
+module Main;
+
+class Config private {
+  exportedFunctions: UnorderedSet<String>,
+  exportedAsFunctions: UnorderedMap<String, String>,
+  disasmAll: Bool,
+  disasmAnnotated: Bool,
+  disasmFiles: UnorderedSet<String>,
+  disasmFunctions: UnorderedSet<String>,
+  outputFiles: Array<String>,
+  preambleFiles: Array<String>,
+  profilePath: String,
+  wasm: Bool,
+  asan: Bool,
+  autogc: Bool,
+  sampleRate: Int,
+  // NOTE: Using fully specialized class names yields more detailed stats
+  // info, but inhibits sharing, which increases compilation time and
+  // binary sizes.
+  useSpecializedNames: Bool,
+  version: Bool,
+} {
+  // Supported command-line arguments.
+  const args: Array<AP.Param> = Array[
+    AP.BoolParam{name => "disasm-all"},
+    AP.BoolParam{name => "disasm-annotated"},
+    AP.StringArrayParam{name => "disasm-file"},
+    AP.StringArrayParam{name => "disasm-function"},
+    AP.StringArrayParam{name => "export-function"},
+    AP.StringArrayParam{name => "export-function-as"},
+    AP.StringArrayParam{name => "export-module"},
+    AP.StringArrayParam{name => "output"},
+    AP.StringArrayParam{name => "profile-path"},
+    AP.StringArrayParam{name => "preamble"},
+    AP.BoolParam{name => "wasm"},
+    AP.BoolParam{name => "asan"},
+    AP.BoolParam{name => "autogc"},
+    AP.IntParam{name => "sample-rate"},
+    AP.BoolParam{name => "use-specialized-names"},
+    AP.BoolParam{name => "version"},
+    // These are handled in skipUtils.sk
+    // Just allow them to be ignored here
+    AP.StringArrayParam{name => "debug"},
+    AP.BoolParam{name => "profile"},
+  ];
+
+  static fun make(result: AP.ParseResult): this {
+    exportedFunctions = UnorderedSet::mcreate(0);
+    exportedAsFunctions = UnorderedSet::mcreate(0);
+    disasmAll = false;
+    disasmAnnotated = false;
+    disasmFiles = UnorderedSet::mcreate(0);
+    disasmFunctions = UnorderedSet::mcreate(0);
+    outputFiles = mutable Vector[];
+    preambleFiles = mutable Vector[];
+    profilePath = "";
+    wasm = false;
+    asan = false;
+    autogc = true;
+    sampleRate = 0;
+    useSpecializedNames = false;
+    version = false;
+
+    for (arg in result) {
+      arg match {
+      | AP.BoolValue{name => "disasm-all", value} -> !disasmAll = value
+      | AP.BoolValue{name => "disasm-annotated", value} ->
+        !disasmAnnotated = value
+      | AP.StringArrayValue{name => "disasm-file", value} ->
+        value.each(disasmFiles.insert)
+      | AP.StringArrayValue{name => "disasm-function", value} ->
+        value.each(disasmFunctions.insert)
+      | AP.StringArrayValue{name => "export-function", value} ->
+        value.each(exportedFunctions.insert)
+      | AP.StringArrayValue{name => "export-function-as", value} ->
+        value.each(exportedAsFunctions.insert)
+      | AP.StringArrayValue{name => "preamble", value} ->
+        value.each(preambleFiles.push)
+      | AP.StringArrayValue{name => "output", value} ->
+        for (v in value) if (!outputFiles.contains(v)) outputFiles.push(v)
+      | AP.StringArrayValue{name => "profile-path", value} ->
+        !profilePath = value[0]
+      | AP.BoolValue{name => "wasm", value} -> !wasm = value
+      | AP.BoolValue{name => "asan", value} -> !asan = value
+      | AP.BoolValue{name => "autogc", value} -> !autogc = value
+      | AP.IntValue{name => "sample-rate", value} -> !sampleRate = value
+      | AP.BoolValue{name => "use-specialized-names", value} ->
+        !useSpecializedNames = value
+      | AP.BoolValue{name => "version", value} -> !version = value
+      | _ -> void
+      }
+    };
+
+    if (version) {
+      print_string(getBuildVersion());
+      exit(0);
+    };
+
+    exportAs = mutable UnorderedMap[];
+    for (f in exportedAsFunctions) {
+      vals = f.split("=");
+      if (vals.size() != 2 || vals[0].isEmpty() || vals[1].isEmpty()) {
+        print_error("Invalid --export-function-as: " + f + "\n");
+        exit(1)
+      };
+
+      skipName = vals[0];
+      cppName = vals[1];
+
+      if (!exportAs.maybeSet(skipName, cppName)) {
+        oldCppName = exportAs[skipName];
+        if (oldCppName != cppName) {
+          print_error(
+            "Conflicting --export-function-as for " +
+              skipName +
+              ": " +
+              oldCppName +
+              " and " +
+              cppName +
+              "\n",
+          );
+          exit(1)
+        }
+      }
+    };
+
+    static{
+      exportedFunctions => freeze(exportedFunctions),
+      exportedAsFunctions => freeze(exportAs),
+      disasmAll,
+      disasmAnnotated,
+      disasmFiles => freeze(disasmFiles),
+      disasmFunctions => freeze(disasmFunctions),
+      outputFiles => if (outputFiles.isEmpty()) {
+        Array["-"]
+      } else {
+        outputFiles.toArray()
+      },
+      preambleFiles => preambleFiles.toArray(),
+      profilePath,
+      wasm,
+      asan,
+      autogc,
+      sampleRate,
+      useSpecializedNames,
+      version,
+    }
+  }
+}
+
+module end;
+
+fun targetIsWasm(): Bool {
+  kConfig.mainConfig.wasm
+}
+
+untracked fun createSpecializedIR(fileNames: Array<String>): GlobalEnv {
+  cfg = kConfig.mainConfig;
+
+  // Are we in "disassemble" mode?
+  disasm = (
+    cfg.disasmAll ||
+    cfg.disasmAnnotated ||
+    !cfg.disasmFiles.isEmpty() ||
+    !cfg.disasmFunctions.isEmpty()
+  );
+
+  // Create a filter for what functions to disassemble.
+  //
+  // Note that for "disasmAll" we do not return true, since we only want
+  // to disassemble code which is actually used, and returning true would
+  // force everything to be compiled just so it could be disassembled.
+  shouldDisasm = (
+    funDef ~>
+      disasm &&
+        (cfg.disasmFunctions.contains(funDef.getName()) ||
+          (cfg.disasmAnnotated &&
+            annotationsContain(funDef.annotations, "@disasm", funDef.getPos())))
+  );
+
+  // Create a filter for what functions to compile.
+  shouldRuntimeExport = (
+    funDef ~>
+      AsmOutput.cppIsExported(
+        funDef.getName(),
+        funDef.annotations,
+        funDef.getPos(),
+      )
+  );
+
+  OuterIstToIR.createIR(fileNames, shouldDisasm, shouldRuntimeExport)
+}
+
+fun createOptimizedFunctions(env: GlobalEnv): GlobalEnv {
+  runCompilerPhase("native/compile", () -> {
+    !env = Optimize.compileAll(env);
+
+    // Find all the functions that are still reachable from the root set,
+    // post-inlining, dead code elimination, etc.
+    !env.sfuns = findAllReachableFuns(
+      keep -> {
+        // Seed the "reachable" recursion with functions we definitely
+        // need to emit.
+        keep(env.initializeAllConstsID);
+        for (f in env.sfuns) {
+          if (f.exportStyle.isExported() || f.isDisasm || f.isRuntimeExport) {
+            keep(f.id)
+          }
+        };
+        env.runtimeFunctions.values().each(keep)
+      },
+      env,
+    );
+
+    // Now that we have computed the fields for all of the various
+    // coroutine classes, we can finally analyze pointer escape info.
+    !env = Escape.computeWhetherPointersCanEscape(env);
+
+    // optimize.sk steps (5) Lower + (6) Lay out vtables.
+    !env = Lower.lowerFunctions(env)
+  });
+
+  env
+}
+
+untracked fun compile(targets: Array<String>): void {
+  // Convert project:program-unit targets to a list of source files.
+  fileNames = SkipProject.getFilesForTargets(
+    SkipProject.nativePreludeBindings,
+    targets.collect(Vector),
+  ).collect(Array);
+
+  if (fileNames.isEmpty()) {
+    print_error("fatal error: no input files\n");
+    exit(4); // Exit code used by g++ for no input files
+  };
+
+  env = createSpecializedIR(fileNames);
+  !env = createOptimizedFunctions(env);
+
+  defs = runCompilerPhase("native/create_asm_graph", () -> {
+    AsmOutput.createAsmDefGraph(env)
+  });
+
+  runCompilerPhase("native/merge_asm_graph", () -> {
+    AsmOutput.mergeIdenticalAsmDefs(defs)
+  });
+
+  runCompilerPhase("native/create_asm_symbols", () -> {
+    AsmOutput.assignFinalSymbols(defs)
+  });
+
+  runCompilerPhase("native/write_asm_files", () -> {
+    AsmOutput.writeOutputFiles(defs, fileNames)
+  })
+}

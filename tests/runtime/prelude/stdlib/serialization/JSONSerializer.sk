@@ -1,0 +1,642 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module JSON;
+
+private class Format() {
+  static fun writer(jsonFormatter: mutable JSON.Formatter): mutable Writer {
+    mutable Writer(jsonFormatter)
+  }
+
+  static fun reader(data: mutable Lexer.LexingPosition): mutable Reader {
+    mutable Reader(data)
+  }
+
+  static fun serialize<T, S: Serialization.Serializer<T>>(
+    value: T,
+    serializer: S,
+    isPretty: .Bool = false,
+  ): Result<.String, Serialization.SerializationError> {
+    vec = mutable Vector[];
+    result = static::streamSerialize(value, serializer, vec.push, isPretty);
+    result match {
+    | Success _ -> Success(vec.join(""))
+    | Failure(exn) -> Failure(exn)
+    }
+  }
+
+  static fun streamSerialize<T, S: Serialization.Serializer<T>>(
+    value: T,
+    serializer: S,
+    write: .String -> void,
+    isPretty: .Bool = false,
+  ): Result<void, Serialization.SerializationError> {
+    try {
+      jsonFormatter = if (isPretty) {
+        mutable PrettyFormatter(write)
+      } else {
+        mutable CompactFormatter(write)
+      };
+      writer = static::writer(jsonFormatter);
+      serializer.serialize(value, writer);
+      writer.result();
+      Success(void)
+    } catch {
+    | exn @ Serialization.SerializationError _ -> Failure(exn)
+    }
+  }
+
+  static fun deserialize<T, S: Serialization.Serializer<T>>(
+    data: .String,
+    serializer: S,
+  ): Result<T, Serialization.SerializationError> {
+    static::streamDeserialize(Lexer.LexingPosition::create(data), serializer)
+  }
+
+  static fun streamDeserialize<T, S: Serialization.Serializer<T>>(
+    data: mutable Lexer.LexingPosition,
+    serializer: S,
+  ): Result<T, Serialization.SerializationError> {
+    try {
+      reader = static::reader(data);
+      result = serializer.deserialize(reader);
+      Success(result)
+    } catch {
+    | exn @ Serialization.SerializationError _ -> Failure(exn)
+    }
+  }
+}
+
+private mutable base class DefaultReader(
+  iter: mutable Lexer.LexingPosition,
+) extends Serialization.Reader {
+  overridable mutable fun readBool(): .Bool {
+    eatWhitespace(this.iter);
+    c = this.iter.peek();
+    c match {
+    | 't' ->
+      eatString(this.iter, "true");
+      true
+    | 'f' ->
+      eatString(this.iter, "false");
+      false
+    | _ ->
+      reportInvalidJSON(
+        this.iter,
+        `Invalid JSON start character '${c}' for Bool.`,
+      )
+    }
+  }
+
+  overridable mutable fun readFloat(): Float {
+    eatWhitespace(this.iter);
+    start = this.iter.clone();
+    skipSignOpt(this.iter);
+    skipDigits(this.iter);
+    _ = skipFractionOpt(this.iter);
+    _ = skipExponentOpt(this.iter);
+    value = start.getText(this.iter);
+    if (value == "-0") {
+      -0.0
+    } else {
+      value.toFloat()
+    }
+  }
+
+  overridable mutable fun readInt(): Int {
+    eatWhitespace(this.iter);
+    start = this.iter.clone();
+    skipSignOpt(this.iter);
+    skipDigits(this.iter);
+    value = start.getText(this.iter);
+    if (value == "-0") {
+      0
+    } else {
+      value.toInt()
+    }
+  }
+
+  overridable mutable fun readString(): .String {
+    eatWhitespace(this.iter);
+    decodeString(this.iter)
+  }
+
+  overridable mutable fun readSequence<T, S: Serialization.Serializer<T>>(
+    serializer: S,
+  ): mutable Serialization.SequenceReader<T> {
+    eatWhitespace(this.iter);
+    eat(this.iter, '[');
+    mutable SequenceReader(this.iter, serializer)
+  }
+
+  overridable mutable fun readTuple(
+    _size: Serialization.Size,
+  ): mutable Serialization.TupleReader {
+    eatWhitespace(this.iter);
+    eat(this.iter, '[');
+    mutable TupleReader(this.iter);
+  }
+
+  overridable mutable fun readKeyedSequence<
+    Tk,
+    Sk: Serialization.Serializer<Tk>,
+    Tv,
+    Sv: Serialization.Serializer<Tv>,
+  >(
+    keySerializer: Sk,
+    valueSerializer: Sv,
+  ): mutable Serialization.KeyedSequenceReader<Tk, Tv> {
+    eatWhitespace(this.iter);
+    eat(this.iter, '{');
+    mutable KeyedSequenceReader(this.iter, keySerializer, valueSerializer)
+  }
+
+  overridable mutable fun readRecord(
+    _fieldNames: .Array<.String>,
+  ): mutable Serialization.RecordReader {
+    eatWhitespace(this.iter);
+    eat(this.iter, '{');
+    mutable RecordReader(this.iter)
+  }
+
+  overridable mutable fun readVoid(): void {
+    throw Serialization.NotImplementedError(`readVoid()`)
+  }
+
+  overridable mutable fun readOption<T, S: Serialization.Serializer<T>>(
+    serializer: S,
+  ): ?T {
+    eatWhitespace(this.iter);
+    this.iter.peek() match {
+    | 'n' ->
+      eatString(this.iter, "null");
+      None()
+    | _ -> Some(serializer.deserialize(mutable OptionReader(this.iter)))
+    }
+  }
+
+  overridable mutable fun readType(): .String {
+    eatWhitespace(this.iter);
+    decodeString(this.iter)
+  }
+
+  overridable mutable fun readVariant(): (.String, mutable Reader, () -> void) {
+    eatWhitespace(this.iter);
+    eat(this.iter, '{');
+    record = mutable RecordReader(this.iter);
+    key = record.readKey();
+    key match {
+    | Some(className) ->
+      value = mutable Reader(this.iter);
+      eatWhitespace(this.iter);
+      (className, value, record.end)
+    | None() -> throw Serialization.VariantMissingError()
+    }
+  }
+
+  overridable mutable fun readDynamic<T, V: Serialization.Visitor<T>>(
+    _visitor: V,
+  ): T {
+    throw Serialization.NotImplementedError(`readDynamic()`)
+  }
+}
+
+private mutable class Reader() extends DefaultReader {}
+
+private mutable base class ValueReader() {
+  mutable fun readValueBase<T, S: Serialization.Serializer<T>>(
+    iter: mutable Lexer.LexingPosition,
+    serializer: S,
+  ): ?T {
+    eatWhitespace(iter);
+    if (iter.peek() == ']') {
+      None()
+    } else {
+      v = Some(serializer.deserialize(mutable Reader(iter)));
+      eatWhitespace(iter);
+      iter.peek() match {
+      | ',' ->
+        iter.advance();
+        eatWhitespace(iter)
+      | ']' -> void
+      | c ->
+        reportInvalidJSON(
+          iter,
+          `Unexpected character ''${charToString(
+            c,
+          )} in JSON .Array. Expected ',' or ']'.`,
+        )
+      };
+      eatWhitespace(iter);
+      v
+    }
+  }
+  mutable fun endBase(iter: mutable Lexer.LexingPosition): void {
+    eatWhitespace(iter);
+    eat(iter, ']')
+  }
+}
+
+private mutable class SequenceReader<T, S: Serialization.Serializer<T>>(
+  iter: mutable Lexer.LexingPosition,
+  serializer: S,
+) extends Serialization.SequenceReader<T>, ValueReader {
+  mutable fun sizeHint(): Serialization.SizeHint {
+    None()
+  }
+  mutable fun readValue(): ?T {
+    this.readValueBase(this.iter, this.serializer)
+  }
+  mutable fun end(): void {
+    this.endBase(this.iter)
+  }
+}
+
+private mutable class TupleReader(
+  iter: mutable Lexer.LexingPosition,
+) extends Serialization.TupleReader, ValueReader {
+  mutable fun readValue<T, S: Serialization.Serializer<T>>(serializer: S): T {
+    this.readValueBase(this.iter, serializer) match {
+    | Some(val) -> val
+    | None() -> throw Serialization.TupleSizeOutOfBoundsError()
+    }
+  }
+  mutable fun end(): void {
+    this.endBase(this.iter)
+  }
+}
+
+private mutable base class ItemReader() {
+  mutable fun readKeyBase<T, S: Serialization.Serializer<T>>(
+    iter: mutable Lexer.LexingPosition,
+    serializer: S,
+  ): ?T {
+    eatWhitespace(iter);
+    if (iter.peek() == '}') {
+      None()
+    } else {
+      key = serializer.deserialize(mutable StringReader(iter));
+      eatWhitespace(iter);
+      eat(iter, ':');
+      eatWhitespace(iter);
+      Some(key)
+    }
+  }
+  mutable fun readValueBase<T, S: Serialization.Serializer<T>>(
+    iter: mutable Lexer.LexingPosition,
+    serializer: S,
+  ): T {
+    value = serializer.deserialize(mutable Reader(iter));
+    eatWhitespace(iter);
+    iter.peek() match {
+    | ',' ->
+      eat(iter, ',');
+      eatWhitespace(iter)
+    | '}' -> void
+    | c ->
+      reportInvalidJSON(
+        iter,
+        `Unexpected character '${charToString(
+          c,
+        )}' in JSON .Array. Expected ',' or ']'.`,
+      )
+    };
+    value
+  }
+  mutable fun endBase(iter: mutable Lexer.LexingPosition): void {
+    eatWhitespace(iter);
+    eat(iter, '}')
+  }
+}
+
+private mutable class KeyedSequenceReader<
+  Tk,
+  Sk: Serialization.Serializer<Tk>,
+  Tv,
+  Sv: Serialization.Serializer<Tv>,
+>(
+  iter: mutable Lexer.LexingPosition,
+  keySerializer: Sk,
+  valueSerializer: Sv,
+) extends Serialization.KeyedSequenceReader<Tk, Tv>, ItemReader {
+  mutable fun sizeHint(): Serialization.SizeHint {
+    None()
+  }
+  mutable fun readItem(): ?(Tk, Tv) {
+    keyOption = this.readKeyBase(this.iter, this.keySerializer);
+    keyOption match {
+    | Some(key) ->
+      Some((key, this.readValueBase(this.iter, this.valueSerializer)))
+    | None() -> None()
+    }
+  }
+  mutable fun end(): void {
+    this.endBase(this.iter);
+  }
+}
+
+private mutable class RecordReader(
+  iter: mutable Lexer.LexingPosition,
+) extends Serialization.RecordReader, ItemReader {
+  mutable fun readKey(): ?.String {
+    this.readKeyBase(this.iter, .String::meta)
+  }
+  mutable fun readValue<T, S: Serialization.Serializer<T>>(serializer: S): T {
+    this.readValueBase(this.iter, serializer)
+  }
+  mutable fun end(): void {
+    this.endBase(this.iter)
+  }
+}
+
+private mutable class StringReader(
+  iter: mutable Lexer.LexingPosition,
+) extends Serialization.DefaultReader {
+  mutable fun readString(): .String {
+    eatWhitespace(this.iter);
+    decodeString(this.iter)
+  }
+}
+
+private mutable class OptionReader() extends DefaultReader {
+  mutable fun readOption<T, S: Serialization.Serializer<T>>(
+    _serializer: S,
+  ): ?T {
+    throw Serialization.NotSupportedError(`readOption()`)
+  }
+}
+
+private mutable base class DefaultWriter(
+  jsonFormatter: mutable JSON.Formatter,
+) extends Serialization.Writer {
+  type T_result = void;
+
+  overridable mutable fun result(): this::T_result {
+    void
+  }
+
+  overridable mutable fun writeBool(value: .Bool): void {
+    this.jsonFormatter.writeRaw(value.toString())
+  }
+
+  overridable mutable fun writeFloat(value: Float): void {
+    this.jsonFormatter.writeRaw(value.toString())
+  }
+
+  overridable mutable fun writeInt(value: Int): void {
+    this.jsonFormatter.writeRaw(value.toString())
+  }
+
+  overridable mutable fun writeString(value: .String): void {
+    writeStringValue(this.jsonFormatter.writeRaw, value)
+  }
+
+  overridable mutable fun writeSequence<T, S: Serialization.Serializer<T>>(
+    serializer: S,
+    _sizeHint: Serialization.SizeHint = None(),
+  ): mutable Serialization.SequenceWriter<T> {
+    mutable SequenceWriter(this.jsonFormatter, serializer)
+  }
+
+  overridable mutable fun writeTuple(
+    _size: Serialization.Size,
+  ): mutable Serialization.TupleWriter {
+    mutable TupleWriter(this.jsonFormatter)
+  }
+  overridable mutable fun writeKeyedSequence<
+    Tk,
+    Sk: Serialization.Serializer<Tk>,
+    Tv,
+    Sv: Serialization.Serializer<Tv>,
+  >(
+    keySerializer: Sk,
+    valueSerializer: Sv,
+    _sizeHint: Serialization.SizeHint = None(),
+  ): mutable Serialization.KeyedSequenceWriter<Tk, Tv> {
+    mutable KeyedSequenceWriter(
+      this.jsonFormatter,
+      keySerializer,
+      valueSerializer,
+    )
+  }
+
+  overridable mutable fun writeRecord(
+    _fieldNames: .Array<.String>,
+  ): mutable Serialization.RecordWriter {
+    mutable RecordWriter(this.jsonFormatter)
+  }
+
+  overridable mutable fun writeVoid(): void {
+    throw Serialization.NotImplementedError(`writeVoid()`)
+  }
+
+  overridable mutable fun writeOption<T, S: Serialization.Serializer<T>>(
+    value: ?T,
+    serializer: S,
+  ): void {
+    value match {
+    | None() -> this.jsonFormatter.writeRaw("null")
+    | Some(x) ->
+      writer = mutable OptionWriter(this.jsonFormatter);
+      serializer.serialize(x, writer)
+    }
+  }
+
+  overridable mutable fun writeType(name: .String): void {
+    writeStringValue(this.jsonFormatter.writeRaw, name)
+  }
+
+  overridable mutable fun writeVariant<T, S: Serialization.Serializer<T>>(
+    childName: .String,
+    value: T,
+    serializer: S,
+  ): void {
+    record = mutable RecordWriter(this.jsonFormatter);
+    record.writeItem(childName, value, serializer);
+    record.end()
+  }
+}
+
+private mutable class Writer() extends DefaultWriter {}
+
+// we need the begun state in order to prevent writing of ', '
+// after every element in sequence.
+// Otherwise, we would output JSON such as '[1, 2, 3, ]'
+private mutable base class ValueWriter() {
+  mutable fun writeValueBase<T, S: Serialization.Serializer<T>>(
+    jsonFormatter: mutable JSON.Formatter,
+    serializer: S,
+    value: T,
+    begun: .Bool,
+  ): void {
+    if (!begun) {
+      jsonFormatter.writeSquareOpen();
+    } else {
+      jsonFormatter.writeComma();
+    };
+    writer = mutable Writer(jsonFormatter);
+    serializer.serialize(value, writer)
+  }
+  mutable fun endBase(
+    jsonFormatter: mutable JSON.Formatter,
+    begun: .Bool,
+  ): void {
+    if (!begun) {
+      jsonFormatter.writeRaw("[]")
+    } else {
+      jsonFormatter.writeSquareClose()
+    }
+  }
+}
+
+private mutable class SequenceWriter<T, S: Serialization.Serializer<T>>(
+  jsonFormatter: mutable JSON.Formatter,
+  serializer: S,
+  mutable begun: .Bool = false,
+) extends Serialization.SequenceWriter<T>, ValueWriter {
+  mutable fun writeValue(value: T): void {
+    this.writeValueBase(this.jsonFormatter, this.serializer, value, this.begun);
+    this.!begun = true
+  }
+  mutable fun end(): void {
+    this.endBase(this.jsonFormatter, this.begun);
+    this.!begun = true
+  }
+}
+
+private mutable class TupleWriter(
+  jsonFormatter: mutable JSON.Formatter,
+  mutable begun: .Bool = false,
+) extends Serialization.TupleWriter, ValueWriter {
+  mutable fun writeValue<T, S: Serialization.Serializer<T>>(
+    value: T,
+    serializer: S,
+  ): void {
+    this.writeValueBase(this.jsonFormatter, serializer, value, this.begun);
+    this.!begun = true
+  }
+  mutable fun end(): void {
+    this.endBase(this.jsonFormatter, this.begun);
+    this.!begun = true
+  }
+}
+
+private mutable base class ItemWriter() {
+  mutable fun writeItemBase<
+    Tk,
+    Sk: Serialization.Serializer<Tk>,
+    Tv,
+    Sv: Serialization.Serializer<Tv>,
+  >(
+    jsonFormatter: mutable JSON.Formatter,
+    key: Tk,
+    keySerializer: Sk,
+    value: Tv,
+    valueSerializer: Sv,
+    begun: .Bool,
+  ): void {
+    if (!begun) {
+      jsonFormatter.writeCurlyOpen();
+    } else {
+      jsonFormatter.writeComma();
+    };
+    keyWriter = mutable StringWriter(jsonFormatter);
+    keySerializer.serialize(key, keyWriter);
+    jsonFormatter.writeColon();
+    valueWriter = mutable Writer(jsonFormatter);
+    valueSerializer.serialize(value, valueWriter)
+  }
+  mutable fun endBase(
+    jsonFormatter: mutable JSON.Formatter,
+    begun: .Bool,
+  ): void {
+    if (!begun) {
+      jsonFormatter.writeRaw("{}");
+      !begun = true
+    } else {
+      jsonFormatter.writeCurlyClose()
+    }
+  }
+}
+
+private mutable class KeyedSequenceWriter<
+  Tk,
+  Sk: Serialization.Serializer<Tk>,
+  Tv,
+  Sv: Serialization.Serializer<Tv>,
+>(
+  jsonFormatter: mutable JSON.Formatter,
+  keySerializer: Sk,
+  valueSerializer: Sv,
+  mutable begun: .Bool = false,
+) extends Serialization.KeyedSequenceWriter<Tk, Tv>, ItemWriter {
+  mutable fun writeItem(key: Tk, value: Tv): void {
+    this.writeItemBase(
+      this.jsonFormatter,
+      key,
+      this.keySerializer,
+      value,
+      this.valueSerializer,
+      this.begun,
+    );
+    this.!begun = true
+  }
+  mutable fun end(): void {
+    this.endBase(this.jsonFormatter, this.begun);
+    this.!begun = true
+  }
+}
+
+private mutable class RecordWriter(
+  jsonFormatter: mutable JSON.Formatter,
+  mutable begun: .Bool = false,
+) extends Serialization.RecordWriter, ItemWriter {
+  mutable fun writeItem<T, S: Serialization.Serializer<T>>(
+    fieldName: .String,
+    value: T,
+    serializer: S,
+  ): void {
+    this.writeItemBase(
+      this.jsonFormatter,
+      fieldName,
+      .String::meta,
+      value,
+      serializer,
+      this.begun,
+    );
+    this.!begun = true
+  }
+  mutable fun end(): void {
+    this.endBase(this.jsonFormatter, this.begun);
+    this.!begun = true
+  }
+}
+
+private mutable class StringWriter(
+  jsonFormatter: mutable JSON.Formatter,
+) extends Serialization.DefaultWriter {
+  type T_result = void;
+
+  mutable fun result(): this::T_result {
+    void
+  }
+
+  mutable fun writeString(value: .String): void {
+    writeStringValue(this.jsonFormatter.writeRaw, value)
+  }
+}
+
+private mutable class OptionWriter() extends DefaultWriter {
+  mutable fun writeOption<T, S: Serialization.Serializer<T>>(
+    _value: ?T,
+    _serializer: S,
+  ): void {
+    throw Serialization.NotSupportedError(`writeOption()`)
+  }
+}
+
+module end;

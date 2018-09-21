@@ -1,0 +1,4 @@
+File "./syntax/invalid/visibility_body.sk", line 1, characters 9-15:
+Class bodies cannot have modifiers. If you are attempting to apply the modifiers to the constructor, try adding an explicit constructor declaration
+1 | class X private { fun foo(): void { void } }
+  |         ^^^^^^^

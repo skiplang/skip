@@ -1,0 +1,6 @@
+class Foo()
+
+fun main(): void {
+  _f = mutable Foo();
+  print_raw("No")
+}

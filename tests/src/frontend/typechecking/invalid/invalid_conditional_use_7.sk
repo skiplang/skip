@@ -1,0 +1,34 @@
+base class P<T>(value: ?T) uses Equality[T: Equality] {
+  fun ==[T: Equality](other: P<T>): Bool {
+    (this, other) match {
+    | (L(v1), L(v2))
+    | (R(v1), R(v2)) ->
+      v1 == v2
+    | _ -> false
+    }
+  }
+}
+class L<T> extends P<T>
+class R<T> extends P<T>
+
+fun selfEq<T: Equality>(x: T): Bool {
+  x == x
+}
+
+fun no(): Bool {
+  // p : P<alpha>, the trait was dropped since alpha wasn't known
+  p = if (true) L(None()) else R(None());
+  // ERROR P<Int> does not use Equality
+  selfEq(p)
+}
+
+class Inv<T>(value: T) uses Equality[T: Equality] {
+  fun ==[T: Equality](other: Inv<T>): Bool {
+    this.value == other.value
+  }
+}
+
+fun no_inv(): Bool {
+  i = Inv(if (true) L(None()) else R(None()));
+  selfEq(i)
+}

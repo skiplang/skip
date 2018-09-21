@@ -1,0 +1,35 @@
+trait MyTCMyBase {
+  overridable fun magic(): Int {
+    42
+  }
+}
+
+trait MyTC extends MyTCMyBase {}
+
+class Nest<T: MyTC>(f: T) uses MyTC {
+  fun magic(): Int {
+    this.f.magic()
+  }
+}
+
+base class MyBase uses MyTC {
+  static fun woah(): void {
+    void
+  }
+}
+
+class Foo() extends MyBase uses MyTC {}
+
+class Foo2(x: Int) extends MyBase uses MyTC {
+  fun magic(): Int {
+    this.x
+  }
+}
+
+fun main(): void {
+  invariant(Foo2(5).magic() == 5, "error1");
+  invariant(Foo().magic() == 42, "error2");
+  invariant(Nest(Foo2(5)).magic() == 5, "error3");
+  invariant(Nest(Foo()).magic() == 42, "error4");
+  void
+}

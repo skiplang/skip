@@ -1,0 +1,23 @@
+File "./typechecking/invalid/mutable_lambda_10.sk", line 3, characters 14-14:
+You cannot capture this variable
+1 | fun main(): void {
+2 |   g: Int -> Int = (_ -> 112);
+3 |   f = (() ~> g(42));
+  |              ^
+4 |   _ = f();
+
+File "./typechecking/invalid/mutable_lambda_10.sk", line 2, characters 6-15:
+Mutable because of this position
+1 | fun main(): void {
+2 |   g: Int -> Int = (_ -> 112);
+  |      ^^^^^^^^^^
+3 |   f = (() ~> g(42));
+
+File "./typechecking/invalid/mutable_lambda_10.sk", line 3, characters 7-19:
+Because this closure was declared as pure (~>)
+Try '->' instead
+1 | fun main(): void {
+2 |   g: Int -> Int = (_ -> 112);
+3 |   f = (() ~> g(42));
+  |       ^^^^^^^^^^^^^
+4 |   _ = f();

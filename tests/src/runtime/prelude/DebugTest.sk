@@ -1,0 +1,156 @@
+base class ExampleBaseClass
+class ExampleClass{
+  private privateField: String,
+  protected protectedField: String,
+  publicField: String,
+} extends ExampleBaseClass
+
+// @test
+untracked fun testVoid(): void {
+  v = test_debug(void);
+  assertEqual(v, "void\n");
+}
+
+@test
+untracked fun testBool(): void {
+  v1 = test_debug(false);
+  assertEqual(v1, "false\n");
+
+  v2 = test_debug(true);
+  assertEqual(v2, "true\n");
+}
+
+@test
+untracked fun testFloat(): void {
+  v1 = test_debug(37.25);
+  assertEqual(v1, 37.25.toString() + "\n");
+
+  v2 = test_debug(1e100);
+  assertEqual(v2, 1e100.toString() + "\n");
+}
+
+@test
+untracked fun testInt(): void {
+  v1 = test_debug(37);
+  assertEqual(v1, "37\n");
+
+  big = (-1).shl(63);
+  v2 = test_debug(big);
+  assertEqual(v2, big.toString() + "\n");
+}
+@test
+untracked fun testString(): void {
+  v1 = test_debug("");
+  assertEqual(v1, "\"\"\n");
+
+  v2 = test_debug("hi");
+  assertEqual(v2, "\"hi\"\n");
+
+  v3 = test_debug("much longer");
+  assertEqual(v3, "\"much longer\"\n");
+}
+
+@test
+untracked fun testVector(): void {
+  vector = Vector[1, 1, 2, 3, 5, 8];
+  v = test_debug(vector);
+  assertEqual(v, "Vector[1, 1, 2, 3, 5, 8]\n");
+
+  vector2 = Vector["a", "b", "c"];
+  v2 = test_debug(vector2);
+  assertEqual(v2, "Vector[\"a\", \"b\", \"c\"]\n");
+}
+
+@test
+untracked fun testMap(): void {
+  map = Map["a" => 0, "b" => 1, "c" => 2];
+  v = test_debug(map);
+  assertEqual(v, "Map[\"a\" => 0, \"b\" => 1, \"c\" => 2]\n");
+}
+
+@test
+untracked fun testSet(): void {
+  set = Set[1, 2, 3, 5, 8];
+  v = test_debug(set);
+  assertEqual(v, "Set[1, 2, 3, 5, 8]\n");
+
+  set2 = Set["a", "b", "c"];
+  v2 = test_debug(set2);
+  assertEqual(v2, "Set[\"a\", \"b\", \"c\"]\n");
+}
+
+@test
+untracked fun testOption(): void {
+  some = Some(1);
+  v = test_debug(some);
+  assertEqual(v, "Some(1)\n");
+
+  none = None();
+  v2 = test_debug(none);
+  assertEqual(v2, "None()\n");
+}
+
+@test
+untracked fun testRef(): void {
+  r = Ref(37);
+  v = test_debug(r);
+  assertEqual(v, "Ref(37)\n");
+}
+
+@test
+untracked fun testTuple(): void {
+  tuple = (true, 2.14, 3, "four");
+  v = test_debug(tuple);
+  assertEqual(v, `(true, ${(2.14).toString()}, 3, \"four\")\n`)
+}
+
+@test
+untracked fun testDerivedInspect(): void {
+  object = ExampleClass{
+    privateField => "private",
+    protectedField => "protected",
+    publicField => "public",
+  };
+  v = test_debug(object);
+  assertEqual(
+    v,
+    Array[
+      "ExampleClass{",
+      "  privateField => \"private\",",
+      "  protectedField => \"protected\",",
+      "  publicField => \"public\",",
+      "}\n",
+    ].join("\n"),
+  );
+}
+
+// TODO: native test for debug output of lambda	+@test
+// @test
+untracked fun testLambda(): void {
+  x = 1;
+  lambda = () -> x;
+  v = test_debug(lambda);
+  assertEqual(v, "<<lambda>>\n")
+}
+
+@test
+untracked fun testNon80ColumnPrinting(): void {
+  vector = mutable Vector[];
+  // exceed any reasonable limit on number of inspect items
+  for (_ in Range(0, 10000)) {
+    vector.push(Vector[1]);
+  };
+  v = test_debug(vector);
+  lines = v.split("\n");
+  assertEqual(lines[0], "Vector[");
+  // If using 80 column mode, line 2 would be `Vector[1]`
+  assertEqual(lines[1], "  Vector[");
+  assertEqual(lines[2], "    1,");
+  assertEqual(lines[3], "  ],");
+}
+
+untracked fun test_debug<T>(x: T): String {
+  buffer = mutable Vector[];
+  Debug.untracked_debug_FOR_TESTING_DO_NOT_USE(x, buffer.push);
+  buffer.join("");
+}

@@ -1,0 +1,9 @@
+class C(s: String) {
+  fun m(p: String = this.s): String {
+    p;
+  }
+}
+
+fun main(): void {
+  print_raw(C("Pass\n").m());
+}

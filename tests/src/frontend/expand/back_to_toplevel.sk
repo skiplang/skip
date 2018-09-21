@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("OK")
+}
+module A;
+
+fun test(): void {
+  void
+}
+
+module end;
+
+fun test2(): void {
+  void
+}

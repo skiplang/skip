@@ -1,0 +1,7 @@
+File "./syntax/invalid/missing_semi_in_match_branch.sk", line 4, characters 12-12:
+Missing semi-colon before expression in expression sequence. All expressions in an expression sequence must be separated by a ';'.
+2 |   i = 42;
+3 |   i match {
+4 |   | 0 -> i j()
+  |            ^
+5 |   | 1 -> "Fail"

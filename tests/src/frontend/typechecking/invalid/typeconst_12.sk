@@ -1,0 +1,9 @@
+base class Foo<T: Test.MixedScalar>
+
+base class Baz {
+  type T: Test.MixedScalar;
+}
+
+class Bar() extends Foo<this::T::T> {
+  type T = Baz;
+}

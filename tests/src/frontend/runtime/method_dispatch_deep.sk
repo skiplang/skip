@@ -1,0 +1,8419 @@
+base class BaseA {
+  fun a0(): String;
+}
+
+@no_inline
+fun textA(x: BaseA): String {
+  x.a0() + "\n"
+}
+
+base class BaseB {
+  fun b0(): String;
+  fun b1(): String;
+}
+
+@no_inline
+fun textB(x: BaseB): String {
+  x.b0() + " " + x.b1() + "\n"
+}
+
+base class BaseC {
+  fun c0(): String;
+  fun c1(): String;
+  fun c2(): String;
+}
+
+@no_inline
+fun textC(x: BaseC): String {
+  x.c0() + " " + x.c1() + " " + x.c2() + "\n"
+}
+
+base class BaseD {
+  fun d0(): String;
+  fun d1(): String;
+  fun d2(): String;
+  fun d3(): String;
+}
+
+@no_inline
+fun textD(x: BaseD): String {
+  x.d0() + " " + x.d1() + " " + x.d2() + " " + x.d3() + "\n"
+}
+
+base class BaseE {
+  fun e0(): String;
+  fun e1(): String;
+  fun e2(): String;
+  fun e3(): String;
+  fun e4(): String;
+}
+
+@no_inline
+fun textE(x: BaseE): String {
+  x.e0() + " " + x.e1() + " " + x.e2() + " " + x.e3() + " " + x.e4() + "\n"
+}
+
+base class BaseF {
+  fun f0(): String;
+  fun f1(): String;
+  fun f2(): String;
+  fun f3(): String;
+  fun f4(): String;
+  fun f5(): String;
+}
+
+@no_inline
+fun textF(x: BaseF): String {
+  x.f0() +
+    " " +
+    x.f1() +
+    " " +
+    x.f2() +
+    " " +
+    x.f3() +
+    " " +
+    x.f4() +
+    " " +
+    x.f5() +
+    "\n"
+}
+
+base class BaseG {
+  fun g0(): String;
+  fun g1(): String;
+  fun g2(): String;
+  fun g3(): String;
+  fun g4(): String;
+  fun g5(): String;
+  fun g6(): String;
+}
+
+@no_inline
+fun textG(x: BaseG): String {
+  x.g0() +
+    " " +
+    x.g1() +
+    " " +
+    x.g2() +
+    " " +
+    x.g3() +
+    " " +
+    x.g4() +
+    " " +
+    x.g5() +
+    " " +
+    x.g6() +
+    "\n"
+}
+
+base class BaseH {
+  fun h0(): String;
+  fun h1(): String;
+  fun h2(): String;
+  fun h3(): String;
+  fun h4(): String;
+  fun h5(): String;
+  fun h6(): String;
+  fun h7(): String;
+}
+
+@no_inline
+fun textH(x: BaseH): String {
+  x.h0() +
+    " " +
+    x.h1() +
+    " " +
+    x.h2() +
+    " " +
+    x.h3() +
+    " " +
+    x.h4() +
+    " " +
+    x.h5() +
+    " " +
+    x.h6() +
+    " " +
+    x.h7() +
+    "\n"
+}
+
+base class BaseI {
+  fun i0(): String;
+  fun i1(): String;
+  fun i2(): String;
+  fun i3(): String;
+  fun i4(): String;
+  fun i5(): String;
+  fun i6(): String;
+  fun i7(): String;
+  fun i8(): String;
+}
+
+@no_inline
+fun textI(x: BaseI): String {
+  x.i0() +
+    " " +
+    x.i1() +
+    " " +
+    x.i2() +
+    " " +
+    x.i3() +
+    " " +
+    x.i4() +
+    " " +
+    x.i5() +
+    " " +
+    x.i6() +
+    " " +
+    x.i7() +
+    " " +
+    x.i8() +
+    "\n"
+}
+
+base class BaseJ {
+  fun j0(): String;
+  fun j1(): String;
+  fun j2(): String;
+  fun j3(): String;
+  fun j4(): String;
+  fun j5(): String;
+  fun j6(): String;
+  fun j7(): String;
+  fun j8(): String;
+  fun j9(): String;
+}
+
+@no_inline
+fun textJ(x: BaseJ): String {
+  x.j0() +
+    " " +
+    x.j1() +
+    " " +
+    x.j2() +
+    " " +
+    x.j3() +
+    " " +
+    x.j4() +
+    " " +
+    x.j5() +
+    " " +
+    x.j6() +
+    " " +
+    x.j7() +
+    " " +
+    x.j8() +
+    " " +
+    x.j9() +
+    "\n"
+}
+
+base class BaseK {
+  fun k0(): String;
+  fun k1(): String;
+  fun k2(): String;
+  fun k3(): String;
+  fun k4(): String;
+  fun k5(): String;
+  fun k6(): String;
+  fun k7(): String;
+  fun k8(): String;
+  fun k9(): String;
+  fun k10(): String;
+}
+
+@no_inline
+fun textK(x: BaseK): String {
+  x.k0() +
+    " " +
+    x.k1() +
+    " " +
+    x.k2() +
+    " " +
+    x.k3() +
+    " " +
+    x.k4() +
+    " " +
+    x.k5() +
+    " " +
+    x.k6() +
+    " " +
+    x.k7() +
+    " " +
+    x.k8() +
+    " " +
+    x.k9() +
+    " " +
+    x.k10() +
+    "\n"
+}
+
+base class BaseL {
+  fun l0(): String;
+  fun l1(): String;
+  fun l2(): String;
+  fun l3(): String;
+  fun l4(): String;
+  fun l5(): String;
+  fun l6(): String;
+  fun l7(): String;
+  fun l8(): String;
+  fun l9(): String;
+  fun l10(): String;
+  fun l11(): String;
+}
+
+@no_inline
+fun textL(x: BaseL): String {
+  x.l0() +
+    " " +
+    x.l1() +
+    " " +
+    x.l2() +
+    " " +
+    x.l3() +
+    " " +
+    x.l4() +
+    " " +
+    x.l5() +
+    " " +
+    x.l6() +
+    " " +
+    x.l7() +
+    " " +
+    x.l8() +
+    " " +
+    x.l9() +
+    " " +
+    x.l10() +
+    " " +
+    x.l11() +
+    "\n"
+}
+
+base class BaseM {
+  fun m0(): String;
+  fun m1(): String;
+  fun m2(): String;
+  fun m3(): String;
+  fun m4(): String;
+  fun m5(): String;
+  fun m6(): String;
+  fun m7(): String;
+  fun m8(): String;
+  fun m9(): String;
+  fun m10(): String;
+  fun m11(): String;
+  fun m12(): String;
+}
+
+@no_inline
+fun textM(x: BaseM): String {
+  x.m0() +
+    " " +
+    x.m1() +
+    " " +
+    x.m2() +
+    " " +
+    x.m3() +
+    " " +
+    x.m4() +
+    " " +
+    x.m5() +
+    " " +
+    x.m6() +
+    " " +
+    x.m7() +
+    " " +
+    x.m8() +
+    " " +
+    x.m9() +
+    " " +
+    x.m10() +
+    " " +
+    x.m11() +
+    " " +
+    x.m12() +
+    "\n"
+}
+
+base class BaseN {
+  fun n0(): String;
+  fun n1(): String;
+  fun n2(): String;
+  fun n3(): String;
+  fun n4(): String;
+  fun n5(): String;
+  fun n6(): String;
+  fun n7(): String;
+  fun n8(): String;
+  fun n9(): String;
+  fun n10(): String;
+  fun n11(): String;
+  fun n12(): String;
+  fun n13(): String;
+}
+
+@no_inline
+fun textN(x: BaseN): String {
+  x.n0() +
+    " " +
+    x.n1() +
+    " " +
+    x.n2() +
+    " " +
+    x.n3() +
+    " " +
+    x.n4() +
+    " " +
+    x.n5() +
+    " " +
+    x.n6() +
+    " " +
+    x.n7() +
+    " " +
+    x.n8() +
+    " " +
+    x.n9() +
+    " " +
+    x.n10() +
+    " " +
+    x.n11() +
+    " " +
+    x.n12() +
+    " " +
+    x.n13() +
+    "\n"
+}
+
+base class BaseO {
+  fun o0(): String;
+  fun o1(): String;
+  fun o2(): String;
+  fun o3(): String;
+  fun o4(): String;
+  fun o5(): String;
+  fun o6(): String;
+  fun o7(): String;
+  fun o8(): String;
+  fun o9(): String;
+  fun o10(): String;
+  fun o11(): String;
+  fun o12(): String;
+  fun o13(): String;
+  fun o14(): String;
+}
+
+@no_inline
+fun textO(x: BaseO): String {
+  x.o0() +
+    " " +
+    x.o1() +
+    " " +
+    x.o2() +
+    " " +
+    x.o3() +
+    " " +
+    x.o4() +
+    " " +
+    x.o5() +
+    " " +
+    x.o6() +
+    " " +
+    x.o7() +
+    " " +
+    x.o8() +
+    " " +
+    x.o9() +
+    " " +
+    x.o10() +
+    " " +
+    x.o11() +
+    " " +
+    x.o12() +
+    " " +
+    x.o13() +
+    " " +
+    x.o14() +
+    "\n"
+}
+
+base class BaseP {
+  fun p0(): String;
+  fun p1(): String;
+  fun p2(): String;
+  fun p3(): String;
+  fun p4(): String;
+  fun p5(): String;
+  fun p6(): String;
+  fun p7(): String;
+  fun p8(): String;
+  fun p9(): String;
+  fun p10(): String;
+  fun p11(): String;
+  fun p12(): String;
+  fun p13(): String;
+  fun p14(): String;
+  fun p15(): String;
+}
+
+@no_inline
+fun textP(x: BaseP): String {
+  x.p0() +
+    " " +
+    x.p1() +
+    " " +
+    x.p2() +
+    " " +
+    x.p3() +
+    " " +
+    x.p4() +
+    " " +
+    x.p5() +
+    " " +
+    x.p6() +
+    " " +
+    x.p7() +
+    " " +
+    x.p8() +
+    " " +
+    x.p9() +
+    " " +
+    x.p10() +
+    " " +
+    x.p11() +
+    " " +
+    x.p12() +
+    " " +
+    x.p13() +
+    " " +
+    x.p14() +
+    " " +
+    x.p15() +
+    "\n"
+}
+
+base class BaseQ {
+  fun q0(): String;
+  fun q1(): String;
+  fun q2(): String;
+  fun q3(): String;
+  fun q4(): String;
+  fun q5(): String;
+  fun q6(): String;
+  fun q7(): String;
+  fun q8(): String;
+  fun q9(): String;
+  fun q10(): String;
+  fun q11(): String;
+  fun q12(): String;
+  fun q13(): String;
+  fun q14(): String;
+  fun q15(): String;
+  fun q16(): String;
+}
+
+@no_inline
+fun textQ(x: BaseQ): String {
+  x.q0() +
+    " " +
+    x.q1() +
+    " " +
+    x.q2() +
+    " " +
+    x.q3() +
+    " " +
+    x.q4() +
+    " " +
+    x.q5() +
+    " " +
+    x.q6() +
+    " " +
+    x.q7() +
+    " " +
+    x.q8() +
+    " " +
+    x.q9() +
+    " " +
+    x.q10() +
+    " " +
+    x.q11() +
+    " " +
+    x.q12() +
+    " " +
+    x.q13() +
+    " " +
+    x.q14() +
+    " " +
+    x.q15() +
+    " " +
+    x.q16() +
+    "\n"
+}
+
+base class BaseR {
+  fun r0(): String;
+  fun r1(): String;
+  fun r2(): String;
+  fun r3(): String;
+  fun r4(): String;
+  fun r5(): String;
+  fun r6(): String;
+  fun r7(): String;
+  fun r8(): String;
+  fun r9(): String;
+  fun r10(): String;
+  fun r11(): String;
+  fun r12(): String;
+  fun r13(): String;
+  fun r14(): String;
+  fun r15(): String;
+  fun r16(): String;
+  fun r17(): String;
+}
+
+@no_inline
+fun textR(x: BaseR): String {
+  x.r0() +
+    " " +
+    x.r1() +
+    " " +
+    x.r2() +
+    " " +
+    x.r3() +
+    " " +
+    x.r4() +
+    " " +
+    x.r5() +
+    " " +
+    x.r6() +
+    " " +
+    x.r7() +
+    " " +
+    x.r8() +
+    " " +
+    x.r9() +
+    " " +
+    x.r10() +
+    " " +
+    x.r11() +
+    " " +
+    x.r12() +
+    " " +
+    x.r13() +
+    " " +
+    x.r14() +
+    " " +
+    x.r15() +
+    " " +
+    x.r16() +
+    " " +
+    x.r17() +
+    "\n"
+}
+
+base class BaseS {
+  fun s0(): String;
+  fun s1(): String;
+  fun s2(): String;
+  fun s3(): String;
+  fun s4(): String;
+  fun s5(): String;
+  fun s6(): String;
+  fun s7(): String;
+  fun s8(): String;
+  fun s9(): String;
+  fun s10(): String;
+  fun s11(): String;
+  fun s12(): String;
+  fun s13(): String;
+  fun s14(): String;
+  fun s15(): String;
+  fun s16(): String;
+  fun s17(): String;
+  fun s18(): String;
+}
+
+@no_inline
+fun textS(x: BaseS): String {
+  x.s0() +
+    " " +
+    x.s1() +
+    " " +
+    x.s2() +
+    " " +
+    x.s3() +
+    " " +
+    x.s4() +
+    " " +
+    x.s5() +
+    " " +
+    x.s6() +
+    " " +
+    x.s7() +
+    " " +
+    x.s8() +
+    " " +
+    x.s9() +
+    " " +
+    x.s10() +
+    " " +
+    x.s11() +
+    " " +
+    x.s12() +
+    " " +
+    x.s13() +
+    " " +
+    x.s14() +
+    " " +
+    x.s15() +
+    " " +
+    x.s16() +
+    " " +
+    x.s17() +
+    " " +
+    x.s18() +
+    "\n"
+}
+
+base class BaseT {
+  fun t0(): String;
+  fun t1(): String;
+  fun t2(): String;
+  fun t3(): String;
+  fun t4(): String;
+  fun t5(): String;
+  fun t6(): String;
+  fun t7(): String;
+  fun t8(): String;
+  fun t9(): String;
+  fun t10(): String;
+  fun t11(): String;
+  fun t12(): String;
+  fun t13(): String;
+  fun t14(): String;
+  fun t15(): String;
+  fun t16(): String;
+  fun t17(): String;
+  fun t18(): String;
+  fun t19(): String;
+}
+
+@no_inline
+fun textT(x: BaseT): String {
+  x.t0() +
+    " " +
+    x.t1() +
+    " " +
+    x.t2() +
+    " " +
+    x.t3() +
+    " " +
+    x.t4() +
+    " " +
+    x.t5() +
+    " " +
+    x.t6() +
+    " " +
+    x.t7() +
+    " " +
+    x.t8() +
+    " " +
+    x.t9() +
+    " " +
+    x.t10() +
+    " " +
+    x.t11() +
+    " " +
+    x.t12() +
+    " " +
+    x.t13() +
+    " " +
+    x.t14() +
+    " " +
+    x.t15() +
+    " " +
+    x.t16() +
+    " " +
+    x.t17() +
+    " " +
+    x.t18() +
+    " " +
+    x.t19() +
+    "\n"
+}
+
+base class BaseU {
+  fun u0(): String;
+  fun u1(): String;
+  fun u2(): String;
+  fun u3(): String;
+  fun u4(): String;
+  fun u5(): String;
+  fun u6(): String;
+  fun u7(): String;
+  fun u8(): String;
+  fun u9(): String;
+  fun u10(): String;
+  fun u11(): String;
+  fun u12(): String;
+  fun u13(): String;
+  fun u14(): String;
+  fun u15(): String;
+  fun u16(): String;
+  fun u17(): String;
+  fun u18(): String;
+  fun u19(): String;
+  fun u20(): String;
+}
+
+@no_inline
+fun textU(x: BaseU): String {
+  x.u0() +
+    " " +
+    x.u1() +
+    " " +
+    x.u2() +
+    " " +
+    x.u3() +
+    " " +
+    x.u4() +
+    " " +
+    x.u5() +
+    " " +
+    x.u6() +
+    " " +
+    x.u7() +
+    " " +
+    x.u8() +
+    " " +
+    x.u9() +
+    " " +
+    x.u10() +
+    " " +
+    x.u11() +
+    " " +
+    x.u12() +
+    " " +
+    x.u13() +
+    " " +
+    x.u14() +
+    " " +
+    x.u15() +
+    " " +
+    x.u16() +
+    " " +
+    x.u17() +
+    " " +
+    x.u18() +
+    " " +
+    x.u19() +
+    " " +
+    x.u20() +
+    "\n"
+}
+
+base class BaseV {
+  fun v0(): String;
+  fun v1(): String;
+  fun v2(): String;
+  fun v3(): String;
+  fun v4(): String;
+  fun v5(): String;
+  fun v6(): String;
+  fun v7(): String;
+  fun v8(): String;
+  fun v9(): String;
+  fun v10(): String;
+  fun v11(): String;
+  fun v12(): String;
+  fun v13(): String;
+  fun v14(): String;
+  fun v15(): String;
+  fun v16(): String;
+  fun v17(): String;
+  fun v18(): String;
+  fun v19(): String;
+  fun v20(): String;
+  fun v21(): String;
+}
+
+@no_inline
+fun textV(x: BaseV): String {
+  x.v0() +
+    " " +
+    x.v1() +
+    " " +
+    x.v2() +
+    " " +
+    x.v3() +
+    " " +
+    x.v4() +
+    " " +
+    x.v5() +
+    " " +
+    x.v6() +
+    " " +
+    x.v7() +
+    " " +
+    x.v8() +
+    " " +
+    x.v9() +
+    " " +
+    x.v10() +
+    " " +
+    x.v11() +
+    " " +
+    x.v12() +
+    " " +
+    x.v13() +
+    " " +
+    x.v14() +
+    " " +
+    x.v15() +
+    " " +
+    x.v16() +
+    " " +
+    x.v17() +
+    " " +
+    x.v18() +
+    " " +
+    x.v19() +
+    " " +
+    x.v20() +
+    " " +
+    x.v21() +
+    "\n"
+}
+
+base class BaseW {
+  fun w0(): String;
+  fun w1(): String;
+  fun w2(): String;
+  fun w3(): String;
+  fun w4(): String;
+  fun w5(): String;
+  fun w6(): String;
+  fun w7(): String;
+  fun w8(): String;
+  fun w9(): String;
+  fun w10(): String;
+  fun w11(): String;
+  fun w12(): String;
+  fun w13(): String;
+  fun w14(): String;
+  fun w15(): String;
+  fun w16(): String;
+  fun w17(): String;
+  fun w18(): String;
+  fun w19(): String;
+  fun w20(): String;
+  fun w21(): String;
+  fun w22(): String;
+}
+
+@no_inline
+fun textW(x: BaseW): String {
+  x.w0() +
+    " " +
+    x.w1() +
+    " " +
+    x.w2() +
+    " " +
+    x.w3() +
+    " " +
+    x.w4() +
+    " " +
+    x.w5() +
+    " " +
+    x.w6() +
+    " " +
+    x.w7() +
+    " " +
+    x.w8() +
+    " " +
+    x.w9() +
+    " " +
+    x.w10() +
+    " " +
+    x.w11() +
+    " " +
+    x.w12() +
+    " " +
+    x.w13() +
+    " " +
+    x.w14() +
+    " " +
+    x.w15() +
+    " " +
+    x.w16() +
+    " " +
+    x.w17() +
+    " " +
+    x.w18() +
+    " " +
+    x.w19() +
+    " " +
+    x.w20() +
+    " " +
+    x.w21() +
+    " " +
+    x.w22() +
+    "\n"
+}
+
+class ABC() extends BaseA, BaseB, BaseC {
+  fun a0(): String {
+    "ABC.a0"
+  }
+  fun b0(): String {
+    "ABC.b0"
+  }
+  fun b1(): String {
+    "ABC.b1"
+  }
+  fun c0(): String {
+    "ABC.c0"
+  }
+  fun c1(): String {
+    "ABC.c1"
+  }
+  fun c2(): String {
+    "ABC.c2"
+  }
+}
+
+class BC() extends BaseB, BaseC {
+  fun b0(): String {
+    "BC.b0"
+  }
+  fun b1(): String {
+    "BC.b1"
+  }
+  fun c0(): String {
+    "BC.c0"
+  }
+  fun c1(): String {
+    "BC.c1"
+  }
+  fun c2(): String {
+    "BC.c2"
+  }
+}
+
+class CE() extends BaseC, BaseE {
+  fun c0(): String {
+    "CE.c0"
+  }
+  fun c1(): String {
+    "CE.c1"
+  }
+  fun c2(): String {
+    "CE.c2"
+  }
+  fun e0(): String {
+    "CE.e0"
+  }
+  fun e1(): String {
+    "CE.e1"
+  }
+  fun e2(): String {
+    "CE.e2"
+  }
+  fun e3(): String {
+    "CE.e3"
+  }
+  fun e4(): String {
+    "CE.e4"
+  }
+}
+
+class DH() extends BaseD, BaseH {
+  fun d0(): String {
+    "DH.d0"
+  }
+  fun d1(): String {
+    "DH.d1"
+  }
+  fun d2(): String {
+    "DH.d2"
+  }
+  fun d3(): String {
+    "DH.d3"
+  }
+  fun h0(): String {
+    "DH.h0"
+  }
+  fun h1(): String {
+    "DH.h1"
+  }
+  fun h2(): String {
+    "DH.h2"
+  }
+  fun h3(): String {
+    "DH.h3"
+  }
+  fun h4(): String {
+    "DH.h4"
+  }
+  fun h5(): String {
+    "DH.h5"
+  }
+  fun h6(): String {
+    "DH.h6"
+  }
+  fun h7(): String {
+    "DH.h7"
+  }
+}
+
+class EL() extends BaseE, BaseL {
+  fun e0(): String {
+    "EL.e0"
+  }
+  fun e1(): String {
+    "EL.e1"
+  }
+  fun e2(): String {
+    "EL.e2"
+  }
+  fun e3(): String {
+    "EL.e3"
+  }
+  fun e4(): String {
+    "EL.e4"
+  }
+  fun l0(): String {
+    "EL.l0"
+  }
+  fun l1(): String {
+    "EL.l1"
+  }
+  fun l2(): String {
+    "EL.l2"
+  }
+  fun l3(): String {
+    "EL.l3"
+  }
+  fun l4(): String {
+    "EL.l4"
+  }
+  fun l5(): String {
+    "EL.l5"
+  }
+  fun l6(): String {
+    "EL.l6"
+  }
+  fun l7(): String {
+    "EL.l7"
+  }
+  fun l8(): String {
+    "EL.l8"
+  }
+  fun l9(): String {
+    "EL.l9"
+  }
+  fun l10(): String {
+    "EL.l10"
+  }
+  fun l11(): String {
+    "EL.l11"
+  }
+}
+
+class FQ() extends BaseF, BaseQ {
+  fun f0(): String {
+    "FQ.f0"
+  }
+  fun f1(): String {
+    "FQ.f1"
+  }
+  fun f2(): String {
+    "FQ.f2"
+  }
+  fun f3(): String {
+    "FQ.f3"
+  }
+  fun f4(): String {
+    "FQ.f4"
+  }
+  fun f5(): String {
+    "FQ.f5"
+  }
+  fun q0(): String {
+    "FQ.q0"
+  }
+  fun q1(): String {
+    "FQ.q1"
+  }
+  fun q2(): String {
+    "FQ.q2"
+  }
+  fun q3(): String {
+    "FQ.q3"
+  }
+  fun q4(): String {
+    "FQ.q4"
+  }
+  fun q5(): String {
+    "FQ.q5"
+  }
+  fun q6(): String {
+    "FQ.q6"
+  }
+  fun q7(): String {
+    "FQ.q7"
+  }
+  fun q8(): String {
+    "FQ.q8"
+  }
+  fun q9(): String {
+    "FQ.q9"
+  }
+  fun q10(): String {
+    "FQ.q10"
+  }
+  fun q11(): String {
+    "FQ.q11"
+  }
+  fun q12(): String {
+    "FQ.q12"
+  }
+  fun q13(): String {
+    "FQ.q13"
+  }
+  fun q14(): String {
+    "FQ.q14"
+  }
+  fun q15(): String {
+    "FQ.q15"
+  }
+  fun q16(): String {
+    "FQ.q16"
+  }
+}
+
+class GW() extends BaseG, BaseW {
+  fun g0(): String {
+    "GW.g0"
+  }
+  fun g1(): String {
+    "GW.g1"
+  }
+  fun g2(): String {
+    "GW.g2"
+  }
+  fun g3(): String {
+    "GW.g3"
+  }
+  fun g4(): String {
+    "GW.g4"
+  }
+  fun g5(): String {
+    "GW.g5"
+  }
+  fun g6(): String {
+    "GW.g6"
+  }
+  fun w0(): String {
+    "GW.w0"
+  }
+  fun w1(): String {
+    "GW.w1"
+  }
+  fun w2(): String {
+    "GW.w2"
+  }
+  fun w3(): String {
+    "GW.w3"
+  }
+  fun w4(): String {
+    "GW.w4"
+  }
+  fun w5(): String {
+    "GW.w5"
+  }
+  fun w6(): String {
+    "GW.w6"
+  }
+  fun w7(): String {
+    "GW.w7"
+  }
+  fun w8(): String {
+    "GW.w8"
+  }
+  fun w9(): String {
+    "GW.w9"
+  }
+  fun w10(): String {
+    "GW.w10"
+  }
+  fun w11(): String {
+    "GW.w11"
+  }
+  fun w12(): String {
+    "GW.w12"
+  }
+  fun w13(): String {
+    "GW.w13"
+  }
+  fun w14(): String {
+    "GW.w14"
+  }
+  fun w15(): String {
+    "GW.w15"
+  }
+  fun w16(): String {
+    "GW.w16"
+  }
+  fun w17(): String {
+    "GW.w17"
+  }
+  fun w18(): String {
+    "GW.w18"
+  }
+  fun w19(): String {
+    "GW.w19"
+  }
+  fun w20(): String {
+    "GW.w20"
+  }
+  fun w21(): String {
+    "GW.w21"
+  }
+  fun w22(): String {
+    "GW.w22"
+  }
+}
+
+class GH() extends BaseG, BaseH {
+  fun g0(): String {
+    "GH.g0"
+  }
+  fun g1(): String {
+    "GH.g1"
+  }
+  fun g2(): String {
+    "GH.g2"
+  }
+  fun g3(): String {
+    "GH.g3"
+  }
+  fun g4(): String {
+    "GH.g4"
+  }
+  fun g5(): String {
+    "GH.g5"
+  }
+  fun g6(): String {
+    "GH.g6"
+  }
+  fun h0(): String {
+    "GH.h0"
+  }
+  fun h1(): String {
+    "GH.h1"
+  }
+  fun h2(): String {
+    "GH.h2"
+  }
+  fun h3(): String {
+    "GH.h3"
+  }
+  fun h4(): String {
+    "GH.h4"
+  }
+  fun h5(): String {
+    "GH.h5"
+  }
+  fun h6(): String {
+    "GH.h6"
+  }
+  fun h7(): String {
+    "GH.h7"
+  }
+}
+
+class IO() extends BaseI, BaseO {
+  fun i0(): String {
+    "IO.i0"
+  }
+  fun i1(): String {
+    "IO.i1"
+  }
+  fun i2(): String {
+    "IO.i2"
+  }
+  fun i3(): String {
+    "IO.i3"
+  }
+  fun i4(): String {
+    "IO.i4"
+  }
+  fun i5(): String {
+    "IO.i5"
+  }
+  fun i6(): String {
+    "IO.i6"
+  }
+  fun i7(): String {
+    "IO.i7"
+  }
+  fun i8(): String {
+    "IO.i8"
+  }
+  fun o0(): String {
+    "IO.o0"
+  }
+  fun o1(): String {
+    "IO.o1"
+  }
+  fun o2(): String {
+    "IO.o2"
+  }
+  fun o3(): String {
+    "IO.o3"
+  }
+  fun o4(): String {
+    "IO.o4"
+  }
+  fun o5(): String {
+    "IO.o5"
+  }
+  fun o6(): String {
+    "IO.o6"
+  }
+  fun o7(): String {
+    "IO.o7"
+  }
+  fun o8(): String {
+    "IO.o8"
+  }
+  fun o9(): String {
+    "IO.o9"
+  }
+  fun o10(): String {
+    "IO.o10"
+  }
+  fun o11(): String {
+    "IO.o11"
+  }
+  fun o12(): String {
+    "IO.o12"
+  }
+  fun o13(): String {
+    "IO.o13"
+  }
+  fun o14(): String {
+    "IO.o14"
+  }
+}
+
+class AJ() extends BaseA, BaseJ {
+  fun a0(): String {
+    "AJ.a0"
+  }
+  fun j0(): String {
+    "AJ.j0"
+  }
+  fun j1(): String {
+    "AJ.j1"
+  }
+  fun j2(): String {
+    "AJ.j2"
+  }
+  fun j3(): String {
+    "AJ.j3"
+  }
+  fun j4(): String {
+    "AJ.j4"
+  }
+  fun j5(): String {
+    "AJ.j5"
+  }
+  fun j6(): String {
+    "AJ.j6"
+  }
+  fun j7(): String {
+    "AJ.j7"
+  }
+  fun j8(): String {
+    "AJ.j8"
+  }
+  fun j9(): String {
+    "AJ.j9"
+  }
+}
+
+class K() extends BaseK {
+  fun k0(): String {
+    "K.k0"
+  }
+  fun k1(): String {
+    "K.k1"
+  }
+  fun k2(): String {
+    "K.k2"
+  }
+  fun k3(): String {
+    "K.k3"
+  }
+  fun k4(): String {
+    "K.k4"
+  }
+  fun k5(): String {
+    "K.k5"
+  }
+  fun k6(): String {
+    "K.k6"
+  }
+  fun k7(): String {
+    "K.k7"
+  }
+  fun k8(): String {
+    "K.k8"
+  }
+  fun k9(): String {
+    "K.k9"
+  }
+  fun k10(): String {
+    "K.k10"
+  }
+}
+
+class LV() extends BaseL, BaseV {
+  fun l0(): String {
+    "LV.l0"
+  }
+  fun l1(): String {
+    "LV.l1"
+  }
+  fun l2(): String {
+    "LV.l2"
+  }
+  fun l3(): String {
+    "LV.l3"
+  }
+  fun l4(): String {
+    "LV.l4"
+  }
+  fun l5(): String {
+    "LV.l5"
+  }
+  fun l6(): String {
+    "LV.l6"
+  }
+  fun l7(): String {
+    "LV.l7"
+  }
+  fun l8(): String {
+    "LV.l8"
+  }
+  fun l9(): String {
+    "LV.l9"
+  }
+  fun l10(): String {
+    "LV.l10"
+  }
+  fun l11(): String {
+    "LV.l11"
+  }
+  fun v0(): String {
+    "LV.v0"
+  }
+  fun v1(): String {
+    "LV.v1"
+  }
+  fun v2(): String {
+    "LV.v2"
+  }
+  fun v3(): String {
+    "LV.v3"
+  }
+  fun v4(): String {
+    "LV.v4"
+  }
+  fun v5(): String {
+    "LV.v5"
+  }
+  fun v6(): String {
+    "LV.v6"
+  }
+  fun v7(): String {
+    "LV.v7"
+  }
+  fun v8(): String {
+    "LV.v8"
+  }
+  fun v9(): String {
+    "LV.v9"
+  }
+  fun v10(): String {
+    "LV.v10"
+  }
+  fun v11(): String {
+    "LV.v11"
+  }
+  fun v12(): String {
+    "LV.v12"
+  }
+  fun v13(): String {
+    "LV.v13"
+  }
+  fun v14(): String {
+    "LV.v14"
+  }
+  fun v15(): String {
+    "LV.v15"
+  }
+  fun v16(): String {
+    "LV.v16"
+  }
+  fun v17(): String {
+    "LV.v17"
+  }
+  fun v18(): String {
+    "LV.v18"
+  }
+  fun v19(): String {
+    "LV.v19"
+  }
+  fun v20(): String {
+    "LV.v20"
+  }
+  fun v21(): String {
+    "LV.v21"
+  }
+}
+
+class KM() extends BaseK, BaseM {
+  fun k0(): String {
+    "KM.k0"
+  }
+  fun k1(): String {
+    "KM.k1"
+  }
+  fun k2(): String {
+    "KM.k2"
+  }
+  fun k3(): String {
+    "KM.k3"
+  }
+  fun k4(): String {
+    "KM.k4"
+  }
+  fun k5(): String {
+    "KM.k5"
+  }
+  fun k6(): String {
+    "KM.k6"
+  }
+  fun k7(): String {
+    "KM.k7"
+  }
+  fun k8(): String {
+    "KM.k8"
+  }
+  fun k9(): String {
+    "KM.k9"
+  }
+  fun k10(): String {
+    "KM.k10"
+  }
+  fun m0(): String {
+    "KM.m0"
+  }
+  fun m1(): String {
+    "KM.m1"
+  }
+  fun m2(): String {
+    "KM.m2"
+  }
+  fun m3(): String {
+    "KM.m3"
+  }
+  fun m4(): String {
+    "KM.m4"
+  }
+  fun m5(): String {
+    "KM.m5"
+  }
+  fun m6(): String {
+    "KM.m6"
+  }
+  fun m7(): String {
+    "KM.m7"
+  }
+  fun m8(): String {
+    "KM.m8"
+  }
+  fun m9(): String {
+    "KM.m9"
+  }
+  fun m10(): String {
+    "KM.m10"
+  }
+  fun m11(): String {
+    "KM.m11"
+  }
+  fun m12(): String {
+    "KM.m12"
+  }
+}
+
+class AN() extends BaseA, BaseN {
+  fun a0(): String {
+    "AN.a0"
+  }
+  fun n0(): String {
+    "AN.n0"
+  }
+  fun n1(): String {
+    "AN.n1"
+  }
+  fun n2(): String {
+    "AN.n2"
+  }
+  fun n3(): String {
+    "AN.n3"
+  }
+  fun n4(): String {
+    "AN.n4"
+  }
+  fun n5(): String {
+    "AN.n5"
+  }
+  fun n6(): String {
+    "AN.n6"
+  }
+  fun n7(): String {
+    "AN.n7"
+  }
+  fun n8(): String {
+    "AN.n8"
+  }
+  fun n9(): String {
+    "AN.n9"
+  }
+  fun n10(): String {
+    "AN.n10"
+  }
+  fun n11(): String {
+    "AN.n11"
+  }
+  fun n12(): String {
+    "AN.n12"
+  }
+  fun n13(): String {
+    "AN.n13"
+  }
+}
+
+class O() extends BaseO {
+  fun o0(): String {
+    "O.o0"
+  }
+  fun o1(): String {
+    "O.o1"
+  }
+  fun o2(): String {
+    "O.o2"
+  }
+  fun o3(): String {
+    "O.o3"
+  }
+  fun o4(): String {
+    "O.o4"
+  }
+  fun o5(): String {
+    "O.o5"
+  }
+  fun o6(): String {
+    "O.o6"
+  }
+  fun o7(): String {
+    "O.o7"
+  }
+  fun o8(): String {
+    "O.o8"
+  }
+  fun o9(): String {
+    "O.o9"
+  }
+  fun o10(): String {
+    "O.o10"
+  }
+  fun o11(): String {
+    "O.o11"
+  }
+  fun o12(): String {
+    "O.o12"
+  }
+  fun o13(): String {
+    "O.o13"
+  }
+  fun o14(): String {
+    "O.o14"
+  }
+}
+
+class GP() extends BaseG, BaseP {
+  fun g0(): String {
+    "GP.g0"
+  }
+  fun g1(): String {
+    "GP.g1"
+  }
+  fun g2(): String {
+    "GP.g2"
+  }
+  fun g3(): String {
+    "GP.g3"
+  }
+  fun g4(): String {
+    "GP.g4"
+  }
+  fun g5(): String {
+    "GP.g5"
+  }
+  fun g6(): String {
+    "GP.g6"
+  }
+  fun p0(): String {
+    "GP.p0"
+  }
+  fun p1(): String {
+    "GP.p1"
+  }
+  fun p2(): String {
+    "GP.p2"
+  }
+  fun p3(): String {
+    "GP.p3"
+  }
+  fun p4(): String {
+    "GP.p4"
+  }
+  fun p5(): String {
+    "GP.p5"
+  }
+  fun p6(): String {
+    "GP.p6"
+  }
+  fun p7(): String {
+    "GP.p7"
+  }
+  fun p8(): String {
+    "GP.p8"
+  }
+  fun p9(): String {
+    "GP.p9"
+  }
+  fun p10(): String {
+    "GP.p10"
+  }
+  fun p11(): String {
+    "GP.p11"
+  }
+  fun p12(): String {
+    "GP.p12"
+  }
+  fun p13(): String {
+    "GP.p13"
+  }
+  fun p14(): String {
+    "GP.p14"
+  }
+  fun p15(): String {
+    "GP.p15"
+  }
+}
+
+class QW() extends BaseQ, BaseW {
+  fun q0(): String {
+    "QW.q0"
+  }
+  fun q1(): String {
+    "QW.q1"
+  }
+  fun q2(): String {
+    "QW.q2"
+  }
+  fun q3(): String {
+    "QW.q3"
+  }
+  fun q4(): String {
+    "QW.q4"
+  }
+  fun q5(): String {
+    "QW.q5"
+  }
+  fun q6(): String {
+    "QW.q6"
+  }
+  fun q7(): String {
+    "QW.q7"
+  }
+  fun q8(): String {
+    "QW.q8"
+  }
+  fun q9(): String {
+    "QW.q9"
+  }
+  fun q10(): String {
+    "QW.q10"
+  }
+  fun q11(): String {
+    "QW.q11"
+  }
+  fun q12(): String {
+    "QW.q12"
+  }
+  fun q13(): String {
+    "QW.q13"
+  }
+  fun q14(): String {
+    "QW.q14"
+  }
+  fun q15(): String {
+    "QW.q15"
+  }
+  fun q16(): String {
+    "QW.q16"
+  }
+  fun w0(): String {
+    "QW.w0"
+  }
+  fun w1(): String {
+    "QW.w1"
+  }
+  fun w2(): String {
+    "QW.w2"
+  }
+  fun w3(): String {
+    "QW.w3"
+  }
+  fun w4(): String {
+    "QW.w4"
+  }
+  fun w5(): String {
+    "QW.w5"
+  }
+  fun w6(): String {
+    "QW.w6"
+  }
+  fun w7(): String {
+    "QW.w7"
+  }
+  fun w8(): String {
+    "QW.w8"
+  }
+  fun w9(): String {
+    "QW.w9"
+  }
+  fun w10(): String {
+    "QW.w10"
+  }
+  fun w11(): String {
+    "QW.w11"
+  }
+  fun w12(): String {
+    "QW.w12"
+  }
+  fun w13(): String {
+    "QW.w13"
+  }
+  fun w14(): String {
+    "QW.w14"
+  }
+  fun w15(): String {
+    "QW.w15"
+  }
+  fun w16(): String {
+    "QW.w16"
+  }
+  fun w17(): String {
+    "QW.w17"
+  }
+  fun w18(): String {
+    "QW.w18"
+  }
+  fun w19(): String {
+    "QW.w19"
+  }
+  fun w20(): String {
+    "QW.w20"
+  }
+  fun w21(): String {
+    "QW.w21"
+  }
+  fun w22(): String {
+    "QW.w22"
+  }
+}
+
+class FQR() extends BaseF, BaseQ, BaseR {
+  fun f0(): String {
+    "FQR.f0"
+  }
+  fun f1(): String {
+    "FQR.f1"
+  }
+  fun f2(): String {
+    "FQR.f2"
+  }
+  fun f3(): String {
+    "FQR.f3"
+  }
+  fun f4(): String {
+    "FQR.f4"
+  }
+  fun f5(): String {
+    "FQR.f5"
+  }
+  fun q0(): String {
+    "FQR.q0"
+  }
+  fun q1(): String {
+    "FQR.q1"
+  }
+  fun q2(): String {
+    "FQR.q2"
+  }
+  fun q3(): String {
+    "FQR.q3"
+  }
+  fun q4(): String {
+    "FQR.q4"
+  }
+  fun q5(): String {
+    "FQR.q5"
+  }
+  fun q6(): String {
+    "FQR.q6"
+  }
+  fun q7(): String {
+    "FQR.q7"
+  }
+  fun q8(): String {
+    "FQR.q8"
+  }
+  fun q9(): String {
+    "FQR.q9"
+  }
+  fun q10(): String {
+    "FQR.q10"
+  }
+  fun q11(): String {
+    "FQR.q11"
+  }
+  fun q12(): String {
+    "FQR.q12"
+  }
+  fun q13(): String {
+    "FQR.q13"
+  }
+  fun q14(): String {
+    "FQR.q14"
+  }
+  fun q15(): String {
+    "FQR.q15"
+  }
+  fun q16(): String {
+    "FQR.q16"
+  }
+  fun r0(): String {
+    "FQR.r0"
+  }
+  fun r1(): String {
+    "FQR.r1"
+  }
+  fun r2(): String {
+    "FQR.r2"
+  }
+  fun r3(): String {
+    "FQR.r3"
+  }
+  fun r4(): String {
+    "FQR.r4"
+  }
+  fun r5(): String {
+    "FQR.r5"
+  }
+  fun r6(): String {
+    "FQR.r6"
+  }
+  fun r7(): String {
+    "FQR.r7"
+  }
+  fun r8(): String {
+    "FQR.r8"
+  }
+  fun r9(): String {
+    "FQR.r9"
+  }
+  fun r10(): String {
+    "FQR.r10"
+  }
+  fun r11(): String {
+    "FQR.r11"
+  }
+  fun r12(): String {
+    "FQR.r12"
+  }
+  fun r13(): String {
+    "FQR.r13"
+  }
+  fun r14(): String {
+    "FQR.r14"
+  }
+  fun r15(): String {
+    "FQR.r15"
+  }
+  fun r16(): String {
+    "FQR.r16"
+  }
+  fun r17(): String {
+    "FQR.r17"
+  }
+}
+
+class LS() extends BaseL, BaseS {
+  fun l0(): String {
+    "LS.l0"
+  }
+  fun l1(): String {
+    "LS.l1"
+  }
+  fun l2(): String {
+    "LS.l2"
+  }
+  fun l3(): String {
+    "LS.l3"
+  }
+  fun l4(): String {
+    "LS.l4"
+  }
+  fun l5(): String {
+    "LS.l5"
+  }
+  fun l6(): String {
+    "LS.l6"
+  }
+  fun l7(): String {
+    "LS.l7"
+  }
+  fun l8(): String {
+    "LS.l8"
+  }
+  fun l9(): String {
+    "LS.l9"
+  }
+  fun l10(): String {
+    "LS.l10"
+  }
+  fun l11(): String {
+    "LS.l11"
+  }
+  fun s0(): String {
+    "LS.s0"
+  }
+  fun s1(): String {
+    "LS.s1"
+  }
+  fun s2(): String {
+    "LS.s2"
+  }
+  fun s3(): String {
+    "LS.s3"
+  }
+  fun s4(): String {
+    "LS.s4"
+  }
+  fun s5(): String {
+    "LS.s5"
+  }
+  fun s6(): String {
+    "LS.s6"
+  }
+  fun s7(): String {
+    "LS.s7"
+  }
+  fun s8(): String {
+    "LS.s8"
+  }
+  fun s9(): String {
+    "LS.s9"
+  }
+  fun s10(): String {
+    "LS.s10"
+  }
+  fun s11(): String {
+    "LS.s11"
+  }
+  fun s12(): String {
+    "LS.s12"
+  }
+  fun s13(): String {
+    "LS.s13"
+  }
+  fun s14(): String {
+    "LS.s14"
+  }
+  fun s15(): String {
+    "LS.s15"
+  }
+  fun s16(): String {
+    "LS.s16"
+  }
+  fun s17(): String {
+    "LS.s17"
+  }
+  fun s18(): String {
+    "LS.s18"
+  }
+}
+
+class HT() extends BaseH, BaseT {
+  fun h0(): String {
+    "HT.h0"
+  }
+  fun h1(): String {
+    "HT.h1"
+  }
+  fun h2(): String {
+    "HT.h2"
+  }
+  fun h3(): String {
+    "HT.h3"
+  }
+  fun h4(): String {
+    "HT.h4"
+  }
+  fun h5(): String {
+    "HT.h5"
+  }
+  fun h6(): String {
+    "HT.h6"
+  }
+  fun h7(): String {
+    "HT.h7"
+  }
+  fun t0(): String {
+    "HT.t0"
+  }
+  fun t1(): String {
+    "HT.t1"
+  }
+  fun t2(): String {
+    "HT.t2"
+  }
+  fun t3(): String {
+    "HT.t3"
+  }
+  fun t4(): String {
+    "HT.t4"
+  }
+  fun t5(): String {
+    "HT.t5"
+  }
+  fun t6(): String {
+    "HT.t6"
+  }
+  fun t7(): String {
+    "HT.t7"
+  }
+  fun t8(): String {
+    "HT.t8"
+  }
+  fun t9(): String {
+    "HT.t9"
+  }
+  fun t10(): String {
+    "HT.t10"
+  }
+  fun t11(): String {
+    "HT.t11"
+  }
+  fun t12(): String {
+    "HT.t12"
+  }
+  fun t13(): String {
+    "HT.t13"
+  }
+  fun t14(): String {
+    "HT.t14"
+  }
+  fun t15(): String {
+    "HT.t15"
+  }
+  fun t16(): String {
+    "HT.t16"
+  }
+  fun t17(): String {
+    "HT.t17"
+  }
+  fun t18(): String {
+    "HT.t18"
+  }
+  fun t19(): String {
+    "HT.t19"
+  }
+}
+
+class EU() extends BaseE, BaseU {
+  fun e0(): String {
+    "EU.e0"
+  }
+  fun e1(): String {
+    "EU.e1"
+  }
+  fun e2(): String {
+    "EU.e2"
+  }
+  fun e3(): String {
+    "EU.e3"
+  }
+  fun e4(): String {
+    "EU.e4"
+  }
+  fun u0(): String {
+    "EU.u0"
+  }
+  fun u1(): String {
+    "EU.u1"
+  }
+  fun u2(): String {
+    "EU.u2"
+  }
+  fun u3(): String {
+    "EU.u3"
+  }
+  fun u4(): String {
+    "EU.u4"
+  }
+  fun u5(): String {
+    "EU.u5"
+  }
+  fun u6(): String {
+    "EU.u6"
+  }
+  fun u7(): String {
+    "EU.u7"
+  }
+  fun u8(): String {
+    "EU.u8"
+  }
+  fun u9(): String {
+    "EU.u9"
+  }
+  fun u10(): String {
+    "EU.u10"
+  }
+  fun u11(): String {
+    "EU.u11"
+  }
+  fun u12(): String {
+    "EU.u12"
+  }
+  fun u13(): String {
+    "EU.u13"
+  }
+  fun u14(): String {
+    "EU.u14"
+  }
+  fun u15(): String {
+    "EU.u15"
+  }
+  fun u16(): String {
+    "EU.u16"
+  }
+  fun u17(): String {
+    "EU.u17"
+  }
+  fun u18(): String {
+    "EU.u18"
+  }
+  fun u19(): String {
+    "EU.u19"
+  }
+  fun u20(): String {
+    "EU.u20"
+  }
+}
+
+class CV() extends BaseC, BaseV {
+  fun c0(): String {
+    "CV.c0"
+  }
+  fun c1(): String {
+    "CV.c1"
+  }
+  fun c2(): String {
+    "CV.c2"
+  }
+  fun v0(): String {
+    "CV.v0"
+  }
+  fun v1(): String {
+    "CV.v1"
+  }
+  fun v2(): String {
+    "CV.v2"
+  }
+  fun v3(): String {
+    "CV.v3"
+  }
+  fun v4(): String {
+    "CV.v4"
+  }
+  fun v5(): String {
+    "CV.v5"
+  }
+  fun v6(): String {
+    "CV.v6"
+  }
+  fun v7(): String {
+    "CV.v7"
+  }
+  fun v8(): String {
+    "CV.v8"
+  }
+  fun v9(): String {
+    "CV.v9"
+  }
+  fun v10(): String {
+    "CV.v10"
+  }
+  fun v11(): String {
+    "CV.v11"
+  }
+  fun v12(): String {
+    "CV.v12"
+  }
+  fun v13(): String {
+    "CV.v13"
+  }
+  fun v14(): String {
+    "CV.v14"
+  }
+  fun v15(): String {
+    "CV.v15"
+  }
+  fun v16(): String {
+    "CV.v16"
+  }
+  fun v17(): String {
+    "CV.v17"
+  }
+  fun v18(): String {
+    "CV.v18"
+  }
+  fun v19(): String {
+    "CV.v19"
+  }
+  fun v20(): String {
+    "CV.v20"
+  }
+  fun v21(): String {
+    "CV.v21"
+  }
+}
+
+class BW() extends BaseB, BaseW {
+  fun b0(): String {
+    "BW.b0"
+  }
+  fun b1(): String {
+    "BW.b1"
+  }
+  fun w0(): String {
+    "BW.w0"
+  }
+  fun w1(): String {
+    "BW.w1"
+  }
+  fun w2(): String {
+    "BW.w2"
+  }
+  fun w3(): String {
+    "BW.w3"
+  }
+  fun w4(): String {
+    "BW.w4"
+  }
+  fun w5(): String {
+    "BW.w5"
+  }
+  fun w6(): String {
+    "BW.w6"
+  }
+  fun w7(): String {
+    "BW.w7"
+  }
+  fun w8(): String {
+    "BW.w8"
+  }
+  fun w9(): String {
+    "BW.w9"
+  }
+  fun w10(): String {
+    "BW.w10"
+  }
+  fun w11(): String {
+    "BW.w11"
+  }
+  fun w12(): String {
+    "BW.w12"
+  }
+  fun w13(): String {
+    "BW.w13"
+  }
+  fun w14(): String {
+    "BW.w14"
+  }
+  fun w15(): String {
+    "BW.w15"
+  }
+  fun w16(): String {
+    "BW.w16"
+  }
+  fun w17(): String {
+    "BW.w17"
+  }
+  fun w18(): String {
+    "BW.w18"
+  }
+  fun w19(): String {
+    "BW.w19"
+  }
+  fun w20(): String {
+    "BW.w20"
+  }
+  fun w21(): String {
+    "BW.w21"
+  }
+  fun w22(): String {
+    "BW.w22"
+  }
+}
+
+class AB() extends BaseA, BaseB {
+  fun a0(): String {
+    "AB.a0"
+  }
+  fun b0(): String {
+    "AB.b0"
+  }
+  fun b1(): String {
+    "AB.b1"
+  }
+}
+
+class BE() extends BaseB, BaseE {
+  fun b0(): String {
+    "BE.b0"
+  }
+  fun b1(): String {
+    "BE.b1"
+  }
+  fun e0(): String {
+    "BE.e0"
+  }
+  fun e1(): String {
+    "BE.e1"
+  }
+  fun e2(): String {
+    "BE.e2"
+  }
+  fun e3(): String {
+    "BE.e3"
+  }
+  fun e4(): String {
+    "BE.e4"
+  }
+}
+
+class CG() extends BaseC, BaseG {
+  fun c0(): String {
+    "CG.c0"
+  }
+  fun c1(): String {
+    "CG.c1"
+  }
+  fun c2(): String {
+    "CG.c2"
+  }
+  fun g0(): String {
+    "CG.g0"
+  }
+  fun g1(): String {
+    "CG.g1"
+  }
+  fun g2(): String {
+    "CG.g2"
+  }
+  fun g3(): String {
+    "CG.g3"
+  }
+  fun g4(): String {
+    "CG.g4"
+  }
+  fun g5(): String {
+    "CG.g5"
+  }
+  fun g6(): String {
+    "CG.g6"
+  }
+}
+
+class DJ() extends BaseD, BaseJ {
+  fun d0(): String {
+    "DJ.d0"
+  }
+  fun d1(): String {
+    "DJ.d1"
+  }
+  fun d2(): String {
+    "DJ.d2"
+  }
+  fun d3(): String {
+    "DJ.d3"
+  }
+  fun j0(): String {
+    "DJ.j0"
+  }
+  fun j1(): String {
+    "DJ.j1"
+  }
+  fun j2(): String {
+    "DJ.j2"
+  }
+  fun j3(): String {
+    "DJ.j3"
+  }
+  fun j4(): String {
+    "DJ.j4"
+  }
+  fun j5(): String {
+    "DJ.j5"
+  }
+  fun j6(): String {
+    "DJ.j6"
+  }
+  fun j7(): String {
+    "DJ.j7"
+  }
+  fun j8(): String {
+    "DJ.j8"
+  }
+  fun j9(): String {
+    "DJ.j9"
+  }
+}
+
+class EN() extends BaseE, BaseN {
+  fun e0(): String {
+    "EN.e0"
+  }
+  fun e1(): String {
+    "EN.e1"
+  }
+  fun e2(): String {
+    "EN.e2"
+  }
+  fun e3(): String {
+    "EN.e3"
+  }
+  fun e4(): String {
+    "EN.e4"
+  }
+  fun n0(): String {
+    "EN.n0"
+  }
+  fun n1(): String {
+    "EN.n1"
+  }
+  fun n2(): String {
+    "EN.n2"
+  }
+  fun n3(): String {
+    "EN.n3"
+  }
+  fun n4(): String {
+    "EN.n4"
+  }
+  fun n5(): String {
+    "EN.n5"
+  }
+  fun n6(): String {
+    "EN.n6"
+  }
+  fun n7(): String {
+    "EN.n7"
+  }
+  fun n8(): String {
+    "EN.n8"
+  }
+  fun n9(): String {
+    "EN.n9"
+  }
+  fun n10(): String {
+    "EN.n10"
+  }
+  fun n11(): String {
+    "EN.n11"
+  }
+  fun n12(): String {
+    "EN.n12"
+  }
+  fun n13(): String {
+    "EN.n13"
+  }
+}
+
+class FS() extends BaseF, BaseS {
+  fun f0(): String {
+    "FS.f0"
+  }
+  fun f1(): String {
+    "FS.f1"
+  }
+  fun f2(): String {
+    "FS.f2"
+  }
+  fun f3(): String {
+    "FS.f3"
+  }
+  fun f4(): String {
+    "FS.f4"
+  }
+  fun f5(): String {
+    "FS.f5"
+  }
+  fun s0(): String {
+    "FS.s0"
+  }
+  fun s1(): String {
+    "FS.s1"
+  }
+  fun s2(): String {
+    "FS.s2"
+  }
+  fun s3(): String {
+    "FS.s3"
+  }
+  fun s4(): String {
+    "FS.s4"
+  }
+  fun s5(): String {
+    "FS.s5"
+  }
+  fun s6(): String {
+    "FS.s6"
+  }
+  fun s7(): String {
+    "FS.s7"
+  }
+  fun s8(): String {
+    "FS.s8"
+  }
+  fun s9(): String {
+    "FS.s9"
+  }
+  fun s10(): String {
+    "FS.s10"
+  }
+  fun s11(): String {
+    "FS.s11"
+  }
+  fun s12(): String {
+    "FS.s12"
+  }
+  fun s13(): String {
+    "FS.s13"
+  }
+  fun s14(): String {
+    "FS.s14"
+  }
+  fun s15(): String {
+    "FS.s15"
+  }
+  fun s16(): String {
+    "FS.s16"
+  }
+  fun s17(): String {
+    "FS.s17"
+  }
+  fun s18(): String {
+    "FS.s18"
+  }
+}
+
+class BG() extends BaseB, BaseG {
+  fun b0(): String {
+    "BG.b0"
+  }
+  fun b1(): String {
+    "BG.b1"
+  }
+  fun g0(): String {
+    "BG.g0"
+  }
+  fun g1(): String {
+    "BG.g1"
+  }
+  fun g2(): String {
+    "BG.g2"
+  }
+  fun g3(): String {
+    "BG.g3"
+  }
+  fun g4(): String {
+    "BG.g4"
+  }
+  fun g5(): String {
+    "BG.g5"
+  }
+  fun g6(): String {
+    "BG.g6"
+  }
+}
+
+class HI() extends BaseH, BaseI {
+  fun h0(): String {
+    "HI.h0"
+  }
+  fun h1(): String {
+    "HI.h1"
+  }
+  fun h2(): String {
+    "HI.h2"
+  }
+  fun h3(): String {
+    "HI.h3"
+  }
+  fun h4(): String {
+    "HI.h4"
+  }
+  fun h5(): String {
+    "HI.h5"
+  }
+  fun h6(): String {
+    "HI.h6"
+  }
+  fun h7(): String {
+    "HI.h7"
+  }
+  fun i0(): String {
+    "HI.i0"
+  }
+  fun i1(): String {
+    "HI.i1"
+  }
+  fun i2(): String {
+    "HI.i2"
+  }
+  fun i3(): String {
+    "HI.i3"
+  }
+  fun i4(): String {
+    "HI.i4"
+  }
+  fun i5(): String {
+    "HI.i5"
+  }
+  fun i6(): String {
+    "HI.i6"
+  }
+  fun i7(): String {
+    "HI.i7"
+  }
+  fun i8(): String {
+    "HI.i8"
+  }
+}
+
+class IQ() extends BaseI, BaseQ {
+  fun i0(): String {
+    "IQ.i0"
+  }
+  fun i1(): String {
+    "IQ.i1"
+  }
+  fun i2(): String {
+    "IQ.i2"
+  }
+  fun i3(): String {
+    "IQ.i3"
+  }
+  fun i4(): String {
+    "IQ.i4"
+  }
+  fun i5(): String {
+    "IQ.i5"
+  }
+  fun i6(): String {
+    "IQ.i6"
+  }
+  fun i7(): String {
+    "IQ.i7"
+  }
+  fun i8(): String {
+    "IQ.i8"
+  }
+  fun q0(): String {
+    "IQ.q0"
+  }
+  fun q1(): String {
+    "IQ.q1"
+  }
+  fun q2(): String {
+    "IQ.q2"
+  }
+  fun q3(): String {
+    "IQ.q3"
+  }
+  fun q4(): String {
+    "IQ.q4"
+  }
+  fun q5(): String {
+    "IQ.q5"
+  }
+  fun q6(): String {
+    "IQ.q6"
+  }
+  fun q7(): String {
+    "IQ.q7"
+  }
+  fun q8(): String {
+    "IQ.q8"
+  }
+  fun q9(): String {
+    "IQ.q9"
+  }
+  fun q10(): String {
+    "IQ.q10"
+  }
+  fun q11(): String {
+    "IQ.q11"
+  }
+  fun q12(): String {
+    "IQ.q12"
+  }
+  fun q13(): String {
+    "IQ.q13"
+  }
+  fun q14(): String {
+    "IQ.q14"
+  }
+  fun q15(): String {
+    "IQ.q15"
+  }
+  fun q16(): String {
+    "IQ.q16"
+  }
+}
+
+class CJ() extends BaseC, BaseJ {
+  fun c0(): String {
+    "CJ.c0"
+  }
+  fun c1(): String {
+    "CJ.c1"
+  }
+  fun c2(): String {
+    "CJ.c2"
+  }
+  fun j0(): String {
+    "CJ.j0"
+  }
+  fun j1(): String {
+    "CJ.j1"
+  }
+  fun j2(): String {
+    "CJ.j2"
+  }
+  fun j3(): String {
+    "CJ.j3"
+  }
+  fun j4(): String {
+    "CJ.j4"
+  }
+  fun j5(): String {
+    "CJ.j5"
+  }
+  fun j6(): String {
+    "CJ.j6"
+  }
+  fun j7(): String {
+    "CJ.j7"
+  }
+  fun j8(): String {
+    "CJ.j8"
+  }
+  fun j9(): String {
+    "CJ.j9"
+  }
+}
+
+class AK() extends BaseA, BaseK {
+  fun a0(): String {
+    "AK.a0"
+  }
+  fun k0(): String {
+    "AK.k0"
+  }
+  fun k1(): String {
+    "AK.k1"
+  }
+  fun k2(): String {
+    "AK.k2"
+  }
+  fun k3(): String {
+    "AK.k3"
+  }
+  fun k4(): String {
+    "AK.k4"
+  }
+  fun k5(): String {
+    "AK.k5"
+  }
+  fun k6(): String {
+    "AK.k6"
+  }
+  fun k7(): String {
+    "AK.k7"
+  }
+  fun k8(): String {
+    "AK.k8"
+  }
+  fun k9(): String {
+    "AK.k9"
+  }
+  fun k10(): String {
+    "AK.k10"
+  }
+}
+
+class L() extends BaseL {
+  fun l0(): String {
+    "L.l0"
+  }
+  fun l1(): String {
+    "L.l1"
+  }
+  fun l2(): String {
+    "L.l2"
+  }
+  fun l3(): String {
+    "L.l3"
+  }
+  fun l4(): String {
+    "L.l4"
+  }
+  fun l5(): String {
+    "L.l5"
+  }
+  fun l6(): String {
+    "L.l6"
+  }
+  fun l7(): String {
+    "L.l7"
+  }
+  fun l8(): String {
+    "L.l8"
+  }
+  fun l9(): String {
+    "L.l9"
+  }
+  fun l10(): String {
+    "L.l10"
+  }
+  fun l11(): String {
+    "L.l11"
+  }
+}
+
+class AM() extends BaseA, BaseM {
+  fun a0(): String {
+    "AM.a0"
+  }
+  fun m0(): String {
+    "AM.m0"
+  }
+  fun m1(): String {
+    "AM.m1"
+  }
+  fun m2(): String {
+    "AM.m2"
+  }
+  fun m3(): String {
+    "AM.m3"
+  }
+  fun m4(): String {
+    "AM.m4"
+  }
+  fun m5(): String {
+    "AM.m5"
+  }
+  fun m6(): String {
+    "AM.m6"
+  }
+  fun m7(): String {
+    "AM.m7"
+  }
+  fun m8(): String {
+    "AM.m8"
+  }
+  fun m9(): String {
+    "AM.m9"
+  }
+  fun m10(): String {
+    "AM.m10"
+  }
+  fun m11(): String {
+    "AM.m11"
+  }
+  fun m12(): String {
+    "AM.m12"
+  }
+}
+
+class N() extends BaseN {
+  fun n0(): String {
+    "N.n0"
+  }
+  fun n1(): String {
+    "N.n1"
+  }
+  fun n2(): String {
+    "N.n2"
+  }
+  fun n3(): String {
+    "N.n3"
+  }
+  fun n4(): String {
+    "N.n4"
+  }
+  fun n5(): String {
+    "N.n5"
+  }
+  fun n6(): String {
+    "N.n6"
+  }
+  fun n7(): String {
+    "N.n7"
+  }
+  fun n8(): String {
+    "N.n8"
+  }
+  fun n9(): String {
+    "N.n9"
+  }
+  fun n10(): String {
+    "N.n10"
+  }
+  fun n11(): String {
+    "N.n11"
+  }
+  fun n12(): String {
+    "N.n12"
+  }
+  fun n13(): String {
+    "N.n13"
+  }
+}
+
+class EO() extends BaseE, BaseO {
+  fun e0(): String {
+    "EO.e0"
+  }
+  fun e1(): String {
+    "EO.e1"
+  }
+  fun e2(): String {
+    "EO.e2"
+  }
+  fun e3(): String {
+    "EO.e3"
+  }
+  fun e4(): String {
+    "EO.e4"
+  }
+  fun o0(): String {
+    "EO.o0"
+  }
+  fun o1(): String {
+    "EO.o1"
+  }
+  fun o2(): String {
+    "EO.o2"
+  }
+  fun o3(): String {
+    "EO.o3"
+  }
+  fun o4(): String {
+    "EO.o4"
+  }
+  fun o5(): String {
+    "EO.o5"
+  }
+  fun o6(): String {
+    "EO.o6"
+  }
+  fun o7(): String {
+    "EO.o7"
+  }
+  fun o8(): String {
+    "EO.o8"
+  }
+  fun o9(): String {
+    "EO.o9"
+  }
+  fun o10(): String {
+    "EO.o10"
+  }
+  fun o11(): String {
+    "EO.o11"
+  }
+  fun o12(): String {
+    "EO.o12"
+  }
+  fun o13(): String {
+    "EO.o13"
+  }
+  fun o14(): String {
+    "EO.o14"
+  }
+}
+
+class PT() extends BaseP, BaseT {
+  fun p0(): String {
+    "PT.p0"
+  }
+  fun p1(): String {
+    "PT.p1"
+  }
+  fun p2(): String {
+    "PT.p2"
+  }
+  fun p3(): String {
+    "PT.p3"
+  }
+  fun p4(): String {
+    "PT.p4"
+  }
+  fun p5(): String {
+    "PT.p5"
+  }
+  fun p6(): String {
+    "PT.p6"
+  }
+  fun p7(): String {
+    "PT.p7"
+  }
+  fun p8(): String {
+    "PT.p8"
+  }
+  fun p9(): String {
+    "PT.p9"
+  }
+  fun p10(): String {
+    "PT.p10"
+  }
+  fun p11(): String {
+    "PT.p11"
+  }
+  fun p12(): String {
+    "PT.p12"
+  }
+  fun p13(): String {
+    "PT.p13"
+  }
+  fun p14(): String {
+    "PT.p14"
+  }
+  fun p15(): String {
+    "PT.p15"
+  }
+  fun t0(): String {
+    "PT.t0"
+  }
+  fun t1(): String {
+    "PT.t1"
+  }
+  fun t2(): String {
+    "PT.t2"
+  }
+  fun t3(): String {
+    "PT.t3"
+  }
+  fun t4(): String {
+    "PT.t4"
+  }
+  fun t5(): String {
+    "PT.t5"
+  }
+  fun t6(): String {
+    "PT.t6"
+  }
+  fun t7(): String {
+    "PT.t7"
+  }
+  fun t8(): String {
+    "PT.t8"
+  }
+  fun t9(): String {
+    "PT.t9"
+  }
+  fun t10(): String {
+    "PT.t10"
+  }
+  fun t11(): String {
+    "PT.t11"
+  }
+  fun t12(): String {
+    "PT.t12"
+  }
+  fun t13(): String {
+    "PT.t13"
+  }
+  fun t14(): String {
+    "PT.t14"
+  }
+  fun t15(): String {
+    "PT.t15"
+  }
+  fun t16(): String {
+    "PT.t16"
+  }
+  fun t17(): String {
+    "PT.t17"
+  }
+  fun t18(): String {
+    "PT.t18"
+  }
+  fun t19(): String {
+    "PT.t19"
+  }
+}
+
+class MQ() extends BaseM, BaseQ {
+  fun m0(): String {
+    "MQ.m0"
+  }
+  fun m1(): String {
+    "MQ.m1"
+  }
+  fun m2(): String {
+    "MQ.m2"
+  }
+  fun m3(): String {
+    "MQ.m3"
+  }
+  fun m4(): String {
+    "MQ.m4"
+  }
+  fun m5(): String {
+    "MQ.m5"
+  }
+  fun m6(): String {
+    "MQ.m6"
+  }
+  fun m7(): String {
+    "MQ.m7"
+  }
+  fun m8(): String {
+    "MQ.m8"
+  }
+  fun m9(): String {
+    "MQ.m9"
+  }
+  fun m10(): String {
+    "MQ.m10"
+  }
+  fun m11(): String {
+    "MQ.m11"
+  }
+  fun m12(): String {
+    "MQ.m12"
+  }
+  fun q0(): String {
+    "MQ.q0"
+  }
+  fun q1(): String {
+    "MQ.q1"
+  }
+  fun q2(): String {
+    "MQ.q2"
+  }
+  fun q3(): String {
+    "MQ.q3"
+  }
+  fun q4(): String {
+    "MQ.q4"
+  }
+  fun q5(): String {
+    "MQ.q5"
+  }
+  fun q6(): String {
+    "MQ.q6"
+  }
+  fun q7(): String {
+    "MQ.q7"
+  }
+  fun q8(): String {
+    "MQ.q8"
+  }
+  fun q9(): String {
+    "MQ.q9"
+  }
+  fun q10(): String {
+    "MQ.q10"
+  }
+  fun q11(): String {
+    "MQ.q11"
+  }
+  fun q12(): String {
+    "MQ.q12"
+  }
+  fun q13(): String {
+    "MQ.q13"
+  }
+  fun q14(): String {
+    "MQ.q14"
+  }
+  fun q15(): String {
+    "MQ.q15"
+  }
+  fun q16(): String {
+    "MQ.q16"
+  }
+}
+
+class GR() extends BaseG, BaseR {
+  fun g0(): String {
+    "GR.g0"
+  }
+  fun g1(): String {
+    "GR.g1"
+  }
+  fun g2(): String {
+    "GR.g2"
+  }
+  fun g3(): String {
+    "GR.g3"
+  }
+  fun g4(): String {
+    "GR.g4"
+  }
+  fun g5(): String {
+    "GR.g5"
+  }
+  fun g6(): String {
+    "GR.g6"
+  }
+  fun r0(): String {
+    "GR.r0"
+  }
+  fun r1(): String {
+    "GR.r1"
+  }
+  fun r2(): String {
+    "GR.r2"
+  }
+  fun r3(): String {
+    "GR.r3"
+  }
+  fun r4(): String {
+    "GR.r4"
+  }
+  fun r5(): String {
+    "GR.r5"
+  }
+  fun r6(): String {
+    "GR.r6"
+  }
+  fun r7(): String {
+    "GR.r7"
+  }
+  fun r8(): String {
+    "GR.r8"
+  }
+  fun r9(): String {
+    "GR.r9"
+  }
+  fun r10(): String {
+    "GR.r10"
+  }
+  fun r11(): String {
+    "GR.r11"
+  }
+  fun r12(): String {
+    "GR.r12"
+  }
+  fun r13(): String {
+    "GR.r13"
+  }
+  fun r14(): String {
+    "GR.r14"
+  }
+  fun r15(): String {
+    "GR.r15"
+  }
+  fun r16(): String {
+    "GR.r16"
+  }
+  fun r17(): String {
+    "GR.r17"
+  }
+}
+
+class BS() extends BaseB, BaseS {
+  fun b0(): String {
+    "BS.b0"
+  }
+  fun b1(): String {
+    "BS.b1"
+  }
+  fun s0(): String {
+    "BS.s0"
+  }
+  fun s1(): String {
+    "BS.s1"
+  }
+  fun s2(): String {
+    "BS.s2"
+  }
+  fun s3(): String {
+    "BS.s3"
+  }
+  fun s4(): String {
+    "BS.s4"
+  }
+  fun s5(): String {
+    "BS.s5"
+  }
+  fun s6(): String {
+    "BS.s6"
+  }
+  fun s7(): String {
+    "BS.s7"
+  }
+  fun s8(): String {
+    "BS.s8"
+  }
+  fun s9(): String {
+    "BS.s9"
+  }
+  fun s10(): String {
+    "BS.s10"
+  }
+  fun s11(): String {
+    "BS.s11"
+  }
+  fun s12(): String {
+    "BS.s12"
+  }
+  fun s13(): String {
+    "BS.s13"
+  }
+  fun s14(): String {
+    "BS.s14"
+  }
+  fun s15(): String {
+    "BS.s15"
+  }
+  fun s16(): String {
+    "BS.s16"
+  }
+  fun s17(): String {
+    "BS.s17"
+  }
+  fun s18(): String {
+    "BS.s18"
+  }
+}
+
+class TU() extends BaseT, BaseU {
+  fun t0(): String {
+    "TU.t0"
+  }
+  fun t1(): String {
+    "TU.t1"
+  }
+  fun t2(): String {
+    "TU.t2"
+  }
+  fun t3(): String {
+    "TU.t3"
+  }
+  fun t4(): String {
+    "TU.t4"
+  }
+  fun t5(): String {
+    "TU.t5"
+  }
+  fun t6(): String {
+    "TU.t6"
+  }
+  fun t7(): String {
+    "TU.t7"
+  }
+  fun t8(): String {
+    "TU.t8"
+  }
+  fun t9(): String {
+    "TU.t9"
+  }
+  fun t10(): String {
+    "TU.t10"
+  }
+  fun t11(): String {
+    "TU.t11"
+  }
+  fun t12(): String {
+    "TU.t12"
+  }
+  fun t13(): String {
+    "TU.t13"
+  }
+  fun t14(): String {
+    "TU.t14"
+  }
+  fun t15(): String {
+    "TU.t15"
+  }
+  fun t16(): String {
+    "TU.t16"
+  }
+  fun t17(): String {
+    "TU.t17"
+  }
+  fun t18(): String {
+    "TU.t18"
+  }
+  fun t19(): String {
+    "TU.t19"
+  }
+  fun u0(): String {
+    "TU.u0"
+  }
+  fun u1(): String {
+    "TU.u1"
+  }
+  fun u2(): String {
+    "TU.u2"
+  }
+  fun u3(): String {
+    "TU.u3"
+  }
+  fun u4(): String {
+    "TU.u4"
+  }
+  fun u5(): String {
+    "TU.u5"
+  }
+  fun u6(): String {
+    "TU.u6"
+  }
+  fun u7(): String {
+    "TU.u7"
+  }
+  fun u8(): String {
+    "TU.u8"
+  }
+  fun u9(): String {
+    "TU.u9"
+  }
+  fun u10(): String {
+    "TU.u10"
+  }
+  fun u11(): String {
+    "TU.u11"
+  }
+  fun u12(): String {
+    "TU.u12"
+  }
+  fun u13(): String {
+    "TU.u13"
+  }
+  fun u14(): String {
+    "TU.u14"
+  }
+  fun u15(): String {
+    "TU.u15"
+  }
+  fun u16(): String {
+    "TU.u16"
+  }
+  fun u17(): String {
+    "TU.u17"
+  }
+  fun u18(): String {
+    "TU.u18"
+  }
+  fun u19(): String {
+    "TU.u19"
+  }
+  fun u20(): String {
+    "TU.u20"
+  }
+}
+
+class RU() extends BaseR, BaseU {
+  fun r0(): String {
+    "RU.r0"
+  }
+  fun r1(): String {
+    "RU.r1"
+  }
+  fun r2(): String {
+    "RU.r2"
+  }
+  fun r3(): String {
+    "RU.r3"
+  }
+  fun r4(): String {
+    "RU.r4"
+  }
+  fun r5(): String {
+    "RU.r5"
+  }
+  fun r6(): String {
+    "RU.r6"
+  }
+  fun r7(): String {
+    "RU.r7"
+  }
+  fun r8(): String {
+    "RU.r8"
+  }
+  fun r9(): String {
+    "RU.r9"
+  }
+  fun r10(): String {
+    "RU.r10"
+  }
+  fun r11(): String {
+    "RU.r11"
+  }
+  fun r12(): String {
+    "RU.r12"
+  }
+  fun r13(): String {
+    "RU.r13"
+  }
+  fun r14(): String {
+    "RU.r14"
+  }
+  fun r15(): String {
+    "RU.r15"
+  }
+  fun r16(): String {
+    "RU.r16"
+  }
+  fun r17(): String {
+    "RU.r17"
+  }
+  fun u0(): String {
+    "RU.u0"
+  }
+  fun u1(): String {
+    "RU.u1"
+  }
+  fun u2(): String {
+    "RU.u2"
+  }
+  fun u3(): String {
+    "RU.u3"
+  }
+  fun u4(): String {
+    "RU.u4"
+  }
+  fun u5(): String {
+    "RU.u5"
+  }
+  fun u6(): String {
+    "RU.u6"
+  }
+  fun u7(): String {
+    "RU.u7"
+  }
+  fun u8(): String {
+    "RU.u8"
+  }
+  fun u9(): String {
+    "RU.u9"
+  }
+  fun u10(): String {
+    "RU.u10"
+  }
+  fun u11(): String {
+    "RU.u11"
+  }
+  fun u12(): String {
+    "RU.u12"
+  }
+  fun u13(): String {
+    "RU.u13"
+  }
+  fun u14(): String {
+    "RU.u14"
+  }
+  fun u15(): String {
+    "RU.u15"
+  }
+  fun u16(): String {
+    "RU.u16"
+  }
+  fun u17(): String {
+    "RU.u17"
+  }
+  fun u18(): String {
+    "RU.u18"
+  }
+  fun u19(): String {
+    "RU.u19"
+  }
+  fun u20(): String {
+    "RU.u20"
+  }
+}
+
+class PV() extends BaseP, BaseV {
+  fun p0(): String {
+    "PV.p0"
+  }
+  fun p1(): String {
+    "PV.p1"
+  }
+  fun p2(): String {
+    "PV.p2"
+  }
+  fun p3(): String {
+    "PV.p3"
+  }
+  fun p4(): String {
+    "PV.p4"
+  }
+  fun p5(): String {
+    "PV.p5"
+  }
+  fun p6(): String {
+    "PV.p6"
+  }
+  fun p7(): String {
+    "PV.p7"
+  }
+  fun p8(): String {
+    "PV.p8"
+  }
+  fun p9(): String {
+    "PV.p9"
+  }
+  fun p10(): String {
+    "PV.p10"
+  }
+  fun p11(): String {
+    "PV.p11"
+  }
+  fun p12(): String {
+    "PV.p12"
+  }
+  fun p13(): String {
+    "PV.p13"
+  }
+  fun p14(): String {
+    "PV.p14"
+  }
+  fun p15(): String {
+    "PV.p15"
+  }
+  fun v0(): String {
+    "PV.v0"
+  }
+  fun v1(): String {
+    "PV.v1"
+  }
+  fun v2(): String {
+    "PV.v2"
+  }
+  fun v3(): String {
+    "PV.v3"
+  }
+  fun v4(): String {
+    "PV.v4"
+  }
+  fun v5(): String {
+    "PV.v5"
+  }
+  fun v6(): String {
+    "PV.v6"
+  }
+  fun v7(): String {
+    "PV.v7"
+  }
+  fun v8(): String {
+    "PV.v8"
+  }
+  fun v9(): String {
+    "PV.v9"
+  }
+  fun v10(): String {
+    "PV.v10"
+  }
+  fun v11(): String {
+    "PV.v11"
+  }
+  fun v12(): String {
+    "PV.v12"
+  }
+  fun v13(): String {
+    "PV.v13"
+  }
+  fun v14(): String {
+    "PV.v14"
+  }
+  fun v15(): String {
+    "PV.v15"
+  }
+  fun v16(): String {
+    "PV.v16"
+  }
+  fun v17(): String {
+    "PV.v17"
+  }
+  fun v18(): String {
+    "PV.v18"
+  }
+  fun v19(): String {
+    "PV.v19"
+  }
+  fun v20(): String {
+    "PV.v20"
+  }
+  fun v21(): String {
+    "PV.v21"
+  }
+}
+
+class OW() extends BaseO, BaseW {
+  fun o0(): String {
+    "OW.o0"
+  }
+  fun o1(): String {
+    "OW.o1"
+  }
+  fun o2(): String {
+    "OW.o2"
+  }
+  fun o3(): String {
+    "OW.o3"
+  }
+  fun o4(): String {
+    "OW.o4"
+  }
+  fun o5(): String {
+    "OW.o5"
+  }
+  fun o6(): String {
+    "OW.o6"
+  }
+  fun o7(): String {
+    "OW.o7"
+  }
+  fun o8(): String {
+    "OW.o8"
+  }
+  fun o9(): String {
+    "OW.o9"
+  }
+  fun o10(): String {
+    "OW.o10"
+  }
+  fun o11(): String {
+    "OW.o11"
+  }
+  fun o12(): String {
+    "OW.o12"
+  }
+  fun o13(): String {
+    "OW.o13"
+  }
+  fun o14(): String {
+    "OW.o14"
+  }
+  fun w0(): String {
+    "OW.w0"
+  }
+  fun w1(): String {
+    "OW.w1"
+  }
+  fun w2(): String {
+    "OW.w2"
+  }
+  fun w3(): String {
+    "OW.w3"
+  }
+  fun w4(): String {
+    "OW.w4"
+  }
+  fun w5(): String {
+    "OW.w5"
+  }
+  fun w6(): String {
+    "OW.w6"
+  }
+  fun w7(): String {
+    "OW.w7"
+  }
+  fun w8(): String {
+    "OW.w8"
+  }
+  fun w9(): String {
+    "OW.w9"
+  }
+  fun w10(): String {
+    "OW.w10"
+  }
+  fun w11(): String {
+    "OW.w11"
+  }
+  fun w12(): String {
+    "OW.w12"
+  }
+  fun w13(): String {
+    "OW.w13"
+  }
+  fun w14(): String {
+    "OW.w14"
+  }
+  fun w15(): String {
+    "OW.w15"
+  }
+  fun w16(): String {
+    "OW.w16"
+  }
+  fun w17(): String {
+    "OW.w17"
+  }
+  fun w18(): String {
+    "OW.w18"
+  }
+  fun w19(): String {
+    "OW.w19"
+  }
+  fun w20(): String {
+    "OW.w20"
+  }
+  fun w21(): String {
+    "OW.w21"
+  }
+  fun w22(): String {
+    "OW.w22"
+  }
+}
+
+class AO() extends BaseA, BaseO {
+  fun a0(): String {
+    "AO.a0"
+  }
+  fun o0(): String {
+    "AO.o0"
+  }
+  fun o1(): String {
+    "AO.o1"
+  }
+  fun o2(): String {
+    "AO.o2"
+  }
+  fun o3(): String {
+    "AO.o3"
+  }
+  fun o4(): String {
+    "AO.o4"
+  }
+  fun o5(): String {
+    "AO.o5"
+  }
+  fun o6(): String {
+    "AO.o6"
+  }
+  fun o7(): String {
+    "AO.o7"
+  }
+  fun o8(): String {
+    "AO.o8"
+  }
+  fun o9(): String {
+    "AO.o9"
+  }
+  fun o10(): String {
+    "AO.o10"
+  }
+  fun o11(): String {
+    "AO.o11"
+  }
+  fun o12(): String {
+    "AO.o12"
+  }
+  fun o13(): String {
+    "AO.o13"
+  }
+  fun o14(): String {
+    "AO.o14"
+  }
+}
+
+class BP() extends BaseB, BaseP {
+  fun b0(): String {
+    "BP.b0"
+  }
+  fun b1(): String {
+    "BP.b1"
+  }
+  fun p0(): String {
+    "BP.p0"
+  }
+  fun p1(): String {
+    "BP.p1"
+  }
+  fun p2(): String {
+    "BP.p2"
+  }
+  fun p3(): String {
+    "BP.p3"
+  }
+  fun p4(): String {
+    "BP.p4"
+  }
+  fun p5(): String {
+    "BP.p5"
+  }
+  fun p6(): String {
+    "BP.p6"
+  }
+  fun p7(): String {
+    "BP.p7"
+  }
+  fun p8(): String {
+    "BP.p8"
+  }
+  fun p9(): String {
+    "BP.p9"
+  }
+  fun p10(): String {
+    "BP.p10"
+  }
+  fun p11(): String {
+    "BP.p11"
+  }
+  fun p12(): String {
+    "BP.p12"
+  }
+  fun p13(): String {
+    "BP.p13"
+  }
+  fun p14(): String {
+    "BP.p14"
+  }
+  fun p15(): String {
+    "BP.p15"
+  }
+}
+
+class CR() extends BaseC, BaseR {
+  fun c0(): String {
+    "CR.c0"
+  }
+  fun c1(): String {
+    "CR.c1"
+  }
+  fun c2(): String {
+    "CR.c2"
+  }
+  fun r0(): String {
+    "CR.r0"
+  }
+  fun r1(): String {
+    "CR.r1"
+  }
+  fun r2(): String {
+    "CR.r2"
+  }
+  fun r3(): String {
+    "CR.r3"
+  }
+  fun r4(): String {
+    "CR.r4"
+  }
+  fun r5(): String {
+    "CR.r5"
+  }
+  fun r6(): String {
+    "CR.r6"
+  }
+  fun r7(): String {
+    "CR.r7"
+  }
+  fun r8(): String {
+    "CR.r8"
+  }
+  fun r9(): String {
+    "CR.r9"
+  }
+  fun r10(): String {
+    "CR.r10"
+  }
+  fun r11(): String {
+    "CR.r11"
+  }
+  fun r12(): String {
+    "CR.r12"
+  }
+  fun r13(): String {
+    "CR.r13"
+  }
+  fun r14(): String {
+    "CR.r14"
+  }
+  fun r15(): String {
+    "CR.r15"
+  }
+  fun r16(): String {
+    "CR.r16"
+  }
+  fun r17(): String {
+    "CR.r17"
+  }
+}
+
+class DU() extends BaseD, BaseU {
+  fun d0(): String {
+    "DU.d0"
+  }
+  fun d1(): String {
+    "DU.d1"
+  }
+  fun d2(): String {
+    "DU.d2"
+  }
+  fun d3(): String {
+    "DU.d3"
+  }
+  fun u0(): String {
+    "DU.u0"
+  }
+  fun u1(): String {
+    "DU.u1"
+  }
+  fun u2(): String {
+    "DU.u2"
+  }
+  fun u3(): String {
+    "DU.u3"
+  }
+  fun u4(): String {
+    "DU.u4"
+  }
+  fun u5(): String {
+    "DU.u5"
+  }
+  fun u6(): String {
+    "DU.u6"
+  }
+  fun u7(): String {
+    "DU.u7"
+  }
+  fun u8(): String {
+    "DU.u8"
+  }
+  fun u9(): String {
+    "DU.u9"
+  }
+  fun u10(): String {
+    "DU.u10"
+  }
+  fun u11(): String {
+    "DU.u11"
+  }
+  fun u12(): String {
+    "DU.u12"
+  }
+  fun u13(): String {
+    "DU.u13"
+  }
+  fun u14(): String {
+    "DU.u14"
+  }
+  fun u15(): String {
+    "DU.u15"
+  }
+  fun u16(): String {
+    "DU.u16"
+  }
+  fun u17(): String {
+    "DU.u17"
+  }
+  fun u18(): String {
+    "DU.u18"
+  }
+  fun u19(): String {
+    "DU.u19"
+  }
+  fun u20(): String {
+    "DU.u20"
+  }
+}
+
+class EG() extends BaseE, BaseG {
+  fun e0(): String {
+    "EG.e0"
+  }
+  fun e1(): String {
+    "EG.e1"
+  }
+  fun e2(): String {
+    "EG.e2"
+  }
+  fun e3(): String {
+    "EG.e3"
+  }
+  fun e4(): String {
+    "EG.e4"
+  }
+  fun g0(): String {
+    "EG.g0"
+  }
+  fun g1(): String {
+    "EG.g1"
+  }
+  fun g2(): String {
+    "EG.g2"
+  }
+  fun g3(): String {
+    "EG.g3"
+  }
+  fun g4(): String {
+    "EG.g4"
+  }
+  fun g5(): String {
+    "EG.g5"
+  }
+  fun g6(): String {
+    "EG.g6"
+  }
+}
+
+class FLW() extends BaseF, BaseL, BaseW {
+  fun f0(): String {
+    "FLW.f0"
+  }
+  fun f1(): String {
+    "FLW.f1"
+  }
+  fun f2(): String {
+    "FLW.f2"
+  }
+  fun f3(): String {
+    "FLW.f3"
+  }
+  fun f4(): String {
+    "FLW.f4"
+  }
+  fun f5(): String {
+    "FLW.f5"
+  }
+  fun l0(): String {
+    "FLW.l0"
+  }
+  fun l1(): String {
+    "FLW.l1"
+  }
+  fun l2(): String {
+    "FLW.l2"
+  }
+  fun l3(): String {
+    "FLW.l3"
+  }
+  fun l4(): String {
+    "FLW.l4"
+  }
+  fun l5(): String {
+    "FLW.l5"
+  }
+  fun l6(): String {
+    "FLW.l6"
+  }
+  fun l7(): String {
+    "FLW.l7"
+  }
+  fun l8(): String {
+    "FLW.l8"
+  }
+  fun l9(): String {
+    "FLW.l9"
+  }
+  fun l10(): String {
+    "FLW.l10"
+  }
+  fun l11(): String {
+    "FLW.l11"
+  }
+  fun w0(): String {
+    "FLW.w0"
+  }
+  fun w1(): String {
+    "FLW.w1"
+  }
+  fun w2(): String {
+    "FLW.w2"
+  }
+  fun w3(): String {
+    "FLW.w3"
+  }
+  fun w4(): String {
+    "FLW.w4"
+  }
+  fun w5(): String {
+    "FLW.w5"
+  }
+  fun w6(): String {
+    "FLW.w6"
+  }
+  fun w7(): String {
+    "FLW.w7"
+  }
+  fun w8(): String {
+    "FLW.w8"
+  }
+  fun w9(): String {
+    "FLW.w9"
+  }
+  fun w10(): String {
+    "FLW.w10"
+  }
+  fun w11(): String {
+    "FLW.w11"
+  }
+  fun w12(): String {
+    "FLW.w12"
+  }
+  fun w13(): String {
+    "FLW.w13"
+  }
+  fun w14(): String {
+    "FLW.w14"
+  }
+  fun w15(): String {
+    "FLW.w15"
+  }
+  fun w16(): String {
+    "FLW.w16"
+  }
+  fun w17(): String {
+    "FLW.w17"
+  }
+  fun w18(): String {
+    "FLW.w18"
+  }
+  fun w19(): String {
+    "FLW.w19"
+  }
+  fun w20(): String {
+    "FLW.w20"
+  }
+  fun w21(): String {
+    "FLW.w21"
+  }
+  fun w22(): String {
+    "FLW.w22"
+  }
+}
+
+class GI() extends BaseG, BaseI {
+  fun g0(): String {
+    "GI.g0"
+  }
+  fun g1(): String {
+    "GI.g1"
+  }
+  fun g2(): String {
+    "GI.g2"
+  }
+  fun g3(): String {
+    "GI.g3"
+  }
+  fun g4(): String {
+    "GI.g4"
+  }
+  fun g5(): String {
+    "GI.g5"
+  }
+  fun g6(): String {
+    "GI.g6"
+  }
+  fun i0(): String {
+    "GI.i0"
+  }
+  fun i1(): String {
+    "GI.i1"
+  }
+  fun i2(): String {
+    "GI.i2"
+  }
+  fun i3(): String {
+    "GI.i3"
+  }
+  fun i4(): String {
+    "GI.i4"
+  }
+  fun i5(): String {
+    "GI.i5"
+  }
+  fun i6(): String {
+    "GI.i6"
+  }
+  fun i7(): String {
+    "GI.i7"
+  }
+  fun i8(): String {
+    "GI.i8"
+  }
+}
+
+class HP() extends BaseH, BaseP {
+  fun h0(): String {
+    "HP.h0"
+  }
+  fun h1(): String {
+    "HP.h1"
+  }
+  fun h2(): String {
+    "HP.h2"
+  }
+  fun h3(): String {
+    "HP.h3"
+  }
+  fun h4(): String {
+    "HP.h4"
+  }
+  fun h5(): String {
+    "HP.h5"
+  }
+  fun h6(): String {
+    "HP.h6"
+  }
+  fun h7(): String {
+    "HP.h7"
+  }
+  fun p0(): String {
+    "HP.p0"
+  }
+  fun p1(): String {
+    "HP.p1"
+  }
+  fun p2(): String {
+    "HP.p2"
+  }
+  fun p3(): String {
+    "HP.p3"
+  }
+  fun p4(): String {
+    "HP.p4"
+  }
+  fun p5(): String {
+    "HP.p5"
+  }
+  fun p6(): String {
+    "HP.p6"
+  }
+  fun p7(): String {
+    "HP.p7"
+  }
+  fun p8(): String {
+    "HP.p8"
+  }
+  fun p9(): String {
+    "HP.p9"
+  }
+  fun p10(): String {
+    "HP.p10"
+  }
+  fun p11(): String {
+    "HP.p11"
+  }
+  fun p12(): String {
+    "HP.p12"
+  }
+  fun p13(): String {
+    "HP.p13"
+  }
+  fun p14(): String {
+    "HP.p14"
+  }
+  fun p15(): String {
+    "HP.p15"
+  }
+}
+
+class AI() extends BaseA, BaseI {
+  fun a0(): String {
+    "AI.a0"
+  }
+  fun i0(): String {
+    "AI.i0"
+  }
+  fun i1(): String {
+    "AI.i1"
+  }
+  fun i2(): String {
+    "AI.i2"
+  }
+  fun i3(): String {
+    "AI.i3"
+  }
+  fun i4(): String {
+    "AI.i4"
+  }
+  fun i5(): String {
+    "AI.i5"
+  }
+  fun i6(): String {
+    "AI.i6"
+  }
+  fun i7(): String {
+    "AI.i7"
+  }
+  fun i8(): String {
+    "AI.i8"
+  }
+}
+
+class J() extends BaseJ {
+  fun j0(): String {
+    "J.j0"
+  }
+  fun j1(): String {
+    "J.j1"
+  }
+  fun j2(): String {
+    "J.j2"
+  }
+  fun j3(): String {
+    "J.j3"
+  }
+  fun j4(): String {
+    "J.j4"
+  }
+  fun j5(): String {
+    "J.j5"
+  }
+  fun j6(): String {
+    "J.j6"
+  }
+  fun j7(): String {
+    "J.j7"
+  }
+  fun j8(): String {
+    "J.j8"
+  }
+  fun j9(): String {
+    "J.j9"
+  }
+}
+
+class KT() extends BaseK, BaseT {
+  fun k0(): String {
+    "KT.k0"
+  }
+  fun k1(): String {
+    "KT.k1"
+  }
+  fun k2(): String {
+    "KT.k2"
+  }
+  fun k3(): String {
+    "KT.k3"
+  }
+  fun k4(): String {
+    "KT.k4"
+  }
+  fun k5(): String {
+    "KT.k5"
+  }
+  fun k6(): String {
+    "KT.k6"
+  }
+  fun k7(): String {
+    "KT.k7"
+  }
+  fun k8(): String {
+    "KT.k8"
+  }
+  fun k9(): String {
+    "KT.k9"
+  }
+  fun k10(): String {
+    "KT.k10"
+  }
+  fun t0(): String {
+    "KT.t0"
+  }
+  fun t1(): String {
+    "KT.t1"
+  }
+  fun t2(): String {
+    "KT.t2"
+  }
+  fun t3(): String {
+    "KT.t3"
+  }
+  fun t4(): String {
+    "KT.t4"
+  }
+  fun t5(): String {
+    "KT.t5"
+  }
+  fun t6(): String {
+    "KT.t6"
+  }
+  fun t7(): String {
+    "KT.t7"
+  }
+  fun t8(): String {
+    "KT.t8"
+  }
+  fun t9(): String {
+    "KT.t9"
+  }
+  fun t10(): String {
+    "KT.t10"
+  }
+  fun t11(): String {
+    "KT.t11"
+  }
+  fun t12(): String {
+    "KT.t12"
+  }
+  fun t13(): String {
+    "KT.t13"
+  }
+  fun t14(): String {
+    "KT.t14"
+  }
+  fun t15(): String {
+    "KT.t15"
+  }
+  fun t16(): String {
+    "KT.t16"
+  }
+  fun t17(): String {
+    "KT.t17"
+  }
+  fun t18(): String {
+    "KT.t18"
+  }
+  fun t19(): String {
+    "KT.t19"
+  }
+}
+
+class HL() extends BaseH, BaseL {
+  fun h0(): String {
+    "HL.h0"
+  }
+  fun h1(): String {
+    "HL.h1"
+  }
+  fun h2(): String {
+    "HL.h2"
+  }
+  fun h3(): String {
+    "HL.h3"
+  }
+  fun h4(): String {
+    "HL.h4"
+  }
+  fun h5(): String {
+    "HL.h5"
+  }
+  fun h6(): String {
+    "HL.h6"
+  }
+  fun h7(): String {
+    "HL.h7"
+  }
+  fun l0(): String {
+    "HL.l0"
+  }
+  fun l1(): String {
+    "HL.l1"
+  }
+  fun l2(): String {
+    "HL.l2"
+  }
+  fun l3(): String {
+    "HL.l3"
+  }
+  fun l4(): String {
+    "HL.l4"
+  }
+  fun l5(): String {
+    "HL.l5"
+  }
+  fun l6(): String {
+    "HL.l6"
+  }
+  fun l7(): String {
+    "HL.l7"
+  }
+  fun l8(): String {
+    "HL.l8"
+  }
+  fun l9(): String {
+    "HL.l9"
+  }
+  fun l10(): String {
+    "HL.l10"
+  }
+  fun l11(): String {
+    "HL.l11"
+  }
+}
+
+class MT() extends BaseM, BaseT {
+  fun m0(): String {
+    "MT.m0"
+  }
+  fun m1(): String {
+    "MT.m1"
+  }
+  fun m2(): String {
+    "MT.m2"
+  }
+  fun m3(): String {
+    "MT.m3"
+  }
+  fun m4(): String {
+    "MT.m4"
+  }
+  fun m5(): String {
+    "MT.m5"
+  }
+  fun m6(): String {
+    "MT.m6"
+  }
+  fun m7(): String {
+    "MT.m7"
+  }
+  fun m8(): String {
+    "MT.m8"
+  }
+  fun m9(): String {
+    "MT.m9"
+  }
+  fun m10(): String {
+    "MT.m10"
+  }
+  fun m11(): String {
+    "MT.m11"
+  }
+  fun m12(): String {
+    "MT.m12"
+  }
+  fun t0(): String {
+    "MT.t0"
+  }
+  fun t1(): String {
+    "MT.t1"
+  }
+  fun t2(): String {
+    "MT.t2"
+  }
+  fun t3(): String {
+    "MT.t3"
+  }
+  fun t4(): String {
+    "MT.t4"
+  }
+  fun t5(): String {
+    "MT.t5"
+  }
+  fun t6(): String {
+    "MT.t6"
+  }
+  fun t7(): String {
+    "MT.t7"
+  }
+  fun t8(): String {
+    "MT.t8"
+  }
+  fun t9(): String {
+    "MT.t9"
+  }
+  fun t10(): String {
+    "MT.t10"
+  }
+  fun t11(): String {
+    "MT.t11"
+  }
+  fun t12(): String {
+    "MT.t12"
+  }
+  fun t13(): String {
+    "MT.t13"
+  }
+  fun t14(): String {
+    "MT.t14"
+  }
+  fun t15(): String {
+    "MT.t15"
+  }
+  fun t16(): String {
+    "MT.t16"
+  }
+  fun t17(): String {
+    "MT.t17"
+  }
+  fun t18(): String {
+    "MT.t18"
+  }
+  fun t19(): String {
+    "MT.t19"
+  }
+}
+
+class JN() extends BaseJ, BaseN {
+  fun j0(): String {
+    "JN.j0"
+  }
+  fun j1(): String {
+    "JN.j1"
+  }
+  fun j2(): String {
+    "JN.j2"
+  }
+  fun j3(): String {
+    "JN.j3"
+  }
+  fun j4(): String {
+    "JN.j4"
+  }
+  fun j5(): String {
+    "JN.j5"
+  }
+  fun j6(): String {
+    "JN.j6"
+  }
+  fun j7(): String {
+    "JN.j7"
+  }
+  fun j8(): String {
+    "JN.j8"
+  }
+  fun j9(): String {
+    "JN.j9"
+  }
+  fun n0(): String {
+    "JN.n0"
+  }
+  fun n1(): String {
+    "JN.n1"
+  }
+  fun n2(): String {
+    "JN.n2"
+  }
+  fun n3(): String {
+    "JN.n3"
+  }
+  fun n4(): String {
+    "JN.n4"
+  }
+  fun n5(): String {
+    "JN.n5"
+  }
+  fun n6(): String {
+    "JN.n6"
+  }
+  fun n7(): String {
+    "JN.n7"
+  }
+  fun n8(): String {
+    "JN.n8"
+  }
+  fun n9(): String {
+    "JN.n9"
+  }
+  fun n10(): String {
+    "JN.n10"
+  }
+  fun n11(): String {
+    "JN.n11"
+  }
+  fun n12(): String {
+    "JN.n12"
+  }
+  fun n13(): String {
+    "JN.n13"
+  }
+}
+
+class OP() extends BaseO, BaseP {
+  fun o0(): String {
+    "OP.o0"
+  }
+  fun o1(): String {
+    "OP.o1"
+  }
+  fun o2(): String {
+    "OP.o2"
+  }
+  fun o3(): String {
+    "OP.o3"
+  }
+  fun o4(): String {
+    "OP.o4"
+  }
+  fun o5(): String {
+    "OP.o5"
+  }
+  fun o6(): String {
+    "OP.o6"
+  }
+  fun o7(): String {
+    "OP.o7"
+  }
+  fun o8(): String {
+    "OP.o8"
+  }
+  fun o9(): String {
+    "OP.o9"
+  }
+  fun o10(): String {
+    "OP.o10"
+  }
+  fun o11(): String {
+    "OP.o11"
+  }
+  fun o12(): String {
+    "OP.o12"
+  }
+  fun o13(): String {
+    "OP.o13"
+  }
+  fun o14(): String {
+    "OP.o14"
+  }
+  fun p0(): String {
+    "OP.p0"
+  }
+  fun p1(): String {
+    "OP.p1"
+  }
+  fun p2(): String {
+    "OP.p2"
+  }
+  fun p3(): String {
+    "OP.p3"
+  }
+  fun p4(): String {
+    "OP.p4"
+  }
+  fun p5(): String {
+    "OP.p5"
+  }
+  fun p6(): String {
+    "OP.p6"
+  }
+  fun p7(): String {
+    "OP.p7"
+  }
+  fun p8(): String {
+    "OP.p8"
+  }
+  fun p9(): String {
+    "OP.p9"
+  }
+  fun p10(): String {
+    "OP.p10"
+  }
+  fun p11(): String {
+    "OP.p11"
+  }
+  fun p12(): String {
+    "OP.p12"
+  }
+  fun p13(): String {
+    "OP.p13"
+  }
+  fun p14(): String {
+    "OP.p14"
+  }
+  fun p15(): String {
+    "OP.p15"
+  }
+}
+
+class AP() extends BaseA, BaseP {
+  fun a0(): String {
+    "AP.a0"
+  }
+  fun p0(): String {
+    "AP.p0"
+  }
+  fun p1(): String {
+    "AP.p1"
+  }
+  fun p2(): String {
+    "AP.p2"
+  }
+  fun p3(): String {
+    "AP.p3"
+  }
+  fun p4(): String {
+    "AP.p4"
+  }
+  fun p5(): String {
+    "AP.p5"
+  }
+  fun p6(): String {
+    "AP.p6"
+  }
+  fun p7(): String {
+    "AP.p7"
+  }
+  fun p8(): String {
+    "AP.p8"
+  }
+  fun p9(): String {
+    "AP.p9"
+  }
+  fun p10(): String {
+    "AP.p10"
+  }
+  fun p11(): String {
+    "AP.p11"
+  }
+  fun p12(): String {
+    "AP.p12"
+  }
+  fun p13(): String {
+    "AP.p13"
+  }
+  fun p14(): String {
+    "AP.p14"
+  }
+  fun p15(): String {
+    "AP.p15"
+  }
+}
+
+class Q() extends BaseQ {
+  fun q0(): String {
+    "Q.q0"
+  }
+  fun q1(): String {
+    "Q.q1"
+  }
+  fun q2(): String {
+    "Q.q2"
+  }
+  fun q3(): String {
+    "Q.q3"
+  }
+  fun q4(): String {
+    "Q.q4"
+  }
+  fun q5(): String {
+    "Q.q5"
+  }
+  fun q6(): String {
+    "Q.q6"
+  }
+  fun q7(): String {
+    "Q.q7"
+  }
+  fun q8(): String {
+    "Q.q8"
+  }
+  fun q9(): String {
+    "Q.q9"
+  }
+  fun q10(): String {
+    "Q.q10"
+  }
+  fun q11(): String {
+    "Q.q11"
+  }
+  fun q12(): String {
+    "Q.q12"
+  }
+  fun q13(): String {
+    "Q.q13"
+  }
+  fun q14(): String {
+    "Q.q14"
+  }
+  fun q15(): String {
+    "Q.q15"
+  }
+  fun q16(): String {
+    "Q.q16"
+  }
+}
+
+class KR() extends BaseK, BaseR {
+  fun k0(): String {
+    "KR.k0"
+  }
+  fun k1(): String {
+    "KR.k1"
+  }
+  fun k2(): String {
+    "KR.k2"
+  }
+  fun k3(): String {
+    "KR.k3"
+  }
+  fun k4(): String {
+    "KR.k4"
+  }
+  fun k5(): String {
+    "KR.k5"
+  }
+  fun k6(): String {
+    "KR.k6"
+  }
+  fun k7(): String {
+    "KR.k7"
+  }
+  fun k8(): String {
+    "KR.k8"
+  }
+  fun k9(): String {
+    "KR.k9"
+  }
+  fun k10(): String {
+    "KR.k10"
+  }
+  fun r0(): String {
+    "KR.r0"
+  }
+  fun r1(): String {
+    "KR.r1"
+  }
+  fun r2(): String {
+    "KR.r2"
+  }
+  fun r3(): String {
+    "KR.r3"
+  }
+  fun r4(): String {
+    "KR.r4"
+  }
+  fun r5(): String {
+    "KR.r5"
+  }
+  fun r6(): String {
+    "KR.r6"
+  }
+  fun r7(): String {
+    "KR.r7"
+  }
+  fun r8(): String {
+    "KR.r8"
+  }
+  fun r9(): String {
+    "KR.r9"
+  }
+  fun r10(): String {
+    "KR.r10"
+  }
+  fun r11(): String {
+    "KR.r11"
+  }
+  fun r12(): String {
+    "KR.r12"
+  }
+  fun r13(): String {
+    "KR.r13"
+  }
+  fun r14(): String {
+    "KR.r14"
+  }
+  fun r15(): String {
+    "KR.r15"
+  }
+  fun r16(): String {
+    "KR.r16"
+  }
+  fun r17(): String {
+    "KR.r17"
+  }
+}
+
+class SU() extends BaseS, BaseU {
+  fun s0(): String {
+    "SU.s0"
+  }
+  fun s1(): String {
+    "SU.s1"
+  }
+  fun s2(): String {
+    "SU.s2"
+  }
+  fun s3(): String {
+    "SU.s3"
+  }
+  fun s4(): String {
+    "SU.s4"
+  }
+  fun s5(): String {
+    "SU.s5"
+  }
+  fun s6(): String {
+    "SU.s6"
+  }
+  fun s7(): String {
+    "SU.s7"
+  }
+  fun s8(): String {
+    "SU.s8"
+  }
+  fun s9(): String {
+    "SU.s9"
+  }
+  fun s10(): String {
+    "SU.s10"
+  }
+  fun s11(): String {
+    "SU.s11"
+  }
+  fun s12(): String {
+    "SU.s12"
+  }
+  fun s13(): String {
+    "SU.s13"
+  }
+  fun s14(): String {
+    "SU.s14"
+  }
+  fun s15(): String {
+    "SU.s15"
+  }
+  fun s16(): String {
+    "SU.s16"
+  }
+  fun s17(): String {
+    "SU.s17"
+  }
+  fun s18(): String {
+    "SU.s18"
+  }
+  fun u0(): String {
+    "SU.u0"
+  }
+  fun u1(): String {
+    "SU.u1"
+  }
+  fun u2(): String {
+    "SU.u2"
+  }
+  fun u3(): String {
+    "SU.u3"
+  }
+  fun u4(): String {
+    "SU.u4"
+  }
+  fun u5(): String {
+    "SU.u5"
+  }
+  fun u6(): String {
+    "SU.u6"
+  }
+  fun u7(): String {
+    "SU.u7"
+  }
+  fun u8(): String {
+    "SU.u8"
+  }
+  fun u9(): String {
+    "SU.u9"
+  }
+  fun u10(): String {
+    "SU.u10"
+  }
+  fun u11(): String {
+    "SU.u11"
+  }
+  fun u12(): String {
+    "SU.u12"
+  }
+  fun u13(): String {
+    "SU.u13"
+  }
+  fun u14(): String {
+    "SU.u14"
+  }
+  fun u15(): String {
+    "SU.u15"
+  }
+  fun u16(): String {
+    "SU.u16"
+  }
+  fun u17(): String {
+    "SU.u17"
+  }
+  fun u18(): String {
+    "SU.u18"
+  }
+  fun u19(): String {
+    "SU.u19"
+  }
+  fun u20(): String {
+    "SU.u20"
+  }
+}
+
+class QT() extends BaseQ, BaseT {
+  fun q0(): String {
+    "QT.q0"
+  }
+  fun q1(): String {
+    "QT.q1"
+  }
+  fun q2(): String {
+    "QT.q2"
+  }
+  fun q3(): String {
+    "QT.q3"
+  }
+  fun q4(): String {
+    "QT.q4"
+  }
+  fun q5(): String {
+    "QT.q5"
+  }
+  fun q6(): String {
+    "QT.q6"
+  }
+  fun q7(): String {
+    "QT.q7"
+  }
+  fun q8(): String {
+    "QT.q8"
+  }
+  fun q9(): String {
+    "QT.q9"
+  }
+  fun q10(): String {
+    "QT.q10"
+  }
+  fun q11(): String {
+    "QT.q11"
+  }
+  fun q12(): String {
+    "QT.q12"
+  }
+  fun q13(): String {
+    "QT.q13"
+  }
+  fun q14(): String {
+    "QT.q14"
+  }
+  fun q15(): String {
+    "QT.q15"
+  }
+  fun q16(): String {
+    "QT.q16"
+  }
+  fun t0(): String {
+    "QT.t0"
+  }
+  fun t1(): String {
+    "QT.t1"
+  }
+  fun t2(): String {
+    "QT.t2"
+  }
+  fun t3(): String {
+    "QT.t3"
+  }
+  fun t4(): String {
+    "QT.t4"
+  }
+  fun t5(): String {
+    "QT.t5"
+  }
+  fun t6(): String {
+    "QT.t6"
+  }
+  fun t7(): String {
+    "QT.t7"
+  }
+  fun t8(): String {
+    "QT.t8"
+  }
+  fun t9(): String {
+    "QT.t9"
+  }
+  fun t10(): String {
+    "QT.t10"
+  }
+  fun t11(): String {
+    "QT.t11"
+  }
+  fun t12(): String {
+    "QT.t12"
+  }
+  fun t13(): String {
+    "QT.t13"
+  }
+  fun t14(): String {
+    "QT.t14"
+  }
+  fun t15(): String {
+    "QT.t15"
+  }
+  fun t16(): String {
+    "QT.t16"
+  }
+  fun t17(): String {
+    "QT.t17"
+  }
+  fun t18(): String {
+    "QT.t18"
+  }
+  fun t19(): String {
+    "QT.t19"
+  }
+}
+
+class NU() extends BaseN, BaseU {
+  fun n0(): String {
+    "NU.n0"
+  }
+  fun n1(): String {
+    "NU.n1"
+  }
+  fun n2(): String {
+    "NU.n2"
+  }
+  fun n3(): String {
+    "NU.n3"
+  }
+  fun n4(): String {
+    "NU.n4"
+  }
+  fun n5(): String {
+    "NU.n5"
+  }
+  fun n6(): String {
+    "NU.n6"
+  }
+  fun n7(): String {
+    "NU.n7"
+  }
+  fun n8(): String {
+    "NU.n8"
+  }
+  fun n9(): String {
+    "NU.n9"
+  }
+  fun n10(): String {
+    "NU.n10"
+  }
+  fun n11(): String {
+    "NU.n11"
+  }
+  fun n12(): String {
+    "NU.n12"
+  }
+  fun n13(): String {
+    "NU.n13"
+  }
+  fun u0(): String {
+    "NU.u0"
+  }
+  fun u1(): String {
+    "NU.u1"
+  }
+  fun u2(): String {
+    "NU.u2"
+  }
+  fun u3(): String {
+    "NU.u3"
+  }
+  fun u4(): String {
+    "NU.u4"
+  }
+  fun u5(): String {
+    "NU.u5"
+  }
+  fun u6(): String {
+    "NU.u6"
+  }
+  fun u7(): String {
+    "NU.u7"
+  }
+  fun u8(): String {
+    "NU.u8"
+  }
+  fun u9(): String {
+    "NU.u9"
+  }
+  fun u10(): String {
+    "NU.u10"
+  }
+  fun u11(): String {
+    "NU.u11"
+  }
+  fun u12(): String {
+    "NU.u12"
+  }
+  fun u13(): String {
+    "NU.u13"
+  }
+  fun u14(): String {
+    "NU.u14"
+  }
+  fun u15(): String {
+    "NU.u15"
+  }
+  fun u16(): String {
+    "NU.u16"
+  }
+  fun u17(): String {
+    "NU.u17"
+  }
+  fun u18(): String {
+    "NU.u18"
+  }
+  fun u19(): String {
+    "NU.u19"
+  }
+  fun u20(): String {
+    "NU.u20"
+  }
+}
+
+class KV() extends BaseK, BaseV {
+  fun k0(): String {
+    "KV.k0"
+  }
+  fun k1(): String {
+    "KV.k1"
+  }
+  fun k2(): String {
+    "KV.k2"
+  }
+  fun k3(): String {
+    "KV.k3"
+  }
+  fun k4(): String {
+    "KV.k4"
+  }
+  fun k5(): String {
+    "KV.k5"
+  }
+  fun k6(): String {
+    "KV.k6"
+  }
+  fun k7(): String {
+    "KV.k7"
+  }
+  fun k8(): String {
+    "KV.k8"
+  }
+  fun k9(): String {
+    "KV.k9"
+  }
+  fun k10(): String {
+    "KV.k10"
+  }
+  fun v0(): String {
+    "KV.v0"
+  }
+  fun v1(): String {
+    "KV.v1"
+  }
+  fun v2(): String {
+    "KV.v2"
+  }
+  fun v3(): String {
+    "KV.v3"
+  }
+  fun v4(): String {
+    "KV.v4"
+  }
+  fun v5(): String {
+    "KV.v5"
+  }
+  fun v6(): String {
+    "KV.v6"
+  }
+  fun v7(): String {
+    "KV.v7"
+  }
+  fun v8(): String {
+    "KV.v8"
+  }
+  fun v9(): String {
+    "KV.v9"
+  }
+  fun v10(): String {
+    "KV.v10"
+  }
+  fun v11(): String {
+    "KV.v11"
+  }
+  fun v12(): String {
+    "KV.v12"
+  }
+  fun v13(): String {
+    "KV.v13"
+  }
+  fun v14(): String {
+    "KV.v14"
+  }
+  fun v15(): String {
+    "KV.v15"
+  }
+  fun v16(): String {
+    "KV.v16"
+  }
+  fun v17(): String {
+    "KV.v17"
+  }
+  fun v18(): String {
+    "KV.v18"
+  }
+  fun v19(): String {
+    "KV.v19"
+  }
+  fun v20(): String {
+    "KV.v20"
+  }
+  fun v21(): String {
+    "KV.v21"
+  }
+}
+
+class IJW() extends BaseI, BaseJ, BaseW {
+  fun i0(): String {
+    "IJW.i0"
+  }
+  fun i1(): String {
+    "IJW.i1"
+  }
+  fun i2(): String {
+    "IJW.i2"
+  }
+  fun i3(): String {
+    "IJW.i3"
+  }
+  fun i4(): String {
+    "IJW.i4"
+  }
+  fun i5(): String {
+    "IJW.i5"
+  }
+  fun i6(): String {
+    "IJW.i6"
+  }
+  fun i7(): String {
+    "IJW.i7"
+  }
+  fun i8(): String {
+    "IJW.i8"
+  }
+  fun j0(): String {
+    "IJW.j0"
+  }
+  fun j1(): String {
+    "IJW.j1"
+  }
+  fun j2(): String {
+    "IJW.j2"
+  }
+  fun j3(): String {
+    "IJW.j3"
+  }
+  fun j4(): String {
+    "IJW.j4"
+  }
+  fun j5(): String {
+    "IJW.j5"
+  }
+  fun j6(): String {
+    "IJW.j6"
+  }
+  fun j7(): String {
+    "IJW.j7"
+  }
+  fun j8(): String {
+    "IJW.j8"
+  }
+  fun j9(): String {
+    "IJW.j9"
+  }
+  fun w0(): String {
+    "IJW.w0"
+  }
+  fun w1(): String {
+    "IJW.w1"
+  }
+  fun w2(): String {
+    "IJW.w2"
+  }
+  fun w3(): String {
+    "IJW.w3"
+  }
+  fun w4(): String {
+    "IJW.w4"
+  }
+  fun w5(): String {
+    "IJW.w5"
+  }
+  fun w6(): String {
+    "IJW.w6"
+  }
+  fun w7(): String {
+    "IJW.w7"
+  }
+  fun w8(): String {
+    "IJW.w8"
+  }
+  fun w9(): String {
+    "IJW.w9"
+  }
+  fun w10(): String {
+    "IJW.w10"
+  }
+  fun w11(): String {
+    "IJW.w11"
+  }
+  fun w12(): String {
+    "IJW.w12"
+  }
+  fun w13(): String {
+    "IJW.w13"
+  }
+  fun w14(): String {
+    "IJW.w14"
+  }
+  fun w15(): String {
+    "IJW.w15"
+  }
+  fun w16(): String {
+    "IJW.w16"
+  }
+  fun w17(): String {
+    "IJW.w17"
+  }
+  fun w18(): String {
+    "IJW.w18"
+  }
+  fun w19(): String {
+    "IJW.w19"
+  }
+  fun w20(): String {
+    "IJW.w20"
+  }
+  fun w21(): String {
+    "IJW.w21"
+  }
+  fun w22(): String {
+    "IJW.w22"
+  }
+}
+
+class AL() extends BaseA, BaseL {
+  fun a0(): String {
+    "AL.a0"
+  }
+  fun l0(): String {
+    "AL.l0"
+  }
+  fun l1(): String {
+    "AL.l1"
+  }
+  fun l2(): String {
+    "AL.l2"
+  }
+  fun l3(): String {
+    "AL.l3"
+  }
+  fun l4(): String {
+    "AL.l4"
+  }
+  fun l5(): String {
+    "AL.l5"
+  }
+  fun l6(): String {
+    "AL.l6"
+  }
+  fun l7(): String {
+    "AL.l7"
+  }
+  fun l8(): String {
+    "AL.l8"
+  }
+  fun l9(): String {
+    "AL.l9"
+  }
+  fun l10(): String {
+    "AL.l10"
+  }
+  fun l11(): String {
+    "AL.l11"
+  }
+}
+
+class BM() extends BaseB, BaseM {
+  fun b0(): String {
+    "BM.b0"
+  }
+  fun b1(): String {
+    "BM.b1"
+  }
+  fun m0(): String {
+    "BM.m0"
+  }
+  fun m1(): String {
+    "BM.m1"
+  }
+  fun m2(): String {
+    "BM.m2"
+  }
+  fun m3(): String {
+    "BM.m3"
+  }
+  fun m4(): String {
+    "BM.m4"
+  }
+  fun m5(): String {
+    "BM.m5"
+  }
+  fun m6(): String {
+    "BM.m6"
+  }
+  fun m7(): String {
+    "BM.m7"
+  }
+  fun m8(): String {
+    "BM.m8"
+  }
+  fun m9(): String {
+    "BM.m9"
+  }
+  fun m10(): String {
+    "BM.m10"
+  }
+  fun m11(): String {
+    "BM.m11"
+  }
+  fun m12(): String {
+    "BM.m12"
+  }
+}
+
+class CO() extends BaseC, BaseO {
+  fun c0(): String {
+    "CO.c0"
+  }
+  fun c1(): String {
+    "CO.c1"
+  }
+  fun c2(): String {
+    "CO.c2"
+  }
+  fun o0(): String {
+    "CO.o0"
+  }
+  fun o1(): String {
+    "CO.o1"
+  }
+  fun o2(): String {
+    "CO.o2"
+  }
+  fun o3(): String {
+    "CO.o3"
+  }
+  fun o4(): String {
+    "CO.o4"
+  }
+  fun o5(): String {
+    "CO.o5"
+  }
+  fun o6(): String {
+    "CO.o6"
+  }
+  fun o7(): String {
+    "CO.o7"
+  }
+  fun o8(): String {
+    "CO.o8"
+  }
+  fun o9(): String {
+    "CO.o9"
+  }
+  fun o10(): String {
+    "CO.o10"
+  }
+  fun o11(): String {
+    "CO.o11"
+  }
+  fun o12(): String {
+    "CO.o12"
+  }
+  fun o13(): String {
+    "CO.o13"
+  }
+  fun o14(): String {
+    "CO.o14"
+  }
+}
+
+class DR() extends BaseD, BaseR {
+  fun d0(): String {
+    "DR.d0"
+  }
+  fun d1(): String {
+    "DR.d1"
+  }
+  fun d2(): String {
+    "DR.d2"
+  }
+  fun d3(): String {
+    "DR.d3"
+  }
+  fun r0(): String {
+    "DR.r0"
+  }
+  fun r1(): String {
+    "DR.r1"
+  }
+  fun r2(): String {
+    "DR.r2"
+  }
+  fun r3(): String {
+    "DR.r3"
+  }
+  fun r4(): String {
+    "DR.r4"
+  }
+  fun r5(): String {
+    "DR.r5"
+  }
+  fun r6(): String {
+    "DR.r6"
+  }
+  fun r7(): String {
+    "DR.r7"
+  }
+  fun r8(): String {
+    "DR.r8"
+  }
+  fun r9(): String {
+    "DR.r9"
+  }
+  fun r10(): String {
+    "DR.r10"
+  }
+  fun r11(): String {
+    "DR.r11"
+  }
+  fun r12(): String {
+    "DR.r12"
+  }
+  fun r13(): String {
+    "DR.r13"
+  }
+  fun r14(): String {
+    "DR.r14"
+  }
+  fun r15(): String {
+    "DR.r15"
+  }
+  fun r16(): String {
+    "DR.r16"
+  }
+  fun r17(): String {
+    "DR.r17"
+  }
+}
+
+class EV() extends BaseE, BaseV {
+  fun e0(): String {
+    "EV.e0"
+  }
+  fun e1(): String {
+    "EV.e1"
+  }
+  fun e2(): String {
+    "EV.e2"
+  }
+  fun e3(): String {
+    "EV.e3"
+  }
+  fun e4(): String {
+    "EV.e4"
+  }
+  fun v0(): String {
+    "EV.v0"
+  }
+  fun v1(): String {
+    "EV.v1"
+  }
+  fun v2(): String {
+    "EV.v2"
+  }
+  fun v3(): String {
+    "EV.v3"
+  }
+  fun v4(): String {
+    "EV.v4"
+  }
+  fun v5(): String {
+    "EV.v5"
+  }
+  fun v6(): String {
+    "EV.v6"
+  }
+  fun v7(): String {
+    "EV.v7"
+  }
+  fun v8(): String {
+    "EV.v8"
+  }
+  fun v9(): String {
+    "EV.v9"
+  }
+  fun v10(): String {
+    "EV.v10"
+  }
+  fun v11(): String {
+    "EV.v11"
+  }
+  fun v12(): String {
+    "EV.v12"
+  }
+  fun v13(): String {
+    "EV.v13"
+  }
+  fun v14(): String {
+    "EV.v14"
+  }
+  fun v15(): String {
+    "EV.v15"
+  }
+  fun v16(): String {
+    "EV.v16"
+  }
+  fun v17(): String {
+    "EV.v17"
+  }
+  fun v18(): String {
+    "EV.v18"
+  }
+  fun v19(): String {
+    "EV.v19"
+  }
+  fun v20(): String {
+    "EV.v20"
+  }
+  fun v21(): String {
+    "EV.v21"
+  }
+}
+
+class DF() extends BaseD, BaseF {
+  fun d0(): String {
+    "DF.d0"
+  }
+  fun d1(): String {
+    "DF.d1"
+  }
+  fun d2(): String {
+    "DF.d2"
+  }
+  fun d3(): String {
+    "DF.d3"
+  }
+  fun f0(): String {
+    "DF.f0"
+  }
+  fun f1(): String {
+    "DF.f1"
+  }
+  fun f2(): String {
+    "DF.f2"
+  }
+  fun f3(): String {
+    "DF.f3"
+  }
+  fun f4(): String {
+    "DF.f4"
+  }
+  fun f5(): String {
+    "DF.f5"
+  }
+}
+
+class GJ() extends BaseG, BaseJ {
+  fun g0(): String {
+    "GJ.g0"
+  }
+  fun g1(): String {
+    "GJ.g1"
+  }
+  fun g2(): String {
+    "GJ.g2"
+  }
+  fun g3(): String {
+    "GJ.g3"
+  }
+  fun g4(): String {
+    "GJ.g4"
+  }
+  fun g5(): String {
+    "GJ.g5"
+  }
+  fun g6(): String {
+    "GJ.g6"
+  }
+  fun j0(): String {
+    "GJ.j0"
+  }
+  fun j1(): String {
+    "GJ.j1"
+  }
+  fun j2(): String {
+    "GJ.j2"
+  }
+  fun j3(): String {
+    "GJ.j3"
+  }
+  fun j4(): String {
+    "GJ.j4"
+  }
+  fun j5(): String {
+    "GJ.j5"
+  }
+  fun j6(): String {
+    "GJ.j6"
+  }
+  fun j7(): String {
+    "GJ.j7"
+  }
+  fun j8(): String {
+    "GJ.j8"
+  }
+  fun j9(): String {
+    "GJ.j9"
+  }
+}
+
+class HQ() extends BaseH, BaseQ {
+  fun h0(): String {
+    "HQ.h0"
+  }
+  fun h1(): String {
+    "HQ.h1"
+  }
+  fun h2(): String {
+    "HQ.h2"
+  }
+  fun h3(): String {
+    "HQ.h3"
+  }
+  fun h4(): String {
+    "HQ.h4"
+  }
+  fun h5(): String {
+    "HQ.h5"
+  }
+  fun h6(): String {
+    "HQ.h6"
+  }
+  fun h7(): String {
+    "HQ.h7"
+  }
+  fun q0(): String {
+    "HQ.q0"
+  }
+  fun q1(): String {
+    "HQ.q1"
+  }
+  fun q2(): String {
+    "HQ.q2"
+  }
+  fun q3(): String {
+    "HQ.q3"
+  }
+  fun q4(): String {
+    "HQ.q4"
+  }
+  fun q5(): String {
+    "HQ.q5"
+  }
+  fun q6(): String {
+    "HQ.q6"
+  }
+  fun q7(): String {
+    "HQ.q7"
+  }
+  fun q8(): String {
+    "HQ.q8"
+  }
+  fun q9(): String {
+    "HQ.q9"
+  }
+  fun q10(): String {
+    "HQ.q10"
+  }
+  fun q11(): String {
+    "HQ.q11"
+  }
+  fun q12(): String {
+    "HQ.q12"
+  }
+  fun q13(): String {
+    "HQ.q13"
+  }
+  fun q14(): String {
+    "HQ.q14"
+  }
+  fun q15(): String {
+    "HQ.q15"
+  }
+  fun q16(): String {
+    "HQ.q16"
+  }
+}
+
+class BI() extends BaseB, BaseI {
+  fun b0(): String {
+    "BI.b0"
+  }
+  fun b1(): String {
+    "BI.b1"
+  }
+  fun i0(): String {
+    "BI.i0"
+  }
+  fun i1(): String {
+    "BI.i1"
+  }
+  fun i2(): String {
+    "BI.i2"
+  }
+  fun i3(): String {
+    "BI.i3"
+  }
+  fun i4(): String {
+    "BI.i4"
+  }
+  fun i5(): String {
+    "BI.i5"
+  }
+  fun i6(): String {
+    "BI.i6"
+  }
+  fun i7(): String {
+    "BI.i7"
+  }
+  fun i8(): String {
+    "BI.i8"
+  }
+}
+
+class JK() extends BaseJ, BaseK {
+  fun j0(): String {
+    "JK.j0"
+  }
+  fun j1(): String {
+    "JK.j1"
+  }
+  fun j2(): String {
+    "JK.j2"
+  }
+  fun j3(): String {
+    "JK.j3"
+  }
+  fun j4(): String {
+    "JK.j4"
+  }
+  fun j5(): String {
+    "JK.j5"
+  }
+  fun j6(): String {
+    "JK.j6"
+  }
+  fun j7(): String {
+    "JK.j7"
+  }
+  fun j8(): String {
+    "JK.j8"
+  }
+  fun j9(): String {
+    "JK.j9"
+  }
+  fun k0(): String {
+    "JK.k0"
+  }
+  fun k1(): String {
+    "JK.k1"
+  }
+  fun k2(): String {
+    "JK.k2"
+  }
+  fun k3(): String {
+    "JK.k3"
+  }
+  fun k4(): String {
+    "JK.k4"
+  }
+  fun k5(): String {
+    "JK.k5"
+  }
+  fun k6(): String {
+    "JK.k6"
+  }
+  fun k7(): String {
+    "JK.k7"
+  }
+  fun k8(): String {
+    "JK.k8"
+  }
+  fun k9(): String {
+    "JK.k9"
+  }
+  fun k10(): String {
+    "JK.k10"
+  }
+}
+
+class KU() extends BaseK, BaseU {
+  fun k0(): String {
+    "KU.k0"
+  }
+  fun k1(): String {
+    "KU.k1"
+  }
+  fun k2(): String {
+    "KU.k2"
+  }
+  fun k3(): String {
+    "KU.k3"
+  }
+  fun k4(): String {
+    "KU.k4"
+  }
+  fun k5(): String {
+    "KU.k5"
+  }
+  fun k6(): String {
+    "KU.k6"
+  }
+  fun k7(): String {
+    "KU.k7"
+  }
+  fun k8(): String {
+    "KU.k8"
+  }
+  fun k9(): String {
+    "KU.k9"
+  }
+  fun k10(): String {
+    "KU.k10"
+  }
+  fun u0(): String {
+    "KU.u0"
+  }
+  fun u1(): String {
+    "KU.u1"
+  }
+  fun u2(): String {
+    "KU.u2"
+  }
+  fun u3(): String {
+    "KU.u3"
+  }
+  fun u4(): String {
+    "KU.u4"
+  }
+  fun u5(): String {
+    "KU.u5"
+  }
+  fun u6(): String {
+    "KU.u6"
+  }
+  fun u7(): String {
+    "KU.u7"
+  }
+  fun u8(): String {
+    "KU.u8"
+  }
+  fun u9(): String {
+    "KU.u9"
+  }
+  fun u10(): String {
+    "KU.u10"
+  }
+  fun u11(): String {
+    "KU.u11"
+  }
+  fun u12(): String {
+    "KU.u12"
+  }
+  fun u13(): String {
+    "KU.u13"
+  }
+  fun u14(): String {
+    "KU.u14"
+  }
+  fun u15(): String {
+    "KU.u15"
+  }
+  fun u16(): String {
+    "KU.u16"
+  }
+  fun u17(): String {
+    "KU.u17"
+  }
+  fun u18(): String {
+    "KU.u18"
+  }
+  fun u19(): String {
+    "KU.u19"
+  }
+  fun u20(): String {
+    "KU.u20"
+  }
+}
+
+class IL() extends BaseI, BaseL {
+  fun i0(): String {
+    "IL.i0"
+  }
+  fun i1(): String {
+    "IL.i1"
+  }
+  fun i2(): String {
+    "IL.i2"
+  }
+  fun i3(): String {
+    "IL.i3"
+  }
+  fun i4(): String {
+    "IL.i4"
+  }
+  fun i5(): String {
+    "IL.i5"
+  }
+  fun i6(): String {
+    "IL.i6"
+  }
+  fun i7(): String {
+    "IL.i7"
+  }
+  fun i8(): String {
+    "IL.i8"
+  }
+  fun l0(): String {
+    "IL.l0"
+  }
+  fun l1(): String {
+    "IL.l1"
+  }
+  fun l2(): String {
+    "IL.l2"
+  }
+  fun l3(): String {
+    "IL.l3"
+  }
+  fun l4(): String {
+    "IL.l4"
+  }
+  fun l5(): String {
+    "IL.l5"
+  }
+  fun l6(): String {
+    "IL.l6"
+  }
+  fun l7(): String {
+    "IL.l7"
+  }
+  fun l8(): String {
+    "IL.l8"
+  }
+  fun l9(): String {
+    "IL.l9"
+  }
+  fun l10(): String {
+    "IL.l10"
+  }
+  fun l11(): String {
+    "IL.l11"
+  }
+}
+
+class MU() extends BaseM, BaseU {
+  fun m0(): String {
+    "MU.m0"
+  }
+  fun m1(): String {
+    "MU.m1"
+  }
+  fun m2(): String {
+    "MU.m2"
+  }
+  fun m3(): String {
+    "MU.m3"
+  }
+  fun m4(): String {
+    "MU.m4"
+  }
+  fun m5(): String {
+    "MU.m5"
+  }
+  fun m6(): String {
+    "MU.m6"
+  }
+  fun m7(): String {
+    "MU.m7"
+  }
+  fun m8(): String {
+    "MU.m8"
+  }
+  fun m9(): String {
+    "MU.m9"
+  }
+  fun m10(): String {
+    "MU.m10"
+  }
+  fun m11(): String {
+    "MU.m11"
+  }
+  fun m12(): String {
+    "MU.m12"
+  }
+  fun u0(): String {
+    "MU.u0"
+  }
+  fun u1(): String {
+    "MU.u1"
+  }
+  fun u2(): String {
+    "MU.u2"
+  }
+  fun u3(): String {
+    "MU.u3"
+  }
+  fun u4(): String {
+    "MU.u4"
+  }
+  fun u5(): String {
+    "MU.u5"
+  }
+  fun u6(): String {
+    "MU.u6"
+  }
+  fun u7(): String {
+    "MU.u7"
+  }
+  fun u8(): String {
+    "MU.u8"
+  }
+  fun u9(): String {
+    "MU.u9"
+  }
+  fun u10(): String {
+    "MU.u10"
+  }
+  fun u11(): String {
+    "MU.u11"
+  }
+  fun u12(): String {
+    "MU.u12"
+  }
+  fun u13(): String {
+    "MU.u13"
+  }
+  fun u14(): String {
+    "MU.u14"
+  }
+  fun u15(): String {
+    "MU.u15"
+  }
+  fun u16(): String {
+    "MU.u16"
+  }
+  fun u17(): String {
+    "MU.u17"
+  }
+  fun u18(): String {
+    "MU.u18"
+  }
+  fun u19(): String {
+    "MU.u19"
+  }
+  fun u20(): String {
+    "MU.u20"
+  }
+}
+
+class KN() extends BaseK, BaseN {
+  fun k0(): String {
+    "KN.k0"
+  }
+  fun k1(): String {
+    "KN.k1"
+  }
+  fun k2(): String {
+    "KN.k2"
+  }
+  fun k3(): String {
+    "KN.k3"
+  }
+  fun k4(): String {
+    "KN.k4"
+  }
+  fun k5(): String {
+    "KN.k5"
+  }
+  fun k6(): String {
+    "KN.k6"
+  }
+  fun k7(): String {
+    "KN.k7"
+  }
+  fun k8(): String {
+    "KN.k8"
+  }
+  fun k9(): String {
+    "KN.k9"
+  }
+  fun k10(): String {
+    "KN.k10"
+  }
+  fun n0(): String {
+    "KN.n0"
+  }
+  fun n1(): String {
+    "KN.n1"
+  }
+  fun n2(): String {
+    "KN.n2"
+  }
+  fun n3(): String {
+    "KN.n3"
+  }
+  fun n4(): String {
+    "KN.n4"
+  }
+  fun n5(): String {
+    "KN.n5"
+  }
+  fun n6(): String {
+    "KN.n6"
+  }
+  fun n7(): String {
+    "KN.n7"
+  }
+  fun n8(): String {
+    "KN.n8"
+  }
+  fun n9(): String {
+    "KN.n9"
+  }
+  fun n10(): String {
+    "KN.n10"
+  }
+  fun n11(): String {
+    "KN.n11"
+  }
+  fun n12(): String {
+    "KN.n12"
+  }
+  fun n13(): String {
+    "KN.n13"
+  }
+}
+
+class BO() extends BaseB, BaseO {
+  fun b0(): String {
+    "BO.b0"
+  }
+  fun b1(): String {
+    "BO.b1"
+  }
+  fun o0(): String {
+    "BO.o0"
+  }
+  fun o1(): String {
+    "BO.o1"
+  }
+  fun o2(): String {
+    "BO.o2"
+  }
+  fun o3(): String {
+    "BO.o3"
+  }
+  fun o4(): String {
+    "BO.o4"
+  }
+  fun o5(): String {
+    "BO.o5"
+  }
+  fun o6(): String {
+    "BO.o6"
+  }
+  fun o7(): String {
+    "BO.o7"
+  }
+  fun o8(): String {
+    "BO.o8"
+  }
+  fun o9(): String {
+    "BO.o9"
+  }
+  fun o10(): String {
+    "BO.o10"
+  }
+  fun o11(): String {
+    "BO.o11"
+  }
+  fun o12(): String {
+    "BO.o12"
+  }
+  fun o13(): String {
+    "BO.o13"
+  }
+  fun o14(): String {
+    "BO.o14"
+  }
+}
+
+class PQ() extends BaseP, BaseQ {
+  fun p0(): String {
+    "PQ.p0"
+  }
+  fun p1(): String {
+    "PQ.p1"
+  }
+  fun p2(): String {
+    "PQ.p2"
+  }
+  fun p3(): String {
+    "PQ.p3"
+  }
+  fun p4(): String {
+    "PQ.p4"
+  }
+  fun p5(): String {
+    "PQ.p5"
+  }
+  fun p6(): String {
+    "PQ.p6"
+  }
+  fun p7(): String {
+    "PQ.p7"
+  }
+  fun p8(): String {
+    "PQ.p8"
+  }
+  fun p9(): String {
+    "PQ.p9"
+  }
+  fun p10(): String {
+    "PQ.p10"
+  }
+  fun p11(): String {
+    "PQ.p11"
+  }
+  fun p12(): String {
+    "PQ.p12"
+  }
+  fun p13(): String {
+    "PQ.p13"
+  }
+  fun p14(): String {
+    "PQ.p14"
+  }
+  fun p15(): String {
+    "PQ.p15"
+  }
+  fun q0(): String {
+    "PQ.q0"
+  }
+  fun q1(): String {
+    "PQ.q1"
+  }
+  fun q2(): String {
+    "PQ.q2"
+  }
+  fun q3(): String {
+    "PQ.q3"
+  }
+  fun q4(): String {
+    "PQ.q4"
+  }
+  fun q5(): String {
+    "PQ.q5"
+  }
+  fun q6(): String {
+    "PQ.q6"
+  }
+  fun q7(): String {
+    "PQ.q7"
+  }
+  fun q8(): String {
+    "PQ.q8"
+  }
+  fun q9(): String {
+    "PQ.q9"
+  }
+  fun q10(): String {
+    "PQ.q10"
+  }
+  fun q11(): String {
+    "PQ.q11"
+  }
+  fun q12(): String {
+    "PQ.q12"
+  }
+  fun q13(): String {
+    "PQ.q13"
+  }
+  fun q14(): String {
+    "PQ.q14"
+  }
+  fun q15(): String {
+    "PQ.q15"
+  }
+  fun q16(): String {
+    "PQ.q16"
+  }
+}
+
+class JQT() extends BaseJ, BaseQ, BaseT {
+  fun j0(): String {
+    "JQT.j0"
+  }
+  fun j1(): String {
+    "JQT.j1"
+  }
+  fun j2(): String {
+    "JQT.j2"
+  }
+  fun j3(): String {
+    "JQT.j3"
+  }
+  fun j4(): String {
+    "JQT.j4"
+  }
+  fun j5(): String {
+    "JQT.j5"
+  }
+  fun j6(): String {
+    "JQT.j6"
+  }
+  fun j7(): String {
+    "JQT.j7"
+  }
+  fun j8(): String {
+    "JQT.j8"
+  }
+  fun j9(): String {
+    "JQT.j9"
+  }
+  fun q0(): String {
+    "JQT.q0"
+  }
+  fun q1(): String {
+    "JQT.q1"
+  }
+  fun q2(): String {
+    "JQT.q2"
+  }
+  fun q3(): String {
+    "JQT.q3"
+  }
+  fun q4(): String {
+    "JQT.q4"
+  }
+  fun q5(): String {
+    "JQT.q5"
+  }
+  fun q6(): String {
+    "JQT.q6"
+  }
+  fun q7(): String {
+    "JQT.q7"
+  }
+  fun q8(): String {
+    "JQT.q8"
+  }
+  fun q9(): String {
+    "JQT.q9"
+  }
+  fun q10(): String {
+    "JQT.q10"
+  }
+  fun q11(): String {
+    "JQT.q11"
+  }
+  fun q12(): String {
+    "JQT.q12"
+  }
+  fun q13(): String {
+    "JQT.q13"
+  }
+  fun q14(): String {
+    "JQT.q14"
+  }
+  fun q15(): String {
+    "JQT.q15"
+  }
+  fun q16(): String {
+    "JQT.q16"
+  }
+  fun t0(): String {
+    "JQT.t0"
+  }
+  fun t1(): String {
+    "JQT.t1"
+  }
+  fun t2(): String {
+    "JQT.t2"
+  }
+  fun t3(): String {
+    "JQT.t3"
+  }
+  fun t4(): String {
+    "JQT.t4"
+  }
+  fun t5(): String {
+    "JQT.t5"
+  }
+  fun t6(): String {
+    "JQT.t6"
+  }
+  fun t7(): String {
+    "JQT.t7"
+  }
+  fun t8(): String {
+    "JQT.t8"
+  }
+  fun t9(): String {
+    "JQT.t9"
+  }
+  fun t10(): String {
+    "JQT.t10"
+  }
+  fun t11(): String {
+    "JQT.t11"
+  }
+  fun t12(): String {
+    "JQT.t12"
+  }
+  fun t13(): String {
+    "JQT.t13"
+  }
+  fun t14(): String {
+    "JQT.t14"
+  }
+  fun t15(): String {
+    "JQT.t15"
+  }
+  fun t16(): String {
+    "JQT.t16"
+  }
+  fun t17(): String {
+    "JQT.t17"
+  }
+  fun t18(): String {
+    "JQT.t18"
+  }
+  fun t19(): String {
+    "JQT.t19"
+  }
+}
+
+class RV() extends BaseR, BaseV {
+  fun r0(): String {
+    "RV.r0"
+  }
+  fun r1(): String {
+    "RV.r1"
+  }
+  fun r2(): String {
+    "RV.r2"
+  }
+  fun r3(): String {
+    "RV.r3"
+  }
+  fun r4(): String {
+    "RV.r4"
+  }
+  fun r5(): String {
+    "RV.r5"
+  }
+  fun r6(): String {
+    "RV.r6"
+  }
+  fun r7(): String {
+    "RV.r7"
+  }
+  fun r8(): String {
+    "RV.r8"
+  }
+  fun r9(): String {
+    "RV.r9"
+  }
+  fun r10(): String {
+    "RV.r10"
+  }
+  fun r11(): String {
+    "RV.r11"
+  }
+  fun r12(): String {
+    "RV.r12"
+  }
+  fun r13(): String {
+    "RV.r13"
+  }
+  fun r14(): String {
+    "RV.r14"
+  }
+  fun r15(): String {
+    "RV.r15"
+  }
+  fun r16(): String {
+    "RV.r16"
+  }
+  fun r17(): String {
+    "RV.r17"
+  }
+  fun v0(): String {
+    "RV.v0"
+  }
+  fun v1(): String {
+    "RV.v1"
+  }
+  fun v2(): String {
+    "RV.v2"
+  }
+  fun v3(): String {
+    "RV.v3"
+  }
+  fun v4(): String {
+    "RV.v4"
+  }
+  fun v5(): String {
+    "RV.v5"
+  }
+  fun v6(): String {
+    "RV.v6"
+  }
+  fun v7(): String {
+    "RV.v7"
+  }
+  fun v8(): String {
+    "RV.v8"
+  }
+  fun v9(): String {
+    "RV.v9"
+  }
+  fun v10(): String {
+    "RV.v10"
+  }
+  fun v11(): String {
+    "RV.v11"
+  }
+  fun v12(): String {
+    "RV.v12"
+  }
+  fun v13(): String {
+    "RV.v13"
+  }
+  fun v14(): String {
+    "RV.v14"
+  }
+  fun v15(): String {
+    "RV.v15"
+  }
+  fun v16(): String {
+    "RV.v16"
+  }
+  fun v17(): String {
+    "RV.v17"
+  }
+  fun v18(): String {
+    "RV.v18"
+  }
+  fun v19(): String {
+    "RV.v19"
+  }
+  fun v20(): String {
+    "RV.v20"
+  }
+  fun v21(): String {
+    "RV.v21"
+  }
+}
+
+class QS() extends BaseQ, BaseS {
+  fun q0(): String {
+    "QS.q0"
+  }
+  fun q1(): String {
+    "QS.q1"
+  }
+  fun q2(): String {
+    "QS.q2"
+  }
+  fun q3(): String {
+    "QS.q3"
+  }
+  fun q4(): String {
+    "QS.q4"
+  }
+  fun q5(): String {
+    "QS.q5"
+  }
+  fun q6(): String {
+    "QS.q6"
+  }
+  fun q7(): String {
+    "QS.q7"
+  }
+  fun q8(): String {
+    "QS.q8"
+  }
+  fun q9(): String {
+    "QS.q9"
+  }
+  fun q10(): String {
+    "QS.q10"
+  }
+  fun q11(): String {
+    "QS.q11"
+  }
+  fun q12(): String {
+    "QS.q12"
+  }
+  fun q13(): String {
+    "QS.q13"
+  }
+  fun q14(): String {
+    "QS.q14"
+  }
+  fun q15(): String {
+    "QS.q15"
+  }
+  fun q16(): String {
+    "QS.q16"
+  }
+  fun s0(): String {
+    "QS.s0"
+  }
+  fun s1(): String {
+    "QS.s1"
+  }
+  fun s2(): String {
+    "QS.s2"
+  }
+  fun s3(): String {
+    "QS.s3"
+  }
+  fun s4(): String {
+    "QS.s4"
+  }
+  fun s5(): String {
+    "QS.s5"
+  }
+  fun s6(): String {
+    "QS.s6"
+  }
+  fun s7(): String {
+    "QS.s7"
+  }
+  fun s8(): String {
+    "QS.s8"
+  }
+  fun s9(): String {
+    "QS.s9"
+  }
+  fun s10(): String {
+    "QS.s10"
+  }
+  fun s11(): String {
+    "QS.s11"
+  }
+  fun s12(): String {
+    "QS.s12"
+  }
+  fun s13(): String {
+    "QS.s13"
+  }
+  fun s14(): String {
+    "QS.s14"
+  }
+  fun s15(): String {
+    "QS.s15"
+  }
+  fun s16(): String {
+    "QS.s16"
+  }
+  fun s17(): String {
+    "QS.s17"
+  }
+  fun s18(): String {
+    "QS.s18"
+  }
+}
+
+class JT() extends BaseJ, BaseT {
+  fun j0(): String {
+    "JT.j0"
+  }
+  fun j1(): String {
+    "JT.j1"
+  }
+  fun j2(): String {
+    "JT.j2"
+  }
+  fun j3(): String {
+    "JT.j3"
+  }
+  fun j4(): String {
+    "JT.j4"
+  }
+  fun j5(): String {
+    "JT.j5"
+  }
+  fun j6(): String {
+    "JT.j6"
+  }
+  fun j7(): String {
+    "JT.j7"
+  }
+  fun j8(): String {
+    "JT.j8"
+  }
+  fun j9(): String {
+    "JT.j9"
+  }
+  fun t0(): String {
+    "JT.t0"
+  }
+  fun t1(): String {
+    "JT.t1"
+  }
+  fun t2(): String {
+    "JT.t2"
+  }
+  fun t3(): String {
+    "JT.t3"
+  }
+  fun t4(): String {
+    "JT.t4"
+  }
+  fun t5(): String {
+    "JT.t5"
+  }
+  fun t6(): String {
+    "JT.t6"
+  }
+  fun t7(): String {
+    "JT.t7"
+  }
+  fun t8(): String {
+    "JT.t8"
+  }
+  fun t9(): String {
+    "JT.t9"
+  }
+  fun t10(): String {
+    "JT.t10"
+  }
+  fun t11(): String {
+    "JT.t11"
+  }
+  fun t12(): String {
+    "JT.t12"
+  }
+  fun t13(): String {
+    "JT.t13"
+  }
+  fun t14(): String {
+    "JT.t14"
+  }
+  fun t15(): String {
+    "JT.t15"
+  }
+  fun t16(): String {
+    "JT.t16"
+  }
+  fun t17(): String {
+    "JT.t17"
+  }
+  fun t18(): String {
+    "JT.t18"
+  }
+  fun t19(): String {
+    "JT.t19"
+  }
+}
+
+class GU() extends BaseG, BaseU {
+  fun g0(): String {
+    "GU.g0"
+  }
+  fun g1(): String {
+    "GU.g1"
+  }
+  fun g2(): String {
+    "GU.g2"
+  }
+  fun g3(): String {
+    "GU.g3"
+  }
+  fun g4(): String {
+    "GU.g4"
+  }
+  fun g5(): String {
+    "GU.g5"
+  }
+  fun g6(): String {
+    "GU.g6"
+  }
+  fun u0(): String {
+    "GU.u0"
+  }
+  fun u1(): String {
+    "GU.u1"
+  }
+  fun u2(): String {
+    "GU.u2"
+  }
+  fun u3(): String {
+    "GU.u3"
+  }
+  fun u4(): String {
+    "GU.u4"
+  }
+  fun u5(): String {
+    "GU.u5"
+  }
+  fun u6(): String {
+    "GU.u6"
+  }
+  fun u7(): String {
+    "GU.u7"
+  }
+  fun u8(): String {
+    "GU.u8"
+  }
+  fun u9(): String {
+    "GU.u9"
+  }
+  fun u10(): String {
+    "GU.u10"
+  }
+  fun u11(): String {
+    "GU.u11"
+  }
+  fun u12(): String {
+    "GU.u12"
+  }
+  fun u13(): String {
+    "GU.u13"
+  }
+  fun u14(): String {
+    "GU.u14"
+  }
+  fun u15(): String {
+    "GU.u15"
+  }
+  fun u16(): String {
+    "GU.u16"
+  }
+  fun u17(): String {
+    "GU.u17"
+  }
+  fun u18(): String {
+    "GU.u18"
+  }
+  fun u19(): String {
+    "GU.u19"
+  }
+  fun u20(): String {
+    "GU.u20"
+  }
+}
+
+class DV() extends BaseD, BaseV {
+  fun d0(): String {
+    "DV.d0"
+  }
+  fun d1(): String {
+    "DV.d1"
+  }
+  fun d2(): String {
+    "DV.d2"
+  }
+  fun d3(): String {
+    "DV.d3"
+  }
+  fun v0(): String {
+    "DV.v0"
+  }
+  fun v1(): String {
+    "DV.v1"
+  }
+  fun v2(): String {
+    "DV.v2"
+  }
+  fun v3(): String {
+    "DV.v3"
+  }
+  fun v4(): String {
+    "DV.v4"
+  }
+  fun v5(): String {
+    "DV.v5"
+  }
+  fun v6(): String {
+    "DV.v6"
+  }
+  fun v7(): String {
+    "DV.v7"
+  }
+  fun v8(): String {
+    "DV.v8"
+  }
+  fun v9(): String {
+    "DV.v9"
+  }
+  fun v10(): String {
+    "DV.v10"
+  }
+  fun v11(): String {
+    "DV.v11"
+  }
+  fun v12(): String {
+    "DV.v12"
+  }
+  fun v13(): String {
+    "DV.v13"
+  }
+  fun v14(): String {
+    "DV.v14"
+  }
+  fun v15(): String {
+    "DV.v15"
+  }
+  fun v16(): String {
+    "DV.v16"
+  }
+  fun v17(): String {
+    "DV.v17"
+  }
+  fun v18(): String {
+    "DV.v18"
+  }
+  fun v19(): String {
+    "DV.v19"
+  }
+  fun v20(): String {
+    "DV.v20"
+  }
+  fun v21(): String {
+    "DV.v21"
+  }
+}
+
+class CW() extends BaseC, BaseW {
+  fun c0(): String {
+    "CW.c0"
+  }
+  fun c1(): String {
+    "CW.c1"
+  }
+  fun c2(): String {
+    "CW.c2"
+  }
+  fun w0(): String {
+    "CW.w0"
+  }
+  fun w1(): String {
+    "CW.w1"
+  }
+  fun w2(): String {
+    "CW.w2"
+  }
+  fun w3(): String {
+    "CW.w3"
+  }
+  fun w4(): String {
+    "CW.w4"
+  }
+  fun w5(): String {
+    "CW.w5"
+  }
+  fun w6(): String {
+    "CW.w6"
+  }
+  fun w7(): String {
+    "CW.w7"
+  }
+  fun w8(): String {
+    "CW.w8"
+  }
+  fun w9(): String {
+    "CW.w9"
+  }
+  fun w10(): String {
+    "CW.w10"
+  }
+  fun w11(): String {
+    "CW.w11"
+  }
+  fun w12(): String {
+    "CW.w12"
+  }
+  fun w13(): String {
+    "CW.w13"
+  }
+  fun w14(): String {
+    "CW.w14"
+  }
+  fun w15(): String {
+    "CW.w15"
+  }
+  fun w16(): String {
+    "CW.w16"
+  }
+  fun w17(): String {
+    "CW.w17"
+  }
+  fun w18(): String {
+    "CW.w18"
+  }
+  fun w19(): String {
+    "CW.w19"
+  }
+  fun w20(): String {
+    "CW.w20"
+  }
+  fun w21(): String {
+    "CW.w21"
+  }
+  fun w22(): String {
+    "CW.w22"
+  }
+}
+
+class AC() extends BaseA, BaseC {
+  fun a0(): String {
+    "AC.a0"
+  }
+  fun c0(): String {
+    "AC.c0"
+  }
+  fun c1(): String {
+    "AC.c1"
+  }
+  fun c2(): String {
+    "AC.c2"
+  }
+}
+
+class BD() extends BaseB, BaseD {
+  fun b0(): String {
+    "BD.b0"
+  }
+  fun b1(): String {
+    "BD.b1"
+  }
+  fun d0(): String {
+    "BD.d0"
+  }
+  fun d1(): String {
+    "BD.d1"
+  }
+  fun d2(): String {
+    "BD.d2"
+  }
+  fun d3(): String {
+    "BD.d3"
+  }
+}
+
+class CF() extends BaseC, BaseF {
+  fun c0(): String {
+    "CF.c0"
+  }
+  fun c1(): String {
+    "CF.c1"
+  }
+  fun c2(): String {
+    "CF.c2"
+  }
+  fun f0(): String {
+    "CF.f0"
+  }
+  fun f1(): String {
+    "CF.f1"
+  }
+  fun f2(): String {
+    "CF.f2"
+  }
+  fun f3(): String {
+    "CF.f3"
+  }
+  fun f4(): String {
+    "CF.f4"
+  }
+  fun f5(): String {
+    "CF.f5"
+  }
+}
+
+class DI() extends BaseD, BaseI {
+  fun d0(): String {
+    "DI.d0"
+  }
+  fun d1(): String {
+    "DI.d1"
+  }
+  fun d2(): String {
+    "DI.d2"
+  }
+  fun d3(): String {
+    "DI.d3"
+  }
+  fun i0(): String {
+    "DI.i0"
+  }
+  fun i1(): String {
+    "DI.i1"
+  }
+  fun i2(): String {
+    "DI.i2"
+  }
+  fun i3(): String {
+    "DI.i3"
+  }
+  fun i4(): String {
+    "DI.i4"
+  }
+  fun i5(): String {
+    "DI.i5"
+  }
+  fun i6(): String {
+    "DI.i6"
+  }
+  fun i7(): String {
+    "DI.i7"
+  }
+  fun i8(): String {
+    "DI.i8"
+  }
+}
+
+class EM() extends BaseE, BaseM {
+  fun e0(): String {
+    "EM.e0"
+  }
+  fun e1(): String {
+    "EM.e1"
+  }
+  fun e2(): String {
+    "EM.e2"
+  }
+  fun e3(): String {
+    "EM.e3"
+  }
+  fun e4(): String {
+    "EM.e4"
+  }
+  fun m0(): String {
+    "EM.m0"
+  }
+  fun m1(): String {
+    "EM.m1"
+  }
+  fun m2(): String {
+    "EM.m2"
+  }
+  fun m3(): String {
+    "EM.m3"
+  }
+  fun m4(): String {
+    "EM.m4"
+  }
+  fun m5(): String {
+    "EM.m5"
+  }
+  fun m6(): String {
+    "EM.m6"
+  }
+  fun m7(): String {
+    "EM.m7"
+  }
+  fun m8(): String {
+    "EM.m8"
+  }
+  fun m9(): String {
+    "EM.m9"
+  }
+  fun m10(): String {
+    "EM.m10"
+  }
+  fun m11(): String {
+    "EM.m11"
+  }
+  fun m12(): String {
+    "EM.m12"
+  }
+}
+
+class FR() extends BaseF, BaseR {
+  fun f0(): String {
+    "FR.f0"
+  }
+  fun f1(): String {
+    "FR.f1"
+  }
+  fun f2(): String {
+    "FR.f2"
+  }
+  fun f3(): String {
+    "FR.f3"
+  }
+  fun f4(): String {
+    "FR.f4"
+  }
+  fun f5(): String {
+    "FR.f5"
+  }
+  fun r0(): String {
+    "FR.r0"
+  }
+  fun r1(): String {
+    "FR.r1"
+  }
+  fun r2(): String {
+    "FR.r2"
+  }
+  fun r3(): String {
+    "FR.r3"
+  }
+  fun r4(): String {
+    "FR.r4"
+  }
+  fun r5(): String {
+    "FR.r5"
+  }
+  fun r6(): String {
+    "FR.r6"
+  }
+  fun r7(): String {
+    "FR.r7"
+  }
+  fun r8(): String {
+    "FR.r8"
+  }
+  fun r9(): String {
+    "FR.r9"
+  }
+  fun r10(): String {
+    "FR.r10"
+  }
+  fun r11(): String {
+    "FR.r11"
+  }
+  fun r12(): String {
+    "FR.r12"
+  }
+  fun r13(): String {
+    "FR.r13"
+  }
+  fun r14(): String {
+    "FR.r14"
+  }
+  fun r15(): String {
+    "FR.r15"
+  }
+  fun r16(): String {
+    "FR.r16"
+  }
+  fun r17(): String {
+    "FR.r17"
+  }
+}
+
+class AG() extends BaseA, BaseG {
+  fun a0(): String {
+    "AG.a0"
+  }
+  fun g0(): String {
+    "AG.g0"
+  }
+  fun g1(): String {
+    "AG.g1"
+  }
+  fun g2(): String {
+    "AG.g2"
+  }
+  fun g3(): String {
+    "AG.g3"
+  }
+  fun g4(): String {
+    "AG.g4"
+  }
+  fun g5(): String {
+    "AG.g5"
+  }
+  fun g6(): String {
+    "AG.g6"
+  }
+}
+
+class H() extends BaseH {
+  fun h0(): String {
+    "H.h0"
+  }
+  fun h1(): String {
+    "H.h1"
+  }
+  fun h2(): String {
+    "H.h2"
+  }
+  fun h3(): String {
+    "H.h3"
+  }
+  fun h4(): String {
+    "H.h4"
+  }
+  fun h5(): String {
+    "H.h5"
+  }
+  fun h6(): String {
+    "H.h6"
+  }
+  fun h7(): String {
+    "H.h7"
+  }
+}
+
+fun main(): void {
+  abc = ABC();
+  bc = BC();
+  ce = CE();
+  dh = DH();
+  el = EL();
+  fq = FQ();
+  gw = GW();
+  gh = GH();
+  io = IO();
+  aj = AJ();
+  k = K();
+  lv = LV();
+  km = KM();
+  an = AN();
+  o = O();
+  gp = GP();
+  qw = QW();
+  fqr = FQR();
+  ls = LS();
+  ht = HT();
+  eu = EU();
+  cv = CV();
+  bw = BW();
+  ab = AB();
+  be = BE();
+  cg = CG();
+  dj = DJ();
+  en = EN();
+  fs = FS();
+  bg = BG();
+  hi = HI();
+  iq = IQ();
+  cj = CJ();
+  ak = AK();
+  l = L();
+  am = AM();
+  n = N();
+  eo = EO();
+  pt = PT();
+  mq = MQ();
+  gr = GR();
+  bs = BS();
+  tu = TU();
+  ru = RU();
+  pv = PV();
+  ow = OW();
+  ao = AO();
+  bp = BP();
+  cr = CR();
+  du = DU();
+  eg = EG();
+  flw = FLW();
+  gi = GI();
+  hp = HP();
+  ai = AI();
+  j = J();
+  kt = KT();
+  hl = HL();
+  mt = MT();
+  jn = JN();
+  op = OP();
+  ap = AP();
+  q = Q();
+  kr = KR();
+  su = SU();
+  qt = QT();
+  nu = NU();
+  kv = KV();
+  ijw = IJW();
+  al = AL();
+  bm = BM();
+  co = CO();
+  dr = DR();
+  ev = EV();
+  df = DF();
+  gj = GJ();
+  hq = HQ();
+  bi = BI();
+  jk = JK();
+  ku = KU();
+  il = IL();
+  mu = MU();
+  kn = KN();
+  bo = BO();
+  pq = PQ();
+  jqt = JQT();
+  rv = RV();
+  qs = QS();
+  jt = JT();
+  gu = GU();
+  dv = DV();
+  cw = CW();
+  ac = AC();
+  bd = BD();
+  cf = CF();
+  di = DI();
+  em = EM();
+  fr = FR();
+  ag = AG();
+  h = H();
+
+  print_raw(
+    textA(abc) +
+      textB(abc) +
+      textC(abc) +
+      textB(bc) +
+      textC(bc) +
+      textC(ce) +
+      textE(ce) +
+      textD(dh) +
+      textH(dh) +
+      textE(el) +
+      textL(el) +
+      textF(fq) +
+      textQ(fq) +
+      textG(gw) +
+      textW(gw) +
+      textG(gh) +
+      textH(gh) +
+      textI(io) +
+      textO(io) +
+      textA(aj) +
+      textJ(aj) +
+      textK(k) +
+      textL(lv) +
+      textV(lv) +
+      textK(km) +
+      textM(km) +
+      textA(an) +
+      textN(an) +
+      textO(o) +
+      textG(gp) +
+      textP(gp) +
+      textQ(qw) +
+      textW(qw) +
+      textF(fqr) +
+      textQ(fqr) +
+      textR(fqr) +
+      textL(ls) +
+      textS(ls) +
+      textH(ht) +
+      textT(ht) +
+      textE(eu) +
+      textU(eu) +
+      textC(cv) +
+      textV(cv) +
+      textB(bw) +
+      textW(bw) +
+      textA(ab) +
+      textB(ab) +
+      textB(be) +
+      textE(be) +
+      textC(cg) +
+      textG(cg) +
+      textD(dj) +
+      textJ(dj) +
+      textE(en) +
+      textN(en) +
+      textF(fs) +
+      textS(fs) +
+      textB(bg) +
+      textG(bg) +
+      textH(hi) +
+      textI(hi) +
+      textI(iq) +
+      textQ(iq) +
+      textC(cj) +
+      textJ(cj) +
+      textA(ak) +
+      textK(ak) +
+      textL(l) +
+      textA(am) +
+      textM(am) +
+      textN(n) +
+      textE(eo) +
+      textO(eo) +
+      textP(pt) +
+      textT(pt) +
+      textM(mq) +
+      textQ(mq) +
+      textG(gr) +
+      textR(gr) +
+      textB(bs) +
+      textS(bs) +
+      textT(tu) +
+      textU(tu) +
+      textR(ru) +
+      textU(ru) +
+      textP(pv) +
+      textV(pv) +
+      textO(ow) +
+      textW(ow) +
+      textA(ao) +
+      textO(ao) +
+      textB(bp) +
+      textP(bp) +
+      textC(cr) +
+      textR(cr) +
+      textD(du) +
+      textU(du) +
+      textE(eg) +
+      textG(eg) +
+      textF(flw) +
+      textL(flw) +
+      textW(flw) +
+      textG(gi) +
+      textI(gi) +
+      textH(hp) +
+      textP(hp) +
+      textA(ai) +
+      textI(ai) +
+      textJ(j) +
+      textK(kt) +
+      textT(kt) +
+      textH(hl) +
+      textL(hl) +
+      textM(mt) +
+      textT(mt) +
+      textJ(jn) +
+      textN(jn) +
+      textO(op) +
+      textP(op) +
+      textA(ap) +
+      textP(ap) +
+      textQ(q) +
+      textK(kr) +
+      textR(kr) +
+      textS(su) +
+      textU(su) +
+      textQ(qt) +
+      textT(qt) +
+      textN(nu) +
+      textU(nu) +
+      textK(kv) +
+      textV(kv) +
+      textI(ijw) +
+      textJ(ijw) +
+      textW(ijw) +
+      textA(al) +
+      textL(al) +
+      textB(bm) +
+      textM(bm) +
+      textC(co) +
+      textO(co) +
+      textD(dr) +
+      textR(dr) +
+      textE(ev) +
+      textV(ev) +
+      textD(df) +
+      textF(df) +
+      textG(gj) +
+      textJ(gj) +
+      textH(hq) +
+      textQ(hq) +
+      textB(bi) +
+      textI(bi) +
+      textJ(jk) +
+      textK(jk) +
+      textK(ku) +
+      textU(ku) +
+      textI(il) +
+      textL(il) +
+      textM(mu) +
+      textU(mu) +
+      textK(kn) +
+      textN(kn) +
+      textB(bo) +
+      textO(bo) +
+      textP(pq) +
+      textQ(pq) +
+      textJ(jqt) +
+      textQ(jqt) +
+      textT(jqt) +
+      textR(rv) +
+      textV(rv) +
+      textQ(qs) +
+      textS(qs) +
+      textJ(jt) +
+      textT(jt) +
+      textG(gu) +
+      textU(gu) +
+      textD(dv) +
+      textV(dv) +
+      textC(cw) +
+      textW(cw) +
+      textA(ac) +
+      textC(ac) +
+      textB(bd) +
+      textD(bd) +
+      textC(cf) +
+      textF(cf) +
+      textD(di) +
+      textI(di) +
+      textE(em) +
+      textM(em) +
+      textF(fr) +
+      textR(fr) +
+      textA(ag) +
+      textG(ag) +
+      textH(h) +
+      textA(abc) +
+      textB(abc) +
+      textC(abc) +
+      textB(bc) +
+      textC(bc) +
+      textC(ce) +
+      textE(ce) +
+      textD(dh) +
+      textH(dh) +
+      textE(el) +
+      textL(el) +
+      textF(fq) +
+      textQ(fq) +
+      textG(gw) +
+      textW(gw) +
+      textG(gh) +
+      textH(gh) +
+      textI(io) +
+      textO(io) +
+      textA(aj) +
+      textJ(aj) +
+      textK(k) +
+      textL(lv) +
+      textV(lv) +
+      textK(km) +
+      textM(km) +
+      textA(an) +
+      textN(an) +
+      textO(o) +
+      textG(gp) +
+      textP(gp) +
+      textQ(qw) +
+      textW(qw) +
+      textF(fqr) +
+      textQ(fqr) +
+      textR(fqr) +
+      textL(ls) +
+      textS(ls) +
+      textH(ht) +
+      textT(ht) +
+      textE(eu) +
+      textU(eu) +
+      textC(cv) +
+      textV(cv) +
+      textB(bw) +
+      textW(bw) +
+      textA(ab) +
+      textB(ab) +
+      textB(be) +
+      textE(be) +
+      textC(cg) +
+      textG(cg) +
+      textD(dj) +
+      textJ(dj) +
+      textE(en) +
+      textN(en) +
+      textF(fs) +
+      textS(fs) +
+      textB(bg) +
+      textG(bg) +
+      textH(hi) +
+      textI(hi) +
+      textI(iq) +
+      textQ(iq) +
+      textC(cj) +
+      textJ(cj) +
+      textA(ak) +
+      textK(ak) +
+      textL(l) +
+      textA(am) +
+      textM(am) +
+      textN(n) +
+      textE(eo) +
+      textO(eo) +
+      textP(pt) +
+      textT(pt) +
+      textM(mq) +
+      textQ(mq) +
+      textG(gr) +
+      textR(gr) +
+      textB(bs) +
+      textS(bs) +
+      textT(tu) +
+      textU(tu) +
+      textR(ru) +
+      textU(ru) +
+      textP(pv) +
+      textV(pv) +
+      textO(ow) +
+      textW(ow) +
+      textA(ao) +
+      textO(ao) +
+      textB(bp) +
+      textP(bp) +
+      textC(cr) +
+      textR(cr) +
+      textD(du) +
+      textU(du) +
+      textE(eg) +
+      textG(eg) +
+      textF(flw) +
+      textL(flw) +
+      textW(flw) +
+      textG(gi) +
+      textI(gi) +
+      textH(hp) +
+      textP(hp) +
+      textA(ai) +
+      textI(ai) +
+      textJ(j) +
+      textK(kt) +
+      textT(kt) +
+      textH(hl) +
+      textL(hl) +
+      textM(mt) +
+      textT(mt) +
+      textJ(jn) +
+      textN(jn) +
+      textO(op) +
+      textP(op) +
+      textA(ap) +
+      textP(ap) +
+      textQ(q) +
+      textK(kr) +
+      textR(kr) +
+      textS(su) +
+      textU(su) +
+      textQ(qt) +
+      textT(qt) +
+      textN(nu) +
+      textU(nu) +
+      textK(kv) +
+      textV(kv) +
+      textI(ijw) +
+      textJ(ijw) +
+      textW(ijw) +
+      textA(al) +
+      textL(al) +
+      textB(bm) +
+      textM(bm) +
+      textC(co) +
+      textO(co) +
+      textD(dr) +
+      textR(dr) +
+      textE(ev) +
+      textV(ev) +
+      textD(df) +
+      textF(df) +
+      textG(gj) +
+      textJ(gj) +
+      textH(hq) +
+      textQ(hq) +
+      textB(bi) +
+      textI(bi) +
+      textJ(jk) +
+      textK(jk) +
+      textK(ku) +
+      textU(ku) +
+      textI(il) +
+      textL(il) +
+      textM(mu) +
+      textU(mu) +
+      textK(kn) +
+      textN(kn) +
+      textB(bo) +
+      textO(bo) +
+      textP(pq) +
+      textQ(pq) +
+      textJ(jqt) +
+      textQ(jqt) +
+      textT(jqt) +
+      textR(rv) +
+      textV(rv) +
+      textQ(qs) +
+      textS(qs) +
+      textJ(jt) +
+      textT(jt) +
+      textG(gu) +
+      textU(gu) +
+      textD(dv) +
+      textV(dv) +
+      textC(cw) +
+      textW(cw) +
+      textA(ac) +
+      textC(ac) +
+      textB(bd) +
+      textD(bd) +
+      textC(cf) +
+      textF(cf) +
+      textD(di) +
+      textI(di) +
+      textE(em) +
+      textM(em) +
+      textF(fr) +
+      textR(fr) +
+      textA(ag) +
+      textG(ag) +
+      textH(h),
+  )
+}

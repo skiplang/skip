@@ -1,0 +1,4 @@
+class Bar() {}
+native type Foo = Bar;
+
+fun main(): String { "Pass\n" }

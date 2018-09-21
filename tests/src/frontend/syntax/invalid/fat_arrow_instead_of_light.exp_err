@@ -1,0 +1,13 @@
+File "./syntax/invalid/fat_arrow_instead_of_light.sk", line 2, characters 27-28:
+Expected ')'. Found '=>'. If your intention is to write a lambda function, you should use '->' for a mutable lambda function or '~>' for an immutable one.
+1 | fun main(): String {
+2 |   _ = Vec [1, 2, 3].map(e => e + 1);
+  |                           ^^
+3 |   ""
+
+File "./syntax/invalid/fat_arrow_instead_of_light.sk", line 2, characters 24-24:
+ For opening '('
+1 | fun main(): String {
+2 |   _ = Vec [1, 2, 3].map(e => e + 1);
+  |                        ^
+3 |   ""

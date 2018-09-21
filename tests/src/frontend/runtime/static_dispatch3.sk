@@ -1,0 +1,4 @@
+fun main(): void {
+  _ = SortedMap<Int, Int>[];
+  print_string("Pass")
+}

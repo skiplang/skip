@@ -1,0 +1,23 @@
+File "./syntax/invalid/when_pattern3.sk", line 9, characters 18-18:
+Invalid when condition
+ 7 | fun shouldPass(v: Mine): String {
+ 8 |   v match {
+ 9 |   | Yours(x) if (x) -> "Fail\n"
+   |                  ^
+10 |   | Yours(x) if (x == 2) -> "Nope\n"
+
+File "./syntax/invalid/when_pattern3.sk", line 3, characters 11-13:
+The type: Int
+1 | base class Mine {
+2 |   children =
+3 |   | Yours(Int)
+  |           ^^^
+4 |   | Theirs(Bool)
+
+File "./syntax/invalid/when_pattern3.sk", line 9, characters 18-18:
+Is not a subtype of: Bool
+ 7 | fun shouldPass(v: Mine): String {
+ 8 |   v match {
+ 9 |   | Yours(x) if (x) -> "Fail\n"
+   |                  ^
+10 |   | Yours(x) if (x == 2) -> "Nope\n"

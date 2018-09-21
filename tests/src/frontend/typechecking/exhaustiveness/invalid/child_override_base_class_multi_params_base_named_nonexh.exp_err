@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/child_override_base_class_multi_params_base_named_nonexh.sk", line 5, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | B{x => String _, t => _, a => Int _, b => String _}
+3 |
+4 | fun myMatch(x: A): String {
+5 |   x match {
+  |   ^^^^^^^^^
+6 |   | A{a => 1, b => "a"} -> "P"
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

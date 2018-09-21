@@ -1,0 +1,29 @@
+fun f{ref: mutable Ref<Int> = mutable Ref(0)}: mutable Ref<Int> {
+  ref
+}
+class C() {
+  fun f{ref: mutable Ref<Int> = mutable Ref(0)}: mutable Ref<Int> {
+    ref
+  }
+}
+mutable class F{ref: mutable Ref<Int> = mutable Ref(0)}
+
+fun main(): void {
+  f{}.set(42);
+  c = C();
+  c.f{}.set(42);
+  (mutable F{}).ref.set(42);
+  if (f{}.value == 42) {
+    print_string("FAIL fun default changed");
+    return void
+  };
+  if (c.f{}.value == 42) {
+    print_string("FAIL met default changed");
+    return void
+  };
+  if ((mutable F{}).ref.value == 42) {
+    print_string("FAIL class default changed");
+    return void
+  };
+  print_string("Pass")
+}

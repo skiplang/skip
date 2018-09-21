@@ -1,0 +1,7 @@
+File "./typechecking/invalid/construct_base.sk", line 4, characters 3-8:
+Cannot instantiate a base class
+2 |
+3 | fun foo(): MyBase {
+4 |   MyBase()
+  |   ^^^^^^
+5 | }

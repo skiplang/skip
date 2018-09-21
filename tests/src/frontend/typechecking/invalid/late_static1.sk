@@ -1,0 +1,6 @@
+base class Foo {
+  static fun abs(): void;
+  static fun bad(): void {
+    static::abs()
+  }
+}

@@ -1,0 +1,6 @@
+File "./syntax/invalid/invalid_lambda_parameter.sk", line 2, characters 7-11:
+Invalid lambda parameter
+1 | fun main(): String {
+2 |   (a, b + c) -> "Fail"
+  |       ^^^^^
+3 | }

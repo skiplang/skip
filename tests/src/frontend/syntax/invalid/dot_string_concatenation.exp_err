@@ -1,0 +1,6 @@
+File "./syntax/invalid/dot_string_concatenation.sk", line 2, characters 14-21:
+Unexpected string literal. If you meant to concatenate strings, you should use the '+' operator instead.
+1 | fun main(): String {
+2 |   "string" . "string"
+  |              ^^^^^^^^
+3 | }

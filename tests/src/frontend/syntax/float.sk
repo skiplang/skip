@@ -1,0 +1,16 @@
+fun main(): void {
+  floats = Array[
+    0.0,
+    5.42,
+    5.42e5,
+    5.42E5,
+    5.42e+5,
+    5.42e-5,
+    42e5,
+    42e15,
+    42E-5,
+    42E+15,
+  ];
+  floats.each(x -> print_string(x.toString()));
+  print_string("Pass")
+}

@@ -1,0 +1,10 @@
+// Limitation: we can't determine empty types
+base class Parent
+class A() extends Parent
+class B<T: Bool & Int>(x: T) extends Parent
+
+fun test(): void {
+  (A() : Parent) match {
+  | A() -> void
+  }
+}

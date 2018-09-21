@@ -1,0 +1,77 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Adapted from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/regexredux-node-2.html
+module RegexRedux;
+
+fun iteratorSize<T>(iterator: mutable Iterator<T>): Int {
+  i = 0;
+  while (
+    iterator.next() match {
+    | Some _ ->
+      !i = i + 1;
+      true
+    | None() -> false
+    }
+  ) void;
+  i
+}
+
+fun createRegex(str: String): (String, Regex) {
+  (str, Regex::create(str, "i"))
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  input = "";
+  results = Vector::mcreate(9);
+  bencher.bench{
+    run => () -> {
+      !input = FileSystem.readTextFile("regex-redux-input.txt").replaceRegex(
+        Regex::create("^>.*\n|\n", "m"),
+        _ -> "",
+      );
+      for (query in Array[
+        createRegex("agggtaaa|tttaccct"),
+        createRegex("[cgt]gggtaaa|tttaccc[acg]"),
+        createRegex("a[act]ggtaaa|tttacc[agt]t"),
+        createRegex("ag[act]gtaaa|tttac[agt]ct"),
+        createRegex("agg[act]taaa|ttta[agt]cct"),
+        createRegex("aggg[acg]aaa|ttt[cgt]ccct"),
+        createRegex("agggt[cgt]aa|tt[acg]accct"),
+        createRegex("agggta[cgt]a|t[acg]taccct"),
+        createRegex("agggtaa[cgt]|[acg]ttaccct"),
+      ]) {
+        m = input.matchAll(query.i1);
+        results.push(iteratorSize(m))
+      };
+
+      for (query in Array[
+        (Regex::create("tHa[Nt]"), "<4>"),
+        (Regex::create("aND|caN|Ha[DS]|WaS"), "<3>"),
+        (Regex::create("a[NSt]|BY"), "<2>"),
+        (Regex::create("<[^>]*>"), "|"),
+        (Regex::create("\\|[^|][^|]*\\|"), "-"),
+      ]) {
+        !input = input.replaceRegex(query.i0, _ -> query.i1)
+      };
+    },
+    afterEach => () -> {
+      invariant(
+        input.length() == 5262,
+        `Incorrect input length: ${input.length()}`,
+      );
+      invariant(
+        results == Vector[1, 0, 0, 0, 1, 0, 0, 0, 2],
+        "Incorrect number of regex matches.",
+      );
+      !results = Vector::mcreate(9);
+    },
+  };
+}
+
+module end;

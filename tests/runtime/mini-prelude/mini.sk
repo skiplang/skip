@@ -1,0 +1,82 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+base class Awaitable<T>
+
+base class Exception {
+  fun getMessage(): String;
+}
+
+@debug
+@no_return
+fun exit<T>(res: Int): T {
+  internalExit(res);
+  invariant_violation("never")
+}
+
+@debug
+@no_return
+@cpp_runtime
+native fun internalExit(Int): void;
+
+native fun print_last_exception_stack_trace_and_exit(Exception): void;
+
+class InvariantViolation(msg: String) extends Exception {
+  fun getMessage(): String {
+    "Invariant violation: " + this.msg
+  }
+}
+
+@no_inline
+fun invariant_violation<T>(msg: String): T {
+  throw InvariantViolation(msg)
+}
+
+fun print_string(value: String): void {
+  print_raw(value);
+  print_raw("\n")
+}
+native fun print_raw(String): void;
+native fun print_error(String): void;
+
+native class String {
+  native fun +(this): this;
+}
+native value class Int {
+  native fun ==(Int): Bool;
+  native fun !=(Int): Bool;
+  native fun +(Int): Int;
+  native fun -(Int): Int;
+  native fun *(Int): Int;
+  native fun /(Int): Int;
+  native fun %(Int): Int;
+  native fun <(Int): Bool;
+  native fun >(Int): Bool;
+  native fun <=(Int): Bool;
+  native fun >=(Int): Bool;
+}
+native value class Void
+
+native value class Bool {
+  native fun !(): Bool;
+  native fun ==(Bool): Bool;
+  native fun !=(Bool): Bool;
+  native fun <(Bool): Bool;
+  native fun >(Bool): Bool;
+  native fun <=(Bool): Bool;
+  native fun >=(Bool): Bool;
+  native fun toString(): String;
+}
+native base class Class<+T> {
+  children =
+  | Concrete
+  | Base
+  native fun ==(Class<_>): Bool;
+  fun !=(c2: Class<_>): Bool {
+    !(this == c2)
+  }
+}

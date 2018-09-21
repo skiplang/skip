@@ -1,0 +1,20 @@
+base class BaseClass
+class FinalClass() extends BaseClass
+
+fun main(): void {
+  debug(BaseClass);
+  debug(FinalClass);
+
+  lambdaCapturedNumber = 10;
+  fn: () -> Int = () -> lambdaCapturedNumber;
+  debug(fn);
+
+  lambdaCapturedNumber2 = 20;
+  fn2: () -> Int = () -> lambdaCapturedNumber + lambdaCapturedNumber2;
+  debug(fn2);
+
+  !lambdaCapturedNumber2 = 21;
+  debug(fn2);
+
+  void
+}

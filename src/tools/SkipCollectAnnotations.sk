@@ -1,0 +1,244 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
+ * Generates a small Skip program where `main()` delegates to a user-specified
+ * program, passing a list of all functions with a specified annotation.
+ *
+ * ## Usage
+ *
+ *   skip_collect_annotations
+ *     [--binding <variable>=<value>]*
+ *     --annotation <annotation>
+ *     --delegate <delegate>
+ *     target+
+ *
+ * ## Arguments
+ * - binding: variable bindings for the project system.
+ * - annotation: collect functions with this annotation ("@name").
+ * - delegate: the name of the function that the generated `main()` should
+ *             delegate to, passing the collected function references.
+ * - target: one or more project:unit targets or skip files to scan for annotations.
+ *
+ * ## Example
+ *
+ * Given a `target` that includes this source file:
+ * ```
+ * // Foo.sk
+ * module Foo;
+ *
+ * @foo
+ * fun fooInModule(): void {
+ *  void
+ * }
+ *
+ * module end;
+ *
+ * @foo
+ * fun fooOutsideModule(): void {
+ *   void
+ * }
+ * ```
+ *
+ * Running `skip_collect_annotations --annotation "@foo" --delegate "runFoo" Foo.sk`
+ * will output the following main:
+ *
+ * ```
+ * untracked fun main(): void {
+ *   runFoo(Array[
+ *    ("Foo.fooInModule", Foo.fooInModule),
+ *    ("fooOutsideModule", fooOutsideModule),
+ *  ]);
+ *}
+ * ```
+ */
+
+module alias PT = ParseTree;
+
+module SkipCollectAnnotations;
+
+class Arguments{
+  annotation: String = "",
+  delegateFunction: String = "",
+  bindings: Map<String, String> = Map[],
+  targets: Vector<String> = Vector[],
+}
+
+fun error(message: String): _ {
+  print_error(message);
+  SkipError.fail();
+}
+
+fun parseArguments(): Arguments {
+  (args, rest, dashDash) = Arguments.parse(
+    Arguments{},
+    List[
+      (
+        "--annotation",
+        Arguments.SetString((args, annotation) ~> {
+          args with {annotation => annotation.trim()}
+        }),
+      ),
+      (
+        "--delegate",
+        Arguments.SetString((args, delegateFunction) ~> {
+          args with {delegateFunction => delegateFunction.trim()}
+        }),
+      ),
+      (
+        "--binding",
+        Arguments.SetString((args, binding) ~> {
+          (variable, value) = binding.splitLast("=");
+          if (variable == "") {
+            error(
+              `Missing variable in '--binding'. Use '--binding <variable>=<value>'.\n`,
+            );
+          };
+          if (args.bindings.containsKey(variable)) {
+            error(`Duplicate variable '${variable}' in '--binding'.\n`);
+          };
+          args with {
+            bindings => {
+              bindings = args.bindings.clone();
+              bindings.add(variable, value);
+              freeze(bindings);
+            },
+          };
+        }),
+      ),
+    ],
+    "Usage: skip_collect_annotations [--binding <variable>=<value>]* --annotation <annotation> --delegate <delegate> <target>+",
+  );
+
+  if (rest.isEmpty()) {
+    error("No target(s) provided")
+  };
+  if (!dashDash.isEmpty()) {
+    error(`Invalid argument '--'.\n`);
+  };
+  if (args.annotation == "") {
+    error("No --annotation provided\n")
+  };
+  if (args.annotation.startsWith("@")) {
+    error("Expected --annotation not to start with '@'\n")
+  };
+  if (args.delegateFunction == "") {
+    error("No --delegate provided\n")
+  };
+  args with {targets => rest.collect(Vector)}
+}
+
+fun main(): void {
+  args = parseArguments();
+  bindings = if (args.bindings.isEmpty()) {
+    SkipProject.nativePreludeBindings
+  } else {
+    args.bindings
+  };
+  sourceFiles = args.targets
+    .map(target ~> {
+      SkipProject.TargetArgument::parse(target) match {
+      | None() -> error(`Invalid target "${target}".\n`)
+      | Some(targetArgument) ->
+        getSourceFilesForTarget(targetArgument, bindings)
+      };
+    })
+    .flatten()
+    .collect(Set);
+
+  annotationTargets = collectionAnnotationTargets(sourceFiles, args.annotation);
+  printMainSource(annotationTargets, args.delegateFunction, print_raw);
+}
+
+fun getSourceFilesForTarget(
+  target: SkipProject.TargetArgument,
+  bindings: Map<String, String>,
+): Set<String> {
+  target match {
+  | SkipProject.SourceFileArgument{filename} -> Set[filename]
+  | programUnit @ SkipProject.ProgramUnitArgument _ ->
+    SkipError.doAndReportErrors(() ~>
+      SkipProject.loadProjectProgramUnit(
+        programUnit.projectPath,
+        programUnit.programUnit,
+      ).flatMap(solutionKey ~> {
+        (solution, key) = solutionKey;
+        solution.getAllSourceFilesFor(key, bindings)
+      })
+    )
+  }
+}
+
+fun collectionAnnotationTargets(
+  sourceFiles: Sequence<String>,
+  annotation: String,
+): Array<SkipAnnotations.FunctionAnnotation> {
+  sourceFiles
+    .collect(Array)
+    .parallelMap(sourceFile ~> {
+      source = FileSystem.readTextFile(sourceFile);
+      parseResults = SkipParser.parseSource(source, false);
+      annotationTargets = mutable Vector[];
+      SkipAnnotations.visit(
+        parseResults.tree,
+        annotation,
+        (_, annotationTarget) -> {
+          annotationTargets.push(
+            validateAnnotationTarget(annotationTarget, annotation),
+          )
+        },
+      );
+      annotationTargets.chill()
+    })
+    .flatten();
+}
+
+fun validateAnnotationTarget(
+  annotationTarget: SkipAnnotations.AnnotationTarget,
+  annotation: String,
+): SkipAnnotations.FunctionAnnotation {
+  annotationTarget match {
+  | functionTarget @ SkipAnnotations.FunctionAnnotation{classTree} if (
+    classTree is None()
+  ) ->
+    functionTarget
+  | _ ->
+    error(
+      `Invalid @${annotation} annotation; annotations are only allowed on ` +
+        `global or module-scoped functions.`,
+    )
+  }
+}
+
+fun printMainSource(
+  annotationTargets: Sequence<SkipAnnotations.FunctionAnnotation>,
+  delegateFunction: String,
+  print: String -> void,
+): void {
+  writer = IndentedWriter.create(print);
+  writer.writeLine("untracked fun main(): void {");
+  writer.indent();
+  writer.writeLine(`${delegateFunction}(Array[`);
+  writer.indent();
+  for (annotationTarget in annotationTargets) {
+    name =
+      annotationTarget.moduleTree
+        .map(moduleTree ~> moduleTree.name.getTokenString() + ".")
+        .default("") + annotationTarget.functionTree.name.getTokenString();
+    writer.writeLine(`("${name}", ${name}),`);
+  };
+  writer.outdent();
+  writer.writeLine("]);");
+  writer.outdent();
+  writer.writeLine("}");
+}
+
+module end;
+
+fun main(): void {
+  SkipCollectAnnotations.main()
+}

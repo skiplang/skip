@@ -1,0 +1,23 @@
+File "./typechecking/invalid/constraint_param3.sk", line 12, characters 3-3:
+Constraint not satisfied
+10 |
+11 | fun main(): void {
+12 |   x(Foo());
+   |   ^
+13 |   print_raw("No")
+
+File "./typechecking/invalid/constraint_param3.sk", line 12, characters 5-9:
+The type: Foo
+10 |
+11 | fun main(): void {
+12 |   x(Foo());
+   |     ^^^^^
+13 |   print_raw("No")
+
+File "./typechecking/invalid/constraint_param3.sk", line 7, characters 21-24:
+Is not a subtype of: Show
+5 | }
+6 |
+7 | fun x<T: Equality & Show>(T): void {
+  |                     ^^^^
+8 |   void

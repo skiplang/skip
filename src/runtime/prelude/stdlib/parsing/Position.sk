@@ -1,0 +1,66 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// A Line/Column Position in a block of text.
+// Both line and column are 0 based.
+////////////////////////////////////////////////////////////////////////////////
+
+value class Position(private lineColumn: Int) uses Show, Orderable, Hashable {
+  static fun create(line: Int, column: Int): Position {
+    // TODO: invariant(line >= 0 && line <= Int.low32BitMask);
+    // TODO: invariant(column >= 0 && column <= Int.low32BitMask);
+    Position(line.shl(32).or(column.and(Int.low32BitMask)));
+  }
+
+  // Line is 0 based and never negative.
+  fun line(): Int {
+    this.lineColumn.ushr(32);
+  }
+
+  // Column is 0 based and never negative.
+  fun column(): Int {
+    this.lineColumn.and(Int.low32BitMask);
+  }
+
+  fun atBeginningOfLine(): Bool {
+    this.column() == 0;
+  }
+
+  // The Position at the start of the next line.
+  fun nextLine(): Position {
+    static::create(this.line() + 1, 0);
+  }
+
+  // The Position at the next column on the same line.
+  fun nextColumn(): Position {
+    Position(this.lineColumn + 1);
+  }
+
+  // The Position at the start of the current line.
+  fun beginningOfLine(): Position {
+    static::create(this.line(), 0);
+  }
+
+  fun toString(): String {
+    "(" + (this.line() + 1) + ", " + (this.column() + 1) + ")";
+  }
+
+  fun inspect(): Inspect {
+    InspectLiteral(this.toString());
+  }
+}
+
+module Position;
+
+fun create(line: Int, column: Int): Position {
+  Position::create(line, column);
+}
+
+const start: Position = create(0, 0);
+
+module end;

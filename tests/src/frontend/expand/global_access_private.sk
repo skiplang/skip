@@ -1,0 +1,29 @@
+fun main(): void {
+  _ = x;
+  _ = bar();
+  _: Tglobal = 42;
+  c = Cglobal();
+  _ = c.make();
+  print_string("Pass")
+}
+
+module Z;
+
+private fun foo(): void {
+  void
+}
+const .x: void = void;
+fun .bar(): void {
+  foo()
+}
+
+private type Tpriv = Int;
+type .Tglobal = Tpriv;
+
+private base class Bpriv
+private class .Cpriv() extends Bpriv
+class .Cglobal() extends Bpriv {
+  fun make(): Bpriv {
+    Cpriv()
+  }
+}

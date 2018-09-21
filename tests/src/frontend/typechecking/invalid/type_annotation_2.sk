@@ -1,0 +1,6 @@
+class C() extends B
+base class B
+
+fun foo(): void {
+  _: C = (C() : B)
+}

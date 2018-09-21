@@ -1,0 +1,111 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip Keywords.
+// This is the only file which contains string literals of skip keywords.
+
+module Keywords;
+
+fun isKeyword(value: String): Bool {
+  maybeToKeyword(value).isSome()
+}
+
+fun toKeyword(value: String): TokenKind.TokenKind {
+  maybeToKeyword(value).fromSome()
+}
+
+fun maybeToKeyword(value: String): ?TokenKind.TokenKind {
+  value match {
+  | "as" -> Some(TokenKind.AS())
+  | "async" -> Some(TokenKind.ASYNC())
+  | "await" -> Some(TokenKind.AWAIT())
+  | "break" -> Some(TokenKind.BREAK())
+  | "catch" -> Some(TokenKind.CATCH())
+  | "children" -> Some(TokenKind.CHILDREN())
+  | "class" -> Some(TokenKind.CLASS())
+  | "const" -> Some(TokenKind.CONST())
+  | "continue" -> Some(TokenKind.CONTINUE())
+  | "do" -> Some(TokenKind.DO())
+  | "else" -> Some(TokenKind.ELSE())
+  | "extends" -> Some(TokenKind.EXTENDS())
+  | "false" -> Some(TokenKind.FALSE())
+  | "for" -> Some(TokenKind.FOR())
+  | "fun" -> Some(TokenKind.FUN())
+  | "if" -> Some(TokenKind.IF())
+  | "in" -> Some(TokenKind.IN())
+  | "loop" -> Some(TokenKind.LOOP())
+  | "macro" -> Some(TokenKind.MACRO())
+  | "module" -> Some(TokenKind.MODULE())
+  | "mutable" -> Some(TokenKind.MUTABLE())
+  | "native" -> Some(TokenKind.NATIVE())
+  | "private" -> Some(TokenKind.PRIVATE())
+  | "protected" -> Some(TokenKind.PROTECTED())
+  | "readonly" -> Some(TokenKind.READONLY())
+  | "return" -> Some(TokenKind.RETURN())
+  | "static" -> Some(TokenKind.STATIC())
+  | "this" -> Some(TokenKind.THIS())
+  | "throw" -> Some(TokenKind.THROW())
+  | "trait" -> Some(TokenKind.TRAIT())
+  | "true" -> Some(TokenKind.TRUE())
+  | "try" -> Some(TokenKind.TRY())
+  | "uses" -> Some(TokenKind.USES())
+  | "void" -> Some(TokenKind.VOID())
+  | "while" -> Some(TokenKind.WHILE())
+  | "yield" -> Some(TokenKind.YIELD())
+  // TODO remove these with recursive descent parser
+  | "overridable" -> Some(TokenKind.OVERRIDABLE())
+  | "memoized" -> Some(TokenKind.MEMOIZED())
+  | "frozen" -> Some(TokenKind.FROZEN())
+  | "deferred" -> Some(TokenKind.DEFERRED())
+  | "untracked" -> Some(TokenKind.UNTRACKED())
+  | "final" -> Some(TokenKind.FINAL())
+  | "#forEachField" -> Some(TokenKind.FOREACH_FIELD())
+  | _ -> None()
+  }
+}
+
+const kw_alias: String = "alias";
+const kw_as: String = "as";
+const kw_async: String = "async";
+const kw_await: String = "await";
+const kw_break: String = "break";
+const kw_catch: String = "catch";
+const kw_children: String = "children";
+const kw_class: String = "class";
+const kw_const: String = "const";
+const kw_else: String = "else";
+const kw_extends: String = "extends";
+const kw_false: String = "false";
+const kw_fun: String = "fun";
+const kw_if: String = "if";
+const kw_in: String = "in";
+const kw_use: String = "use";
+const kw_loop: String = "loop";
+const kw_macro: String = "macro";
+const kw_module: String = "module";
+const kw_mutable: String = "mutable";
+const kw_native: String = "native";
+const kw_private: String = "private";
+const kw_protected: String = "protected";
+const kw_readonly: String = "readonly";
+const kw_static: String = "static";
+const kw_this: String = "this";
+const kw_throw: String = "throw";
+const kw_true: String = "true";
+const kw_try: String = "try";
+const kw_void: String = "void";
+const kw_while: String = "while";
+const kw_yield: String = "yield";
+const kw_overridable: String = "overridable";
+const kw_memoized: String = "memoized";
+const kw_frozen: String = "frozen";
+const kw_deferred: String = "deferred";
+const kw_untracked: String = "untracked";
+const kw_final: String = "final";
+const kw_forEach_field: String = "#forEachField";
+
+module end;

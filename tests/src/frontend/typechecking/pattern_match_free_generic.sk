@@ -1,0 +1,12 @@
+base class Foo{}
+base class Bar<T> extends Foo
+class Baz extends Bar<void>
+
+fun main(): void {
+  fieldType: Foo = Baz{};
+  print_raw(
+    fieldType match {
+    | Bar _ -> "Pass\n"
+    },
+  )
+}

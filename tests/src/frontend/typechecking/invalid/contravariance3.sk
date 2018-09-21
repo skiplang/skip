@@ -1,0 +1,12 @@
+base class A
+class B() extends A
+
+class Foo<-T>()
+
+fun bFoo(): Foo<B> {
+  Foo()
+}
+
+fun raiseFoo(): Foo<A> {
+  bFoo()
+}

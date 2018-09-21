@@ -1,0 +1,20 @@
+class C<T>(value: T) uses X[T: String] {
+  fun get[T: String](): String {
+    this.value
+  }
+}
+
+trait X {
+  fun get(): String;
+  fun plural(): String {
+    this.get() + "s"
+  }
+}
+
+fun print_x<T: X>(x: T): void {
+  print_string(x.plural())
+}
+
+fun main(): void {
+  print_x(C("Pas"))
+}

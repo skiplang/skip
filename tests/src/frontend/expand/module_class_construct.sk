@@ -1,0 +1,15 @@
+class A()
+
+module M;
+
+class B()
+
+module end;
+
+fun main(): void {
+  _ = A();
+  _ = .A();
+  _ = M.B();
+  _ = .M.B();
+  print_string("Pass")
+}

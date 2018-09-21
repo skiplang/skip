@@ -1,0 +1,7 @@
+fun main(): String {
+  call(
+    a, // kikoo
+    b // missing trailing comma
+  );
+  p : mutable MyParent<AK> = x;  // error, type params invariant on mutables so no subtype
+}

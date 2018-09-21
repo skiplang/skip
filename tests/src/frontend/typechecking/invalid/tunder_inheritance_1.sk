@@ -1,0 +1,15 @@
+base class Foo {
+  overridable fun hello(_): String {
+    "default"
+  }
+}
+
+class Bar() extends Foo {
+  fun hello(x: Int): String {
+    x.toString()
+  }
+}
+
+fun main(): void {
+  print_raw(Bar().hello(42))
+}

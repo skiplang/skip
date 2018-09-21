@@ -1,0 +1,15 @@
+File "./typechecking/invalid/deferred_is_not_untracked.sk", line 8, characters 7-16:
+In 'UntrackedC's version of the member 'foo' inherited from 'P'
+ 6 | }
+ 7 |
+ 8 | class UntrackedC() extends P {
+   |       ^^^^^^^^^^
+ 9 |   untracked fun getData(): void {
+
+File "./typechecking/invalid/deferred_is_not_untracked.sk", line 3, characters 5-18:
+Cannot call an untracked function from a tracked context
+1 | base class P {
+2 |   deferred fun foo(): void {
+3 |     this.getData()
+  |     ^^^^^^^^^^^^^^
+4 |   }

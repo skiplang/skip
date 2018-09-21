@@ -1,0 +1,5 @@
+File "invalid/missing_project_file/ref/skip.project.json"
+Unable to read project file 'invalid/missing_project_file/ref/skip.project.json'. Error opening 'invalid/missing_project_file/ref/skip.project.json': No such file or directory
+
+File "invalid/missing_project_file/skip.project.json"
+Referenced from

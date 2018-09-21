@@ -1,0 +1,19 @@
+File "./typechecking/invalid/inherit_params_dupe_inherited.sk", line 3, characters 7-11:
+Name already bound: x
+1 | base class MyParent(x: Int, y: String) {}
+2 | base class MyParent2(x: Bool, y: Bool) {}
+3 | class Child extends MyParent, MyParent2
+  |       ^^^^^
+
+File "./typechecking/invalid/inherit_params_dupe_inherited.sk", line 2, characters 22-22:
+Field declared in MyParent2
+1 | base class MyParent(x: Int, y: String) {}
+2 | base class MyParent2(x: Bool, y: Bool) {}
+  |                      ^
+3 | class Child extends MyParent, MyParent2
+
+File "./typechecking/invalid/inherit_params_dupe_inherited.sk", line 1, characters 21-21:
+Conflicts with field declared in MyParent
+1 | base class MyParent(x: Int, y: String) {}
+  |                     ^
+2 | base class MyParent2(x: Bool, y: Bool) {}

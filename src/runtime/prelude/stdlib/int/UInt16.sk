@@ -1,0 +1,17 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+value class UInt16 private (private value: Int16) uses Integral {
+  fun toInt(): Int {
+    this.value.and(0xFFFF)
+  }
+  static fun truncate(n: Int): UInt16 {
+    UInt16(Int16::truncate(n))
+  }
+  const min: UInt16 = UInt16::truncate(0);
+  const max: UInt16 = UInt16::truncate(0xFFFF);
+}

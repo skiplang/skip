@@ -1,0 +1,9 @@
+fun main(): void {
+  x: readonly Ref<mutable Ref<Int>> = mutable Ref(mutable Ref(0));
+  print_raw(
+    x match {
+    | Ref(r) if (r.value == 0) -> "Pass\n"
+    | Ref _ -> "FAIL"
+    },
+  )
+}

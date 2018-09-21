@@ -1,0 +1,16 @@
+base class Foo {
+  children =
+  | Bar(Int)
+  | Baz(Bool)
+}
+
+fun main(): void {
+  x = Bar(1);
+
+  print_raw(
+    x match {
+    | Bar(y) if (y == true) -> "Error\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

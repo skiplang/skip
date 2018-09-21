@@ -1,0 +1,35 @@
+set -ex
+SKIPI=$(cd $(dirname $0) && pwd)
+
+cd $SKIPI/../../..
+
+PDIR=$SKIPI/../../../tests/runtime/prelude
+PRELUDE="$PDIR/ASIO.sk $PDIR/Algorithm.sk $PDIR/Awaitable.sk $PDIR/Bool.sk
+$PDIR/Char.sk $PDIR/Chars.sk $PDIR/Class.sk $PDIR/Debug.sk $PDIR/Doc.sk
+$PDIR/Either.sk $PDIR/Equality.sk $PDIR/Exception.sk $PDIR/Array.sk
+$PDIR/Float.sk $PDIR/Glob.sk $PDIR/Hashable.sk $PDIR/IndentedWriter.sk
+$PDIR/Inspect.sk $PDIR/Int.sk $PDIR/Iterable.sk $PDIR/Iterator.sk $PDIR/JSON.sk
+$PDIR/MSortable.sk $PDIR/Map.sk $PDIR/Math.sk $PDIR/Number.sk $PDIR/Option.sk
+$PDIR/Order.sk $PDIR/Orderable.sk $PDIR/OrderedMap.sk $PDIR/OrderedSet.sk
+$PDIR/Parallel.sk $PDIR/Path.sk $PDIR/Predicates.sk $PDIR/PseudoRandom.sk
+$PDIR/Range.sk $PDIR/Ref.sk $PDIR/Regex.sk $PDIR/Seq.sk $PDIR/SeqIndexedSeq.sk
+$PDIR/SeqKeyedSeq.sk $PDIR/Set.sk $PDIR/Show.sk $PDIR/Sortable.sk
+$PDIR/SortedMap.sk $PDIR/Stack.sk $PDIR/String.sk $PDIR/System.sk
+$PDIR/Tuples.sk $PDIR/UniqueSeq.sk $PDIR/Unsafe.sk $PDIR/Util.sk $PDIR/Vector.sk
+$PDIR/native/RegexImplementation.sk $PDIR/native/Runtime.sk
+$PDIR/native/StringIterator.sk $PDIR/php/Array.sk $PDIR/php/ArrayKey.sk
+$PDIR/php/Dict.sk $PDIR/php/KeySet.sk $PDIR/php/Mixed.sk $PDIR/php/Nullable.sk
+$PDIR/php/Vec.sk $PDIR/preludeJsonUtils.sk $PDIR/testing/Assert.sk
+$PDIR/testing/GTest.sk $PDIR/testing/TestStringOrInt.sk
+$PDIR/testing/UnitTest.sk"
+
+PARAMS="--output $SKIPI/hello_world.ll ./src/tools/skipi/hello_world.sk
+--export-function-as main=skip_main --preamble
+/Users/aorenste/dev/skip/build/tests/runtime/native/lib/preamble.ll $PRELUDE"
+
+# Need SKIP_NUM_THREADS=1 because our use of llvm is not thread safe
+#time SKIP_NUM_THREADS=1 build/bin/skip_to_llvm $PARAMS
+time SKIP_NUM_THREADS=1 ./src/tools/skipi/skipi build/src/native/skip_to_llvm.ll $PARAMS
+
+cd $SKIPI
+time ./skipi hello_world.ll

@@ -1,0 +1,7 @@
+File "./typechecking/invalid/await_outside_async2.sk", line 3, characters 5-11:
+Cannot await outside an async context
+1 | fun foo<T1, T: ^T1>(): T -> T1 {
+2 |   x ->
+3 |     await x // error, await in non-async lambda
+  |     ^^^^^^^
+4 | }

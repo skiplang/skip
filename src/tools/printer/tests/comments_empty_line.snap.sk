@@ -1,0 +1,11 @@
+class TokenIterator{
+  tokens: Array<Token.Token>,
+  comments: Array<Token.Comment>,
+  mutable tokenIndex: Int,
+  // The start of leading comments for the current token.
+  mutable commentIndex: Int,
+} {
+  fun f(): void {
+    void
+  }
+}

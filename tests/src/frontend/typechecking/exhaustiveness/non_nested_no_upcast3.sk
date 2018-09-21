@@ -1,0 +1,13 @@
+base class A {
+  children =
+  | B(Int)
+}
+
+fun main(): void {
+  print_raw(
+    B(1) match {
+    | B(1) -> "Pass\n"
+    | B(_) -> "Fail\n"
+    },
+  )
+}

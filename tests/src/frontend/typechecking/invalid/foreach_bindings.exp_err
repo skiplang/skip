@@ -1,0 +1,71 @@
+File "./typechecking/invalid/foreach_bindings.sk", line 14, characters 8-8:
+Invalid pattern
+12 |
+13 | fun no1(): void {
+14 |   for (_ in MyClass()) void
+   |        ^
+15 | }
+
+File "./typechecking/invalid/foreach_bindings.sk", line 8, characters 15-17:
+The type: Int
+ 6 |     this
+ 7 |   }
+ 8 |   fun next(): Int {
+   |               ^^^
+ 9 |     0
+
+File "./typechecking/invalid/foreach_bindings.sk", line 14, characters 8-8:
+Does not share a common super type with: Some<_>
+12 |
+13 | fun no1(): void {
+14 |   for (_ in MyClass()) void
+   |        ^
+15 | }
+
+File "./typechecking/invalid/foreach_bindings.sk", line 18, characters 8-13:
+Invalid pattern
+16 |
+17 | fun no2(): void {
+18 |   for (_ => _ in MyClass()) void
+   |        ^^^^^^
+19 | }
+
+File "./typechecking/invalid/foreach_bindings.sk", line 8, characters 15-17:
+The type: Int
+ 6 |     this
+ 7 |   }
+ 8 |   fun next(): Int {
+   |               ^^^
+ 9 |     0
+
+File "./typechecking/invalid/foreach_bindings.sk", line 18, characters 8-13:
+Does not share a common super type with: Some<_>
+16 |
+17 | fun no2(): void {
+18 |   for (_ => _ in MyClass()) void
+   |        ^^^^^^
+19 | }
+
+File "./typechecking/invalid/foreach_bindings.sk", line 22, characters 8-16:
+Invalid pattern
+20 |
+21 | fun no3(): void {
+22 |   for ((_, _, _) in MyClass()) void
+   |        ^^^^^^^^^
+23 | }
+
+File "./typechecking/invalid/foreach_bindings.sk", line 8, characters 15-17:
+The type: Int
+ 6 |     this
+ 7 |   }
+ 8 |   fun next(): Int {
+   |               ^^^
+ 9 |     0
+
+File "./typechecking/invalid/foreach_bindings.sk", line 22, characters 8-16:
+Does not share a common super type with: Some<_>
+20 |
+21 | fun no3(): void {
+22 |   for ((_, _, _) in MyClass()) void
+   |        ^^^^^^^^^
+23 | }

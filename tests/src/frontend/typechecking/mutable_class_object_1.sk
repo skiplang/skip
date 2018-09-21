@@ -1,0 +1,18 @@
+mutable class Foo<T>(mutable v: T)
+
+fun test1(f: mutable Foo<mutable Foo<Int>>): void {
+  _ = mutable class(f)(mutable Foo(42))
+}
+
+fun test2(f: Foo<Foo<Int>>): void {
+  _ = class(f)(Foo(42))
+}
+
+fun test3(f: readonly Foo<readonly Foo<Int>>): void {
+  _ = mutable class(f)(mutable Foo(42));
+  _ = mutable class(f)(Foo(42))
+}
+
+fun main(): void {
+  print_string("Pass")
+}

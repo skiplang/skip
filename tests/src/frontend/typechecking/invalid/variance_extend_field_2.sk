@@ -1,0 +1,13 @@
+base class Foo<-T>
+class Bar<+T>(x: T) extends Foo<T>
+
+fun main(): void {
+  x: Test.MixedScalar = Test.MixedInt(42);
+  b = Bar(x);
+  f: Foo<Test.MixedString> = b;
+  print_raw(
+    f match {
+    | Bar(s) -> s.asString()
+    },
+  )
+}

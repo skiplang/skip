@@ -1,0 +1,15 @@
+class A()
+class B(a: A)
+mutable class C(mutable b: B)
+
+fun main(): void {
+  c = mutable C(B(A()));
+
+  // This works.
+  c.!b = c.b with {a => A()};
+
+  // This should do the same thing
+  c.!b.a = A();
+
+  print_string("Pass")
+}

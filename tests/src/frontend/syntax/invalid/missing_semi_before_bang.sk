@@ -1,0 +1,6 @@
+fun main(): String {
+  c = consumed
+  // Should get a decent error message here:
+  !row = e;
+  "FAIL";
+}

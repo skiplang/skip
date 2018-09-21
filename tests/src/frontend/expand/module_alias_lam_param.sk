@@ -1,0 +1,12 @@
+module alias A = M;
+
+module M;
+
+class C() {}
+
+module end;
+
+fun main(): void {
+  f = (_: A.C) -> "Pass\n";
+  print_raw(f(M.C()))
+}

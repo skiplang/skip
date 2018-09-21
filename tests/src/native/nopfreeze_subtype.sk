@@ -1,0 +1,33 @@
+mutable base class A(n: Int, mutable other: ?mutable A) {
+  frozen fun s(depth: Int): String;
+}
+
+mutable class B extends A {
+  frozen fun s(depth: Int): String {
+    "B" + this.n + (if (depth > 0) this.other.fromSome().s(depth - 1) else "")
+  }
+}
+
+mutable class C extends A {
+  frozen fun s(depth: Int): String {
+    "C" + this.n + (if (depth > 0) this.other.fromSome().s(depth - 1) else "")
+  }
+}
+
+@gc
+@no_inline
+fun makeLoop(n: Int): A {
+  c: mutable A = mutable C(-n, None());
+  b: mutable A = mutable B(n, None());
+  b.!other = Some(c);
+  c.!other = Some(b);
+  freeze(b)
+}
+
+fun main(): void {
+  q = makeLoop(1);
+  print_raw(q.s(1) + "\n")
+  // Fancier:
+  //  v = Array::fillBy(4, n -> makeLoop(n + 1));
+  //  String::implode(", ", v.map(x -> x.s(1))) + "\n"
+}

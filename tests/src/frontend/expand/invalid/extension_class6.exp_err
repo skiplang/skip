@@ -1,0 +1,11 @@
+File "./expand/invalid/extension_class6.sk", line 1, characters 8-12:
+Incompatible class parameters
+1 | class A(Int)
+  |        ^^^^^
+2 | extension class A{x: Int}
+
+File "./expand/invalid/extension_class6.sk", line 2, characters 18-25:
+Previously defined here
+1 | class A(Int)
+2 | extension class A{x: Int}
+  |                  ^^^^^^^^

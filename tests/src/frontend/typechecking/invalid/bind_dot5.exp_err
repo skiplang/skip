@@ -1,0 +1,7 @@
+File "./typechecking/invalid/bind_dot5.sk", line 10, characters 8-13:
+Can only bind to class properties
+ 8 |   foo = Foo();
+ 9 |   fakeMethod: Int -> void = (_ -> void);
+10 |   !foo.method = fakeMethod;
+   |        ^^^^^^
+11 |   print_raw("Fail")

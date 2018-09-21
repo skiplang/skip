@@ -1,0 +1,28 @@
+module M;
+
+const v: Vector<Int> = Vector[0, 1, 2, 3];
+
+fun vyes(): Int {
+  sum = 0;
+  for (v in v) !sum = sum + v else sum + v[0]
+}
+
+const m: Map<Int, Int> = Map[0 => 0, 1 => 1, 2 => 2, 3 => 3];
+
+fun myes(): Int {
+  sum = 0;
+  for (m => i in m) !sum = sum + m + i else sum + m[0]
+}
+
+const tv: Vector<(Int, Int, Int)> = Vector[(0, 0, 0), (1, 1, 1)];
+
+fun tvyes(): Int {
+  sum = 0;
+  for ((tv, j, k) in tv) !sum = sum + tv + j + k else sum + tv[0].i0
+}
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

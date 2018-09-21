@@ -1,0 +1,59 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// A Line/Column Position in a text file.
+// Both line and column are 0 based.
+////////////////////////////////////////////////////////////////////////////////
+
+value class FilePosition{
+  filename: String,
+  position: Position,
+} uses Orderable, Hashable, Show {
+  fun line(): Int {
+    this.position.line();
+  }
+  fun column(): Int {
+    this.position.column();
+  }
+
+  fun atBeginningOfLine(): Bool {
+    this.position.atBeginningOfLine();
+  }
+
+  // The Position at the start of the next line.
+  fun nextLine(): FilePosition {
+    FilePosition.create(this.filename, this.position.nextLine());
+  }
+
+  // The Position at the next column on the same line.
+  fun nextColumn(): FilePosition {
+    FilePosition.create(this.filename, this.position.nextColumn());
+  }
+
+  // The Position at the start of the current line.
+  fun beginningOfLine(): FilePosition {
+    FilePosition.create(this.filename, this.position.beginningOfLine());
+  }
+
+  fun compare(other: FilePosition): Order {
+    // TODO: invariant(this.filename == other.filename);
+    this.position.compare(other.position);
+  }
+
+  fun toString(): String {
+    this.filename + this.position.toString()
+  }
+}
+
+module FilePosition;
+
+fun create(filename: String, position: Position): FilePosition {
+  FilePosition{filename, position};
+}
+
+module end;

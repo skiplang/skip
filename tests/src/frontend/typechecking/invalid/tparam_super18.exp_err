@@ -1,0 +1,26 @@
+File "./typechecking/invalid/tparam_super18.sk", line 5, characters 7-13:
+Invalid conditional type override for the field 'compare' on child 'Child' for parent 'Parent'.
+With additional constraints on the child's method,
+ these constraints must be satisfied when upcasting a child to the parent's type,
+ and then adding any additional constraints from the parent's version of the method
+3 |
+4 | base class Parent<+T> {
+5 |   fun compare<U: Z>[T: U](): void;
+  |       ^^^^^^^
+6 | }
+
+File "./typechecking/invalid/tparam_super18.sk", line 9, characters 21-21:
+The type: T
+ 7 |
+ 8 | class Child<+T>() extends Parent<T> {
+ 9 |   fun compare<U: Y>[T: U](): void {
+   |                     ^
+10 |     void
+
+File "./typechecking/invalid/tparam_super18.sk", line 9, characters 24-24:
+Is not a subtype of: U
+ 7 |
+ 8 | class Child<+T>() extends Parent<T> {
+ 9 |   fun compare<U: Y>[T: U](): void {
+   |                        ^
+10 |     void

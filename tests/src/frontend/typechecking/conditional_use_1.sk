@@ -1,0 +1,13 @@
+class MyVector<+T>(v: Vector<T>) uses Show[T: Show] {
+  fun toString[T: Show](): String {
+    this.v.toString()
+  }
+}
+
+fun print_show<T: Show>(x: T): void {
+  print_string(x.toString())
+}
+
+fun main(): void {
+  print_show(MyVector(Vector["P", "a", "s", "s"]))
+}

@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/child_class_overlap.sk", line 10, characters 5-12:
+The following pattern is unused:
+ | C(false)
+ 8 |   | B(true) -> "1"
+ 9 |   // Overlapping with A(false)
+10 |   | C(false) -> "1"
+   |     ^^^^^^^^
+11 |   }

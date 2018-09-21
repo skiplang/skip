@@ -1,0 +1,5 @@
+base class Foo final {x: Int} {
+  static fun construct(): this {
+    static{x => 42}
+  }
+}

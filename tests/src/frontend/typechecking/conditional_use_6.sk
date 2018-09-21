@@ -1,0 +1,17 @@
+trait X {
+  overridable fun getVal(): String {
+    "Pass"
+  }
+}
+
+trait Y extends X
+
+class C<T>(x: T) uses Y[T: Y] {
+  fun getVal from Y;
+}
+
+class UsesY() uses Y
+
+fun main(): void {
+  print_string(C(UsesY()).getVal())
+}

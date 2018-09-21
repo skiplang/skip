@@ -1,0 +1,13 @@
+base class FBase(x: Int, protected y: Int)
+
+class Foo extends FBase {
+  fun yes(f: FBase): Int {
+    f match {
+    | FBase(x, y) -> x + y
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

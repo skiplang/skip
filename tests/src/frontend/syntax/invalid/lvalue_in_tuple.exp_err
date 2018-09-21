@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_in_tuple.sk", line 2, characters 9-10:
+'.!' in non-lvalue
+1 | fun main(): String {
+2 |   (x, x.!y)
+  |         ^^
+3 | }

@@ -1,0 +1,10 @@
+fun main(): void {
+  f = (_: Int) -> "no";
+  g = i -> {
+    if (i > 10) return "Pass";
+    if (i > 11) invariant_violation("wat");
+    f(i + 1)
+  };
+  !f = g;
+  print_string(f(0))
+}

@@ -1,0 +1,9 @@
+class Foo<T: frozen>(T) {
+  fun test(x: Array<T>): mutable this {
+    mutable Foo(x[0])
+  }
+}
+
+fun test(): void {
+  Foo(mutable Array[0]).test(Array[])
+}

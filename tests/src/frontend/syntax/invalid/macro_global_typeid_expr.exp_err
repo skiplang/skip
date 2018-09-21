@@ -1,0 +1,7 @@
+File "./syntax/invalid/macro_global_typeid_expr.sk", line 3, characters 6-15:
+Expected identifier
+1 | base class B {
+2 |   macro fun m(): void {
+3 |     .#ThisClass::f()
+  |      ^^^^^^^^^^
+4 |   }

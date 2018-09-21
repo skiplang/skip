@@ -1,0 +1,18 @@
+trait FoobarTrait {
+  fun myMethod(other: inst): Bool;
+}
+
+class Foo<+T: Int>() uses FoobarTrait {
+  fun myMethod<U: Foo<T>>(_other: U): Bool {
+    true
+  }
+}
+
+fun myEqFunction<T: FoobarTrait>(a: T, b: T): Bool {
+  a.myMethod(b)
+}
+
+fun main(): void {
+  a = Foo<Int>();
+  print_raw(myEqFunction(a, a).toString() + "\n")
+}

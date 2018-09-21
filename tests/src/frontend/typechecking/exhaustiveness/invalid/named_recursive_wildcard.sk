@@ -1,0 +1,12 @@
+base class F {
+  children =
+  | A{x: Int}
+  | B{x: Int, y: F}
+}
+
+fun test(): String {
+  B{x => 1, y => A{x => 1}} match {
+  | B{x => 1, y => A{x => 1}} -> "Fail\n"
+  | B{x => 1, y => A{x => _}} -> "Fail\n"
+  }
+}

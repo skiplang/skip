@@ -1,0 +1,21 @@
+base class MyBase {
+  children =
+  | Child1(value: Int)
+  | Child2(value: String)
+
+  fun foo(): MyBase
+  | Child1 _ -> Child1(42)
+  | Child2 _ -> Child1(42)
+}
+
+fun apply<T>(f: T -> T, a: T): T {
+  f(a)
+}
+
+fun main(): void {
+  f = x -> x.foo();
+  y: Child2 = apply(f, Child2("hello"));
+  print_raw(
+    y.value, // boom, it's actually a Child1 now
+  )
+}

@@ -1,0 +1,20 @@
+base class MyBase final () {
+  children =
+  | Foo
+  | Bar
+}
+
+fun main(): void {
+  x: MyBase = Foo();
+  print_raw(
+    x match {
+    | Foo() ->
+      if (true) {
+        "Pass\n"
+      } else {
+        "false"
+      }
+    | _ -> "wrong"
+    },
+  )
+}

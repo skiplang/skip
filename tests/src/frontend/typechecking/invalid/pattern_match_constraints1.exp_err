@@ -1,0 +1,16 @@
+File "./typechecking/invalid/pattern_match_constraints1.sk", line 9, characters 5-9:
+The following pattern is unused:
+ | Foo()
+ 7 | fun shouldFail(x: Bar<C1>): void {
+ 8 |   x match {
+ 9 |   | Foo() -> void
+   |     ^^^^^
+10 |   }
+
+File "./typechecking/invalid/pattern_match_constraints1.sk", line 9, characters 5-9:
+This class does not have any instantiable children at this type.
+ 7 | fun shouldFail(x: Bar<C1>): void {
+ 8 |   x match {
+ 9 |   | Foo() -> void
+   |     ^^^^^
+10 |   }

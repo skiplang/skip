@@ -1,0 +1,18 @@
+// Make sure tail-call optimization frozens a different instance of the
+// "a" variable per loop iteration.
+fun recurse(f: () -> Int, depth: Int, a: Int, b: Int): Int {
+  if (depth == 0) {
+    f()
+  } else {
+    f2 = () -> {
+      sum = f() + a + b;
+      !a = 0;
+      sum
+    };
+    recurse(f2, depth - 1, a + 1, b + 1)
+  }
+}
+
+fun main(): void {
+  print_raw(recurse(() -> 100, 5, 1, 1001).toString() + "\n")
+}

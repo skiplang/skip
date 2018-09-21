@@ -1,0 +1,24 @@
+base class A() {
+  children =
+  | B()
+  | C()
+}
+
+base class L<T>() {
+  children =
+  | N()
+  | Con(head: T, tail: L<T>)
+}
+
+fun main(): void {
+  x: L<A> = Con(B(), Con(C(), (N() : L<A>)));
+  print_raw(
+    x match {
+    | Con(B(), N()) -> "Fail"
+    | Con(C(), N())
+    | Con(B(), Con(C(), N())) ->
+      "Pass\n"
+    | _ -> "Fail2"
+    },
+  )
+}

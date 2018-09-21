@@ -1,0 +1,17 @@
+trait Addish {
+  fun +(this): this;
+}
+
+class Foo() uses Addish {
+  fun +(_: this): this {
+    this
+  }
+}
+
+fun test<T: Addish>(x: T, y: T): T {
+  x + y
+}
+
+fun main(): void {
+  print_string("Pass")
+}

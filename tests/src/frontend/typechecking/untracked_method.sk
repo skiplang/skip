@@ -1,0 +1,10 @@
+// methods can be untracked
+class C() {
+  untracked fun m(): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("OK")
+}

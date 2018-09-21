@@ -1,0 +1,5 @@
+class A{pos: String}
+
+fun f(a: A): String {
+  a.cla_pos
+}

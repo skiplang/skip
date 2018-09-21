@@ -1,0 +1,7 @@
+File "./typechecking/invalid/class_type3.sk", line 8, characters 3-6:
+Traits do not have a Class<_> object, and their static members cannot be accessed directly
+ 6 |
+ 7 | fun foo(): void {
+ 8 |   MyTC::foo()
+   |   ^^^^
+ 9 | }

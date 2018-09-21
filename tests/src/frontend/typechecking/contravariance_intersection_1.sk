@@ -1,0 +1,15 @@
+base class Valued<V>
+class Keyed<K: Orderable, V>() extends Valued<V>
+
+class Foo<-T>()
+
+fun foo<T>(): void {
+  a: Foo<Valued<Int>> = Foo();
+  b: Foo<Valued<Int>> = Foo();
+  _ = Array[a, b];
+  void
+}
+
+fun main(): void {
+  print_string("Pass")
+}

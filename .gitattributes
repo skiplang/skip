@@ -1,0 +1,5 @@
+*.sk linguist-language=JavaScript
+self_hosting_tools/lkg/* linguist-generated
+*.ll binary
+lkg/runtime/** -diff linguist-generated
+src/runtime/** -diff linguist-generated

@@ -1,0 +1,140 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// This module contains functions specific to the native back end,
+// for internal use of the compiler and runtime. Everything in here
+// should be "private" so users can't access it.
+
+module Runtime;
+
+// This is produced only internally by the compiler to hold updated local
+// variables. Typically they are optimized away, but when lambdas are
+// involved they may preserved so lambdas can point to them.
+//
+// We make T invariant because we never cast an instance of one of these
+// to a different type, and invariant types compile more quickly.
+private mutable class LocalVariable<T>(mutable value: T)
+
+@cpp_export("SKIP_getExceptionMessage")
+private fun getExceptionMessage(e: Exception): String {
+  e.getMessage()
+}
+
+@cpp_export("SKIP_makeRuntimeError")
+private fun makeRuntimeError(msg: String): RuntimeError {
+  RuntimeError(msg)
+}
+
+@no_inline
+@cpp_export("SKIP_throwRuntimeError")
+private fun throwRuntimeError(msg: String): void {
+  throw RuntimeError(msg);
+}
+
+// Provide a version of throwOutOfBounds() for use by C++ (can't @cpp_export
+// Exception's throwOutOfBounds() because it returns `_`)
+@no_inline
+@cpp_export("SKIP_throwOutOfBounds")
+private fun throwOutOfBounds(): void {
+  .throwOutOfBounds();
+}
+
+@cpp_export("SKIP_createStringVector")
+@no_throw
+private fun createStringVector(size: Int): mutable Array<String> {
+  Array<String>::mfill(size, "")
+}
+
+@cpp_export("SKIP_createIntVector")
+@no_throw
+private fun createIntVector(size: Int): mutable Array<Int> {
+  Array<Int>::mfill(size, 0)
+}
+
+@cpp_export("SKIP_throwInvariantViolation")
+private fun throwInvariantViolation(msg: String): void {
+  invariant_violation(msg);
+}
+
+// NOTE: Even if the runtime does not call this, its existence acts as a call
+// site, informing the compiler that closures with this signature are callable
+// and their "call" methods need to appear in their vtables.
+@cpp_export("SKIP_invokeMemoizeThunk")
+private fun invokeMemoizeThunk(func: () ~> void): void {
+  func()
+}
+
+@cpp_export("SKIP_createMixedBool")
+private fun createMixedBool(value: Bool): HH.Mixed {
+  HH.Bool(value)
+}
+
+@cpp_export("SKIP_createMixedFloat")
+private fun createMixedFloat(value: Float): HH.Mixed {
+  HH.Float(value)
+}
+
+@cpp_export("SKIP_createMixedInt")
+private fun createMixedInt(value: Int): HH.Mixed {
+  HH.Int(value)
+}
+
+@cpp_export("SKIP_createMixedNull")
+private fun createMixedNull(): HH.Mixed {
+  HH.Null()
+}
+
+@cpp_export("SKIP_createMixedString")
+private fun createMixedString(value: String): HH.Mixed {
+  HH.String(value)
+}
+
+@cpp_export("SKIP_createMixedDict")
+private fun createMutableDict(
+  capacity: Int,
+): mutable Map<HH.Arraykey, HH.Mixed> {
+  Map::mcreate(capacity)
+}
+
+@cpp_export("SKIP_MixedDict_set")
+private fun mixedDictSet(
+  dict: mutable Map<HH.Arraykey, HH.Mixed>,
+  key: String,
+  value: HH.Mixed,
+): void {
+  dict.set(HH.String(key), value);
+}
+
+@cpp_export("SKIP_MixedDict_freeze")
+private fun mixedDictFreeze(
+  dict: mutable Map<HH.Arraykey, HH.Mixed>,
+): HH.Mixed {
+  HH.Dict(dict.chill())
+}
+
+@cpp_export("SKIP_createMixedVec")
+private fun createMutableVec(capacity: Int): mutable Vector<HH.Mixed> {
+  Vector::mcreate(capacity)
+}
+
+@cpp_export("SKIP_MixedVec_push")
+private fun mixedVecSet(vec: mutable Vector<HH.Mixed>, value: HH.Mixed): void {
+  vec.push(value);
+}
+
+@cpp_export("SKIP_MixedVec_freeze")
+private fun mixedVecFreeze(vec: mutable Vector<HH.Mixed>): HH.Mixed {
+  HH.Vec(vec.chill())
+}
+
+@cpp_runtime("SKIP_invocationOnStateChange")
+private native fun invocationOnStateChange(
+  obj: GCPointer,
+  changeType: Int,
+): void;
+
+module end;

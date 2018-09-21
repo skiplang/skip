@@ -1,0 +1,14 @@
+fun main(): void {
+  void
+}
+base class X {
+  private fun foo(): void {
+    void
+  }
+}
+
+class Y() extends X {
+  fun bar(): void {
+    this.foo()
+  }
+}

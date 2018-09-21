@@ -1,0 +1,284 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module UnorderedSet;
+
+// A mutable, growable collection of unique items supporting O(1) insertion/
+// membership testing. Iteration order is not well defined but is stable:
+// in the absence of any mutations, multiple iterations of an UnorderedSet
+// will iterate in the same order.
+//
+// ## Notes
+//
+// UnorderedSet is backed by a Map where the keys are the set entries and
+// the values are dummy value.
+mutable class .UnorderedSet<+T: Hashable & Equality>(
+  private inner: mutable UnorderedMap<T, EmptyValue>,
+)
+  extends UniqueSequence<T>
+  uses
+    IntoIterator<T>,
+    FromIterator<T>,
+    Show[T: readonly Show],
+    Hashable[T: Hashable],
+    Equality[T: Equality],
+   {
+  // # Creating a Set
+
+  static fun mcreate(capacity: Int = 0): mutable this {
+    mutable static(UnorderedMap::mcreate(capacity))
+  }
+
+  static fun createFromItems<I: readonly Sequence<T>>(items: I): this {
+    unsafe_chill_trust_me(static::mcreateFromItems(items))
+  }
+
+  static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
+    size = items.size();
+    if (size == 0) {
+      static::mcreate(0)
+    } else {
+      inner = UnorderedMap::mcreate(size);
+      items.each(k -> inner.set(k, EmptyValue()));
+      mutable static(inner)
+    }
+  }
+
+  static fun createFromIterator<I: mutable Iterator<T>>(items: I): this {
+    unsafe_chill_trust_me(static::mcreateFromIterator(items))
+  }
+
+  static fun mcreateFromIterator<I: mutable Iterator<T>>(
+    items: I,
+  ): mutable this {
+    inner = mutable UnorderedMap[];
+    items.each(k -> inner.set(k, EmptyValue()));
+    mutable static(inner)
+  }
+
+  readonly fun clone(reserve: Int = 0): mutable this {
+    mutable static(this.inner.clone(reserve))
+  }
+
+  readonly fun chill(): this {
+    static(this.inner.chill())
+  }
+
+  // # Sizing
+
+  readonly fun size(): Int {
+    this.inner.size()
+  }
+
+  readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  // NOTE: Making capacity observable on frozen values prevents optimizations such
+  // as shrinking to fit on freeze. By making it mutable we preserve option value
+  // to add such optimizations in the future.
+  mutable fun capacity(): Int {
+    this.inner.capacity()
+  }
+
+  mutable fun ensureCapacity(capacity: Int): void {
+    this.inner.ensureCapacity(capacity);
+  }
+
+  mutable fun clear(): void {
+    this.inner.clear()
+  }
+
+  // # Accessing Items
+
+  readonly fun contains<T2: Hashable & Equality>[T: T2](k: T2): Bool {
+    this.inner.containsKey(k)
+  }
+
+  readonly fun get<T2: Hashable & Equality>[T: T2](k: T2): T {
+    this.inner.getItem(k).i0
+  }
+
+  readonly fun maybeGet<T2: Hashable & Equality>[T: T2](k: T2): ?T {
+    this.inner.maybeGetItem(k).map(p -> p.i0)
+  }
+
+  // # Modifying Items
+
+  // Adds the item to this set if is not present, otherwise throws.
+  mutable fun add(v: T): void {
+    this.inner.add(v, EmptyValue())
+  }
+
+  // Removes the item from this set if present, otherwise throws.
+  mutable fun remove(v: T): void {
+    this.inner.remove(v)
+  }
+
+  // Removes the item from this set:
+  // - If the item is present removes it and return true
+  // - Otherwise do nothing and returns false
+  mutable fun maybeRemove(v: T): Bool {
+    this.inner.maybeRemove(v)
+  }
+
+  // Adds the item to the set if is not present, otherwise has no effect.
+  mutable fun insert(v: T): void {
+    this.inner.set(v, EmptyValue())
+  }
+
+  // Inserts the item into this set:
+  // - If not already present adds it and returns true
+  // - If already present does nothing and returns false
+  mutable fun maybeInsert(v: T): Bool {
+    this.inner.maybeSet(v, EmptyValue())
+  }
+
+  // Add all the items of the second sequence to this set. Ignores items already
+  // in this set.
+  mutable fun extend<S: readonly Sequence<T>>(items: S): void {
+    items.each(x -> this.insert(x))
+  }
+
+  // Remove all the items of the second sequence from this set. Ignores items not
+  // in this set.
+  mutable fun subtract<S: readonly Sequence<T>>(items: S): void {
+    items.each(x -> _ = this.maybeRemove(x));
+  }
+
+  // # Iteration
+
+  readonly fun each(f: T -> void): void {
+    this.inner.each((k, _) -> f(k))
+  }
+
+  // # Composition
+
+  readonly fun filter(p: T -> Bool): UnorderedSet<T> {
+    static(this.inner.filter((k, _) -> p(k)));
+  }
+
+  // # Aggregation
+
+  readonly fun find(p: T -> Bool): ?T {
+    this.inner.findItem((k, _) -> p(k)).map(kv -> {
+      (k, _) = kv;
+      k
+    })
+  }
+
+  readonly fun all(f: T -> Bool): Bool {
+    this.inner.all((k, _) -> f(k))
+  }
+
+  readonly fun any(f: T -> Bool): Bool {
+    this.inner.any((k, _) -> f(k))
+  }
+
+  readonly fun join[T: readonly Show](separator: String): String {
+    this.size() match {
+    | 0 -> ""
+    | _ -> this.toArray().join(separator)
+    }
+  }
+
+  // # Set Arithmetic
+
+  // Returns a new set containing all the items of this set and the second sequence.
+  readonly fun union<U: Hashable & Equality, S: readonly Sequence<U>>[T: U](
+    items: S,
+  ): UnorderedSet<U> {
+    ret = (this : readonly UnorderedSet<U>).clone();
+    ret.extend(items);
+    unsafe_chill_trust_me(ret)
+  }
+
+  // Returns a new set containing the items of this set that do not appear in
+  // the second sequence.
+  readonly fun difference<U: Hashable & Equality, S: readonly Sequence<U>>[
+    T: U,
+  ](
+    items: S,
+  ): UnorderedSet<U> {
+    result = (this : readonly UnorderedSet<U>).clone();
+    items.each(x -> _ = result.maybeRemove(x));
+    unsafe_chill_trust_me(result)
+  }
+
+  // Return a new set containing the items of this set that appear in the
+  // second sequence.
+  readonly fun intersection<U: Hashable & Equality, S: readonly Sequence<U>>[
+    T: U,
+  ](
+    items: S,
+  ): UnorderedSet<U> {
+    result = mutable UnorderedSet[];
+    items.each(x -> {
+      if (this.contains(x)) {
+        result.insert(x)
+      }
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns true if this set contains all of the items in the second sequence.
+  readonly fun containsAll<S: readonly Sequence<T>>(items: S): Bool {
+    items.all(this.contains)
+  }
+
+  // Returns true if this set contains any of the items in the second sequence.
+  readonly fun containsAny<S: readonly Sequence<T>>(items: S): Bool {
+    items.any(this.contains)
+  }
+
+  // # Trait Implementations
+
+  readonly fun ==<T2: Hashable & Equality>[T: T2](
+    other: readonly UnorderedSet<T2>,
+  ): Bool {
+    this.inner == other.inner
+  }
+
+  readonly fun !=<T2: Hashable & Equality>[T: T2](
+    other: readonly UnorderedSet<T2>,
+  ): Bool {
+    this.inner != other.inner
+  }
+
+  readonly fun toString[T: readonly Show](): String {
+    "UnorderedSet[" + this.join(", ") + "]"
+  }
+
+  readonly fun hash[T: Hashable](): Int {
+    this.inner.hash()
+  }
+
+  readonly fun inspect(): Inspect {
+    InspectVector("UnorderedSet", this.toArray().map(e -> inspect(e)))
+  }
+
+  readonly fun toArray(): Array<T> {
+    if (this.isEmpty()) {
+      Array[]
+    } else {
+      this.collect(Array)
+    }
+  }
+
+  // # Iterators
+
+  readonly fun values(): mutable Iterator<T> {
+    this.inner.keys()
+  }
+}
+
+// Dummy value to store in the underlying Map, since we just want keys.
+private value class EmptyValue() uses Equality, Hashable {
+  fun ==(_other: EmptyValue): Bool {
+    true
+  }
+}

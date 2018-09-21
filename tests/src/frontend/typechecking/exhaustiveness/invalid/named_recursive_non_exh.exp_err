@@ -1,0 +1,11 @@
+File "./typechecking/exhaustiveness/invalid/named_recursive_non_exh.sk", line 8, characters 3-3:
+Non-exhaustive pattern match found.
+The following are the structures of values that won't be matched:
+ | B{x => Int _, y => A _}
+ | B{x => Int _, y => B _}
+ 6 |
+ 7 | fun test(): String {
+ 8 |   B{x => 1, y => A{x => 1}} match {
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |   | B{x => 1, y => F _} -> "f"
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

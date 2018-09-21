@@ -1,0 +1,15 @@
+File "./typechecking/invalid/traits_noleak_existential1.sk", line 12, characters 5-6:
+The field == is undefined
+10 |   | EqExpr(v) -> v
+11 |   };
+12 |   x == x
+   |     ^^
+13 | }
+
+File "./typechecking/invalid/traits_noleak_existential1.sk", line 7, characters 21-21:
+For the expression of type T
+5 | class CEqExpr<T: Equality> extends EqExpr<T>
+6 |
+7 | fun test<T>(e: Expr<T>): Bool {
+  |                     ^
+8 |   x = e match {

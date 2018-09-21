@@ -1,0 +1,13 @@
+class Foo() {
+  fun method(Int): String {
+    "Pass\n"
+  }
+}
+
+fun apply_zero(f: Int -> String): String {
+  f(0)
+}
+
+fun main(): void {
+  print_raw(apply_zero(Foo().method))
+}

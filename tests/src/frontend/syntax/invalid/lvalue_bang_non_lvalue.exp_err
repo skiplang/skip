@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_bang_non_lvalue.sk", line 2, characters 4-6:
+Invalid LValue
+1 | fun main(): String {
+2 |   !f() = 42;
+  |    ^^^
+3 |   "Fail"

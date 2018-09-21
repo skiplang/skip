@@ -1,0 +1,13 @@
+fun test(n: Int): void {
+  ping = (
+    (n, pong) -> {
+      if (n == 0) void else pong(n - 1, pong)
+    }
+  );
+  pong = (
+    (n, pong) -> {
+      if (n == 0) void else ping(n - 1, pong)
+    }
+  );
+  ping(n, pong)
+}

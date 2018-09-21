@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern6.sk", line 11, characters 5-7:
+The following pattern is unused:
+ | A _
+ 9 |   obj match {
+10 |   | A _ -> 42
+11 |   | A _ -> 101
+   |     ^^^
+12 |   | B _ -> 112

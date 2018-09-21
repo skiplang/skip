@@ -1,0 +1,12 @@
+base class BaseClass
+class FinalClass() extends BaseClass
+
+fun main(): void {
+  debug(BaseClass);
+  debug(FinalClass);
+
+  fn: () -> Int = () -> 10;
+  debug(fn);
+
+  void
+}

@@ -1,0 +1,16 @@
+base class X
+
+base class D<T>
+base class C1<T> extends D<T>
+base class C2<T> extends D<T>
+base class B extends C1<this::T>, C2<this::T> {
+  type T: X;
+}
+
+fun foo(B): void {
+  void
+}
+
+fun main(): void {
+  print_string("Pass")
+}

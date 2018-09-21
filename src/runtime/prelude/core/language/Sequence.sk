@@ -1,0 +1,373 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Sequence;
+
+// A sequence of values that can be iterated any number of times (e.g. for
+// side-effects), transformed into a new sequence, queried, or aggregated.
+// A sequence may be concrete & finite (e.g. a Vector) or virtual and
+// potentially infinite (e.g. a Range). A sequence is not guaranteed to be
+// stable (iterating its items at different times may produce different values),
+// such as when the sequence is a mutable collection.
+//
+// NOTE: This class presents an analogous API to Iterator but with different
+// mutability requirements: the fundamental difference
+mutable base class .Sequence<+T> uses IntoIterator<T> {
+  // # Sizing
+  // Methods to query or change the size or capacity of a container.
+
+  // Returns the total number of items contained by this container.
+  readonly fun size(): Int;
+
+  // Returns true if there are no items in this container (ie size() == 0).
+  overridable readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  // # Iterators
+
+  // Returns an iterator over the items of this sequence.
+  readonly fun values(): mutable Iterator<T>;
+
+  readonly fun iterator(): mutable Iterator<T> {
+    this.values()
+  }
+
+  // Collects the results of this sequence into an instance of the given class.
+  readonly fun collect<C: FromIterator<T>>(cls: Concrete<C>): C {
+    cls::createFromIterator(this.iterator())
+  }
+
+  // # Iteration
+  // Methods for iterating over the items of a sequence for the purpose
+  // of executing side effects.
+
+  // Calls the given function once per element of this sequence.
+  @synonym("iter")
+  overridable readonly fun each(f: T -> void): void {
+    this.values().each(f)
+  }
+
+  // # Composition
+  // Methods for creating a new sequence that represents the results of applying
+  // an operation to the items of this sequence.
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element of this sequence.
+  @synonym("select")
+  @synonym("project")
+  overridable readonly fun map<U>(s: T -> U): Sequence<U> {
+    this.values().map(s).collect(Vector)
+  }
+
+  // Similar to map, but calls the callback with (index, item) for each
+  // item in this sequence.
+  overridable readonly fun mapWithIndex<U>(s: (Int, T) -> U): Sequence<U> {
+    index = -1;
+    this.values()
+      .map(item -> {
+        !index = index + 1;
+        s(index, item)
+      })
+      .collect(Vector)
+  }
+
+  overridable readonly fun mapAcc<R, U>(
+    f: (R, T) -> (R, U),
+    acc: R,
+  ): (R, Sequence<U>) {
+    new = this.values()
+      .map(x -> {
+        (!acc, y) = f(acc, x);
+        y
+      })
+      .collect(Vector);
+    (acc, new)
+  }
+
+  // Returns a new sequence representing the results of calling the selection
+  // function on each element to map each element to a sequence, and
+  // (conceptually) flattening the resulting sequences.
+  @synonym("selectMany")
+  // TODO: should be flatMap<U, I: Seq<U>>(s: T -> I): Seq<U>;
+  overridable readonly fun flatMap<U>(s: T -> Sequence<U>): Sequence<U> {
+    this.values().flatMap(item -> s(item).values()).collect(Vector)
+  }
+
+  // When the items of this sequence are themselves sequences, returns a new
+  // sequence that contains all the items from all of the "child" sequences.
+  overridable readonly fun flatten<U>[T: Sequence<U>](): Sequence<U> {
+    this.values().flatMap(item -> item.values()).collect(Vector)
+  }
+
+  // Returns a new sequence representing all the elements of this sequence
+  // for which the predicate returns true.
+  @synonym("where")
+  overridable readonly fun filter(p: T -> Bool): Sequence<T> {
+    this.values().filter(p).collect(Vector)
+  }
+
+  // When the items of this sequence are Options, returns a new sequence
+  // containing the inner values of items that are Some():
+  //
+  // Before:
+  //   Vector[None(), None(), Some(2), None(), Some(4)]
+  // After:
+  //   Vector[2, 4]
+  overridable readonly fun filterNone<U>[T: ?U](): Sequence<U> {
+    result = mutable Vector[];
+    this.values().each(item ->
+      item match {
+      | Some(x) -> result.push(x)
+      | None() -> void
+      }
+    );
+    unsafe_chill_trust_me(result)
+  }
+
+  // Returns a new sequence representing tuples of the ith elements of
+  // this and the second sequence.
+  overridable readonly fun zip<U, S: readonly Sequence<U>>(
+    second: S,
+  ): Sequence<(T, U)> {
+    this.zipWith(second, (t, u) -> (t, u))
+  }
+
+  // Returns a new sequence representing the results of calling the selection
+  // function with tuples of the ith elements of this and the second sequence.
+  overridable readonly fun zipWith<U, V, S: readonly Sequence<U>>(
+    second: S,
+    s: (T, U) -> V,
+  ): Sequence<V> {
+    this.values().zipWith(second.values(), s).collect(Vector)
+  }
+
+  // Returns two new sequences, where the ith pair of the original sequence has
+  // been split, with the first element of the pair at index i of the first
+  // sequence, and respectively for the second element of each pair and the
+  // second sequence
+  overridable readonly fun unzip<T1, T2>[T: (T1, T2)](): (
+    Sequence<T1>,
+    Sequence<T2>,
+  ) {
+    this.unzipWith(id)
+  }
+
+  // Returns two new sequences, where the ith element of the original sequence
+  // has transformed into a pair and then split, with the first element of the
+  // pair at index i of the first sequence, and respectively for the second
+  // element of each pair and the second sequence
+  overridable readonly fun unzipWith<T1, T2>(
+    f: T -> (T1, T2),
+  ): (Sequence<T1>, Sequence<T2>) {
+    sz = this.size();
+    v0 = Vector::mcreate(sz);
+    v1 = Vector::mcreate(sz);
+    for (x in this) {
+      p = f(x);
+      v0.push(p.i0);
+      v1.push(p.i1);
+    };
+    (unsafe_chill_trust_me(v0), unsafe_chill_trust_me(v1))
+  }
+
+  // Returns a new sequence representing the elements of this sequence after the
+  // nth element.
+  overridable readonly fun drop(n: Int): Sequence<T> {
+    this.values().drop(n).collect(Vector)
+  }
+
+  // Returns a new sequence representing the elements of this sequence after the
+  // contiguous prefix for which the predicate returns true.
+  overridable readonly fun dropWhile(p: T -> Bool): Sequence<T> {
+    this.values().dropWhile(p).collect(Vector)
+  }
+
+  // Returns a new sequence representing the first n elements of this.
+  overridable readonly fun take(n: Int): Sequence<T> {
+    this.values().take(n).collect(Vector)
+  }
+
+  // Returns a new sequence representing the contiguous prefix of elements from
+  // this for which the predicate returns true.
+  overridable readonly fun takeWhile(p: T -> Bool): Sequence<T> {
+    this.values().takeWhile(p).collect(Vector)
+  }
+
+  // Returns a new sequence representing the items of this sequence in reverse
+  // order.
+  overridable readonly fun reversed(): Sequence<T> {
+    Vector::reverseFromIterator(this.values())
+  }
+
+  // Returns a new sequence representing the items of this sequence in sorted
+  // order, using their default ordering.
+  // To sort a collection of non-Orderable items, use sortedBy().
+  overridable readonly fun sorted[T: readonly Orderable](
+    compare: (T, T) ~> Order = (x, y) ~> x.compare(y),
+  ): Sequence<T> {
+    this.sortedBy(id, compare)
+  }
+
+  // Returns a new sequence representing the items of this sequence in sorted
+  // order, using the given predicate to determine ordering.
+  // To sort a collection of non-Orderable items, use Orderable.create():
+  //
+  //    a: Seq<NonOrderable> = ...;
+  //    compareFn = (a: NonOrderable, b: NonOrderable): Order ~> { ... };
+  //    b = a.sortedBy(x ~> Orderable.create(x, compareFn));
+  overridable readonly fun sortedBy<K: readonly Orderable>(
+    selector: T ~> K,
+    compare: (K, K) ~> Order = (x, y) ~> x.compare(y),
+  ): Sequence<T> {
+    result = Vector::mcreateFromIterator(this.values());
+    result.sortBy(selector, compare);
+    unsafe_chill_trust_me(result)
+  }
+
+  // # Aggregation
+  // Methods that aggregate (or "reduce") the items of a sequence into a single
+  // value.
+
+  // Returns Some(x) for the first item in this sequence that matches
+  // the predicate, or None() if no items match.
+  overridable readonly fun find(p: T -> Bool): ?T {
+    this.values().find(p)
+  }
+
+  // Returns Some(index) for the index of the first item in this iterator that
+  // matches the predicate, or None() if no items match.
+  overridable readonly fun findIndex(p: T -> Bool): ?Int {
+    for ((index, item) in this.values().enumerated()) {
+      if (p(item)) break Some(index);
+    } else {
+      None()
+    }
+  }
+
+  // Returns true if the predicate returns true for all elements of this
+  // sequence.
+  @synonym("every")
+  overridable readonly fun all(p: T -> Bool): Bool {
+    this.find(x -> !p(x)).isNone()
+  }
+
+  // Returns true if the predicate returns true for at least one element
+  // of this sequence.
+  @synonym("some")
+  overridable readonly fun any(p: T -> Bool): Bool {
+    this.find(p).isSome()
+  }
+
+  // Returns the result of applying an accumulator function to all the elements
+  // of this sequence.
+  @synonym("aggregate")
+  @synonym("fold")
+  @synonym("foldl")
+  overridable readonly fun reduce<U>(f: (U, T) -> U, init: U): U {
+    result = init;
+    this.each(x -> !result = f(result, x));
+    result
+  }
+
+  // Returns the result of applying an accumulator function to this
+  // sequence zipped with the other given sequence.
+  @synonym("reduce2")
+  @synonym("foldl2")
+  @synonym("fold2")
+  overridable readonly fun zipReduce<R, U, S: readonly Sequence<U>>(
+    second: S,
+    f: (R, T, U) -> R,
+    init: R,
+  ): R {
+    this.values().zip(second.values()).reduce((r, p) -> f(r, p.i0, p.i1), init);
+  }
+
+  // Returns the sum of the items of this sequence, or zero when empty.
+  overridable readonly fun sumInt[T: Int](): Int {
+    this.reduce((acc, x) -> acc + x, 0);
+  }
+
+  // Returns the sum of the items of this sequence, or zero when empty.
+  overridable readonly fun sumFloat[T: Float](): Float {
+    this.reduce((acc, x) -> acc + x, 0.0);
+  }
+
+  // Returns the item with the maximum value per the type's defined ordering.
+  // Returns None() if the sequence is empty, otherwise Some(max)
+  overridable readonly fun max[T: readonly Orderable](): ?T {
+    this.maxBy(id)
+  }
+
+  // Similar to max(), but orders items based on the results of the selector
+  // instead of their default ordering. Useful for sequences of types without
+  // a default ordering or to override the default ordering.
+
+  overridable readonly fun maxBy<K: readonly Orderable>(selector: T ~> K): ?T {
+    currentMax: ?(K, T) = None();
+    this.each(x -> {
+      value = selector(x);
+      currentMax match {
+      | Some((max, _)) if (value <= max) -> void
+      | _ -> !currentMax = Some((value, x))
+      };
+    });
+    currentMax.map(pair -> pair.i1)
+  }
+
+  // Returns the item with the minimum value per the type's defined ordering.
+  // Returns None() if the sequence is empty, otherwise Some(min)
+  overridable readonly fun min[T: readonly Orderable](): ?T {
+    this.minBy(id)
+  }
+
+  // Similar to min(), but orders items based on the results of the selector
+  // instead of their default ordering. Useful for sequences of types without
+  // a default ordering or to override the default ordering.
+  overridable readonly fun minBy<K: readonly Orderable>(selector: T ~> K): ?T {
+    currentMin: ?(K, T) = None();
+    this.each(x -> {
+      value = selector(x);
+      currentMin match {
+      | Some((min, _)) if (value >= min) -> void
+      | _ -> !currentMin = Some((value, x))
+      };
+    });
+    currentMin.map(pair -> pair.i1)
+  }
+
+  // Returns a string containing the items of this (converted to String per
+  // their Implementation of Show) with the given separator string between
+  // items.
+  overridable readonly fun join[T: readonly Show](separator: String): String {
+    this.values().collect(Vector).join(separator)
+  }
+
+  // # Extensions
+
+  // Calls the given function with the index and value for each item in this
+  // sequence. Index is the zero-based index of the item within this sequence.
+  overridable readonly fun eachWithIndex(f: (Int, T) -> void): void {
+    index = 0;
+    this.each(x -> {
+      f(index, x);
+      !index = index + 1
+    })
+  }
+
+  // Temporary alias to reduce()
+  @deprecated("Use reduce() instead")
+  overridable readonly fun foldl<U>(f: (U, T) -> U, init: U): U {
+    this.reduce(f, init)
+  }
+
+  overridable readonly fun first(): T {
+    this.values().next().fromSome()
+  }
+}
+
+module end;

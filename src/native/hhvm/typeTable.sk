@@ -1,0 +1,376 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias O = OuterIstToIR;
+
+module Svmi;
+
+extension base class ClassKind {
+  static fun compute(gc: O.GClass, pos: Pos): ClassKind {
+    proxy =
+      Hhvm.isImportAnnotation(gc.annotations, pos) ||
+      Hhvm.isArrayAnnotation(gc.annotations, pos) ||
+      Hhvm.isShapeAnnotation(gc.annotations, pos);
+    (gc.kind.isFinal(), HhvmTypeTable.isShape(gc, pos), proxy) match {
+    | (false, false, _) -> KBase()
+    | (true, false, false) -> KObjectCopy()
+    | (true, false, true) -> KObjectProxy()
+    | (_, true, false) -> KShapeCopy()
+    | (_, true, true) -> KShapeProxy()
+    };
+  }
+}
+
+module end;
+
+module HhvmTypeTable;
+
+class Field{
+  hhvmName: String,
+  skipName: String,
+  globalIndex: Int,
+  skipType: O.GType,
+}
+
+class Class{
+  lazyGClass: LazyGClass,
+  name: String,
+  globalIndex: Int,
+  kind: Svmi.ClassKind,
+  fields: Map<String, Field>,
+}
+
+class .HhvmTypeTable{classes: Map<GClassName, Class>} {
+  fun getClass(name: GClassName, pos: Pos): Class {
+    this.classes.maybeGet(name) match {
+    | None() -> pos.die(`Hhvm class ${name} not found`)
+    | Some(x) -> x
+    };
+  }
+}
+
+fun empty(): .HhvmTypeTable {
+  .HhvmTypeTable{classes => Map[]}
+}
+
+private fun collateClasses(
+  s: mutable O.Specializer,
+  classIdx: mutable Ref<Int>,
+  gclasses: readonly Vector<FrontEndLazyGClass>,
+  pos: Pos,
+): Map<GClassName, Class> {
+  objFieldIdx = mutable Ref(0);
+  shapeFieldIdx = mutable Ref(0);
+  gclasses
+    .map(lazy -> {
+      computeClass(s, lazy, classIdx, objFieldIdx, shapeFieldIdx, pos).map(
+        cls -> (lazy.name(), cls),
+      )
+    })
+    .filterNone()
+    .collect(Map)
+}
+
+private fun compute(
+  s: mutable O.Specializer,
+  types: readonly Vector<FrontEndLazyGClass>,
+): .HhvmTypeTable {
+  pos = s.pos;
+
+  classIdx = mutable Ref(0);
+  classes = collateClasses(s, classIdx, types, pos);
+
+  HhvmTypeTable{classes}
+}
+
+private fun computeClass(
+  s: mutable O.Specializer,
+  lazyGClass: LazyGClass,
+  classIdx: mutable Ref<Int>,
+  objFieldIdx: mutable Ref<Int>,
+  shapeFieldIdx: mutable Ref<Int>,
+  pos: Pos,
+): ?Class {
+  gclass = s.converter.getGClass(lazyGClass, pos);
+  if (!isTableType(gclass, pos)) {
+    return None();
+  };
+  hhvmName = hhvmClassName(gclass, pos);
+  kind = Svmi.ClassKind::compute(gclass, pos);
+
+  fields = gclass.origFields
+    .map(f -> {
+      idx = kind match {
+      | Svmi.KBase() -> mutable Ref(-1)
+      | Svmi.KObjectCopy()
+      | Svmi.KObjectProxy() ->
+        objFieldIdx
+      | Svmi.KShapeCopy()
+      | Svmi.KShapeProxy() ->
+        shapeFieldIdx
+      };
+      fld = computeField(f, idx);
+      (fld.skipName, fld)
+    })
+    .collect(Map);
+
+  cls = Class{
+    lazyGClass,
+    name => hhvmName,
+    globalIndex => classIdx.value,
+    fields,
+    kind,
+  };
+  classIdx.!value = classIdx.value + 1;
+
+  Some(cls)
+}
+
+private fun computeField(f: O.GField, objFieldIdx: mutable Ref<Int>): Field {
+  field = Field{
+    hhvmName => f.name,
+    skipName => f.name,
+    globalIndex => objFieldIdx.value,
+    skipType => f.typ,
+  };
+  objFieldIdx.!value = objFieldIdx.value + 1;
+
+  field
+}
+
+fun isShape(gc: O.GClass, pos: Pos): Bool {
+  Hhvm.isShapeAnnotation(gc.annotations, pos) ||
+    Hhvm.isShapeCopyAnnotation(gc.annotations, pos)
+}
+
+fun isTableType(gc: O.GClass, pos: Pos): Bool {
+  Hhvm.isImportAnnotation(gc.annotations, pos) ||
+    Hhvm.isCopyAnnotation(gc.annotations, pos) ||
+    Hhvm.isShapeAnnotation(gc.annotations, pos) ||
+    Hhvm.isShapeCopyAnnotation(gc.annotations, pos)
+}
+
+fun hhvmClassName(gc: O.GClass, pos: Pos): String {
+  hhvmName = if (gc.name.id == "Runtime.HhvmHandle") {
+    "Runtime.HhvmHandle"
+  } else if (Hhvm.isImportAnnotation(gc.annotations, pos)) {
+    Hhvm.importAnnotationName(gc.annotations, pos).fromSome()
+  } else if (Hhvm.isCopyAnnotation(gc.annotations, pos)) {
+    Hhvm.copyAnnotationName(gc.annotations, pos).fromSome()
+  } else if (Hhvm.isShapeAnnotation(gc.annotations, pos)) {
+    Hhvm.shapeAnnotationName(gc.annotations, pos).fromSome()
+  } else if (Hhvm.isShapeCopyAnnotation(gc.annotations, pos)) {
+    Hhvm.shapeCopyAnnotationName(gc.annotations, pos).fromSome()
+  } else {
+    pos.die(`unknown type ${gc.name.id}`);
+  };
+
+  if (hhvmName.isEmpty()) {
+    gc.name.id
+  } else {
+    hhvmName
+  };
+}
+
+module end;
+
+module HhvmInterop;
+
+class HhvmTypeTableFun extends O.CustomIntrinsic {
+  const name: String = "Svmi.hhvmTypeTable";
+
+  const gtSvmiDesc: O.GTapply = O.GTapply(
+    FrontEndLazyGClass("Svmi.Desc"),
+    DeepFrozen(),
+    Array[],
+  );
+  const gtSvmiField: O.GTapply = O.GTapply(
+    FrontEndLazyGClass("Svmi.Field"),
+    DeepFrozen(),
+    Array[],
+  );
+  const gtSvmiClass: O.GTapply = O.GTapply(
+    FrontEndLazyGClass("Svmi.Class"),
+    DeepFrozen(),
+    Array[],
+  );
+  const gtSvmiTypeTable: O.GTapply = O.GTapply(
+    FrontEndLazyGClass("Svmi.TypeTable"),
+    DeepFrozen(),
+    Array[],
+  );
+
+  protected fun emitIR(
+    _gInstr: O.GCustomInstr,
+    fs: mutable O.FunSpecializer,
+  ): O.MaybeExists<O.InstrTree> {
+    // Generate an HhvmTable from the known hhvm interop classes
+
+    classes = fs.specializer.hhvmTypeTable.classes
+      .values()
+      .collect(Array)
+      .sortedBy(cls ~> cls.globalIndex)
+      .map(cls -> this.computeTableEntry(fs, cls))
+      .collect(Array);
+
+    tHhvmClassArray = fs.specializeType(
+      O.GTapply(
+        FrontEndLazyGClass("Array"),
+        DeepFrozen(),
+        Array[static::gtSvmiClass],
+      ),
+    );
+
+    O.Exists(
+      O.InstrLeaf(
+        fs.constantObject(
+          fs.specializeType(static::gtSvmiTypeTable),
+          Array[fs.constantArray(tHhvmClassArray, classes, classes.size())],
+        ).id,
+      ),
+    )
+  }
+
+  private fun computeTableEntry(
+    fs: mutable O.FunSpecializer,
+    cls: HhvmTypeTable.Class,
+  ): Constant {
+    fields = cls.fields
+      .values()
+      .collect(Array)
+      .sortedBy(f ~> f.globalIndex)
+      .map(f -> this.computeFieldEntry(fs, f))
+      .collect(Array);
+
+    fs.constantObject(
+      fs.specializeType(static::gtSvmiClass),
+      Array[
+        fs.constantString(cls.name),
+        fs.constantInt(cls.kind.code()),
+        fs.constantArray(
+          fs.specializeType(
+            O.GTapply(
+              FrontEndLazyGClass("Array"),
+              DeepFrozen(),
+              Array[static::gtSvmiField],
+            ),
+          ),
+          fields,
+          fields.size(),
+        ),
+      ],
+    )
+  }
+
+  private fun makeArrayTypeDesc(
+    fs: mutable O.FunSpecializer,
+    targs: Array<Type>,
+  ): Constant {
+    tArrayTypeDesc = fs.specializeType(
+      O.GTapply(
+        FrontEndLazyGClass("Array"),
+        DeepFrozen(),
+        Array[static::gtSvmiDesc],
+      ),
+    );
+
+    fs.constantArray(
+      tArrayTypeDesc,
+      targs.map(t -> this.computeTypeDesc(fs, t)),
+      targs.size(),
+    )
+  }
+
+  private fun computeTypeDesc(fs: mutable O.FunSpecializer, t: Type): Constant {
+    pos = fs.pos;
+    s = fs.specializer;
+
+    hhvmType = Svmi.ParamType::fromType(fs, t, false, pos);
+    tTypeDesc = fs.specializeType(static::gtSvmiDesc);
+
+    if (hhvmType.isScalarType()) {
+      return fs.constantObject(
+        tTypeDesc,
+        Array[
+          fs.constantInt(hhvmType.code()),
+          fs.constantInt(0),
+          this.makeArrayTypeDesc(fs, Array[]),
+        ],
+      );
+    };
+
+    classType = hhvmType match {
+    | Svmi.ParamTypeHhvmObject()
+    | Svmi.ParamTypeHhvmArray() ->
+      t.asTclass(pos).sclass(fs).gclassName
+    | Svmi.ParamTypeNullableHhvmObject()
+    | Svmi.ParamTypeNullableHhvmArray() ->
+      subarg = Hhvm.getOptionTarg(s, t, pos);
+      if (Hhvm.isOptionType(s, subarg)) {
+        // support for ??T
+        !subarg = Hhvm.getOptionTarg(s, subarg, pos);
+      };
+      subarg.asTclass(pos).sclass(fs).gclassName
+    | _ -> pos.die("invalid type")
+    };
+
+    if (
+      hhvmType == Svmi.ParamTypeHhvmObject() ||
+      hhvmType == Svmi.ParamTypeNullableHhvmObject() ||
+      Hhvm.isHhvmShape(s, t, pos) ||
+      Hhvm.isHhvmShapeCopy(s, t, pos)
+    ) {
+      cls = s.hhvmTypeTable.getClass(classType, pos);
+      return fs.constantObject(
+        tTypeDesc,
+        Array[
+          fs.constantInt(hhvmType.code()),
+          fs.constantInt(cls.globalIndex),
+          this.makeArrayTypeDesc(fs, Array[]),
+        ],
+      )
+    };
+
+    (classId, targs) = if (HhvmInterop.isArraylike(s, t)) {
+      tv = HhvmInterop.getTarg(s, t, 0, pos);
+      (Svmi.ClassIdVec(), Array[tv])
+    } else if (HhvmInterop.isMaplike(s, t)) {
+      tk = HhvmInterop.getTarg(s, t, 0, pos);
+      tv = HhvmInterop.getTarg(s, t, 1, pos);
+      (Svmi.ClassIdDict(), Array[tk, tv])
+    } else if (HhvmInterop.isSetlike(s, t)) {
+      tk = HhvmInterop.getTarg(s, t, 0, pos);
+      (Svmi.ClassIdKeyset(), Array[tk])
+    } else if (HhvmInterop.isTuple(s, t)) {
+      (Svmi.ClassIdTuple(), s.getTargs(t.asTclass(pos)))
+    } else {
+      (Svmi.ClassIdUnknown(), Array[])
+    };
+
+    fs.constantObject(
+      tTypeDesc,
+      Array[
+        fs.constantInt(hhvmType.code()),
+        fs.constantInt(classId.code()),
+        this.makeArrayTypeDesc(fs, targs),
+      ],
+    );
+  }
+
+  private fun computeFieldEntry(
+    fs: mutable O.FunSpecializer,
+    field: HhvmTypeTable.Field,
+  ): Constant {
+    fs.constantObject(
+      fs.specializeType(static::gtSvmiField),
+      Array[
+        fs.constantString(field.hhvmName),
+        this.computeTypeDesc(fs, fs.specializeType(field.skipType)),
+      ],
+    )
+  }
+}

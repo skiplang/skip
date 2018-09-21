@@ -1,0 +1,9 @@
+trait XShow {
+  readonly fun xtoString(): String;
+}
+
+base class XList<+T> uses XShow[T: XShow] {
+  children =
+  | XNil()
+  | XCons(hd: T, tl: XList<T>)
+}

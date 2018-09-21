@@ -1,0 +1,30 @@
+File "./typechecking/invalid/async_mut_4.sk", line 14, characters 7-29:
+Constraint not satisfied
+12 |
+13 | fun no(): void {
+14 |   _ = Foo().no(mutable X(42))
+   |       ^^^^^^^^^^^^^^^^^^^^^^^
+15 | }
+
+File "./typechecking/invalid/async_mut_4.sk", line 14, characters 16-28:
+The mutable type 'mutable X' appeared inside an immutable type.
+12 |
+13 | fun no(): void {
+14 |   _ = Foo().no(mutable X(42))
+   |                ^^^^^^^^^^^^^
+15 | }
+
+File "./typechecking/invalid/async_mut_4.sk", line 2, characters 34-34:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | class Foo() {
+2 |   async fun no<T: readonly Show>(T): ^void {
+  |                                  ^
+3 |     void
+
+File "./typechecking/invalid/async_mut_4.sk", line 14, characters 16-28:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+12 |
+13 | fun no(): void {
+14 |   _ = Foo().no(mutable X(42))
+   |                ^^^^^^^^^^^^^
+15 | }

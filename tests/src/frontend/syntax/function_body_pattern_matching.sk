@@ -1,0 +1,12 @@
+fun main(): void {
+  print_raw(if (Foo42().get() == 42) "OK\n" else "FAILED")
+}
+
+base class Foo {
+  fun get(): Int
+  | Foo42() -> 42
+  | Foo43() -> 43
+}
+
+class Foo42() extends Foo
+class Foo43() extends Foo

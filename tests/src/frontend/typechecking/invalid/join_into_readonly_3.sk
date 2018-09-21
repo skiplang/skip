@@ -1,0 +1,11 @@
+base class P() {
+  children =
+  | X
+  | Y
+}
+mutable class Co<+T>(mutable v: T)
+
+fun no(): void {
+  _ = if (true) mutable Co(X()) else mutable Co(Y());
+  void
+}

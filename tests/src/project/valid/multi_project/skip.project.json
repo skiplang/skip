@@ -1,0 +1,11 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "program": {
+      "kind": "Program",
+      "sources": [ "t.sk" ],
+      "references": [ { "path": "nested", "name": "library" } ]
+    }
+  },
+  "default": "program"
+}

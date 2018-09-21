@@ -1,0 +1,14 @@
+fun main(): void {
+  x: A = B();
+  print_string((x as B _).toString())
+}
+
+base class A uses Show {
+  children =
+  | B()
+  | C()
+
+  fun toString(): String
+  | B() -> "Pass"
+  | _ -> "Fail"
+}

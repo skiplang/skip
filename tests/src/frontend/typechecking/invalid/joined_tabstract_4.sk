@@ -1,0 +1,53 @@
+class Inv<T>(value: T)
+
+base class AbsC {
+  type T: Test.MixedScalar;
+  deferred static fun get(): Inv<this::T>;
+  deferred static fun eat(Inv<this::T>): this::T;
+  overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
+    _ = c1::eat(c2::get())
+  }
+}
+
+base class IntC extends AbsC {
+  type T = Test.MixedInt;
+
+  static fun get(): Inv<this::T> {
+    Inv(Test.MixedInt(42))
+  }
+
+  static fun eat(x: Inv<this::T>): this::T {
+    i = x.value;
+    i match {
+    | Test.MixedInt(v) -> Test.MixedInt(v + v)
+    }
+  }
+
+  static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+    _ = c1::eat(c2::get())
+  }
+}
+
+base class StringC extends AbsC {
+  type T = Test.MixedString;
+
+  static fun get(): Inv<this::T> {
+    Inv(Test.MixedString("no"))
+  }
+
+  static fun eat(x: Inv<this::T>): this::T {
+    s = x.value;
+    s match {
+    | Test.MixedString(v) -> Test.MixedString(v + v)
+    }
+  }
+
+  static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+    _ = c1::eat(c2::get())
+  }
+}
+
+fun main(): void {
+  AbsC::test(IntC, StringC);
+  print_raw("wut")
+}

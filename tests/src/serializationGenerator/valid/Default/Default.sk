@@ -1,0 +1,24 @@
+@serialize
+class Foo{
+  int: Int,
+  str: String = "abc",
+  vec: Vector<Int> = Vector[1, 2, 3],
+} uses Equality, Show {
+  fun toString(): String {
+    `Foo(${this.int}, ${this.str}, ${this.vec})`
+  }
+}
+
+fun main(): void {
+  assertSerializes(
+    `{"int": 0, "str": "abc", "vec": [1, 2, 3]}`,
+    Foo::meta,
+    Foo{int => 0},
+  );
+  assertSerializes(
+    `{"int": 1, "str": "", "vec": []}`,
+    Foo::meta,
+    Foo{int => 1, str => "", vec => Vector[]},
+  );
+  print_string("Pass")
+}

@@ -1,0 +1,10 @@
+fun main(): void {
+  x: Nullable<String> = Box("Pa");
+  y = Box("ss\n");
+  print_raw(
+    (x match {
+    | Box(v) -> v
+    | Null _ -> invariant_violation("")
+    }) + y.value,
+  )
+}

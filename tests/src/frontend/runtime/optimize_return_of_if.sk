@@ -1,0 +1,9 @@
+fun main(): void {
+  print_raw(
+    if (true) {
+      "Pass\n"
+    } else {
+      "Fail"
+    },
+  )
+}

@@ -1,0 +1,27 @@
+File "./typechecking/invalid/async_mut_2.sk", line 2, characters 16-25:
+Invalid parameter. All parameters to a 'async' function must be frozen
+1 | class Foo() {
+2 |   async fun no(() -> void): ^void {
+  |                ^^^^^^^^^^
+3 |     void
+
+File "./typechecking/invalid/async_mut_2.sk", line 2, characters 3-7:
+The function was declared 'async' here
+1 | class Foo() {
+2 |   async fun no(() -> void): ^void {
+  |   ^^^^^
+3 |     void
+
+File "./typechecking/invalid/async_mut_2.sk", line 2, characters 16-25:
+The following type is not frozen: (() -> void)
+1 | class Foo() {
+2 |   async fun no(() -> void): ^void {
+  |                ^^^^^^^^^^
+3 |     void
+
+File "./typechecking/invalid/async_mut_2.sk", line 2, characters 16-25:
+Try replacing '->' with '~>'
+1 | class Foo() {
+2 |   async fun no(() -> void): ^void {
+  |                ^^^^^^^^^^
+3 |     void

@@ -1,0 +1,20 @@
+class Foo(x: Int, y: String, z: Bool)
+
+fun main(): void {
+  a = Foo(0, "hello", true);
+  b = a with {x => 42, y => "Pass"};
+  print_raw(
+    a.x.toString() +
+      " " +
+      a.y +
+      " " +
+      a.z +
+      "\n" +
+      b.x +
+      " " +
+      b.y +
+      " " +
+      b.z +
+      "\n",
+  )
+}

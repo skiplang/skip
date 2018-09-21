@@ -1,0 +1,126 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Regex;
+
+private const regexEscapeChars: UnorderedSet<Char> = UnorderedSet[
+  '(',
+  ')',
+  '[',
+  ']',
+  '{',
+  '}',
+  '?',
+  '*',
+  '+',
+  '|',
+  '^',
+  '$',
+  '\\',
+  '.',
+];
+
+fun escape(string: String): String {
+  res = mutable Vector<Char>[];
+  string.each(c -> {
+    if (regexEscapeChars.contains(c)) res.push('\\');
+    res.push(c);
+  });
+  String::fromChars(res.toArray())
+}
+
+@synonym("RegExp")
+extension class .Regex {
+  // Make sure that there is not an odd number of \ in front, which would mean
+  // that it was escaped.
+  private const bs: String = "(?:[^\\\\]|^)(?:\\\\{2})*";
+
+  // Since validate is called from Regex::create, we need a version without
+  // the guard, otherwise it would infinite loop...
+  private const flagRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "[^im]",
+  );
+  private const escapeRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\\\[aAeEgGkKpPQRuVzZ]",
+  );
+  private const octalRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\\\0[0-9]+",
+  );
+  private const xEscapeRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\\\x\\{",
+  );
+  private const cEscapeRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\\\c[^A-Z]",
+  );
+  private const questionRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\(\\?[^=!:]",
+  );
+  private const smartPlacementRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\[\\^\\]",
+  );
+  private const namedCharacterClassRegex: Regex = Regex::createWithoutCheck(
+    Regex::bs + "\\[:",
+  );
+
+  // We currently support both PHP and JavaScript backends which parse two
+  // different sets of regex features. This is a validation step that throws
+  // if it detects features that aren't going to behave the same in both.
+  private static fun validate(pattern: String, flags: String = ""): void {
+    flags.match(Regex::flagRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported flag " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::escapeRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported escape sequence " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::octalRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported octal notation " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::xEscapeRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported escape sequence " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::cEscapeRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported pattern " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::questionRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported pattern " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::smartPlacementRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported smart placement " + m[0])
+    | _ -> void
+    };
+
+    pattern.match(Regex::namedCharacterClassRegex) match {
+    | Some(m) -> throw InvalidRegex("Unsupported named character class " + m[0])
+    | _ -> void
+    };
+  }
+
+  memoized static fun create(pattern: String, flags: String = ""): Regex {
+    Regex::validate(pattern, flags);
+    Regex::createWithoutCheck(pattern, flags)
+  }
+}
+
+module end;
+
+class InvalidRegex(message: String) extends Exception {
+  fun getMessage(): String {
+    "Invalid Regex: " + this.message
+  }
+}

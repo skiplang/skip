@@ -1,0 +1,32 @@
+File "./typechecking/invalid/lambda_subtyping4.sk", line 20, characters 10-30:
+Invalid annotation
+18 |   b = B();
+19 |   ao: ?A = Some(C());
+20 |   z: B = ao.map(id).default(b); // OOPS this is actually a C! Death!
+   |          ^^^^^^^^^^^^^^^^^^^^^
+21 |   print_string(z.s())
+
+File "./typechecking/invalid/lambda_subtyping4.sk", line 18, characters 7-9:
+The type: A
+16 |
+17 | fun main(): void {
+18 |   b = B();
+   |       ^^^
+19 |   ao: ?A = Some(C());
+
+File "./typechecking/invalid/lambda_subtyping4.sk", line 20, characters 6-6:
+Is not a subtype of: B
+18 |   b = B();
+19 |   ao: ?A = Some(C());
+20 |   z: B = ao.map(id).default(b); // OOPS this is actually a C! Death!
+   |      ^
+21 |   print_string(z.s())
+
+File "./typechecking/invalid/lambda_subtyping4.sk", line 20, characters 6-6:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A
+18 |   b = B();
+19 |   ao: ?A = Some(C());
+20 |   z: B = ao.map(id).default(b); // OOPS this is actually a C! Death!
+   |      ^
+21 |   print_string(z.s())

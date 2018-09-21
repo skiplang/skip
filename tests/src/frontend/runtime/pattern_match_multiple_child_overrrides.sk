@@ -1,0 +1,30 @@
+base class A(f: Bool)
+class C(b: Int, c: Bool) extends A
+class B(l: String) extends A
+
+fun myMatch(b: A): String {
+  b match {
+  | A(false) -> "P"
+  | B(_, true) -> "a"
+  | C(1, false, true) -> "a"
+  | A(true) -> "s"
+  }
+}
+
+fun main(): void {
+  _ = B("bar", false);
+  x2 = C(1, true, false);
+  y = B("foo", true);
+  w = C(1, false, true);
+  z1 = C(2, false, true);
+  z2 = C(1, true, true);
+  print_raw(
+    myMatch(x2) +
+      myMatch(x2) +
+      myMatch(y) +
+      myMatch(w) +
+      myMatch(z1) +
+      myMatch(z2) +
+      "\n",
+  );
+}

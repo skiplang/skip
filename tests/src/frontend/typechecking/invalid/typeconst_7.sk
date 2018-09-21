@@ -1,0 +1,28 @@
+base class MyParent final {x: this::T} {
+  type T: Test.MixedScalar;
+  deferred fun set(x: this::T): this {
+    !this.x = x;
+    this
+  }
+  fun get(): this::T {
+    this.x
+  }
+}
+
+class StringChild extends MyParent {
+  type T = Test.MixedString;
+}
+
+class IntChild extends MyParent {
+  type T = Test.MixedInt;
+}
+
+fun as_myparent(x: MyParent): MyParent {
+  x
+}
+
+fun main(): void {
+  inty = as_myparent(IntChild{x => Test.MixedInt(666)});
+  stringy = as_myparent(StringChild{x => Test.MixedString("You done goof'd")});
+  print_raw(inty.set(stringy.get()).get().toString())
+}

@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable4.sk", line 12, characters 7-10:
+Cannot override a final method. Class CFoo attempted to override method doIt from parent Foo
+10 | }
+11 | class CFoo() extends Foo, Traity {
+12 |   fun doIt from Traity;
+   |       ^^^^
+13 | }
+
+File "./typechecking/invalid/overridable4.sk", line 2, characters 7-10:
+To override the method, Foo::doIt must have the modifier 'overridable'
+1 | base class Foo {
+2 |   fun doIt(): void {
+  |       ^^^^
+3 |     void

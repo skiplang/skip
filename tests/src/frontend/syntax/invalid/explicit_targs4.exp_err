@@ -1,0 +1,23 @@
+File "./syntax/invalid/explicit_targs4.sk", line 8, characters 23-23:
+Invalid argument
+ 6 |
+ 7 | fun test(): void {
+ 8 |   _ = Foo().foo<Bool>(0);
+   |                       ^
+ 9 |   void
+
+File "./syntax/invalid/explicit_targs4.sk", line 8, characters 23-23:
+The type: Int
+ 6 |
+ 7 | fun test(): void {
+ 8 |   _ = Foo().foo<Bool>(0);
+   |                       ^
+ 9 |   void
+
+File "./syntax/invalid/explicit_targs4.sk", line 8, characters 17-20:
+Is not a subtype of: Bool
+ 6 |
+ 7 | fun test(): void {
+ 8 |   _ = Foo().foo<Bool>(0);
+   |                 ^^^^
+ 9 |   void

@@ -1,0 +1,10 @@
+class Foo() {
+  fun foo<T>(T): void {
+    void
+  }
+}
+
+fun test(): void {
+  _ = Foo().foo<Bool>(0);
+  void
+}

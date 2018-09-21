@@ -1,0 +1,8 @@
+fun all<T>(v: Array<T>, p: T -> Bool): Bool {
+  v.foldl((b, t) -> b && p(t), true)
+}
+
+fun main(): void {
+  v = Array[1, 2, 3];
+  print_raw(if (all(v, x -> x < 4)) "Pass\n" else "fail")
+}

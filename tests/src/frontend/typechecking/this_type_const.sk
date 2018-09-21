@@ -1,0 +1,29 @@
+fun main(): void {
+  print_string("OK")
+}
+
+base class A final () {
+  children =
+  | B
+  | C
+}
+
+base class Parent_ final () {
+  type T: A;
+
+  fun foo(): this::T
+  | Child1 _ -> B()
+  | Child2 _ -> C()
+}
+
+class Child1 extends Parent_ {
+  type T = B;
+}
+
+class Child2 extends Parent_ {
+  type T = C;
+}
+
+fun test(): B {
+  Child1().foo()
+}

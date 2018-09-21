@@ -1,0 +1,7 @@
+fun main(): void {
+  f = true match {
+  | _x if (true) -> x -> x
+  | _ -> _ -> "Fail\n"
+  };
+  print_raw(f("Pass\n"))
+}

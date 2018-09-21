@@ -1,0 +1,512 @@
+/* Tests for the SortedMap data structure.
+ * We test by comparing the SortedMap<K, V> to a sorted List<(K, V)>. We use
+ * List because its implementation is pure Skip, and it is simple enough that
+ * any functions we define on Stacks are probably correct.
+ */
+
+fun mapToItems<K: Orderable, V>(m: SortedMap<K, V>): List<(K, V)> {
+  stack = List[];
+  m.each((k, v) -> {
+    !stack = List.Cons((k, v), stack);
+  });
+  stack.reversed()
+}
+
+fun maybeGetItems<K: Equality, V>(xs: List<(K, V)>, k: K): ?V {
+  xs.filter(p -> p.i0 == k).maybeHead().map(p -> p.i1)
+}
+
+fun insertItems<K: Orderable, V>(xs: List<(K, V)>, k: K, v: V): List<(K, V)> {
+  xs match {
+  | List.Nil() -> List.Cons((k, v), List.Nil())
+  | List.Cons(x, rest) ->
+    compare(x.i0, k) match {
+    | LT() -> List.Cons(x, insertItems(rest, k, v))
+    | EQ() -> List.Cons((k, v), rest)
+    | GT() -> List.Cons((k, v), xs)
+    }
+  }
+}
+
+fun removeItems<K: Equality, V>(xs: List<(K, V)>, k: K): List<(K, V)> {
+  xs.filter(p -> p.i0 != k)
+}
+
+fun sortItems<K: Orderable, V>(xs: List<(K, V)>): List<(K, V)> {
+  xs.foldl((s, p) -> insertItems(s, p.i0, p.i1), List[])
+}
+
+fun mergeItems<K: Orderable, V>(
+  xs: List<(K, V)>,
+  ys: List<(K, V)>,
+): List<(K, V)> {
+  ys.foldl((s, p) -> insertItems(s, p.i0, p.i1), xs)
+}
+
+fun equalItems<K: Equality & Show, V: Equality & Show>(
+  xs: List<(K, V)>,
+  ys: List<(K, V)>,
+): Bool {
+  xs == ys
+}
+
+fun itemsToString<K: Show, V: Show>(xs: List<(K, V)>): String {
+  if (xs.isEmpty()) {
+    "{}"
+  } else {
+    "{ " +
+      xs
+        .map(p -> {
+          (k, v) = p;
+          k.toString() + " -> " + v
+        })
+        .join(", ") +
+      " }"
+  }
+}
+
+fun checkModel(m: SortedMap<Int, Int>, expected: List<(Int, Int)>): void {
+  m.checkInvariants();
+  actual = mapToItems(m);
+  assertEqual(expected, actual)
+}
+
+@test
+fun testFromItems(): void {
+  QuickCheck.assert(
+    Vector::generator(Tuple2::generator(Int::generator(), Int::generator())),
+    items ~> {
+      checkModel(
+        SortedMap::createFromItems(items),
+        sortItems(List::createFromItems(items)),
+      )
+    },
+  )
+}
+
+@test
+fun testIsEmpty(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    assertEqual(m.isEmpty(), mapToItems(m).isEmpty());
+  })
+}
+
+@test
+fun testSize(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    assertEqual(m.size(), mapToItems(m).size());
+  })
+}
+
+@test
+fun testContainsKey(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, Int::generator()), x ~> {
+    (m, k) = x;
+    assertEqual(m.containsKey(k), maybeGetItems(mapToItems(m), k).isSome());
+  })
+}
+
+@test
+fun testOptionGet(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, Int::generator()), x ~> {
+    (m, k) = x;
+    assertEqualOption(m.maybeGet(k), maybeGetItems(mapToItems(m), k));
+  })
+}
+
+@test
+fun testGet(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, Int::generator()), x ~> {
+    (m, k) = x;
+    maybeGetItems(mapToItems(m), k) match {
+    | None() -> assertThrows(() -> m[k])
+    | Some(v) -> assertEqual(m[k], v)
+    };
+  })
+}
+
+@test
+fun testMinimum(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    expected = mapToItems(m).maybeHead();
+    actual = m.minimum();
+    assertEqualOption(expected.map(p -> p.i0), actual.map(p -> p.i0));
+    assertEqualOption(expected.map(p -> p.i1), actual.map(p -> p.i1));
+  })
+}
+
+@test
+fun testHead(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    expected = mapToItems(m).map(p -> p.i1).maybeHead();
+    actual = m.head();
+    assertEqualOption(expected, actual);
+  })
+}
+
+@test
+fun testMaximum(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    expected = mapToItems(m).maybeLast();
+    actual = m.maximum();
+    assertEqualOption(expected.map(p -> p.i0), actual.map(p -> p.i0));
+    assertEqualOption(expected.map(p -> p.i1), actual.map(p -> p.i1));
+  })
+}
+
+@test
+fun testLast(): void {
+  QuickCheck.assert(mapGenerator, m ~> {
+    expected = mapToItems(m).map(p -> p.i1).maybeLast();
+    actual = m.last();
+    assertEqualOption(expected, actual);
+  })
+}
+
+@test
+fun testSet(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, itemGenerator), x ~> {
+    (m, kv) = x;
+    (k, v) = kv;
+    checkModel(m.set(k, v), insertItems(mapToItems(m), k, v))
+  })
+}
+
+@test
+// TODO this is broken due to implementing mutable lambda correctness
+fun testSetWith(): void {
+  //   m = pickMap(gen);
+  //   (k, v) = pickPair(gen);
+  //   f = this.pickFunction2(() -> pickInt(gen));
+  //
+  //   model = mapToItems(m);
+  //   insertedValue = maybeGetItems(model, k) match {
+  //     | Some(v2) -> f(v, v2)
+  //     | None() -> v
+  //   };
+  //   model = insertItems(model, k, insertedValue);
+  //
+  //   checkModel(m.setWith(k, v, f), model)
+  void
+}
+
+@test
+fun testRemove(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, Int::generator()), x ~> {
+    (m, k) = x;
+    checkModel(m.remove(k), removeItems(mapToItems(m), k))
+  })
+}
+
+@test
+fun testMerge(): void {
+  QuickCheck.assert(Tuple2::generator(mapGenerator, mapGenerator), x ~> {
+    (m1, m2) = x;
+    checkModel(m1.merge(m2), mergeItems(mapToItems(m1), mapToItems(m2)))
+  })
+}
+
+@test
+// TODO this is broken due to implementing mutable lambda correctness
+fun testMap(): void {
+  //   m = pickMap(gen);
+  //   f = this.pickFunction1(() -> pickInt(gen));
+  //   checkModel(
+  //     m.map(f),
+  //     mapToItems(m).map(p -> {
+  //       (k, v) = p;
+  //       (k, f(v))
+  //     }),
+  //   )
+  void
+}
+
+@test
+fun testMapWithKey(): void {
+  //   m = pickMap(gen);
+  //   f = this.pickFunction2(() -> pickInt(gen));
+  //   checkModel(
+  //     m.mapWithKey(f),
+  //     mapToItems(m).map(p -> {
+  //       (k, v) = p;
+  //       (k, f(k, v))
+  //     }),
+  //   )
+  void
+}
+
+@test
+fun testFilter(): void {
+  //   m = pickMap(gen);
+  //   f = this.pickFunction1(() -> pickBool(gen));
+  //   checkModel(
+  //     m.filter(f),
+  //     mapToItems(m).filter(p -> {
+  //       (k, v) = p;
+  //       f(v)
+  //     }),
+  //   )
+  void
+}
+
+@test
+fun testFilterWithKey(): void {
+  //   m = pickMap(gen);
+  //   f = this.pickFunction2(() -> pickBool(gen));
+  //   checkModel(
+  //     m.filterWithKey(f),
+  //     mapToItems(m).filter(p -> {
+  //       (k, v) = p;
+  //       f(k, v)
+  //     }),
+  //   )
+  void
+}
+
+@test
+fun testFoldlWithKey(): void {
+  //   m = pickMap(gen);
+  //   f = this.pickFunction3(() -> pickInt(gen));
+  //   init = pickValue(gen);
+  //   assertEqual(
+  //     m.foldlWithKey(f, init),
+  //     mapToItems(m).foldl((r, p) -> {
+  //       (k, v) = p;
+  //       f(r, k, v)
+  //     }, init),
+  //   )
+  void
+}
+
+@test
+fun testInvariants(): void {
+  QuickCheck.assert(Vector::generator(testOperationGenerator), operations ~> {
+    m = operations.reduce(
+      (m, op) ~> {
+        m.checkInvariants();
+        op match {
+        | Add(k, v) -> m.set(k, v)
+        | Remove(k) -> m.remove(k)
+        | MergeLeft(m2) -> m2.merge(m)
+        | MergeRight(m2) -> m.merge(m2)
+        }
+      },
+      SortedMap<Int, Int>[],
+    );
+    m.checkInvariants();
+  })
+}
+
+fun getTestVectors(): Array<Array<(Int, Int)>> {
+  Array[
+    Array[],
+    Array[(0, 0)],
+    Array[(2, 20), (4, 40), (6, 60)],
+    Array[(2, 20), (4, 40), (6, 60), (8, 80)],
+    Array[(2, 20), (4, 40), (6, 60), (8, 81)],
+    Array[(2, 20), (4, 41), (6, 60), (8, 80)],
+    Array[(2, 20), (4, 41), (6, 60), (9, 0)],
+    Array[(100, -100)],
+    Array::fillBy(50, i -> ((101 + i, -i))),
+  ]
+}
+
+@test
+fun testCompareAndEqual(): void {
+  maps = getTestVectors().map(SortedMap::createFromItems);
+
+  // Try all O(n^2) combinations -- order should match index order.
+  maps.eachWithIndex((i, m1) -> {
+    maps.eachWithIndex((j, m2) -> {
+      assertEqual(m1 == m2, i == j);
+      assertEqual(m1 != m2, i != j);
+      assertEqual(m1.compare(m2), compare(i, j));
+      assertEqual(m1 > m2, i > j);
+      assertEqual(m1 >= m2, i >= j);
+      assertEqual(m1 < m2, i < j);
+      assertEqual(m1 <= m2, i <= j)
+    })
+  })
+}
+
+@test
+fun testBalanceDifference(): void {
+  // Produce three different permutations of the same array.
+  // Why they are equal is an exercise for the reader.
+  vec1 = Array::fillBy(256, i -> (i, 0));
+  vec2 = vec1.reversed();
+  vec3 = Array::fillBy(256, i -> (((i * (i + 1)) / 2) % 256, 0));
+
+  vecs = Array[vec1, vec2, vec3];
+
+  // Turn those into trees, which will probably be balanced differently,
+  // but should still compare "equal".
+  maps = vecs.map(SortedMap::createFromItems);
+
+  maps.each(m1 -> {
+    maps.each(m2 -> {
+      assertEqual(m1, m2);
+      assertEqual(EQ(), m1.compare(m2))
+    })
+  })
+}
+
+@test
+// Test SortedMap iterators by converting a vector to a map, getting an
+// iterator, then turning that back into a vector. This round-trip result
+// should be equal to the original vector (assuming keys are monotonically
+// increasing, which they are).
+fun testIterator(): void {
+  vecs = getTestVectors();
+  vecs.each(v1 -> {
+    map = SortedMap::createFromItems(v1);
+
+    // Hacky workaround for Array::createFromItems not existing in PHP.
+    v2 = map.items().collect(Vector);
+
+    assertEqual(v2.size(), map.size());
+
+    // Sadly we cannot do == on vectors of tuples, so loop by hand.
+    assertEqual(v1.size(), v2.size());
+    for (i in Range(0, v1.size())) assertEqual(EQ(), v1[i].compare(v2[i]))
+  })
+}
+
+@test
+// items() must return results sorted by keys
+fun testItems(): void {
+  map = SortedMap::createFromItems(
+    Array[("c", 3), ("d", 4), ("a", 1), ("b", 2)],
+  );
+
+  assertEqual(map.keys().collect(Vector).join(""), "abcd");
+  assertEqual(map.values().collect(Vector).join(""), "1234");
+  assertEqual(
+    map.items().map(p -> p.i0 + p.i1).collect(Vector).join(""),
+    "a1b2c3d4",
+  );
+}
+
+@test
+// .map must visit items in key order
+fun testMapOrder(): void {
+  map = SortedMap::createFromItems(
+    Array[("c", 3), ("d", 4), ("a", 1), ("b", 2)],
+  );
+
+  result = "";
+  _ = map.map((_, i) -> !result = result + i.toString());
+  assertEqual(result, "1234");
+}
+
+@test
+fun testToStringEmpty(): void {
+  map = SortedMap::create();
+  assertEqual(map.toString(), "SortedMap{}");
+}
+
+@test
+fun testToStringNotEmpty(): void {
+  map = SortedMap[("c", 3), ("d", 4), ("a", 1), ("b", 2)];
+  assertEqual(map.toString(), "SortedMap{a => 1, b => 2, c => 3, d => 4}");
+}
+
+@test
+fun testToStringLarger(): void {
+  map = SortedMap::createFromItems(
+    Array[
+      ("u", 0),
+      ("j", 1),
+      ("o", 2),
+      ("d", 3),
+      ("c", 4),
+      ("r", 5),
+      ("s", 6),
+      ("x", 7),
+      ("v", 8),
+      ("i", 9),
+      ("b", 10),
+      ("l", 11),
+      ("a", 12),
+      ("h", 13),
+      ("e", 14),
+      ("k", 15),
+      ("g", 16),
+      ("p", 17),
+      ("f", 18),
+      ("w", 19),
+      ("y", 20),
+      ("n", 21),
+      ("m", 22),
+      ("t", 23),
+      ("z", 24),
+      ("q", 25),
+    ],
+  );
+  assertEqual(
+    map.toString(),
+    "SortedMap{a => 12, b => 10, c => 4, d => 3, e => 14, f => 18, " +
+      "g => 16, h => 13, i => 9, j => 1, k => 15, l => 11, m => 22, " +
+      "n => 21, o => 2, p => 17, q => 25, r => 5, s => 6, t => 23, " +
+      "u => 0, v => 8, w => 19, x => 7, y => 20, z => 24}",
+  );
+}
+
+// A generator for key, value pairs
+const itemGenerator: QuickCheck.Generator<(Int, Int)> = Tuple2::generator(
+  Int::generator(),
+  Int::generator(),
+);
+
+// A generator for SortedMaps
+const mapGenerator: QuickCheck.Generator<
+  SortedMap<Int, Int>,
+> = Vector::generator(itemGenerator).map(SortedMap::createFromItems);
+
+extension base class SortedMap uses
+  QuickCheck.Shrinkable[K: QuickCheck.Shrinkable, V: QuickCheck.Shrinkable],
+{
+  fun shrink[K: QuickCheck.Shrinkable, V: QuickCheck.Shrinkable](
+    _firstShrink: Bool = true,
+  ): mutable Iterator<SortedMap<K, V>> {
+    yield break;
+  }
+}
+
+// An operation that can be applied to a SortedMap
+base class TestOperation uses QuickCheck.Shrinkable, Show {
+  children =
+  | Add(Int, Int)
+  | Remove(Int)
+  | MergeLeft(SortedMap<Int, Int>)
+  | MergeRight(SortedMap<Int, Int>)
+
+  fun shrink(firstShrink: Bool = true): mutable Iterator<TestOperation>
+  | Add(k, v) ->
+    k.shrink().zipWith(v.shrink(), (k2, v2) -> (Add(k2, v2) : TestOperation))
+  | Remove(k) -> k.shrink().map(k2 -> (Remove(k2) : TestOperation))
+  | MergeLeft(m) ->
+    m.shrink(firstShrink).map(m2 ~> (MergeLeft(m2) : TestOperation))
+  | MergeRight(m) ->
+    m.shrink(firstShrink).map(m2 ~> (MergeRight(m2) : TestOperation))
+
+  fun toString(): String
+  | Add(k, v) -> `Add(${k}, ${v})`
+  | Remove(k) -> `Remove(${k})`
+  | MergeLeft(m) -> `MergeLeft(${m})`
+  | MergeRight(m) -> `MergeRight(${m})`
+}
+
+// A generator of individual test operations
+const testOperationGenerator: QuickCheck.Generator<
+  TestOperation,
+> = QuickCheck.Generator::create((rng, sizeBound) ~> {
+  int = Int::generator();
+  rng.random(0, 3) match {
+  | 0 -> Add(int.generate(rng, sizeBound), int.generate(rng, sizeBound))
+  | 1 -> Remove(int.generate(rng, sizeBound))
+  | 2 -> MergeLeft(mapGenerator.generate(rng, sizeBound))
+  | 3 -> MergeRight(mapGenerator.generate(rng, sizeBound))
+  | _ -> invariant_violation("unreachable")
+  }
+});

@@ -1,0 +1,21 @@
+const BLACK: Int = 30;
+
+fun main(): void {
+  print_string("Pass")
+}
+
+module M;
+
+const GRAY: Int = 10;
+const blue: Int = 112;
+
+fun gray(): Int {
+  42
+}
+
+class Color()
+
+fun doIt(): String {
+  _ = Color;
+  "" + blue + BLACK + M.GRAY + GRAY + gray()
+}

@@ -1,0 +1,25 @@
+File "./typechecking/invalid/frozen_tparam_expr_dot_1.sk", line 2, characters 3-17:
+The value returned from the function is incompatible with the return type 'mutable Array<Int>'
+1 | fun no<T: mutable Ref<mutable Array<Int>>>(x: T): mutable Array<Int> {
+2 |   freeze(x).value
+  |   ^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_1.sk", line 1, characters 23-40:
+The type: Array<Int>
+1 | fun no<T: mutable Ref<mutable Array<Int>>>(x: T): mutable Array<Int> {
+  |                       ^^^^^^^^^^^^^^^^^^
+2 |   freeze(x).value
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_1.sk", line 1, characters 51-68:
+Is not a subtype of: mutable Array<Int>
+1 | fun no<T: mutable Ref<mutable Array<Int>>>(x: T): mutable Array<Int> {
+  |                                                   ^^^^^^^^^^^^^^^^^^
+2 |   freeze(x).value
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_1.sk", line 1, characters 51-68:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Array<Int>
+1 | fun no<T: mutable Ref<mutable Array<Int>>>(x: T): mutable Array<Int> {
+  |                                                   ^^^^^^^^^^^^^^^^^^
+2 |   freeze(x).value

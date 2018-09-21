@@ -1,0 +1,15 @@
+File "./typechecking/invalid/late_static3.sk", line 9, characters 3-12:
+Invalid deferred call
+ 7 |
+ 8 | fun main(): void {
+ 9 |   Foo::bad();
+   |   ^^^^^^^^^^
+10 |   print_raw("Fail")
+
+File "./typechecking/invalid/late_static3.sk", line 3, characters 3-10:
+'bad' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+1 | base class Foo {
+2 |   static fun abs(): void;
+3 |   deferred static fun bad(): void {
+  |   ^^^^^^^^
+4 |     static::abs()

@@ -1,0 +1,8 @@
+File "./syntax/invalid/const_pattern1.sk", line 7, characters 5-5:
+The following pattern is unused:
+ | _
+5 |   | My_bool -> "True"
+6 |   | false -> "False"
+7 |   | _ -> "Wut"
+  |     ^
+8 |   }

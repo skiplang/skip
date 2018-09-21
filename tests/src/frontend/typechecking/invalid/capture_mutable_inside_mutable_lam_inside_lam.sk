@@ -1,0 +1,19 @@
+fun call(x: () -> Int): Int {
+  x()
+}
+
+fun mkEvil(r: mutable Ref<Int>): () ~> Int {
+  () ~> {
+    mf = () -> r.value; // This should be an error
+    call(mf)
+  }
+}
+
+fun main(): void {
+  r = mutable Ref(10);
+  f = mkEvil(r);
+  n1 = f();
+  r.!value = 15;
+  n2 = f();
+  print_raw("" + n1 + " " + n2 + "\n")
+}

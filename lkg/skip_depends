@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# Usage: lkg/skip_depends backend target
+
+# Runs skip_depends.js from the lkg directory.
+# Uses the js version for portability.
+
+DIR=`echo "$(cd $(dirname "$0"); pwd)"`
+BACKEND="$1"
+TARGET="$2"
+
+shift
+shift
+
+if [ -z "${TARGET}" ]; then
+  echo Missing target.
+  echo Usage: lkg/skip_depends backend target [--source-only]
+  exit 2
+fi
+
+export JSLIB="${DIR}/runtime/js"
+"${DIR}/../tools/run_js_file" "${DIR}/skip_depends.js" --binding backend=${BACKEND} "${TARGET}" "$@"

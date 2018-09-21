@@ -1,0 +1,8 @@
+class Foo(x: Int, y: String)
+
+fun main(): void {
+  f: Foo -> Foo = (foo -> foo with {y => "Pass\n"});
+  a = Foo(0, "hello");
+  b = f(a);
+  print_raw(b.y)
+}

@@ -1,0 +1,16 @@
+File "./typechecking/invalid/exception_generics3.sk", line 11, characters 5-15:
+Invalid pattern binding. Cannot bind this expression to a local.
+Try replacing with '_'
+ 9 |     if (b) throw MyExn(5) else throw MyExn("hi")
+10 |   } catch {
+11 |   | e @ MyExn _ -> e.getMessage()
+   |     ^^^^^^^^^^^
+12 |   | _ -> "fail"
+
+File "./typechecking/invalid/exception_generics3.sk", line 1, characters 13-13:
+This type parameter was unknown when downcasting from the parent type.
+And it has no concrete upper bounds (base or normal classes).
+As such, the type cannot be inferred and cannot be interacted with.
+1 | class MyExn<T: Show>(x: T) extends Exception {
+  |             ^
+2 |   fun getMessage(): String {

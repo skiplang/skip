@@ -1,0 +1,11 @@
+fun foo(x: _): _ {
+  x
+}
+
+fun bar(f: Int -> _): _ {
+  f(42)
+}
+
+fun baz(): _ {
+  bar(foo)
+}

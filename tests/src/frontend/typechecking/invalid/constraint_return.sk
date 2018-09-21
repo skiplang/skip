@@ -1,0 +1,13 @@
+class Bar<T: Test.MixedInt>(x: T) {
+  fun get(): T {
+    this.x
+  }
+}
+
+fun returns_invalid_bar_type(): Bar<Test.MixedString> {
+  invariant_violation("")
+}
+
+fun uses_invalid_bar_type(): Test.MixedString {
+  returns_invalid_bar_type().get()
+}

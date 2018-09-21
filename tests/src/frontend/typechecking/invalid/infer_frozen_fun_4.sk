@@ -1,0 +1,6 @@
+fun foo<T: frozen>(T): Array<T> {
+  Array[]
+}
+fun test(): void {
+  _ = foo(mutable Array[])
+}

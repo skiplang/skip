@@ -1,0 +1,17 @@
+base class A{b: Int}
+base class LA extends A
+base class RA extends A
+base class LRA{rx: Bool} extends RA
+base class RRA{ry: String} extends RA
+class JRA{rt: Int} extends LRA, RRA
+
+base class LLA{lx: Bool} extends LA
+base class RLA{ly: String} extends LA
+class JLA{lt: Int} extends LLA, RLA
+
+fun myMatch(x: A): String {
+  x match {
+  | LA _ -> "Pa"
+  | LRA{rx => true} -> "ss\n"
+  }
+}

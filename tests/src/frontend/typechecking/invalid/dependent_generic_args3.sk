@@ -1,0 +1,9 @@
+class Foo<T>(T)
+
+fun foo<T, T2: Foo<T>>(T, x: T2): T2 {
+  x
+}
+
+fun test<T3>(x: Foo<T3>): void {
+  _ = foo(x, x)
+}

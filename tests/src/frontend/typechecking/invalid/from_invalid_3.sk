@@ -1,0 +1,21 @@
+base class P {
+  overridable fun foo(): Int {
+    37
+  }
+}
+
+base class L extends P {
+  fun foo(): Int {
+    99
+  }
+}
+
+base class R extends P
+
+base class C extends L, R {
+  overridable fun foo from L;
+}
+
+class D() extends C, R {
+  fun foo from L;
+}

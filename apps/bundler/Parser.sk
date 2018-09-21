@@ -1,0 +1,89 @@
+module Parser;
+
+// The result of parsing a source file
+class ParserResult{
+  // Possibly empty list of file paths extracted from `require('<path>')` statements
+  requires: Vector<String>,
+  // The text following the last require() statement
+  remainingText: String,
+}
+
+// Parses text to extract require() dependencies, returning a ParserResult.
+fun parse(text: String): ParserResult {
+  Parser::new(text).getRequires();
+}
+
+// Private parser class for demonstration purposes - a production version would
+// need a more robust parser.
+private mutable class Parser private (
+  text: String,
+  iterator: mutable String.StringIterator,
+  mutable current: Int,
+  mutable lastRequire: Int,
+  requires: mutable Vector<String>,
+) {
+  static fun new(text: String): mutable this {
+    iterator = String.StringIterator::make(text);
+    mutable static(text, iterator, 0, 0, mutable Vector[])
+  }
+
+  mutable fun getRequires(): ParserResult {
+    this.parse();
+    remainingText = this.text.sub(
+      this.lastRequire,
+      this.text.length() - this.lastRequire,
+    );
+    ParserResult{requires => freeze(this.requires), remainingText}
+  }
+
+  private mutable fun next(): (Int, ?Char) {
+    result = (this.current, this.iterator.next());
+    this.!current = this.current + 1;
+    result
+  }
+
+  private mutable fun parse(): void {
+    (position, char) = this.next();
+    char match {
+    | None() -> void
+    | Some('r') ->
+      first = position;
+      last = this.parseKeyword();
+      if (this.text.sub(first, last - first) == "require") {
+        filename = this.parseRequire();
+        this.requires.push(filename);
+      };
+      this.parse()
+    | _ -> this.parse()
+    };
+  }
+
+  private mutable fun parseKeyword(): Int {
+    (position, char) = this.next();
+    char match {
+    | Some(x) if (x >= 'a' && x <= 'z' || x >= 'A' && x <= 'Z') ->
+      this.parseKeyword()
+    | _ -> position
+    }
+  }
+
+  private mutable fun parseRequire(): String {
+    char: ?Char = Some('0');
+    while (char != None() && char != Some('\'')) {
+      (_, !char) = this.next()
+    };
+    (first, !char) = this.next();
+    last = first;
+    while (char != None() && char != Some('\'')) {
+      (!last, !char) = this.next()
+    };
+    result = this.text.sub(first, last - first);
+    while (char != None() && char != Some('\n')) {
+      (!last, !char) = this.next()
+    };
+    this.!lastRequire = last + 1;
+    result
+  }
+}
+
+module end;

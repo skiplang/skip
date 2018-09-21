@@ -1,0 +1,31 @@
+File "./typechecking/invalid/pattern_nested_tuple.sk", line 5, characters 27-27:
+Constraint not satisfied
+3 |   print_raw(
+4 |     p match {
+5 |     | (x @ _, y @ _) -> x + y
+  |                           ^
+6 |     },
+
+File "./typechecking/invalid/pattern_nested_tuple.sk", line 2, characters 12-17:
+The type: String
+1 | fun main(): void {
+2 |   p = (42, "Fail");
+  |            ^^^^^^
+3 |   print_raw(
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 12-19:
+Is not a subtype of: Integral
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |            ^^^^^^^^
+22 |     this.plusImpl(other.toInt())
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 12-19:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Orderable
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |            ^^^^^^^^
+22 |     this.plusImpl(other.toInt())

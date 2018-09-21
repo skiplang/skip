@@ -1,0 +1,13 @@
+class C(s: String) {
+  fun f(x: Int, other: C): String {
+    if (x == 0) {
+      this.s
+    } else {
+      other.f(x - 1, this)
+    }
+  }
+}
+
+fun main(): void {
+  print_raw(C("Fail").f(1, C("Pass\n")))
+}

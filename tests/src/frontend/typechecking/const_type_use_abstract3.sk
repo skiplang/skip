@@ -1,0 +1,13 @@
+base class Foo {
+  type TID: Test.MixedScalar;
+}
+
+base class Bar {
+  type T1: Foo;
+  type Tthis: this default this;
+  type T2: this::T1::TID default this::T1::TID;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

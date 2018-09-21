@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/multiple_child_class_override_named_params_recursive_non_exhaustive.sk", line 6, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | C{z => C{z => _, y => false, x => _}, y => true, x => Int _}
+4 |
+5 | fun myMatch(x: A): String {
+6 |   x match {
+  |   ^^^^^^^^^
+7 |   | A{x => 1} -> "P"
+  |   ^^^^^^^^^^^^^^^^^^

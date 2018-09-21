@@ -1,0 +1,28 @@
+base class A(Int)
+base class LA extends A
+base class RA extends A
+base class LRA(sk: Bool) extends RA
+base class RRA(ry: String) extends RA
+class JRA(rt: Int) extends LRA, RRA
+
+base class LLA(lx: Bool) extends LA
+base class RLA(ly: String) extends LA
+class JLA(lt: Int) extends LLA, RLA
+
+fun myMatch(x: A): String {
+  x match {
+  | LA _ -> "Pa"
+  | JRA(1, false, 1, "a") -> "no"
+  | JRA(1, true, 1, "a") -> "s1"
+  | JRA(2, true, _, "a") -> "s2"
+  | RA _ -> "\n"
+  }
+}
+
+fun main(): void {
+  x = JLA(1, true, 0, "a");
+  y = JRA(1, true, 1, "a");
+  z = JRA(2, true, 42, "a");
+  w = JRA(2, true, 42, "b");
+  print_raw(myMatch(x) + myMatch(y) + myMatch(z) + myMatch(w))
+}

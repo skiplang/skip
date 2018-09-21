@@ -1,0 +1,20 @@
+base class P final () {
+  children =
+  | C
+}
+
+base class MyParent<T, T2> {
+  overridable fun foo[T: C, T2: Show](): void {
+    void
+  }
+}
+
+class Child<T, T2>() extends MyParent<T, T2> {
+  fun foo[T2: Show](): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

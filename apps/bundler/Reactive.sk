@@ -1,0 +1,47 @@
+module Reactive;
+
+// A "reactive" key-value cache. Tracked, memoized functions can read from the
+// cache with `fileContents.maybeGet(key)`, which both returns the associated
+// value and sets up a memoization graph dependency between the caller and that
+// key of the cache. *Untracked* code can update the cache with new keys or
+// updated values for keys, which invalidates the memoization graph for any
+// dependent functions that read a value w maybeGet(). The next time those
+// functions are executed (see `server()`), they will see the new keys/values.
+const fileContents: Reactive.GlobalCache<String> = Reactive.GlobalCache::make();
+
+// Read a file's contents from the reactive cache: the contents must have already
+// been populated.
+memoized fun openFile(filename: String): String {
+  fileContents.maybeGet(Path.normalize(filename)) match {
+  | None() -> invariant_violation(`Unknown file '${filename}'`)
+  | Some(x) -> x
+  };
+}
+
+// Update files in the reactive cache
+private untracked fun updateFiles(files: Array<String>): void {
+  for (filename in files) {
+    fileContents![filename] = FileSystem.readTextFile(filename);
+  };
+}
+
+// Run a REPL (read-eval-print-loop)
+untracked fun server(
+  root: String,
+  init: (Array<String> -> void),
+  update: (Array<String>, String) -> void,
+): void {
+  files = FileSystem.readFilesRecursive(root, path ~>
+    Path.extname(path) == ".js"
+  ).collect(Array);
+  updateFiles(files);
+  init(files);
+  loop {
+    print_string("Enter file path (relative to working directory):");
+    command = read_line();
+    updateFiles(files);
+    update(files, command);
+  }
+}
+
+module end;

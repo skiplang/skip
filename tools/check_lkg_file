@@ -1,0 +1,26 @@
+#!/bin/bash
+
+UPDATE=""
+if [[ "$1" == "--update" ]]; then
+    UPDATE=1
+    shift
+fi
+
+if [[ "$1" == *.ll ]]; then
+    EXPR='!DIFile(filename: "[^"]*", directory: "[^"]*")'
+    # Need to ignore DIFile contents since they contain paths on the source machine
+    diff <(sed -e "s/$EXPR/!DIFile(path)/g" "$1") <(bzcat "$2" | sed -e "s/$EXPR/!DIFile(path)/g") > /dev/null
+else
+    diff -r --brief --exclude=\*.pyc "$1" "$2" > /dev/null
+fi
+
+if [ $? -ne 0 ]; then
+    if [[ "$UPDATE" != "" ]]; then
+        echo "Updating $2"
+        bzip2 -k -c "$1" > "$2"
+    else
+        echo "LKG is out of date. File '$2' differs from '$1'." > /dev/stderr
+        echo "Run 'ninja update_lkg' to update your LKG." > /dev/stderr
+        exit 1
+    fi
+fi

@@ -1,0 +1,58 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Parse arguments to skip command line tools
+
+module SkipArguments;
+
+class Skip_arguments{
+  arg_react: Bool,
+  arg_output: String,
+  arg_args: List<String>,
+  arg_files: List<String>,
+}
+
+fun check_arg_output(argOutput: String): void {
+  if (!FileSystem.exists(argOutput)) {
+    print_raw("The directory '" + argOutput + "' does not exist\n");
+    SkipError.fail()
+  };
+  if (!FileSystem.isDirectory(argOutput)) {
+    print_raw("The file '" + argOutput + "' is not a directory\n");
+    SkipError.fail()
+  }
+}
+
+fun parse_args(): Skip_arguments {
+  error_message = "Usage: skip_check [--react] [--output <path>] list_of_sk_files [-- <args>]\n";
+  init_args = Skip_arguments{
+    arg_react => false,
+    arg_output => "",
+    arg_args => List[],
+    arg_files => List[],
+  };
+
+  (args, arg_files, arg_args) = Arguments.parse(
+    init_args,
+    List[
+      ("--react", Arguments.SetTrue(x ~> x with {arg_react => true})),
+      ("--output", Arguments.SetString((x, arg_output) ~> x with {arg_output})),
+      // These 2 are handled in skipUtils to enable debugging compiler passes.
+      // Ensure they don't report errors here.
+      ("--profile", Arguments.SetTrue(id)),
+      ("--debug", Arguments.SetString((x, _arg_debug) ~> x)),
+    ],
+    error_message,
+  );
+  if (arg_files.isEmpty()) {
+    print_raw(error_message);
+    SkipError.fail()
+  };
+  args with {arg_files, arg_args}
+}
+
+module end;

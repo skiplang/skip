@@ -1,0 +1,27 @@
+mutable class Foo(mutable f: () ~> void) {
+  mutable fun mut(): void {
+    this.f()
+  }
+  fun ro(): void {
+    this.f()
+  }
+  frozen fun fro(): void {
+    this.f()
+  }
+}
+
+mutable class Bar<T: () ~> void>(mutable f: T) {
+  mutable fun mut(): void {
+    this.f()
+  }
+  fun ro(): void {
+    this.f()
+  }
+  frozen fun fro(): void {
+    this.f()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

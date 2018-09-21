@@ -1,0 +1,13 @@
+type E_ = (Int, String);
+type E = (Int, E_);
+
+fun f(e: E): String {
+  e match {
+  | (_, (42, r)) -> r
+  | _ -> "Fail"
+  }
+}
+
+fun main(): void {
+  print_raw(f((1, (42, "Pass\n"))))
+}

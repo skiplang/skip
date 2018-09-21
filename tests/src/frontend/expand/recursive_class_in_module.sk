@@ -1,0 +1,12 @@
+module Foo;
+
+base class Bar {
+  children =
+  | BarChild(kids: Array<Foo.Bar>)
+}
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

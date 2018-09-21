@@ -1,0 +1,16 @@
+fun move<T>(f: (mutable Ref<T>) -> void, t: T): T {
+  ref = mutable Ref<T>(t);
+  f(ref);
+  ref.value
+}
+
+fun main(): void {
+  print_raw(
+    move(
+      ref -> {
+        ref.!value = "Pass\n"
+      },
+      "",
+    ),
+  )
+}

@@ -1,0 +1,21 @@
+base class A{x: Int}
+class B{y: Bool} extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A{x => 1} -> "P"
+  | B{y => false} -> "a"
+  | B{y => true, x => 2} -> "s"
+  | B{y => true, x => 3} -> "s"
+  | A{x => _} -> "\n"
+  }
+}
+
+fun main(): void {
+  x = B{x => 1, y => true};
+  y = B{x => 2, y => false};
+  z = B{x => 2, y => true};
+  t = B{x => 3, y => true};
+  l = B{x => 4, y => true};
+  print_raw(myMatch(x) + myMatch(y) + myMatch(z) + myMatch(t) + myMatch(l))
+}

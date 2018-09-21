@@ -1,0 +1,8 @@
+File "./syntax/invalid/invalid_as.sk", line 3, characters 22-25:
+Invalid constant pattern. Did you mean to match a class instance?
+For example, for class 'MyObject' use 'MyObject _' to match against all instances of that type
+1 | fun main(): void {
+2 |   x: ?Int = Some(0);
+3 |   print_string((x as None).toString())
+  |                      ^^^^
+4 | }

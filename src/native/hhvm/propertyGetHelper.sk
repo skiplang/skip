@@ -1,0 +1,645 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias I = OuterIst;
+module alias O = OuterIstToIR;
+module alias F = FunctionTree;
+
+module HhvmInterop;
+
+// fun propertyGetHelper<T, U>(ptr: T, field: String): U
+extension class PropertyGetHelper extends O.CustomIntrinsic {
+  protected fun emitIR(
+    gInstr: O.GCustomInstr,
+    fs: mutable O.FunSpecializer,
+  ): O.MaybeExists<O.InstrTree> {
+    pos = this.funInfo.pos;
+    s = fs.specializer;
+
+    tRet = fs.specializeType(this.funInfo.funType.returnType);
+    tObj = fs.specializeType(this.funInfo.funType.params[0]);
+
+    obj = fs.getValue(gInstr.args[0]);
+    field = fs.getValue(gInstr.args[1]);
+
+    pos.lazyInvariant(!Hhvm.isHhvmArray(s, tObj, pos), () ->
+      `@hhvm_array object ${tObj} cannot have properties`
+    );
+
+    // fetch the HhvmHandle from the object
+    handle = FetchProxyPointer::call(fs, tObj, obj, pos);
+
+    result = if (Hhvm.isHhvmImport(s, tObj, pos) || Hhvm.isHhvmHandle(tObj)) {
+      SkipRuntime.ObjectGetFieldMixed::call(fs, handle, field, pos)
+    } else if (Hhvm.isHhvmShape(s, tObj, pos)) {
+      SkipRuntime.ShapeGetFieldMixed::call(fs, handle, field, pos)
+    } else {
+      pos.die(`invalid property kind ${tObj}`);
+    };
+
+    if (Hhvm.isOptionType(s, tRet)) {
+      tRetTargT = Hhvm.getOptionTarg(s, tRet, pos);
+      if (Hhvm.isOptionType(s, tRetTargT)) {
+        HhvmInterop_PropertyGetHelper.InternalCreateOptionOptionFromRetValue::call(
+          fs,
+          Hhvm.getOptionTarg(s, tRetTargT, pos),
+          result,
+          pos,
+        )
+      } else {
+        HhvmInterop_PropertyGetHelper.InternalCreateOptionFromRetValue::call(
+          fs,
+          tRetTargT,
+          result,
+          pos,
+        )
+      }
+    } else if (Hhvm.isNullableType(fs, tRet)) {
+      tRetTargT = Hhvm.getNullableTarg(s, tRet, pos);
+      HhvmInterop_PropertyGetHelper.InternalCreateNullableFromRetValue::call(
+        fs,
+        tRetTargT,
+        result,
+        pos,
+      )
+    } else {
+      HhvmInterop_PropertyGetHelper.InternalCreateNonNullableFromRetValue::call(
+        fs,
+        tRet,
+        result,
+        pos,
+      )
+    }
+  }
+
+  protected fun requestFunctions(
+    s: mutable O.Specializer,
+    targs: Array<Tclass>,
+    _tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    pos = s.pos;
+
+    objType = targs[0];
+    retType = targs[1];
+
+    FetchProxyPointer::request(s, objType);
+
+    if (Hhvm.isHhvmImport(s, objType, pos) || Hhvm.isHhvmHandle(objType)) {
+      SkipRuntime.ObjectGetFieldMixed::request(s)
+    } else if (Hhvm.isHhvmShape(s, objType, pos)) {
+      SkipRuntime.ShapeGetFieldMixed::request(s)
+    };
+
+    if (Hhvm.isOptionType(s, retType)) {
+      retTypeT = Hhvm.tcGetOptionTarg(s, retType, pos);
+      if (Hhvm.isOptionType(s, retTypeT)) {
+        HhvmInterop_PropertyGetHelper.InternalCreateOptionOptionFromRetValue::request(
+          s,
+          Hhvm.tcGetOptionTarg(s, retTypeT, pos),
+        );
+      } else {
+        HhvmInterop_PropertyGetHelper.InternalCreateOptionFromRetValue::request(
+          s,
+          retTypeT,
+        );
+      }
+    } else if (Hhvm.isNullableType(s, retType)) {
+      retTypeT = Hhvm.tcGetNullableTarg(s, retType, pos);
+      HhvmInterop_PropertyGetHelper.InternalCreateNullableFromRetValue::request(
+        s,
+        retTypeT,
+      );
+    } else {
+      HhvmInterop_PropertyGetHelper.InternalCreateNonNullableFromRetValue::request(
+        s,
+        retType,
+      );
+    };
+  }
+}
+
+module end;
+
+module HhvmInterop_PropertyGetHelper;
+
+//  fun internalCreateNonNullableFromRetValue<T: nonNullable>(t:(Int, Int)): T
+extension class InternalCreateNonNullableFromRetValue extends O.CustomIntrinsic{
+  protected fun emitIR(
+    gInstr: O.GCustomInstr,
+    fs: mutable O.FunSpecializer,
+  ): O.MaybeExists<O.InstrTree> {
+    s = fs.specializer;
+    pos = this.funInfo.pos;
+
+    retType = fs.specializeType(this.funInfo.funType.returnType);
+
+    value = fs.getValue(gInstr.args[0]);
+
+    if (Hhvm.isMixedSubclass(s, retType)) {
+      return F.emitCast{
+        fs,
+        typ => retType,
+        value => InternalCreateMixedFromRetValue::call(fs, value, retType, pos),
+        pos,
+      };
+    };
+
+    if (Hhvm.isHHLambdaSubclass(fs, retType)) {
+      return F.emitCast{
+        fs,
+        typ => retType,
+        value => InternalCreateLambdaFromRetValue::call(fs, value, pos),
+        pos,
+      }
+    };
+
+    if (HhvmInterop.isArraylike(fs, retType)) {
+      return this.emitArray(fs, retType, value, pos)
+    };
+
+    if (HhvmInterop.isMaplike(fs, retType)) {
+      return this.emitMap(fs, retType, value, pos)
+    };
+
+    if (HhvmInterop.isSetlike(fs, retType)) {
+      return this.emitSet(fs, retType, value, pos)
+    };
+
+    if (HhvmInterop.isTuple(fs, retType)) {
+      !value = F.emitTupleExtract{
+        fs,
+        typ => tInt,
+        obj => value,
+        index => 0,
+        pos,
+      };
+      !value = F.emitReinterpret{fs, typ => tHhvmShapeHandle, value, pos};
+      return HhvmInterop.CopyFromHhvm::call(fs, retType, value, pos);
+    };
+
+    CheckRetValueType::call(
+      fs,
+      value,
+      F.constantInt{
+        fs,
+        value => Svmi.ParamType::maskFromType(fs, retType, pos),
+      },
+      pos,
+    );
+
+    InternalBitcastFromInt::call(
+      fs,
+      retType,
+      F.emitTupleExtract{fs, typ => tInt, obj => value, index => 0, pos},
+      pos,
+    )
+  }
+
+  protected fun requestFunctions(
+    s: mutable O.Specializer,
+    targs: Array<Tclass>,
+    tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    targT = targs[0];
+
+    CheckRetValueType::request(s);
+
+    if (Hhvm.isMixedSubclass(s, targT)) {
+      return InternalCreateMixedFromRetValue::request(s);
+    };
+
+    if (Hhvm.isHHLambdaSubclass(s, targT)) {
+      return InternalCreateLambdaFromRetValue::request(s);
+    };
+
+    if (HhvmInterop.isArraylike(s, targT)) {
+      return this.requestArray(s, tparamEnv);
+    };
+
+    if (HhvmInterop.isMaplike(s, targT)) {
+      return this.requestMap(s, tparamEnv);
+    };
+
+    if (HhvmInterop.isSetlike(s, targT)) {
+      return this.requestSet(s, tparamEnv);
+    };
+
+    if (HhvmInterop.isTuple(s, targT)) {
+      return HhvmInterop.CopyFromHhvm::request(s, targT);
+    };
+
+    InternalBitcastFromInt::request(s, targT);
+  }
+
+  fun emitArray(
+    fs: mutable O.FunSpecializer,
+    retType: Type,
+    value: O.MaybeExists<O.InstrTree>,
+    pos: Pos,
+  ): O.MaybeExists<O.InstrTree> {
+    s = fs.specializer;
+
+    // Pull it in as a HH_varray2 and then convert that to our Array using
+    // Vector::createFromItems.
+    valueType = HhvmInterop.getTarg(s, retType, 0, pos);
+    pos.lazyInvariant(Hhvm.isPortableType(s, valueType, pos), () ->
+      `Unable to copy ${retType} value ${valueType} from HHVM`
+    );
+
+    varrayType = s.specializeType2(
+      FrontEndLazyGClass("Vector.HH_varray2"),
+      Readonly(),
+      Array[valueType],
+    );
+    CheckRetValueType::call(
+      fs,
+      value,
+      F.constantInt{fs, value => 1.shl(Svmi.ParamTypeHhvmArray().code())},
+      pos,
+    );
+    varray = InternalBitcastFromInt::call(
+      fs,
+      varrayType,
+      F.emitTupleExtract{fs, typ => tInt, obj => value, index => 0, pos},
+      pos,
+    );
+    HhvmInterop.InternalCreateFromItems::call(
+      fs,
+      retType,
+      varrayType,
+      varray,
+      pos,
+    );
+  }
+
+  fun requestArray(
+    s: mutable O.Specializer,
+    tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    retType = s.getTclass3(this.funInfo.funType.returnType, tparamEnv);
+    valueType = HhvmInterop.tcGetTarg(s, retType, 0, s.pos);
+    varrayType = s.getTclass2(
+      FrontEndLazyGClass("Vector.HH_varray2"),
+      Array[valueType],
+      Readonly(),
+    );
+    InternalBitcastFromInt::request(s, varrayType);
+    HhvmInterop.InternalCreateFromItems::request(s, retType, varrayType);
+  }
+
+  fun emitMap(
+    fs: mutable O.FunSpecializer,
+    retType: Type,
+    value: O.MaybeExists<O.InstrTree>,
+    pos: Pos,
+  ): O.MaybeExists<O.InstrTree> {
+    s = fs.specializer;
+
+    // Pull it in as a HH_darray2 and then convert that to our Map using
+    // Map::createFromIterator.
+    keyType = HhvmInterop.getTarg(s, retType, 0, pos);
+    valueType = HhvmInterop.getTarg(s, retType, 1, pos);
+    darrayType = s.specializeType2(
+      FrontEndLazyGClass("Map.HH_darray2"),
+      Readonly(),
+      Array[keyType, valueType],
+    );
+    CheckRetValueType::call(
+      fs,
+      value,
+      F.constantInt{fs, value => 1.shl(Svmi.ParamTypeHhvmArray().code())},
+      pos,
+    );
+    darray = InternalBitcastFromInt::call(
+      fs,
+      darrayType,
+      F.emitTupleExtract{fs, typ => tInt, obj => value, index => 0, pos},
+      pos,
+    );
+
+    items = HhvmInterop.InternalMapGetItems::call(
+      fs,
+      keyType,
+      valueType,
+      darray,
+      pos,
+    );
+
+    itemsType = s.specializeType2(
+      FrontEndLazyGClass("Iterator"),
+      Mutable(),
+      Array[
+        s.specializeType2(
+          FrontEndLazyGClass("Tuple2"),
+          DeepFrozen(),
+          Array[keyType, valueType],
+        ),
+      ],
+    );
+
+    HhvmInterop.InternalCreateFromIterator::call(
+      fs,
+      retType,
+      itemsType,
+      items,
+      pos,
+    );
+  }
+
+  fun requestMap(
+    s: mutable O.Specializer,
+    tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    retType = s.getTclass3(this.funInfo.funType.returnType, tparamEnv);
+    pos = s.pos;
+
+    keyType = HhvmInterop.tcGetTarg(s, retType, 0, pos);
+    pos.lazyInvariant(Hhvm.isPortableType(s, keyType, pos), () ->
+      `Unable to copy ${retType} key ${keyType} from HHVM`
+    );
+
+    valueType = HhvmInterop.tcGetTarg(s, retType, 1, pos);
+    pos.lazyInvariant(Hhvm.isPortableType(s, valueType, pos), () ->
+      `Unable to copy ${retType} value ${valueType} from HHVM`
+    );
+
+    darrayType = s.getTclass2(
+      FrontEndLazyGClass("Map.HH_darray2"),
+      Array[keyType, valueType],
+      Readonly(),
+    );
+    InternalBitcastFromInt::request(s, darrayType);
+    HhvmInterop.InternalMapGetItems::request(s, keyType, valueType);
+    itemsType = s.getTclass2(
+      FrontEndLazyGClass("Iterator"),
+      Array[
+        s.getTclass2(
+          FrontEndLazyGClass("Tuple2"),
+          Array[keyType, valueType],
+          DeepFrozen(),
+        ),
+      ],
+      Mutable(),
+    );
+    HhvmInterop.InternalCreateFromIterator::request(s, retType, itemsType);
+  }
+
+  fun emitSet(
+    fs: mutable O.FunSpecializer,
+    retType: Type,
+    value: O.MaybeExists<O.InstrTree>,
+    pos: Pos,
+  ): O.MaybeExists<O.InstrTree> {
+    s = fs.specializer;
+
+    // Pull it in as a HH_keyset2 and then convert that to our Set using
+    // Set::createFromIterator.
+    keyType = HhvmInterop.getTarg(s, retType, 0, pos);
+
+    keysetType = s.specializeType2(
+      FrontEndLazyGClass("Set.HH_keyset2"),
+      Readonly(),
+      Array[keyType],
+    );
+    !value = SkipRuntime.MaybeConvertToArray::call(fs, value, pos);
+    CheckRetValueType::call(
+      fs,
+      value,
+      F.constantInt{fs, value => 1.shl(Svmi.ParamTypeHhvmArray().code())},
+      pos,
+    );
+    keyset = InternalBitcastFromInt::call(
+      fs,
+      keysetType,
+      F.emitTupleExtract{fs, typ => tInt, obj => value, index => 0, pos},
+      pos,
+    );
+
+    items = HhvmInterop.InternalSetGetValues::call(fs, keyType, keyset, pos);
+
+    itemsType = s.specializeType2(
+      FrontEndLazyGClass("Iterator"),
+      Mutable(),
+      Array[keyType],
+    );
+    HhvmInterop.InternalCreateFromIterator::call(
+      fs,
+      retType,
+      itemsType,
+      items,
+      pos,
+    );
+  }
+
+  fun requestSet(
+    s: mutable O.Specializer,
+    tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    retType = s.getTclass3(this.funInfo.funType.returnType, tparamEnv);
+    pos = s.pos;
+
+    keyType = HhvmInterop.tcGetTarg(s, retType, 0, pos);
+    pos.lazyInvariant(Hhvm.isPortableType(s, keyType, pos), () ->
+      `Unable to copy ${retType} key ${keyType} from HHVM`
+    );
+
+    keysetType = s.getTclass2(
+      FrontEndLazyGClass("Set.HH_keyset2"),
+      Array[keyType],
+      Readonly(),
+    );
+
+    SkipRuntime.MaybeConvertToArray::request(s);
+    InternalBitcastFromInt::request(s, keysetType);
+    HhvmInterop.InternalSetGetValues::request(s, keyType);
+
+    itemsType = s.getTclass2(
+      FrontEndLazyGClass("Iterator"),
+      Array[keyType],
+      Mutable(),
+    );
+    HhvmInterop.InternalCreateFromIterator::request(s, retType, itemsType);
+  }
+}
+
+//  fun internalCreateMixedFromRetValue(t:(Int, Int), validTypeMask: Int): Mixed
+class InternalCreateMixedFromRetValue{} extends O.CallableIntrinsic {
+  const name: String = "HhvmInterop_PropertyGetHelper.internalCreateMixedFromRetValue";
+
+  static fun call(
+    fs: mutable O.FunSpecializer,
+    value: O.MaybeExists<O.InstrTree>,
+    expectedType: Type,
+    pos: Pos,
+  ): O.MaybeExists<O.InstrTree> {
+    validTypeMask = static::makeValidMaskForType(expectedType, fs);
+    static::emitCallFunction{
+      fs,
+      typ => tMixed,
+      targs => Array[],
+      args => Array[
+        value,
+        O.Exists(O.InstrLeaf(fs.constantInt(validTypeMask).id)),
+      ],
+      pos,
+    }
+  }
+
+  static fun request(s: mutable O.Specializer): void {
+    s.requestFunction(static::funName(), Array[]);
+  }
+
+  private static fun makeValidMaskForType(
+    t: Type,
+    fs: mutable O.FunSpecializer,
+  ): Int {
+    valid = 0;
+    for (sub in fs.specializer.exampleSClass(t).subtypes) {
+      name = fs.specializer.sclasses[sub].gclass.name.id;
+      !valid = valid.or(
+        if (name == "HH.Null") {
+          1.shl(HhvmInterop.nullType)
+        } else if (name == "HH.Bool") {
+          1.shl(HhvmInterop.boolType)
+        } else if (name == "HH.Int") {
+          1.shl(HhvmInterop.intType)
+        } else if (name == "HH.Float") {
+          1.shl(HhvmInterop.floatType)
+        } else if (name == "HH.String") {
+          1.shl(HhvmInterop.stringType)
+        } else {
+          0
+        },
+      );
+    };
+    valid
+  }
+}
+
+// Intrinsic for:
+//   fun internalBitcastFromInt<T>(i: Int): T;
+//
+extension class InternalBitcastFromInt extends O.CustomIntrinsic {
+  protected fun emitIR(
+    gInstr: O.GCustomInstr,
+    fs: mutable O.FunSpecializer,
+  ): O.MaybeExists<O.InstrTree> {
+    pos = this.funInfo.pos;
+    s = fs.specializer;
+
+    value = fs.getValue(gInstr.args[0]);
+
+    retType = fs.specializeType(this.funInfo.funType.returnType);
+    if (retType == tBool) {
+      F.emitTruncate{fs, typ => tBool, value, pos}
+    } else if (retType == tInt) {
+      value
+    } else if (
+      (retType == tFloat) ||
+      (retType == tString) ||
+      (Hhvm.isHhvmHandle(retType))
+    ) {
+      F.emitReinterpret{fs, typ => retType, value, pos}
+    } else if (Hhvm.isHhvmProxy(s, retType, pos)) {
+      // Trying to create a @hhvm_import class - convert to a HhvmHandle and then construct the object.
+      handle = F.emitReinterpret{fs, typ => tHhvmHandle, value, pos};
+      HhvmInterop.CreateFromProxyPointer::call(fs, retType, handle, pos);
+    } else if (Hhvm.isHhvmCopy(s, retType, pos)) {
+      handle = F.emitReinterpret{fs, typ => tHhvmHandle, value, pos};
+      HhvmInterop.CopyFromHhvm::call(fs, retType, handle, pos)
+    } else if (Hhvm.isHhvmShapeCopy(s, retType, pos)) {
+      handle = F.emitReinterpret{fs, typ => tHhvmShapeHandle, value, pos};
+      HhvmInterop.CopyFromHhvm::call(fs, retType, handle, pos)
+    } else {
+      pos.die(`internalBitcastFromInt: Unable to cast from Int to ${retType}`);
+    }
+  }
+
+  protected fun requestFunctions(
+    s: mutable O.Specializer,
+    targs: Array<Tclass>,
+    _tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    pos = this.funInfo.pos;
+
+    targT = targs[0];
+    if (Hhvm.isHhvmProxy(s, targT, pos)) {
+      HhvmInterop.CreateFromProxyPointer::request(s, targT);
+    } else if (
+      Hhvm.isHhvmCopy(s, targT, pos) ||
+      Hhvm.isHhvmShapeCopy(s, targT, pos)
+    ) {
+      HhvmInterop.CopyFromHhvm::request(s, targT);
+    }
+  }
+}
+
+// fun internalCreateFromRetValue<T>(v: (Int, Int)): T;
+extension class InternalCreateFromRetValue extends O.CustomIntrinsic {
+  protected fun emitIR(
+    gInstr: O.GCustomInstr,
+    fs: mutable O.FunSpecializer,
+  ): O.MaybeExists<O.InstrTree> {
+    s = fs.specializer;
+    pos = this.funInfo.pos;
+
+    targT = fs.specializeType(this.funInfo.tparams[0]);
+
+    value = fs.getValue(gInstr.args[0]);
+
+    if (Hhvm.isOptionType(s, targT)) {
+      HhvmInterop_PropertyGetHelper.InternalCreateOptionFromRetValue::call(
+        fs,
+        Hhvm.getOptionTarg(s, targT, pos),
+        value,
+        pos,
+      );
+    } else if (Hhvm.isNullableType(fs, targT)) {
+      HhvmInterop_PropertyGetHelper.InternalCreateNullableFromRetValue::call(
+        fs,
+        Hhvm.getNullableTarg(s, targT, pos),
+        value,
+        pos,
+      )
+    } else {
+      HhvmInterop_PropertyGetHelper.InternalCreateNonNullableFromRetValue::call(
+        fs,
+        targT,
+        value,
+        pos,
+      )
+    };
+  }
+
+  protected fun requestFunctions(
+    s: mutable O.Specializer,
+    targs: Array<Tclass>,
+    _tparamEnv: UnorderedMap<O.GTparam, Tclass>,
+  ): void {
+    pos = this.funInfo.pos;
+    targT = targs[0];
+
+    if (Hhvm.isOptionType(s, targT)) {
+      HhvmInterop_PropertyGetHelper.InternalCreateOptionFromRetValue::request(
+        s,
+        Hhvm.tcGetOptionTarg(s, targT, pos),
+      );
+    } else if (Hhvm.isNullableType(s, targT)) {
+      HhvmInterop_PropertyGetHelper.InternalCreateNullableFromRetValue::request(
+        s,
+        Hhvm.tcGetNullableTarg(s, targT, pos),
+      );
+    } else {
+      HhvmInterop_PropertyGetHelper.InternalCreateNonNullableFromRetValue::request(
+        s,
+        targT,
+      );
+    }
+  }
+}
+
+module end;

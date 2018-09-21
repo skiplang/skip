@@ -1,0 +1,7 @@
+mutable class FunRef(mutable value: String ~> String)
+
+fun main(): void {
+  r = mutable FunRef(_ ~> "Hello");
+  r.!value = (x ~> x);
+  print_raw(r.value("Pass\n"))
+}

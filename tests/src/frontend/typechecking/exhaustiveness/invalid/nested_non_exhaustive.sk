@@ -1,0 +1,14 @@
+base class B {
+  children =
+  | A()
+  | C()
+}
+base class X {
+  children =
+  | Y(B)
+}
+fun test(): String {
+  Y(A()) match {
+  | Y(A()) -> "Fail\n"
+  }
+}

@@ -1,0 +1,48 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module ListAlloc;
+
+base class Tree<T> {
+  children =
+  | Empty()
+  | Node(Tree<T>)
+}
+
+fun make(d: Int): Tree<Int> {
+  if (d == 0) Node(Empty()) else Node(make(d - 1))
+}
+
+fun check(tree: Tree<Int>): Int {
+  tree match {
+  | Empty() -> 0
+  | Node(l) -> 1 + check(l)
+  }
+}
+
+fun check_make(size: Int): Int {
+  check(make(size))
+}
+
+fun loop_depths(size: Int): void {
+  c = 0;
+  for (i in Range(0, size + 1)) {
+    !c = c + check_make(size - i);
+    void
+  };
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  bencher.bench{
+    run => () -> {
+      loop_depths(20000);
+    },
+  }
+}
+
+module end;

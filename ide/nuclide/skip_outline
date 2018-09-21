@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+
+'use strict';
+
+const path = require('path');
+const {init} = require('../../../jslib/init');
+const skip = require('../../../jslib/skip');
+
+// This file gets copied to build/bin/nuclide and run from there.
+function initialize() {
+
+  process.on('uncaughtException', (err) => {
+    console.error(err.toString());
+    process.exit(2);
+  });
+
+  try {
+    const debug = true;
+    return init(path.join(__dirname, '../outline.js'), debug, []);
+  } catch (e) {
+    process.stderr.write(
+      'Error loading outline.js. Did you forget to \'make skip_language_service\'?\n' + e.toString());
+    throw e;
+  }
+}
+
+function readAllStdin() {
+  const stdin = process.stdin;
+  let result = '';
+
+  return new Promise((resolve, reject) => {
+    if (stdin.isTTY) {
+      resolve(result);
+      return;
+    }
+
+    stdin.setEncoding('utf8');
+    stdin.on('data', chunk => {
+      result += chunk;
+    });
+
+    stdin.on('end', () => {
+      resolve(result);
+    });
+
+    stdin.on('error', reject);
+  });
+}
+
+
+// node truncates strings longer than 8k
+function writeToStdout(value) {
+  const MAX_SIZE = 4096;
+  while (value.length > 0) {
+    const chunk = value.substr(0, MAX_SIZE);
+    value = value.substr(MAX_SIZE);
+    process.stdout.write(chunk);
+  }
+}
+
+function run() {
+  let sk;
+  try {
+    sk = initialize();
+  } catch (e) {
+    process.stderr.write('Unable to initialize skip: ' + e.toString());
+    process.exit(1);
+  }
+
+  readAllStdin().then(source => {
+    const fileName = new sk.String('');
+    const skipSource = new sk.String(source);
+
+    try {
+      sk.outline(fileName, skipSource);
+      process.exit(0);
+    } catch (e) {
+      process.stderr.write(e.toString() + '\n');
+      process.stderr.write(e.stack + '\n');
+      process.exit(1);
+    }
+  });
+}
+// Args are: node skip_outline
+run();

@@ -1,0 +1,239 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ * This module defines types that emulate features of the Hack type system and runtime
+ * behavior in Skip: it is intended for use in converting Hack code to Skip and/or
+ * writing Skip code that interoperates with HHVM.
+ *
+ * Design Decisions:
+ * - Low-overhead conversion to/from Hack objects. Types in this module are either primitives
+ *   or simple wrappers around proxies to HHVM objects.
+ * - Represent common idioms in Hack, such as using `mixed`, `arraykey`, and `number` unions.
+ * - Does *not* support phpisms via operator overloading.
+ *
+ * Overview:
+ * - Mixed
+ *   - Null
+ *   - Nonnull
+ *     - Primitive
+ *       - Bool
+ *       - Float
+ *       - Int
+ *       - String
+ *     - Arraybacked
+ *       - Dict
+ *       - Vec
+ *       - Keyset
+ *       - ...
+ *   - Object
+ *      - (optionally extend this)
+ *   - Resource (???)
+ * - Arraykey - an additional base class subclassed by Mixed.Int and Mixed.String.
+ * - Number - an additional base class subclassed by Mixed.Float and Mixed.Int.
+ */
+
+module HH;
+
+base class Mixed {
+  private fun typeError(expectedType: .String): .String {
+    `HH.Mixed: Expected a ${expectedType}`
+  }
+
+  fun isNull(): .Bool {
+    this match {
+    | Null() -> true
+    | _ -> false
+    }
+  }
+
+  fun isBool(): .Bool {
+    this match {
+    | Bool _ -> true
+    | _ -> false
+    };
+  }
+
+  fun expectBool(): .Bool {
+    this match {
+    | Bool(x) -> x
+    | _ -> invariant_violation(this.typeError("Bool"))
+    };
+  }
+
+  fun isFloat(): .Bool {
+    this match {
+    | Float _ -> true
+    | _ -> false
+    };
+  }
+
+  fun expectFloat(): .Float {
+    this match {
+    | Float(x) -> x
+    | _ -> invariant_violation(this.typeError("Float"))
+    };
+  }
+
+  fun isInt(): .Bool {
+    this match {
+    | Int _ -> true
+    | _ -> false
+    };
+  }
+
+  fun expectInt(): .Int {
+    this match {
+    | Int(x) -> x
+    | _ -> invariant_violation(this.typeError("Int"))
+    };
+  }
+
+  fun isString(): .Bool {
+    this match {
+    | String _ -> true
+    | _ -> false
+    };
+  }
+
+  fun expectString(): .String {
+    this match {
+    | String(x) -> x
+    | _ -> invariant_violation(this.typeError("String"))
+    };
+  }
+
+  fun toOption(): ?Mixed {
+    this match {
+    | Null() -> None()
+    | _ -> Some(this)
+    }
+  }
+
+  fun toIntOption(): ?.Int {
+    this match {
+    | Null() -> None()
+    | Int(value) -> Some(value)
+    | _ -> invariant_violation("Unexpected mixed value")
+    }
+  }
+
+  fun toFloatOption(): ?.Float {
+    this match {
+    | Null() -> None()
+    | Float(value) -> Some(value)
+    | _ -> invariant_violation("Unexpected mixed value")
+    }
+  }
+
+  fun toBoolOption(): ?.Bool {
+    this match {
+    | Null() -> None()
+    | Bool(value) -> Some(value)
+    | _ -> invariant_violation("Unexpected mixed value")
+    }
+  }
+
+  fun toStringOption(): ?.String {
+    this match {
+    | Null() -> None()
+    | String(value) -> Some(value)
+    | _ -> invariant_violation("Unexpected mixed value")
+    }
+  }
+}
+
+// A Mixed is either `null` or a non-null value:
+// - Null() represents null
+// - Nonnull() is the base class for all other mixed types
+class Null() extends Mixed
+base class Nonnull extends Mixed
+
+// Primitives
+base class Primitive extends Nonnull
+
+base class Arraykey extends Primitive uses Arraykeylike, Show {
+  // NOTE: mixed types hash the same as the values they wrap to ensure
+  // consistent behavior between a keyed container of e.g. Mixed<Int>
+  // and Int.
+  fun hash(): .Int
+  | Int(x) -> x.hash()
+  | String(x) -> x.hash()
+
+  fun toString(): .String
+  | Int(x) -> x.toString()
+  | String(x) -> x
+}
+trait Arraykeylike extends Hashable, Equality
+
+base class Number extends Primitive
+
+// Primitive types
+class Bool(x: .Bool) extends Primitive
+class Float(x: .Float) extends Primitive, Number
+class Int(x: .Int) extends Primitive, Arraykey, Number {}
+class String(x: .String) extends Primitive, Arraykey {}
+
+// Array-backed types
+// The following classes are used as a workaround for extracting types with
+// tparams (e.g. Map.HH_dict_TODO) from a Mixed. Pattern matching doesn't work in
+// the presence of tprams; instead match a Mixed against one of these types
+// and then extract a specific tparam instantiation with expect():
+//
+// ```
+// x: HH.Mixed = Vector[...];
+// v: Vector.HH_vec_TODO = x match {
+// | HH.Vec _ as vec -> vec.expect<String, Foo>()
+// | _ -> invariant_violation("not an array")
+// };
+// ```
+// Note that `expect()` may throw at runtime if used outside of HHVM. Type
+// parameters are enforced lazily: if the underlying type does not match
+// the expected type it will throw when keys/values are accessed.
+base class Arraybacked extends Nonnull
+
+class Darray(x: .Map<Arraykey, HH.Mixed>) extends Arraybacked
+
+class Dict(x: .Map<Arraykey, HH.Mixed>) extends Arraybacked
+
+class Varray(x: .Vector<HH.Mixed>) extends Arraybacked
+
+class Vec(x: .Vector<HH.Mixed>) extends Arraybacked
+
+class Keyset(x: .Set<Arraykey>) extends Arraybacked
+
+// Hack collections are Objects but have similar type-param issues as
+// arrays so they provide an expect() method similar to the Arraybacked types.
+class Map(x: .Map<Arraykey, HH.Mixed>) extends Object
+
+class Vector(x: .Vector<HH.Mixed>) extends Object
+
+class Set(x: .Set<Arraykey>) extends Object
+
+// Objects
+base class Object extends Nonnull
+
+// Ensure matches on Object can never be exhaustive (require a catchall)
+private class NonexhuastivePlaceholderObject() extends Object
+
+class ProxyObject(x: HhvmInterop.Object) extends Object {}
+
+// Resources
+base class Resource extends Nonnull
+
+// Ensure matches on Resource can never be exhaustive (require a catchall)
+private class NonexhuastivePlaceholderResource() extends Resource
+
+base class Lambda
+class LambdaString(lambda: .String) extends Lambda
+class LambdaObject(lambda: HhvmInterop.Object) extends Lambda
+
+module end;
+
+// Allow unboxed Int/String as keys to HH arrays/collections
+extension class Int uses HH.Arraykeylike
+extension class String uses HH.Arraykeylike

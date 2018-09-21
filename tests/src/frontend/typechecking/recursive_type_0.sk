@@ -1,0 +1,12 @@
+base class List_<T> {
+  children =
+  | Nil()
+}
+
+class Death(f: Array<List_<Int>>)
+
+fun main(): void {
+  nil: List_<Int> = Nil();
+  _ = Death(Array[nil, nil, nil]);
+  print_string("Pass")
+}

@@ -1,0 +1,6 @@
+@annotation
+const s: String = "Pass\n";
+
+fun main(): void {
+  print_raw(s)
+}

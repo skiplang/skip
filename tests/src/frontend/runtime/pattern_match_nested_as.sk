@@ -1,0 +1,17 @@
+class Foo(x: String) {
+  fun p(): String {
+    "P"
+  }
+  fun s(): String {
+    "s"
+  }
+}
+
+fun main(): void {
+  x = Foo("a");
+  print_raw(
+    x match {
+    | s2x @ (s1x @ (px @ Foo(a))) -> px.p() + a + s1x.s() + s2x.s() + "\n"
+    },
+  )
+}

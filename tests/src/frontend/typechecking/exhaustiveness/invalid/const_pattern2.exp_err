@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/const_pattern2.sk", line 8, characters 5-17:
+The following pattern is unused:
+ | "HEY"
+ 6 |   x match {
+ 7 |   | MyString -> "Pass\n"
+ 8 |   | MyOtherString -> "Fail\n"
+   |     ^^^^^^^^^^^^^
+ 9 |   | _ -> "Fail\n"

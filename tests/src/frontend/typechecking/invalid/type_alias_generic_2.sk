@@ -1,0 +1,3 @@
+class Bar<T>{}
+
+type Foo<T> = Baz<T>; /* Unbound name: Baz */

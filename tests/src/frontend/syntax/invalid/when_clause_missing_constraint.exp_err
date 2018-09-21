@@ -1,0 +1,6 @@
+File "./syntax/invalid/when_clause_missing_constraint.sk", line 2, characters 13-13:
+Expected ':'. Found ']'.
+1 | class C<T> {
+2 |   fun m<U>[T](): void { void }
+  |             ^
+3 | }

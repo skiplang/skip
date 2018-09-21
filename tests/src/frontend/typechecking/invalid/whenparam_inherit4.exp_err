@@ -1,0 +1,32 @@
+File "./typechecking/invalid/whenparam_inherit4.sk", line 12, characters 5-7:
+The value returned from the function is incompatible with the return type 'T'
+10 | class Bar<T>() extends Foo<T> {
+11 |   fun foo[T: P](): T {
+12 |     C()
+   |     ^^^
+13 |   }
+
+File "./typechecking/invalid/whenparam_inherit4.sk", line 12, characters 5-7:
+The type: C
+10 | class Bar<T>() extends Foo<T> {
+11 |   fun foo[T: P](): T {
+12 |     C()
+   |     ^^^
+13 |   }
+
+File "./typechecking/invalid/whenparam_inherit4.sk", line 11, characters 20-20:
+Is not a subtype of: T
+ 9 |
+10 | class Bar<T>() extends Foo<T> {
+11 |   fun foo[T: P](): T {
+   |                    ^
+12 |     C()
+
+File "./typechecking/invalid/whenparam_inherit4.sk", line 11, characters 20-20:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+ 9 |
+10 | class Bar<T>() extends Foo<T> {
+11 |   fun foo[T: P](): T {
+   |                    ^
+12 |     C()

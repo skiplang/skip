@@ -1,0 +1,5 @@
+class NoShow{}
+
+fun main(): void {
+  print_raw(`${NoShow{}}`)
+}

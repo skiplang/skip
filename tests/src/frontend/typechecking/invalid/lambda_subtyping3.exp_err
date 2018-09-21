@@ -1,0 +1,31 @@
+File "./typechecking/invalid/lambda_subtyping3.sk", line 16, characters 26-48:
+Constraint not satisfied
+14 |
+15 | class Tester<T: frozen>(x: T) {
+16 |   fun test<T2>[T: T2](f: Tester<T> -> Tester<T2>): this {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^
+17 |     y: Tester<T> = apply(x -> f(x), this);
+
+File "./typechecking/invalid/lambda_subtyping3.sk", line 16, characters 46-47:
+The possibly mutable type 'T2' appeared inside an immutable type.
+14 |
+15 | class Tester<T: frozen>(x: T) {
+16 |   fun test<T2>[T: T2](f: Tester<T> -> Tester<T2>): this {
+   |                                              ^^
+17 |     y: Tester<T> = apply(x -> f(x), this);
+
+File "./typechecking/invalid/lambda_subtyping3.sk", line 15, characters 17-22:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+13 | }
+14 |
+15 | class Tester<T: frozen>(x: T) {
+   |                 ^^^^^^
+16 |   fun test<T2>[T: T2](f: Tester<T> -> Tester<T2>): this {
+
+File "./typechecking/invalid/lambda_subtyping3.sk", line 16, characters 46-47:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try constraining the type parameter to be frozen, for example 'T2: frozen'
+14 |
+15 | class Tester<T: frozen>(x: T) {
+16 |   fun test<T2>[T: T2](f: Tester<T> -> Tester<T2>): this {
+   |                                              ^^
+17 |     y: Tester<T> = apply(x -> f(x), this);

@@ -1,0 +1,149 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The lexer. */
+/*****************************************************************************/
+module Lexer;
+
+// Represents a position while lexing some text.
+// Tracks absolute position.
+// Tracks line/column Position.
+//
+// peek() operations allow interogating characters at or after the current
+// location. Peek()ing beyond the end of the input text is permitted and returns
+// null(0) characters.
+//
+mutable class LexingPosition private {
+  source: String,
+  mutable position: Position,
+  iter: mutable String.StringIterator,
+} {
+  // Create a new LexingPosition positioned at the start of source.
+  static fun create(source: String): mutable LexingPosition {
+    mutable LexingPosition{
+      source,
+      position => Position.start,
+      iter => source.getIter(),
+    };
+  }
+
+  /* Create a new LexingPosition positioned where specified by the
+   * absolute position. The position has to match */
+  static fun createAt(state: LexingPosition): mutable LexingPosition {
+    mutable LexingPosition{
+      source => state.source,
+      position => state.position,
+      iter => state.iter.clone(),
+    }
+  }
+
+  readonly fun saveState(): LexingPosition {
+    LexingPosition{
+      source => this.source,
+      position => this.position,
+      iter => freeze(this.iter),
+    }
+  }
+
+  readonly fun clone(): mutable LexingPosition {
+    mutable LexingPosition{
+      source => this.source,
+      position => this.position,
+      iter => this.iter.clone(),
+    };
+  }
+
+  readonly fun atEnd(): Bool {
+    this.iter.atEnd();
+  }
+
+  // Peek operations.
+  readonly fun peekOffset(offset: Int): Char {
+    static::peekIterOffset(this.iter.clone(), offset);
+  }
+
+  private static fun peekIterCurrent(
+    iter: readonly String.StringIterator,
+  ): Char {
+    iter.current() match {
+    | None() -> Chars.null
+    | Some(ch) -> ch
+    }
+  }
+
+  private static fun peekIterOffset(
+    iter: mutable String.StringIterator,
+    offset: Int,
+  ): Char {
+    invariant(offset >= 0, "No peeking backwards");
+    if (offset == 0) {
+      static::peekIterCurrent(iter);
+    } else {
+      _ = iter.next();
+      static::peekIterOffset(iter, offset - 1);
+    };
+  }
+
+  // Returns the next char. Does not consume any characters.
+  readonly fun peek(): Char {
+    this.peekOffset(0);
+  }
+
+  // Returns true if the char at offset is ch.
+  readonly fun peekCharOffset(ch: Char, offset: Int): Bool {
+    this.peekOffset(offset) == ch;
+  }
+
+  // Returns true if the next char is ch.
+  readonly fun peekChar(ch: Char): Bool {
+    this.peekCharOffset(ch, 0);
+  }
+
+  // Consume a char and return the consumed char.
+  mutable fun next(): Char {
+    result = this.peek();
+    this.advance();
+    result;
+  }
+
+  // Consume a character.
+  mutable fun advance(): void {
+    this.!position = this.iter.next() match {
+    | Some(ch) if (ch == Chars.lineFeed) -> this.position.nextLine()
+    | Some(ch) if (ch == Chars.carriageReturn) ->
+      // Handle windows line endings
+      if (this.peekChar(Chars.lineFeed)) {
+        _ = this.iter.next();
+      };
+      this.position.nextLine()
+    | _ -> this.position.nextColumn()
+    };
+  }
+
+  readonly fun getPosition(): Position {
+    this.position;
+  }
+
+  readonly fun line(): Int {
+    this.getPosition().line();
+  }
+
+  readonly fun getRange(end: readonly LexingPosition): TextRange {
+    TextRange.create(this.position, end.position);
+  }
+
+  readonly fun getText(end: readonly LexingPosition): String {
+    this.getTextOfIter(end.iter);
+  }
+
+  readonly fun getTextOfIter(end: readonly String.StringIterator): String {
+    this.iter.substring(end);
+  }
+}
+
+module end;

@@ -1,0 +1,31 @@
+fun main(): void {
+  x match {
+  // Should not break: not the last one
+  | BinaryExpressionAst{left_operand, operator, right_operand}
+  | x if (operator.isTokenKind(HackToken.EqualKind())) ->
+    void
+
+  // Should not break: no if
+  | BinaryExpressionAst{left_operand, operator, right_operand}
+  | BinaryExpressionAst{left_operand, operator, right_operand} ->
+    void
+
+  // Should not break: small enough
+  | BinaryExpressionAst{left_operand} if (true) -> void
+
+  // Should break
+  | BinaryExpressionAst{
+    left_operand,
+    operator,
+    right_operand,
+  } if (operator.isTokenKind(HackToken.EqualKind())) ->
+    void
+
+  // Should break
+  | (
+    TAst.Pat_type(tid1, None()),
+    TAst.Pat_type(tid2, Some _),
+  ) if (str_of_tid(tid1) == str_of_tid(tid2)) ->
+    void
+  };
+}

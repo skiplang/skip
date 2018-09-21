@@ -1,0 +1,15 @@
+File "./syntax/invalid/foreachfield_arg.sk", line 4, characters 19-19:
+Expected ')'. Found 'non-type identifier'.
+2 | base class B {
+3 |   macro fun m(): void {
+4 |     #forEachField(a) a
+  |                   ^
+5 |   }
+
+File "./syntax/invalid/foreachfield_arg.sk", line 4, characters 18-18:
+ For opening '('
+2 | base class B {
+3 |   macro fun m(): void {
+4 |     #forEachField(a) a
+  |                  ^
+5 |   }

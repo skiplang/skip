@@ -1,0 +1,10 @@
+class Foo<T>(t: T) {
+  fun get(): T {
+    this.t
+  }
+}
+
+fun main(): void {
+  v = Array[Foo("Pass\n"), Foo("fail")];
+  print_raw(v[0].get())
+}

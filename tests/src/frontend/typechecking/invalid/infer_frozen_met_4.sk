@@ -1,0 +1,9 @@
+class Tester() {
+  fun foo<T: frozen>(T): Array<T> {
+    Array[]
+  }
+}
+
+fun test(): void {
+  Tester().foo(mutable Array[])
+}

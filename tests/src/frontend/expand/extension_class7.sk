@@ -1,0 +1,15 @@
+class A
+
+extension class A() {
+  const em: String = "!";
+  fun hello(): String {
+    "Hello"
+  }
+  static fun world(): String {
+    " world"
+  }
+}
+
+fun main(): void {
+  print_raw(A().hello() + A::world() + A::em)
+}

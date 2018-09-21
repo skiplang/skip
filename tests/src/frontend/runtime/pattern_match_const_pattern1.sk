@@ -1,0 +1,16 @@
+const MyInt: Int = 5;
+
+fun main(): void {
+  print_raw(
+    5 match {
+    | 1
+    | 2 ->
+      "Fail\n"
+    | MyInt -> "Pass\n"
+    | 3
+    | 4
+    | _ ->
+      "Fail\n"
+    },
+  )
+}

@@ -1,0 +1,7 @@
+fun matcher(value: Int): Int {
+  value match {
+  | true ->
+    42 // type error
+  | _ -> 43
+  }
+}

@@ -1,0 +1,4 @@
+File "./expand/invalid/extension_class1.sk", line 1, characters 1-9:
+Cannot extend a class that doesn't exist
+1 | extension class X()
+  | ^^^^^^^^^

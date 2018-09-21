@@ -1,0 +1,15 @@
+File "./typechecking/invalid/default_arg_4.sk", line 24, characters 3-5:
+Invalid arguments
+22 |   g = if (p()) dname else dname;
+23 |   g{x => 0};
+24 |   g{}
+   |   ^^^
+25 | }
+
+File "./typechecking/invalid/default_arg_4.sk", line 5, characters 11-11:
+The parameter x is missing
+3 |   void
+4 | }
+5 | fun dname{x: Int = 42}: void {
+  |           ^
+6 |   void

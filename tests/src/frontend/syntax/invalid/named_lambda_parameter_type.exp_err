@@ -1,0 +1,6 @@
+File "./syntax/invalid/named_lambda_parameter_type.sk", line 2, characters 17-24:
+Lambda parameters may not have a default value
+1 | fun main(): String {
+2 |   x: {p: String = "Fail"} ~> void = {p} ~> void;
+  |                 ^^^^^^^^
+3 |   "Fail"

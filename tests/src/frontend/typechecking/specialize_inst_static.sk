@@ -1,0 +1,27 @@
+trait FromSeq<+T> {
+  static fun fromItem(t: T): inst;
+}
+
+base class MySeqBase<+T> uses FromSeq<T> {
+  fun into<U: FromSeq<T>>(cls: Concrete<U>): U {
+    cls::fromItem(this.get())
+  }
+
+  static fun fromItem(t: T): this;
+
+  fun get(): T;
+}
+
+class MySeq<+T>(t: T) extends MySeqBase<T> {
+  static fun fromItem(t: T): this {
+    MySeq(t)
+  }
+
+  fun get(): T {
+    this.t
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

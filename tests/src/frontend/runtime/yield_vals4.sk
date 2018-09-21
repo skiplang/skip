@@ -1,0 +1,15 @@
+fun enumerate<T, U: readonly Sequence<T>>(
+  items: U,
+): mutable Iterator<(Int, T)> {
+  count = 0;
+  for (v in items) {
+    yield (count, v);
+    !count = count + 1
+  }
+}
+
+fun main(): void {
+  for (x in enumerate(Array["Cow", "Dog", "Ant"])) {
+    print_string(x.toString())
+  }
+}

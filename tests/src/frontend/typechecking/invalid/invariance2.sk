@@ -1,0 +1,26 @@
+// covariant type params behave invariantly on mutable instances
+//
+mutable class StringFun<-T>(mutable value: T ~> String)
+
+fun store(stringFun: mutable StringFun<Some<String>>): void {
+  f: Some<String> ~> String = (
+    j ~>
+      j match {
+      | Some(x) -> x
+      }
+  );
+  stringFun.!value = f
+}
+
+fun main(): void {
+  stringFun = mutable StringFun<?String>(m ~>
+    m match {
+    | None() -> "None"
+    | Some(s) -> s
+    }
+  );
+  store(stringFun);
+  print_raw(
+    stringFun.value(None()), // boom
+  )
+}

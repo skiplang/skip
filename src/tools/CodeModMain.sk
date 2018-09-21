@@ -1,0 +1,132 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip CodeMod
+//
+// Define your transformer by creating a class derived from ParseTree.CodeMod.
+// Implement its transformTree() method, and call it from transformSource().
+//
+// To run your codemod:
+//   cd build && ninja skip_codemod
+//   build/bin/skip_codemod <source-file>
+//
+// Once you've run your code mod, archive it in CodeModTransform.sk
+
+module alias P = ParseTree;
+module alias AP = ArgumentParser;
+
+type ParseTreeList = P.ParseTreeList;
+
+class CodeModArguments{
+  files: Vector<String>,
+  write: Bool,
+  transformIn: ?String,
+  transformOut: ?String,
+}
+
+const help: String = "Usage: skip_codemod [--write] <list_of_sk_files>";
+const schema: Array<AP.Param> = Array[
+  AP.BoolParam{name => "help", negatable => false, help => "Show help"},
+  AP.BoolParam{
+    name => "write",
+    negatable => false,
+    help => "Update files in-place",
+  },
+  AP.StringParam{
+    name => "transform-in",
+    help => "A syntax template to match against",
+  },
+  AP.StringParam{
+    name => "transform-out",
+    help => "A syntax template for rewriting ASTs that match the --transform-in template",
+  },
+];
+
+fun transformSource(_source: String): String {
+  // Add your codemod to CodeModTransform.sk and then apply it here:
+  // CodeModTransforms.FooCodeMod().transformText(source)
+  invariant_violation("nothing to do")
+}
+
+fun transformFile(filename: String, transFn: String -> String): String {
+  source = FileSystem.readTextFile(filename);
+  transFn(source);
+}
+
+fun transformFileInPlace(filename: String, transFn: String -> String): void {
+  try {
+    result = transformFile(filename, transFn);
+    FileSystem.writeTextFile(filename, result);
+  } catch {
+  | e ->
+    print_error_ln("Error codemod-ing '" + filename + "': " + e.getMessage())
+  }
+}
+
+// Modding a dir in place becomes:
+//    find dir -name '*.sk' | xargs skip_codemod --write
+fun main(): void {
+  args = AP.parse(schema, arguments()) match {
+  | Success(results) ->
+    if (!results.rest.isEmpty()) {
+      print_error_ln("'--' option not supported");
+      print_error_ln(AP.help(schema));
+      exit(1);
+    };
+    if (results.getBool("help")) {
+      print_string(help);
+      print_string(AP.help(schema));
+      exit(0)
+    };
+    CodeModArguments{
+      files => results.unknown,
+      write => results.getBool("write"),
+      transformIn => results.maybeGetString("transform-in"),
+      transformOut => results.maybeGetString("transform-out"),
+    }
+  | Failure(exn) ->
+    print_error_ln(exn.getMessage().trim());
+    print_error_ln(help);
+    print_error_ln(AP.help(schema));
+    exit(1)
+  };
+
+  transFn = (args.transformIn, args.transformOut) match {
+  | (Some(in_), Some(out)) ->
+    source ~> {
+      CodeModTemplate::create(in_, out).transformText(source);
+    }
+  | (None _, None _) -> transformSource
+  | _ ->
+    print_error_ln(
+      "If --transform-in is specified then --transform-out must also be specified",
+    );
+    exit(1)
+  };
+
+  if (args.write) {
+    // 0 or more files in place
+    _ = args.files.parallelMap(filename ~> {
+      print_string(filename);
+      transformFileInPlace(filename, transFn);
+    });
+  } else if (args.files.isEmpty()) {
+    // stdin -> stdout
+    print_raw(transFn(read_stdin()));
+  } else if (args.files.size() == 1) {
+    // file -> stdout
+    print_raw(transformFile(args.files.first(), transFn));
+  } else {
+    // multi-file no write
+    print_error_ln(
+      "Use the --write option to codemod multiple files in places.",
+    );
+    print_error_ln("TODO: Support codemod-ing to a destination directory.");
+    exit(1);
+  };
+  void;
+}

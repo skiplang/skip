@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/nested_overlapping2.sk", line 14, characters 5-18:
+The following pattern is unused:
+ | Y(A(C(Int _)))
+12 |   | Y(A(C(1))) -> "Fail\n"
+13 |   | Y(A(_)) -> "Fail\n"
+14 |   | Y(A(C(Int _))) -> "Fail\n"
+   |     ^^^^^^^^^^^^^^
+15 |   | Y(C(1)) -> "Fail\n"

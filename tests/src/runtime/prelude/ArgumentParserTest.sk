@@ -1,0 +1,315 @@
+module ArgumentParser;
+
+@test
+fun testParseBool(): void {
+  schema = Array[BoolParam{name => "foo"}];
+  r = parse(schema, Array["--foo"]).fromSuccess();
+  assertEqual(r.getBool("foo"), true);
+  !r = parse(schema, Array["--no-foo"]).fromSuccess();
+  assertEqual(r.getBool("foo"), false);
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.getBool("foo"), false);
+
+  !schema = Array[BoolParam{name => "foo", value => false}];
+  !r = parse(schema, Array["--foo"]).fromSuccess();
+  assertEqual(r.getBool("foo"), false);
+  !r = parse(schema, Array["--no-foo"]).fromSuccess();
+  assertEqual(r.getBool("foo"), true);
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.getBool("foo"), true);
+}
+
+@test
+fun testParseInt(): void {
+  schema = Array[IntParam{name => "n"}];
+  r = parse(schema, Array["--n", "1"]).fromSuccess();
+  assertEqual(r.maybeGetInt("n"), Some(1));
+  assertEqual(r.getInt("n"), 1);
+  !r = parse(schema, Array["--n", "-1"]).fromSuccess();
+  assertEqual(r.maybeGetInt("n"), Some(-1));
+  assertEqual(r.getInt("n"), -1);
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.maybeGetInt("n"), None());
+  assertThrows(() -> r.getInt("n"));
+
+  assertTrue(parse(schema, Array["--n", "notanint"]) is Failure _);
+  assertTrue(parse(schema, Array["--n", "--flag"]) is Failure _);
+  assertTrue(parse(schema, Array["--n", "42.0"]) is Failure _);
+}
+
+@test
+fun testParseString(): void {
+  schema = Array[StringParam{name => "s"}];
+  r = parse(schema, Array["--s", "1"]).fromSuccess();
+  assertEqual(r.maybeGetString("s"), Some("1"));
+  assertEqual(r.getString("s"), "1");
+  !r = parse(schema, Array["--s", "0.0"]).fromSuccess();
+  assertEqual(r.maybeGetString("s"), Some("0.0"));
+  assertEqual(r.getString("s"), "0.0");
+  !r = parse(schema, Array["--s", "abc"]).fromSuccess();
+  assertEqual(r.maybeGetString("s"), Some("abc"));
+  assertEqual(r.getString("s"), "abc");
+  !r = parse(schema, Array["--s", "--abc"]).fromSuccess();
+  assertEqual(r.maybeGetString("s"), Some("--abc"));
+  assertEqual(r.getString("s"), "--abc");
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.maybeGetString("s"), None());
+  assertThrows(() -> r.getString("s"));
+}
+
+@test
+fun testParseStringArray(): void {
+  schema = Array[StringArrayParam{name => "s"}];
+  r = parse(schema, Array["--s", "1"]).fromSuccess();
+  assertEqual(r.maybeGetStringArray("s"), Some(Vector["1"]));
+  assertEqual(r.getStringArray("s"), Vector["1"]);
+  !r = parse(schema, Array["--s", "1", "--s", "b"]).fromSuccess();
+  assertEqual(r.maybeGetStringArray("s"), Some(Vector["1", "b"]));
+  assertEqual(r.getStringArray("s"), Vector["1", "b"]);
+  !r = parse(
+    schema,
+    Array["--s", "1", "--s", "b", "--s", "42.0"],
+  ).fromSuccess();
+  assertEqual(r.maybeGetStringArray("s"), Some(Vector["1", "b", "42.0"]));
+  assertEqual(r.getStringArray("s"), Vector["1", "b", "42.0"]);
+  !r = parse(schema, Array["--s", "--xyz"]).fromSuccess();
+  assertEqual(r.maybeGetStringArray("s"), Some(Vector["--xyz"]));
+  assertEqual(r.getStringArray("s"), Vector["--xyz"]);
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.maybeGetStringArray("s"), None());
+}
+
+@test
+fun testParseMultiple(): void {
+  schema = Array[
+    BoolParam{name => "bool"},
+    StringParam{name => "str"},
+    StringArrayParam{name => "strList"},
+    IntParam{name => "int"},
+  ];
+  r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.getBool("bool"), false);
+  assertEqual(r.maybeGetInt("int"), None());
+  assertEqual(r.maybeGetString("str"), None());
+  assertEqual(r.maybeGetStringArray("strList"), None());
+  !r = parse(
+    schema,
+    Array[
+      "--bool",
+      "--strList",
+      "a",
+      "--str",
+      "abc",
+      "--int",
+      "42",
+      "--strList",
+      "b",
+    ],
+  ).fromSuccess();
+  assertEqual(r.getBool("bool"), true);
+  assertEqual(r.maybeGetInt("int"), Some(42));
+  assertEqual(r.getInt("int"), 42);
+  assertEqual(r.maybeGetString("str"), Some("abc"));
+  assertEqual(r.getString("str"), "abc");
+  assertEqual(r.maybeGetStringArray("strList"), Some(Vector["a", "b"]));
+  assertEqual(r.getStringArray("strList"), Vector["a", "b"]);
+}
+
+@test
+fun testValidation(): void {
+  validateStr = str ~>
+    if (str.isEmpty()) Failure("Must be non-empty") else Success(void);
+  validateInt = int ~>
+    if (int <= 0) Failure("Must be positive") else Success(void);
+  schema = Array[
+    StringParam{name => "str", validate => validateStr},
+    StringArrayParam{name => "strList", validate => validateStr},
+    IntParam{name => "int", validate => validateInt},
+  ];
+  // valid cases
+  r = parse(schema, Array["--str", "a"]);
+  assertEqual(r.fromSuccess().getString("str"), "a");
+  !r = parse(schema, Array["--strList", "a"]);
+  assertEqual(r.fromSuccess().getStringArray("strList"), Vector["a"]);
+  !r = parse(schema, Array["--int", "1"]);
+  assertEqual(r.fromSuccess().getInt("int"), 1);
+  // invalid cases
+  !r = parse(schema, Array["--str", ""]);
+  assertEqual(
+    r.fromFailure().getMessage(),
+    "Invalid value for argument 'str'. Must be non-empty.",
+  );
+  !r = parse(schema, Array["--strList", ""]);
+  assertEqual(
+    r.fromFailure().getMessage(),
+    "Invalid value for argument 'strList'. Must be non-empty.",
+  );
+  !r = parse(schema, Array["--int", "0"]);
+  assertEqual(
+    r.fromFailure().getMessage(),
+    "Invalid value for argument 'int'. Must be positive.",
+  );
+}
+
+@test
+fun testParseReqired(): void {
+  schema = Array[
+    StringParam{name => "str", required => true},
+    StringArrayParam{name => "strList", required => true},
+    IntParam{name => "int", required => true},
+  ];
+  r = parse(
+    schema,
+    Array["--strList", "a", "--str", "abc", "--int", "42", "--strList", "b"],
+  ).fromSuccess();
+  assertEqual(r.maybeGetInt("int"), Some(42));
+  assertEqual(r.getInt("int"), 42);
+  assertEqual(r.maybeGetString("str"), Some("abc"));
+  assertEqual(r.getString("str"), "abc");
+  assertEqual(r.maybeGetStringArray("strList"), Some(Vector["a", "b"]));
+  assertEqual(r.getStringArray("strList"), Vector["a", "b"]);
+
+  assertTrue(parse(schema, Array["--str", "abc", "--int", "42"]) is Failure _);
+  assertTrue(
+    parse(schema, Array["--int", "42", "--strList", "b"]) is Failure _,
+  );
+  assertTrue(
+    parse(schema, Array["--str", "abc", "--strList", "b"]) is Failure _,
+  );
+  assertTrue(parse(schema, Array[]) is Failure _);
+}
+
+@test
+fun testParseDefault(): void {
+  schema = Array[
+    StringParam{name => "str", default => Some("")},
+    StringArrayParam{name => "strList", default => Some(Vector[])},
+    IntParam{name => "int", default => Some(0)},
+  ];
+  r = parse(
+    schema,
+    Array["--strList", "a", "--str", "abc", "--int", "42", "--strList", "b"],
+  ).fromSuccess();
+  assertEqual(r.maybeGetInt("int"), Some(42));
+  assertEqual(r.getInt("int"), 42);
+  assertEqual(r.maybeGetString("str"), Some("abc"));
+  assertEqual(r.getString("str"), "abc");
+  assertEqual(r.maybeGetStringArray("strList"), Some(Vector["a", "b"]));
+  assertEqual(r.getStringArray("strList"), Vector["a", "b"]);
+
+  !schema = Array[
+    StringParam{name => "str", default => Some("abc")},
+    StringArrayParam{name => "strList", default => Some(Vector["x", "y", "2"])},
+    IntParam{name => "int", default => Some(42)},
+  ];
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.maybeGetInt("int"), Some(42));
+  assertEqual(r.getInt("int"), 42);
+  assertEqual(r.maybeGetString("str"), Some("abc"));
+  assertEqual(r.getString("str"), "abc");
+  assertEqual(r.maybeGetStringArray("strList"), Some(Vector["x", "y", "2"]));
+  assertEqual(r.getStringArray("strList"), Vector["x", "y", "2"]);
+}
+
+@test
+fun testParseRestUnknown(): void {
+  schema = Array[
+    BoolParam{name => "bool"},
+    StringParam{name => "str"},
+    StringArrayParam{name => "strList"},
+    IntParam{name => "int"},
+  ];
+  r = parse(
+    schema,
+    Array["--xyz", "xyz", "--", "rest", "rest2", "--", "rest3"],
+  ).fromSuccess();
+  assertEqual(r.getBool("bool"), false);
+  assertEqual(r.maybeGetInt("int"), None());
+  assertEqual(r.maybeGetString("str"), None());
+  assertEqual(r.maybeGetStringArray("strList"), None());
+  assertEqual(r.unknown, Vector["--xyz", "xyz"]);
+  assertEqual(r.hasRest, true);
+  assertEqual(r.rest, Vector["rest", "rest2", "--", "rest3"]);
+  !r = parse(
+    schema,
+    Array[
+      "--bool",
+      "--strList",
+      "a",
+      "--str",
+      "abc",
+      "--int",
+      "42",
+      "--strList",
+      "b",
+      "--xyz",
+      "xyz",
+      "--",
+      "rest",
+    ],
+  ).fromSuccess();
+  assertEqual(r.getBool("bool"), true);
+  assertEqual(r.maybeGetInt("int"), Some(42));
+  assertEqual(r.maybeGetString("str"), Some("abc"));
+  assertEqual(r.maybeGetStringArray("strList"), Some(Vector["a", "b"]));
+  assertEqual(r.unknown, Vector["--xyz", "xyz"]);
+  assertEqual(r.hasRest, true);
+  assertEqual(r.rest, Vector["rest"]);
+
+  !r = parse(schema, Array[]).fromSuccess();
+  assertEqual(r.unknown, Vector[]);
+  assertEqual(r.hasRest, false);
+  assertEqual(r.rest, Vector[]);
+}
+
+@test
+fun testHelp(): void {
+  dedent = s ~>
+    s.split("\n").filter(s ~> !s.isEmpty()).map(s ~> s.trim()).collect(Vector);
+  schema = Array[
+    BoolParam{name => "bool", help => "a toggle."},
+    StringParam{name => "str", help => "a string."},
+    StringArrayParam{name => "strList", help => "a list of strings."},
+    IntParam{name => "int", help => "an int.", required => true},
+  ];
+  assertEqual(
+    dedent(help(schema)),
+    dedent(
+      `
+--bool: a toggle.
+--no-bool: inverse of --bool.
+--str <string>: (optional) a string.
+--strList <string>: (optional) a list of strings.
+--int <int>: (required) an int.`,
+    ),
+  )
+}
+
+@test
+fun testHelpDefault(): void {
+  dedent = s ~>
+    s.split("\n").filter(s ~> !s.isEmpty()).map(s ~> s.trim()).collect(Vector);
+  schema = Array[
+    BoolParam{name => "bool", help => "a toggle."},
+    StringParam{name => "str", help => "a string.", default => Some("abc")},
+    StringArrayParam{
+      name => "strList",
+      help => "a list of strings.",
+      default => Some(Vector["x", "y"]),
+    },
+    IntParam{name => "int", help => "an int.", default => Some(42)},
+  ];
+  assertEqual(
+    dedent(help(schema)),
+    dedent(
+      `
+--bool: a toggle.
+--no-bool: inverse of --bool.
+--str <string>: (optional, default 'abc') a string.
+--strList <string>: (optional, default ['x', 'y']) a list of strings.
+--int <int>: (optional, default 42) an int.`,
+    ),
+  )
+}
+
+module end;

@@ -1,0 +1,103 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Common lowering passes shared by all backends                             */
+/*****************************************************************************/
+module alias O = OuterIst;
+
+module alias OU = SkipOuterIstUtils;
+
+module alias AU = SkipAstUtils;
+
+/*****************************************************************************/
+/* Add an alias for the 'this' local variable in all instance methods */
+/* Add an alias for the 'static' local variable in all static methods */
+/* TODO: Move 'static' local in instance methods here from skipNaming */
+/*****************************************************************************/
+module SkipLowerOuterIst;
+
+// OuterIst comes out of SkipMakeOuterIst.program with code still in TypedAst
+// form (code = function/method bodies, const initializers, param/class param
+// default initializers).
+//
+
+// converts TypedAst code bodies to unlowered OuterIst
+mutable class EnsureOuterIstVisitor(new_id: () -> Int) extends OU.Visitor {
+  readonly fun getVisitorName(): String {
+    "EnsureOuterIstVisitor";
+  }
+
+  mutable fun initializer(i: O.Initializer): (Bool, O.Initializer) {
+    i match {
+    | O.TypedInit(expr) ->
+      (true, SkipMakeOuterIst.initializer(this.new_id, expr))
+    | O.OuterInit _ -> (false, i)
+    }
+  }
+
+  mutable fun body(b: O.Body): (Bool, O.Body) {
+    b match {
+    | O.TypedBody(expr) -> (true, SkipMakeOuterIst.body(this.new_id, expr))
+    | O.OuterBody _ -> (false, b)
+    }
+  }
+}
+
+fun loweringPasses(
+  new_id: () -> Int,
+  class_defs: UMap<O.ClassDef>,
+): Array<mutable OU.Visitor> {
+  Array[
+    mutable EnsureOuterIstVisitor(new_id),
+    mutable SkipLowerMatches.MatchCompiler(new_id, class_defs),
+    mutable SkipOptimizeLocals.LocalsOptimizer(new_id),
+  ]
+}
+
+fun loweringPipeline(
+  new_id: () -> Int,
+  class_defs: UMap<O.ClassDef>,
+): mutable OU.FunctionLevelVisitorPipeline {
+  passes = loweringPasses(new_id, class_defs);
+  mutable OU.FunctionLevelVisitorPipeline(passes)
+}
+
+// NBE lowers definitions (class_param(), const_def(), fun_def(), method_def())
+// one at a time, converts them immediately to IR, and does optimizations on
+// that
+//
+
+fun class_params(
+  class_params: O.ClassParams,
+  program: O.Program,
+): O.ClassParams {
+  new_id = sk_create_counter();
+  pipe = loweringPipeline(new_id, program.class_defs);
+  pipe.class_params(class_params).i1
+}
+
+fun const_def(const_def: O.ConstDef, program: O.Program): O.ConstDef {
+  new_id = sk_create_counter();
+  pipe = loweringPipeline(new_id, program.class_defs);
+  pipe.const_def(const_def).i1
+}
+
+fun fun_def(fun_def: O.FunDef, program: O.Program): O.FunDef {
+  new_id = sk_create_counter();
+  pipe = loweringPipeline(new_id, program.class_defs);
+  pipe.fun_def(fun_def).i1
+}
+
+fun method_def(
+  method_def: O.MethodDef,
+  program: OuterIst.Program,
+): O.MethodDef {
+  new_id = sk_create_counter();
+  pipe = loweringPipeline(new_id, program.class_defs);
+  pipe.method_def(method_def).i1
+}

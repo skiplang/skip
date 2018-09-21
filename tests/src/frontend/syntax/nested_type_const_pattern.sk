@@ -1,0 +1,13 @@
+base class Foo {
+  type T: Test.MixedScalar;
+
+  static fun isValid(x: Test.MixedScalar): Bool {
+    (x, x) match {
+    | (this::T _, this::T _) -> true
+    | _ -> false
+    }
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

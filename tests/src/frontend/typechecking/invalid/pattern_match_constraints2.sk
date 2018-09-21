@@ -1,0 +1,10 @@
+class C1()
+class C2()
+base class Bar<+T>
+class Foo() extends Bar<C2>
+
+fun shouldFail<T: C1>(x: Bar<T>): void {
+  x match {
+  | Foo() -> void
+  }
+}

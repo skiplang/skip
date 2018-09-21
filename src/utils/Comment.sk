@@ -1,0 +1,28 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Token;
+
+base class CommentKind uses Show, Equality, Hashable {}
+
+class Comment{
+  kind: CommentKind,
+  // Range includes the entire range of the comment including leading //, /*
+  // and trailing */, NewLine.
+  range: TextRange,
+  // The text of the comment. Includes the leading //, /* and trailing */.
+  // Will include the terminating NewLine for LineComments if one was present;
+  // A Line comment will not include a terminating NewLine if it occurs on the
+  // last line of the text.
+  value: String,
+} uses Show, Equality, Hashable {
+  fun toString(): String {
+    "(" + this.kind + "," + this.value + ", " + this.range + ")"
+  }
+}
+
+module end;

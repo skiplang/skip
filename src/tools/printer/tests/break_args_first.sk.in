@@ -1,0 +1,10 @@
+fun combine<T1, T2, T3>(values1: List<T1>, values2: List<T2>, values3: List<T3>): List<(T1, T2, T3)> {
+  void
+}
+
+
+class X() {
+  static fun combine<T1, T2>(values1: List<T1>, values2: List<T2>): List<(T1, T2)> {
+    void
+  }
+}

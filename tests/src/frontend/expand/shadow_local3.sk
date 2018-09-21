@@ -1,0 +1,17 @@
+module M;
+
+class Foo(value: String)
+
+const x: Int = 42;
+
+fun bar(foo: Foo): String {
+  foo match {
+  | Foo(x) -> x
+  }
+}
+
+module end;
+
+fun main(): void {
+  print_raw(M.bar(M.Foo("Pass\n")))
+}

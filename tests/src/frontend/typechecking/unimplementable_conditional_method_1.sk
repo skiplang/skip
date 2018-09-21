@@ -1,0 +1,10 @@
+base class Seqy<T> {
+  fun sumInt[T: Int](): Int;
+  fun filterNone<U>[T: ?U](): Seqy<U>;
+}
+
+class StringSeqy() extends Seqy<String>
+
+fun main(): void {
+  print_string("Pass")
+}

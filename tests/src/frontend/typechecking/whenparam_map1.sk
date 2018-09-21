@@ -1,0 +1,16 @@
+class Foo<+T: frozen>(x: T) {
+  fun watchit<T2: frozen>[T: T2](): Foo<T2> {
+    new_this: Foo<T2> = this;
+    x2 = new_this.x;
+    Foo(x2)
+  }
+}
+
+fun pass(): String {
+  "Pass\n"
+}
+
+fun main(): void {
+  f = Foo(pass()).watchit();
+  print_raw(f.x)
+}

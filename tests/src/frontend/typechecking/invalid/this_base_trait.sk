@@ -1,0 +1,25 @@
+trait Addish {
+  fun bad(this): this;
+}
+
+base class Arry uses Addish
+class Inty(x: Int) extends Arry {
+  fun bad(x: this): this {
+    Inty(x.x + this.x)
+  }
+}
+
+class Stringy(x: String) extends Arry {
+  fun bad(x: this): this {
+    Stringy(x.x + this.x)
+  }
+}
+
+fun tester<T: Addish>(x: T, y: T): T {
+  x.bad(y)
+}
+
+fun main(): void {
+  _ = tester(Inty(42), Stringy(""));
+  print_raw("NO")
+}

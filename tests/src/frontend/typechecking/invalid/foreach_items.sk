@@ -1,0 +1,13 @@
+class MyClass()
+
+fun no1(): void {
+  for (_ in MyClass()) void
+}
+
+fun no2(): void {
+  for (_ => _ in MyClass()) void
+}
+
+fun no3(): void {
+  for ((_, _, _) in MyClass()) void
+}

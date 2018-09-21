@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tparam_super1.sk", line 9, characters 8-23:
+Constraint not satisfied
+ 7 | fun main(): void {
+ 8 |   f = Foo(SortedMap[].set(0, 100));
+ 9 |   f2 = f.bigAdd("Fail");
+   |        ^^^^^^^^^^^^^^^^
+10 |   debug(f2);
+
+File "./typechecking/invalid/tparam_super1.sk", line 8, characters 30-32:
+The type: Int
+ 6 |
+ 7 | fun main(): void {
+ 8 |   f = Foo(SortedMap[].set(0, 100));
+   |                              ^^^
+ 9 |   f2 = f.bigAdd("Fail");
+
+File "./typechecking/invalid/tparam_super1.sk", line 9, characters 17-22:
+Does not share a common super type with: String
+ 7 | fun main(): void {
+ 8 |   f = Foo(SortedMap[].set(0, 100));
+ 9 |   f2 = f.bigAdd("Fail");
+   |                 ^^^^^^
+10 |   debug(f2);

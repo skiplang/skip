@@ -1,0 +1,47 @@
+File "./typechecking/invalid/type_alias_generic_7.sk", line 12, characters 3-16:
+The value returned from the function is incompatible with the return type '(Triple<Bool, String, Int> = (Bool, String, Int))'
+10 |
+11 | fun no1(): Triple<Bool, String, Int> {
+12 |   (0, "", false)
+   |   ^^^^^^^^^^^^^^
+13 | }
+
+File "./typechecking/invalid/type_alias_generic_7.sk", line 12, characters 4-4:
+The type: Int
+10 |
+11 | fun no1(): Triple<Bool, String, Int> {
+12 |   (0, "", false)
+   |    ^
+13 | }
+
+File "./typechecking/invalid/type_alias_generic_7.sk", line 11, characters 19-22:
+Is not a subtype of: Bool
+ 9 | type MM<K, V> = MyMap<K, V>;
+10 |
+11 | fun no1(): Triple<Bool, String, Int> {
+   |                   ^^^^
+12 |   (0, "", false)
+
+File "./typechecking/invalid/type_alias_generic_7.sk", line 15, characters 3-16:
+The value returned from the function is incompatible with the return type '(MM<P, String> = MyMap<P, String>)'
+13 | }
+14 | fun no2(): MM<P, String> {
+15 |   MyMap("", L());
+   |   ^^^^^^^^^^^^^^
+16 | }
+
+File "./typechecking/invalid/type_alias_generic_7.sk", line 15, characters 9-10:
+The type: String
+13 | }
+14 | fun no2(): MM<P, String> {
+15 |   MyMap("", L());
+   |         ^^
+16 | }
+
+File "./typechecking/invalid/type_alias_generic_7.sk", line 14, characters 15-15:
+Is not a subtype of: P
+12 |   (0, "", false)
+13 | }
+14 | fun no2(): MM<P, String> {
+   |               ^
+15 |   MyMap("", L());

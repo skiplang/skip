@@ -1,0 +1,12 @@
+mutable class Foo() {
+  mutable fun method(Int): void {
+    void
+  }
+}
+
+fun main(): void {
+  foo = mutable Foo();
+  fakeMethod: Int -> void = (_ -> void);
+  foo.!method = fakeMethod;
+  print_raw("Fail")
+}

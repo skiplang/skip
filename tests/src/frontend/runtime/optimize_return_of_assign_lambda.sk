@@ -1,0 +1,9 @@
+fun main(): void {
+  s = "init";
+  !s = "Fail";
+  lam = () -> {
+    !s = "Pass\n"
+  };
+  lam();
+  print_raw(s);
+}

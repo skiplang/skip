@@ -1,0 +1,6 @@
+class B<T: String>() {
+  const x: String = {
+    _ = T;
+    "FAIL"
+  };
+}

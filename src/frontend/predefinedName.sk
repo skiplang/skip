@@ -1,0 +1,60 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module PredefinedName;
+
+// contextual keywords
+const base: String = "base";
+const default: String = "default";
+const end: String = "end";
+const extension: String = "extension";
+const from: String = "from";
+const inst: String = "inst";
+const match: String = "match";
+const is: String = "is";
+const nonNullable: String = "nonNullable";
+const type: String = "type";
+const underscore: String = "_";
+const value: String = "value";
+const with: String = "with";
+const alias: String = "alias";
+
+// keyword aliases
+const guard: String = "guard";
+const when: String = "when";
+const where: String = "where";
+
+// Class Names
+const option: String = "Option";
+
+// Error Messages
+const public: String = "public";
+const fn: String = "fn";
+const func: String = "func";
+const function: String = "function";
+const var: String = "var";
+const val: String = "val";
+const let: String = "let";
+
+fun contextualKeywords(): List<String> {
+  List<String>[
+    base,
+    default,
+    end,
+    extension,
+    from,
+    inst,
+    match,
+    nonNullable,
+    type,
+    underscore,
+    value,
+    with,
+  ]
+}
+
+module end;

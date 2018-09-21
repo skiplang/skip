@@ -1,0 +1,7 @@
+fun f(p: Int, p: String): void {
+  p
+}
+
+fun main(): void {
+  print_raw("Fail")
+}

@@ -1,0 +1,37 @@
+@serialize
+class Foo<T1, T2, T3>(
+  name: String,
+  vec1: Vector<T1>,
+  vec2: Vector<T2>,
+  opt: ?T3,
+) uses
+  Equality[T1: Equality, T2: Equality, T3: Equality],
+  Show[T1: Show, T2: Show, T3: Show],
+{
+  fun toString[T1: Show, T2: Show, T3: Show](): String {
+    `Foo(${this.name}, ${this.vec1}, ${this.vec2}, ${this.opt})`
+  }
+}
+
+fun main(): void {
+  assertSerializes(
+    `{"name": "test", "vec1": [], "vec2": [], "opt": null}`,
+    Foo::meta(Int::meta, Int::meta, Int::meta),
+    Foo("test", Vector[], Vector[], (None() : ?Int)),
+  );
+  assertSerializes(
+    `{"name": "", "vec1": [{}, {"a": 1}], "vec2": [1], "opt": false}`,
+    Foo::meta(
+      Map::meta(String::meta, Int::meta),
+      Option::meta(Int::meta),
+      Bool::meta,
+    ),
+    Foo(
+      "",
+      Vector[Map[], Map["a" => 1]],
+      Vector[(Some(1) : ?Int)],
+      Some(false),
+    ),
+  );
+  print_string("Pass")
+}

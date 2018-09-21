@@ -1,0 +1,6 @@
+File "./syntax/invalid/under_ident_1.sk", line 2, characters 7-7:
+Cannot use '_' as a name
+1 | class Foo<T> {
+2 |   fun _(): void { void }
+  |       ^
+3 | }

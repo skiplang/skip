@@ -1,0 +1,43 @@
+{
+  "docs": {
+    "Getting Started": [
+      "getting_started",
+      "videos"
+    ],
+    "Language": [
+      "hello_world",
+      "functions",
+      "control_flow",
+      "closures",
+      "lvalues",
+      "classes",
+      "generics",
+      "traits",
+      "static_methods",
+      "extension_classes",
+      "deferred_methods",
+      "inst",
+      "base_classes",
+      "value_classes",
+      "tuples",
+      "variance",
+      "pattern_matching",
+      "mutability",
+      "nullability",
+      "type_definitions",
+      "string_interpolation",
+      "modules",
+      "macros"
+    ],
+    "Debugging": [
+      "debugging"
+    ]
+  },
+  "stdlib": {
+    "Core Types": ["bool", "char", "float", "int", "string", "option", "result"],
+    "Traits": ["equality", "hashable", "orderable", "show"],
+    "Collections": ["array", "map", "set", "vector", "iterator"],
+    "Utilities": ["range", "random", "parallel", "filesystem", "path", "json"],
+    "Integer Types": ["int8", "int16", "int32", "uint8", "uint16", "uint32", "integral"]
+  }
+}

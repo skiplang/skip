@@ -1,0 +1,11 @@
+mutable class Foo(mutable f: () ~> void)
+mutable class Bar<T>(mutable v: T)
+
+fun main(): void {
+  f = () ~> void;
+  _ = freeze(mutable Foo(f));
+  _ = Foo(f);
+  _ = freeze(mutable Bar(f));
+  _ = Bar(f);
+  print_string("Pass")
+}

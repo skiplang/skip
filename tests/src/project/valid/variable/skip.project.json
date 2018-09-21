@@ -1,0 +1,26 @@
+{
+  "skipVersion": "1.0",
+  "variables": {
+    "var": {
+      "values": ["v1", "v2"],
+      "default": "v1"
+    }
+  },
+  "programUnits": {
+    "program": {
+      "kind": "Program",
+      "sources": [ "t.sk" ],
+      "parameters": {
+        "var": {
+          "v1": {
+            "sources": [ "t1.sk" ]
+          },
+          "v2": {
+            "sources": [ "t2.sk" ]
+          }
+        }
+      }
+    }
+  },
+  "default": "program"
+}

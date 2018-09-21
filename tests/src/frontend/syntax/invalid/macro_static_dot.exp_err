@@ -1,0 +1,7 @@
+File "./syntax/invalid/macro_static_dot.sk", line 3, characters 5-14:
+Expected expression
+1 | trait T {
+2 |   macro fun f(): String {
+3 |     #ThisClass::c
+  |     ^^^^^^^^^^
+4 |   }

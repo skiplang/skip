@@ -1,0 +1,7 @@
+File "./syntax/invalid/unbound_variable.sk", line 12, characters 13-13:
+Unbound variable: y
+10 |   _a = "a";
+11 |   _aa = "aa"; // More than 1 distance
+12 |   print_raw(y)
+   |             ^
+13 | }

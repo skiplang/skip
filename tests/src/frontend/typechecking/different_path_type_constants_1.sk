@@ -1,0 +1,17 @@
+base class X
+
+base class TCClass<T> {
+  type C1: X;
+}
+
+base class TCClass2 extends TCClass<this::C1>
+
+base class P1<T1, T2: TCClass<T1>> {
+  type Tbody: TCClass2;
+}
+
+base class P2 extends P1<this::Tbody::C1, this::Tbody>
+
+fun main(): void {
+  print_string("Pass")
+}

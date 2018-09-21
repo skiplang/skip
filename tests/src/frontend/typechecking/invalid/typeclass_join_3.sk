@@ -1,0 +1,14 @@
+trait Add {
+  fun +(inst): Int;
+}
+
+class Foo(x: Int) {
+  fun +(o: Foo): Int {
+    this.x + o.x
+  }
+}
+
+fun bad<T: Add, T2: Foo>(x: T, y: T2): Int {
+  v = Array[x, y];
+  v[0] + v[1]
+}

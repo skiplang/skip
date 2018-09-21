@@ -1,0 +1,26 @@
+mutable value class Foo(i: Int, v: mutable Array<Int>) uses Show {
+  readonly fun toString(): String {
+    "Foo(" + this.i + ", " + this.v + ")"
+  }
+}
+
+fun main(): void {
+  v = mutable Array[0];
+  f = mutable Foo(0, v);
+  r = mutable Ref<mutable Foo>(f);
+  v.set(0, 42);
+  print_string(f.toString());
+  print_string(r.value.toString());
+  print_string("");
+  f2 = freeze(f);
+  v.set(0, 112);
+  print_string(f.toString());
+  print_string(r.value.toString());
+  print_string(f2.toString());
+  print_string("");
+  print_raw(
+    f2 match {
+    | Foo _ -> "Pass\n"
+    },
+  )
+}

@@ -1,0 +1,14 @@
+trait TC<T> {
+  // this method's X can't capture the reference to C's X
+  // latent in `inst`
+  fun meth<X>(): C<T, inst> {
+    C()
+  }
+}
+
+class C<X, Y: TC<X>>() uses TC<X> {}
+
+fun main(): void {
+  _ = C();
+  print_string("OK")
+}

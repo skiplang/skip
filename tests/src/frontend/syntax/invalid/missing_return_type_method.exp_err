@@ -1,0 +1,6 @@
+File "./syntax/invalid/missing_return_type_method.sk", line 2, characters 11-11:
+Missing return type annotation. '): ReturnType {'
+1 | class X() {
+2 |   fun f() {
+  |           ^
+3 |   }

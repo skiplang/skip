@@ -1,0 +1,9 @@
+@no_inline
+fun weird(): (Float, Float, Float) {
+  (Float::nan, Float::inf, -Float::inf)
+}
+
+fun main(): void {
+  (a, b, c) = weird();
+  print_raw("" + a + " " + b + " " + c + "\n")
+}

@@ -1,0 +1,100 @@
+fun main(): void {
+  loop {
+    print_string("Pass");
+    break void;
+  };
+
+  i = 0;
+  s = "";
+  loop {
+    if (i < 10) {
+      !i = i + 1
+    } else {
+      print_string("Pass");
+      break void;
+    }
+  };
+
+  !i = 0;
+  !s = loop {
+    if (i < 10) !i = i + 1 else break "Pass"
+  };
+  print_string(s);
+  !i = 0;
+  !s = loop {
+    if (i < 11) {
+      if (i == 10) break "Pass";
+      !i = i + 1
+    } else {
+      break "FAIL"
+    }
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = loop {
+    if (i < 11) {
+      if (i == 11) break "FAIL";
+      !i = i + 1
+    } else {
+      break "Pass"
+    }
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = loop {
+    if (false) break "FAIL" else break "Pass"
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = loop {
+    if (1 == 1) break "Pass" else break "FAIL"
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = loop {
+    if (i < 11) {
+      if (i < 10) {
+        !i = i + 1;
+        continue
+      };
+      break "Pass"
+    } else {
+      break "FAIL"
+    }
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = loop {
+    if (i < 10) {
+      if (i < 11) {
+        !i = i + 1;
+        continue
+      };
+      break "FAIL";
+    } else {
+      break "Pass"
+    }
+  };
+  print_string(s);
+
+  try {
+    _ =
+      1 +
+      (loop {
+        throw MyExn()
+      })
+  } catch {
+  | e @ MyExn() -> print_string(e.getMessage())
+  }
+}
+
+class MyExn() extends Exception {
+  fun getMessage(): String {
+    "Pass"
+  }
+}

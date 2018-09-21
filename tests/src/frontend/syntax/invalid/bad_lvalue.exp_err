@@ -1,0 +1,6 @@
+File "./syntax/invalid/bad_lvalue.sk", line 2, characters 3-10:
+Invalid LValue
+1 | fun main(): void {
+2 |   { void }.x = 42;
+  |   ^^^^^^^^
+3 |   print_raw("Fail")

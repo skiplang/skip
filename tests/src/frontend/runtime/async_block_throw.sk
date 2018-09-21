@@ -1,0 +1,30 @@
+class MyException() extends Exception
+
+@no_inline
+async fun foo(flag: Bool): ^Int {
+  if (flag) {
+    37
+  } else {
+    throw MyException()
+  }
+}
+
+async fun asyncMain(): ^void {
+  willThrow = foo(false);
+  n = await foo(true);
+
+  message = "Fail";
+
+  try {
+    // Verify that the throw is deferred to here, after we got n above.
+    _ = await willThrow
+  } catch {
+  | MyException _ -> !message = `Pass ${n}`
+  };
+
+  print_string(message)
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

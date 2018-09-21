@@ -1,0 +1,10 @@
+#!/bin/bash -e
+
+
+# Usage: update_nuclide
+#
+# Rebuilds all binaries used by Nuclide and installs them in the ROOT_DIR/nuclide directory.
+DIR="$(dirname "$0")"
+ROOT_DIR="$DIR/../"
+
+ninja -C "$ROOT_DIR/build" install_nuclide 

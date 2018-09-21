@@ -1,0 +1,7 @@
+fun no1(): void {
+  while (0) void
+}
+
+fun no2(): void {
+  do void while ("")
+}

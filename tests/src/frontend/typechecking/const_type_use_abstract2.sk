@@ -1,0 +1,24 @@
+base class MyBase {
+  type T1;
+  type T2 default this::T1;
+}
+
+class Foo() extends MyBase {
+  type T1 = String;
+
+  static fun get(): this::T2 {
+    "hi"
+  }
+}
+
+fun test(): String {
+  Foo::get()
+}
+
+fun f(): Foo::T2 {
+  "Pass\n"
+}
+
+fun main(): void {
+  print_raw(f())
+}

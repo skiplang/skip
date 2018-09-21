@@ -1,0 +1,112 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Module for manipulating the Files and Directories.
+
+// TODO: What module should this go in?
+@cpp_runtime
+@may_alloc
+native fun getcwd(): String;
+
+module FileSystem;
+
+// This is really broken - you can't read a file into a String without an
+// encoding!
+fun readTextFile(filename: String): String {
+  open_file(filename);
+}
+
+fun writeTextFile(filename: String, contents: String): void {
+  string_to_file(contents, filename);
+}
+
+@synonym("appendFile")
+@synonym("appendFileSync")
+@cpp_runtime
+native fun appendTextFile(filename: String, contents: String): void;
+
+@cpp_runtime
+native fun exists(filename: String): Bool;
+
+fun isDirectory(filename: String): Bool {
+  is_directory(filename);
+}
+
+fun ensureDirectory(dirname: String): void {
+  ensure_directory(dirname);
+}
+
+// Returns the contents of dirname without the 'dirname' prefix.
+fun readDirectory(dirname: String): Array<String> {
+  readdir(dirname).sorted()
+}
+
+// Searches in dirname, for a file named filename.
+// If not found, continues searching in dirname's parent directory.
+// Returns the directory of the found file, or None() if not found.
+fun findNearestFile(dirname: String, filename: String): ?String {
+  if (exists(Path.join(dirname, filename))) {
+    Some(dirname);
+  } else if (Path.isRoot(dirname)) {
+    None();
+  } else {
+    findNearestFile(Path.dirname(dirname), filename);
+  };
+}
+
+// Returns all the files in dirname, recursively.
+// Note that it does NOT return the directories contained in dirname.
+//
+// fileFilter is applied to files only, not directories.
+fun readFilesRecursive(
+  dirname: String,
+  fileFilter: String -> Bool = _ ~> true,
+  directoryFilter: String -> Bool = _ ~> true,
+): Vector<String> {
+  result: mutable Vector<String> = mutable Vector[];
+
+  // TODO: Recursive lambdas.
+  processDirectory: String -> void = _ -> void;
+  !processDirectory = dir -> {
+    // Ensure predictable order.
+    for (entry in readDirectory(dir)) {
+      entryPath = Path.join(dir, entry);
+      if (isDirectory(entryPath)) {
+        if (directoryFilter(entryPath)) {
+          processDirectory(entryPath);
+        };
+      } else if (fileFilter(entryPath)) {
+        result.push(entryPath);
+      };
+    };
+  };
+  processDirectory(Path.normalize(dirname));
+
+  freeze(result);
+}
+
+// TODO: Rename the C++ entrypoints and merge these into the
+// public API above.
+@cpp_runtime
+private native fun .open_file(String): String;
+
+@debug
+@cpp_runtime
+private native fun .string_to_file(s: String, file: String): void;
+
+@cpp_runtime
+private native fun is_directory(filename: String): Bool;
+
+@debug
+@cpp_runtime
+private native fun ensure_directory(dirname: String): void;
+
+@cpp_runtime
+@may_alloc
+private native fun readdir(dirname: String): Array<String>;
+
+module end;

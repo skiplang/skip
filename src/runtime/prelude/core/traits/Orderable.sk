@@ -1,0 +1,102 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Orderable;
+
+/*
+ * Classes that provide a total order, in the standard sense.  (So,
+ * for example, this does not include floating point.)
+ */
+trait .Orderable extends Equality, HasClassName {
+  macro readonly overridable fun compare(other: inst): Order {
+    other match {
+    | otherTyped @ #ThisClass _ ->
+      _ = otherTyped; // silence unused variable warning in classes with no fields.
+      #forEachField (#field) {
+        // Use global compare to ensure that the fields are Orderable
+        compare(this.#field, otherTyped.#field) match {
+        | EQ() -> void
+        | result -> return result
+        }
+      };
+      EQ()
+
+    | _ -> this.getClassName().compare(other.getClassName())
+    }
+  }
+
+  overridable readonly fun ==(other: inst): Bool {
+    this.compare(other) == EQ()
+  }
+
+  overridable readonly fun <(other: inst): Bool {
+    this.compare(other) == LT()
+  }
+
+  overridable readonly fun >(other: inst): Bool {
+    this.compare(other) == GT()
+  }
+
+  overridable readonly fun <=(other: inst): Bool {
+    this.compare(other) != GT()
+  }
+
+  overridable readonly fun >=(other: inst): Bool {
+    this.compare(other) != LT()
+  }
+}
+
+fun .compare<T: Orderable>(x: T, y: T): Order {
+  x.compare(y)
+}
+
+// Given a value (typically non-Orderable) and comparison function,
+// create an Orderable-compatible value. This function is typically
+// used with collection sortBy/sortedBy methods:
+//
+//    a: Vector<NonOrderable> = Vector[...];
+//    compare = (a: NonOrderable, b: NonOrderable): Order ~> { ... };
+//    b = a.sortedBy(x ~> Orderable.create(x, compare));
+// ```
+fun create<T>(value: T, compare: (T, T) ~> Order): LambdaOrderable<T> {
+  LambdaOrderable(value, compare)
+}
+
+private value class LambdaOrderable<T>(
+  value: T,
+  compareFn: (T, T) ~> Order,
+) uses Orderable {
+  fun compare(other: this): Order {
+    this.compareFn(this.value, other.value);
+  }
+
+  fun ==(other: this): Bool {
+    this.compare(other) is EQ();
+  }
+
+  fun !=(other: this): Bool {
+    !(this == other);
+  }
+
+  fun <(other: this): Bool {
+    this.compare(other) == LT()
+  }
+
+  fun >(other: this): Bool {
+    this.compare(other) == GT()
+  }
+
+  fun <=(other: this): Bool {
+    this.compare(other) != GT()
+  }
+
+  fun >=(other: this): Bool {
+    this.compare(other) != LT()
+  }
+}
+
+module end;

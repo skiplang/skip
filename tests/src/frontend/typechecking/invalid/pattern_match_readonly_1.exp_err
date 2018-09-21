@@ -1,0 +1,14 @@
+File "./typechecking/invalid/pattern_match_readonly_1.sk", line 16, characters 16-23:
+Cannot call a frozen method on a readonly object
+14 |   rcont: readonly Cont<readonly Foo> = mutable Cont(rfoo);
+15 |   rcont match {
+16 |   | Cont(v) -> v.cfoo()
+   |                ^^^^^^^^
+17 |   };
+
+File "./typechecking/invalid/pattern_match_readonly_1.sk", line 2, characters 3-8:
+This is where the method was annotated as 'frozen'
+1 | mutable class Foo(mutable x: Int) {
+2 |   frozen fun cfoo(): void {
+  |   ^^^^^^
+3 |     void

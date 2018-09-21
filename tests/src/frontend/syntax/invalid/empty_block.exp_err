@@ -1,0 +1,5 @@
+File "./syntax/invalid/empty_block.sk", line 1, characters 17-17:
+'{}' is not a valid expression. Did you mean '{ void }'?
+1 | fun f(): void { }
+  |                 ^
+2 |

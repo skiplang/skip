@@ -1,0 +1,28 @@
+File "./typechecking/invalid/tparam_super9.sk", line 9, characters 16-16:
+Invalid argument
+ 7 |   }
+ 8 |   fun foo<U>[T: U](x: U): U {
+ 9 |     this.tonly(x)
+   |                ^
+10 |   }
+
+File "./typechecking/invalid/tparam_super9.sk", line 8, characters 23-23:
+The type: U
+ 6 |     x
+ 7 |   }
+ 8 |   fun foo<U>[T: U](x: U): U {
+   |                       ^
+ 9 |     this.tonly(x)
+
+File "./typechecking/invalid/tparam_super9.sk", line 1, characters 11-11:
+Is not a subtype of: T
+1 | class Foo<T>(x: T) {
+  |           ^
+2 |   fun getX(): T {
+
+File "./typechecking/invalid/tparam_super9.sk", line 1, characters 11-11:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: U
+1 | class Foo<T>(x: T) {
+  |           ^
+2 |   fun getX(): T {

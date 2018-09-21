@@ -1,0 +1,82 @@
+class MyExn() extends Exception {
+  fun getMessage(): String {
+    "FAIL"
+  }
+  fun +(void): void {
+    void
+  }
+  // fun -(_ : untracked () -> void): void { void }
+  fun /(Concrete<Int>): void {
+    void
+  }
+}
+
+const MyBool: Bool = true;
+const MyInt: Int = 0;
+
+fun main(): void {
+  try {
+    _ =
+      true &&
+      {
+        false
+      };
+    _ = false && if (true) false else true;
+    _ =
+      false &&
+      try {
+        true
+      } catch {
+      | _ -> false
+      };
+    _ = true && .MyBool;
+    _ = 1 + MyInt;
+    MyExn() + void;
+    // MyExn() -  untracked () -> void;
+    MyExn() / class(0);
+    sum = 0;
+    _ =
+      0 +
+      for (x in Range(0, 100)) {
+        !sum = sum + x
+      } else {
+        sum
+      };
+    !sum = 0;
+    _ =
+      0 +
+      do {
+        !sum = sum + 1
+      } while (sum < 100) else {
+        sum
+      };
+    !sum = 0;
+    _ =
+      0 +
+      while (sum < 100) {
+        !sum = sum + 1
+      } else {
+        sum
+      };
+    !sum = 0;
+    _ =
+      0 +
+      loop {
+        if (sum >= 100) break sum else !sum = sum + 1
+      };
+    _ =
+      0 *
+      loop {
+        _ = true && break 1
+      };
+    _ = !do {
+      _ = false && continue
+    } while (false) else {
+      true
+    };
+    _ = 0 / throw MyExn();
+    _ = 0 - return void;
+  } catch {
+  | _ -> print_string("Pass")
+  }
+}

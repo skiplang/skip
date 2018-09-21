@@ -1,0 +1,8 @@
+fun searchType(ty: T.Type_): FilePosition ~> ?FindContext {
+  searchInnerType(ty, position) match {
+  // No inner result is better than this Type
+  | None() -> Some(TypeContext(ty))
+  // An inner result was better ...
+  | innerResult -> innerResult
+  }
+}

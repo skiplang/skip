@@ -1,0 +1,5 @@
+Only works on Mac.
+Need to 'brew install llvm'.
+'ninja -C build skip_to_llvm' to ensure that all prereqs are built
+'./build' to build the skipi binary
+'./run' to run some tests

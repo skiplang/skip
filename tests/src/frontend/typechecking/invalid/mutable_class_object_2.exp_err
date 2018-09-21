@@ -1,0 +1,23 @@
+File "./typechecking/invalid/mutable_class_object_2.sk", line 4, characters 16-17:
+Invalid argument to the construction of a 'Foo'
+2 |
+3 | fun no(x: Foo<String>): void {
+4 |   _ = class(x)(42)
+  |                ^^
+5 | }
+
+File "./typechecking/invalid/mutable_class_object_2.sk", line 4, characters 16-17:
+The type: Int
+2 |
+3 | fun no(x: Foo<String>): void {
+4 |   _ = class(x)(42)
+  |                ^^
+5 | }
+
+File "./typechecking/invalid/mutable_class_object_2.sk", line 3, characters 15-20:
+Is not a subtype of: String
+1 | mutable class Foo<T>(mutable v: T)
+2 |
+3 | fun no(x: Foo<String>): void {
+  |               ^^^^^^
+4 |   _ = class(x)(42)

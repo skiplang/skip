@@ -1,0 +1,5 @@
+fun main(): void {
+  // can freeze a frozen lambda
+  _ = freeze(mutable Vector[() ~> 1]);
+  print_string("PASS");
+}

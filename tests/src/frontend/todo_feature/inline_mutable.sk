@@ -1,0 +1,11 @@
+class Foo
+
+fun take_mutable_foo(mutable Foo): void {}
+
+fun main(): void {
+  mutable foo1: Foo = Foo();
+  mutable foo2 = mutable Foo(): Foo;
+  take_mutable_foo(foo1);
+  take_mutable_foo(foo2);
+  take_mutable_foo(mutable Foo(): Foo);
+}

@@ -1,0 +1,15 @@
+class Foo1()
+class Foo2()
+
+class Foo<T: Foo1>(x: T) {
+  fun add<U: Foo1>[T: U & Foo2](x: U): Foo<U> {
+    Foo(x)
+  }
+  static fun inv<T: Foo1 & Foo2>(f: Foo<T>): Foo<T> {
+    f.add(f.x)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

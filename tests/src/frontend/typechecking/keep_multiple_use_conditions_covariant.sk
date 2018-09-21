@@ -1,0 +1,34 @@
+trait Foo<+T> {
+  fun doit(): Int;
+}
+
+trait HasBar {
+  fun bar(): Int;
+}
+
+// also has EqualityIsh[T: OrderableIsh]
+base class P1<+T> uses Foo<T>[T: HasBar]
+base class P2<+T> uses Foo<T>[T: HasBar]
+class C<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
+  fun doit[T: HasBar](): Int {
+    this.t.bar()
+  }
+}
+
+base class NoBar
+class XNoBar() extends NoBar
+class XBar() extends NoBar uses HasBar {
+  fun bar(): Int {
+    42
+  }
+}
+
+fun fooit<T: Foo<NoBar>>(x: T): Int {
+  x.doit()
+}
+
+fun main(): void {
+  c = C<NoBar, XBar>(XNoBar(), XBar());
+  _ = fooit(c);
+  print_string("Pass")
+}

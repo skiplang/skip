@@ -1,0 +1,15 @@
+fun main(): void {
+  sum = 0;
+  Array[1, 2, 3].each(i -> !sum = sum + i);
+  (mutable Array[1, 2, 3]).each(i -> !sum = sum + i);
+  Array["a" => 1, "b" => 2, "c" => 3].each(i -> !sum = sum + i.i1);
+  (mutable Array["a" => 1, "b" => 2, "c" => 3]).each(i -> !sum = sum + i.i1);
+
+  print_raw(
+    if (sum == 24) {
+      "Pass\n"
+    } else {
+      "Fail: " + sum + "\n"
+    },
+  )
+}

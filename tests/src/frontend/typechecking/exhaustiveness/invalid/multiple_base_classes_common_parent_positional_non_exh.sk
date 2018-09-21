@@ -1,0 +1,16 @@
+base class A(Int)
+base class LA extends A
+base class RA extends A
+base class LRA(sk: Bool) extends RA
+base class RRA(ry: String) extends RA
+
+base class LLA(lx: Bool) extends LA
+base class RLA(ly: String) extends LA
+class JLA(lt: Int) extends LLA, RLA
+class OtherRRA(rt: Int) extends RRA
+
+fun myMatch(x: A): String {
+  x match {
+  | LA _ -> "Pa"
+  }
+}

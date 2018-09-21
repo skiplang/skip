@@ -1,0 +1,51 @@
+// Testing guard replication for unique bindings.
+//
+// To see why we replicate guards, consider
+// test2() below: The first B() pattern will fire
+// from within a type switch clause handling
+// all B patterns. If the guard (x == "x") fails,
+// control will go to the second B pattern.
+// OTOH if the first C pattern fires
+// and then fails the same guard, control
+// must pass to the second C branch.
+// This divergence in destinations means that
+// we must either a) clone the guard, b) lift
+// guards into lambdas, c) add indirect jumps.
+//
+
+base class A(String) {
+  children =
+  | B
+  | C
+}
+
+fun test1(): String {
+  (B("") : A) match {
+  | B(x)
+  | C(
+    x,
+  ) if (x == "x") ->
+    "Fail\n"
+  | _ -> "Pa"
+  }
+}
+
+fun test2(): String {
+  (B("") : A) match {
+  | B(x)
+  | C(
+    x,
+  ) if (x == "x") ->
+    "Fail\n"
+  | B(x)
+  | C(
+    x,
+  ) if (x == "y") ->
+    "Fail\n"
+  | _ -> "ss\n"
+  }
+}
+
+fun main(): void {
+  print_raw(test1() + test2())
+}

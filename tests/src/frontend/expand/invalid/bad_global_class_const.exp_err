@@ -1,0 +1,6 @@
+File "./expand/invalid/bad_global_class_const.sk", line 2, characters 9-9:
+Expected 'non-type identifier'. Found '.'.
+1 | class Foo {
+2 |   const .x : String = "bad";
+  |         ^
+3 | }

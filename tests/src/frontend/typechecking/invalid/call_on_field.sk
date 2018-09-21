@@ -1,0 +1,7 @@
+fun no(): void {
+  _: Int = MyEnum::A.value()
+}
+
+value class MyEnum private (value: Int) {
+  const A: MyEnum = MyEnum(1);
+}

@@ -1,0 +1,65 @@
+File "./typechecking/invalid/variance_2.sk", line 15, characters 12-12:
+Invalid argument
+13 | class Foo<T: Parent>(x: (T ~> Int)) {
+14 |   fun foo(x: ChildB): Int {
+15 |     this.x(x)
+   |            ^
+16 |   }
+
+File "./typechecking/invalid/variance_2.sk", line 14, characters 14-19:
+The type: ChildB
+12 |
+13 | class Foo<T: Parent>(x: (T ~> Int)) {
+14 |   fun foo(x: ChildB): Int {
+   |              ^^^^^^
+15 |     this.x(x)
+
+File "./typechecking/invalid/variance_2.sk", line 13, characters 11-11:
+Is not a subtype of: T
+11 | }
+12 |
+13 | class Foo<T: Parent>(x: (T ~> Int)) {
+   |           ^
+14 |   fun foo(x: ChildB): Int {
+
+File "./typechecking/invalid/variance_2.sk", line 13, characters 11-11:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+11 | }
+12 |
+13 | class Foo<T: Parent>(x: (T ~> Int)) {
+   |           ^
+14 |   fun foo(x: ChildB): Int {
+
+File "./typechecking/invalid/variance_2.sk", line 21, characters 3-8:
+The value returned from the function is incompatible with the return type 'Foo<Parent>'
+19 | fun getFoo(): Foo<Parent> {
+20 |   x: (ChildA ~> Int) = (c ~> c.getIntA());
+21 |   Foo(x)
+   |   ^^^^^^
+22 | }
+
+File "./typechecking/invalid/variance_2.sk", line 20, characters 7-12:
+The invariant type: ChildA
+18 |
+19 | fun getFoo(): Foo<Parent> {
+20 |   x: (ChildA ~> Int) = (c ~> c.getIntA());
+   |       ^^^^^^
+21 |   Foo(x)
+
+File "./typechecking/invalid/variance_2.sk", line 19, characters 19-24:
+Is incompatible with the invariant type: Parent
+17 | }
+18 |
+19 | fun getFoo(): Foo<Parent> {
+   |                   ^^^^^^
+20 |   x: (ChildA ~> Int) = (c ~> c.getIntA());
+
+File "./typechecking/invalid/variance_2.sk", line 20, characters 7-12:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+18 |
+19 | fun getFoo(): Foo<Parent> {
+20 |   x: (ChildA ~> Int) = (c ~> c.getIntA());
+   |       ^^^^^^
+21 |   Foo(x)

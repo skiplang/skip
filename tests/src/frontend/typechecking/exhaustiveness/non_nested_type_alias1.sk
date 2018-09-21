@@ -1,0 +1,17 @@
+base class Expr {
+  children =
+  | Plus(Int, Int)
+}
+class Test() {
+  type Foo = Plus;
+
+  fun bar(x: Expr): Int {
+    x match {
+    | this::Foo(_, 1) -> 0
+    | Plus(_, Int _) -> 0
+    }
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

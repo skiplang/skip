@@ -1,0 +1,15 @@
+base class Foo {
+  children =
+  | MyPair(Int, (Bool, (String, (Char, Int))))
+}
+fun test(): String {
+  x = MyPair(1, (true, ("a", ('c', 1))));
+  x match {
+  | MyPair(1, (true, ("a", ('c', 1)))) -> "Fail\n"
+  | MyPair(Int _, (true, ("a", ('c', 1)))) -> "Fail\n"
+  | MyPair(Int _, (true, (String _, ('c', 1)))) -> "Fail\n"
+  | MyPair(Int _, (Bool _, ("a", ('c', 1)))) -> "Fail\n"
+  | MyPair(Int _, (Bool _, (String _, ('c', 1)))) -> "Fail\n"
+  | MyPair(Int _, (Bool _, (String _, (Char _, 1)))) -> "Fail\n"
+  }
+}

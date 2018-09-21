@@ -1,0 +1,12 @@
+base class P {
+  fun foo<T>(T): T;
+}
+
+base class I extends P
+base class C extends P, I {
+  fun foo from I; // fails without proper subst on from for new tparam ids
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,7 @@
+fun yes<T: mutable Ref<mutable Array<Int>>>(x: T): Ref<Array<Int>> {
+  freeze(x)
+}
+
+fun main(): void {
+  print_string("Pass")
+}

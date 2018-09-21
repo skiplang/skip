@@ -1,0 +1,21 @@
+fun main(): void {
+  p = "Fail";
+  n = "";
+  _ = (() -> void)();
+  _ = (x -> x)(void);
+  _ = ({p, x} -> {
+    !p = 1;
+    p + x
+  }){p => 0, x => 1};
+  _ = ((x, y, z) -> {
+    !p = "Pass";
+    x + y + z
+  })("", "x", "xx");
+  _ =
+    0 |>
+    x -> {
+      !n = "\n";
+      x
+    };
+  print_raw(p + n)
+}

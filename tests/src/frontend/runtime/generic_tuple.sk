@@ -1,0 +1,10 @@
+class MyBox<T>(x: T) {
+  fun toMap<T1: Orderable, T2>[T: (T1, T2)](): SortedMap<T1, T2> {
+    (k, v) = this.x;
+    SortedMap[].set(k, v)
+  }
+}
+
+fun main(): void {
+  print_raw(MyBox((42, "Pass\n")).toMap()[42])
+}

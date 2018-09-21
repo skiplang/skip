@@ -1,0 +1,15 @@
+File "./typechecking/invalid/multiline_errors.sk", line 5, characters 15-15:
+Expected ')'. Found ':'.
+3 | }
+4 | fun main(): void {
+5 |   print_raw(_z: Bool = a(1));
+  |               ^
+6 | }
+
+File "./typechecking/invalid/multiline_errors.sk", line 5, characters 12-12:
+ For opening '('
+3 | }
+4 | fun main(): void {
+5 |   print_raw(_z: Bool = a(1));
+  |            ^
+6 | }

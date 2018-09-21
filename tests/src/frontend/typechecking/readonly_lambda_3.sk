@@ -1,0 +1,16 @@
+mutable class Foo(mutable v: Int)
+
+fun check(f: () -> void, foo: readonly Foo): String {
+  old = foo.v;
+  f();
+  new = foo.v;
+  if (old == new) "FAIL" else "Pass\n"
+}
+
+fun main(): void {
+  foo = mutable Foo(0);
+  f = () -> {
+    foo.!v = foo.v + 1
+  };
+  print_raw(check(f, foo))
+}

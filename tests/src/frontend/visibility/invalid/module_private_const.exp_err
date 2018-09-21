@@ -1,0 +1,7 @@
+File "./visibility/invalid/module_private_const.sk", line 11, characters 11-13:
+Cannot access a private module element bar outside of module Foo
+ 9 |
+10 | fun main(): void {
+11 |   _ = Foo.bar;
+   |           ^^^
+12 |   print_raw("Fail")

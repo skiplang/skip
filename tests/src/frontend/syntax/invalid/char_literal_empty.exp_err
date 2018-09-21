@@ -1,0 +1,6 @@
+File "./syntax/invalid/char_literal_empty.sk", line 2, characters 3-4:
+Character literals must not be empty. Did you mean to create an empty string with double quotes ("") instead of single quotes ('')?
+1 | fun main(): String {
+2 |   ''.toString()
+  |   ^^
+3 | }

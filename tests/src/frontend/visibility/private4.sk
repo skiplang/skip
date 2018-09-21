@@ -1,0 +1,15 @@
+base class X final {private foo: String} {
+  deferred static fun empty(foo: String): this {
+    static{foo => foo}
+  }
+  fun bar(): String {
+    this.foo
+  }
+}
+
+base class Y extends X
+class Z extends Y
+
+fun main(): void {
+  print_raw(Z::empty("Pass\n").bar())
+}

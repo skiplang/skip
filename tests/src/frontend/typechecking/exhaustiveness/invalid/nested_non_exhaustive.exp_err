@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/nested_non_exhaustive.sk", line 11, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | Y(C())
+ 9 | }
+10 | fun test(): String {
+11 |   Y(A()) match {
+   |   ^^^^^^^^^^^^^^
+12 |   | Y(A()) -> "Fail\n"
+   |   ^^^^^^^^^^^^^^^^^^^^

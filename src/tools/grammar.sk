@@ -1,0 +1,181 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Extracts the grammar from the comments in SkipParser.sk
+
+type Comment = Token.Comment;
+
+fun main(): void {
+  fileName: String = arguments()[0];
+  contents = FileSystem.readTextFile(fileName);
+  results = SkipParser.parseSource(contents, false);
+  if (results.hasError()) {
+    debug(results);
+  } else {
+    Extractor::main(results.comments);
+  };
+  void
+}
+
+fun isRuleStart(comment: Comment): Bool {
+  comment.kind == Token.LineComment() &&
+    comment.value.endsWith(":\n") &&
+    comment.value.get(comment.value.length() - 3) != ' ' &&
+    comment.value.startsWith("// ")
+}
+
+fun isRuleContinuation(comment: Comment): Bool {
+  comment.kind == Token.LineComment() && comment.value.startsWith("//    ")
+}
+
+fun printComment(comment: Comment): void {
+  print_raw(comment.value.substring(3))
+}
+
+fun reportError<T>(message: String): T {
+  print_error(message);
+  exit(1)
+}
+
+mutable class Rule{name: String = "", mutable options: List<String> = List[]} {
+  mutable fun add(option: String): void {
+    this.!options = List.Cons(option, this.options)
+  }
+}
+
+mutable class Extractor{
+  mutable rules: SortedMap<String, Rule> = SortedMap[],
+  terminals: mutable UnorderedSet<String> = mutable UnorderedSet[],
+  usedRules: mutable UnorderedSet<String> = mutable UnorderedSet[],
+} {
+  static fun main(comments: Array<Comment>): void {
+    (mutable Extractor{}).processComments(comments)
+  }
+
+  mutable fun processComments(comments: Array<Comment>): void {
+    rule = mutable Rule{};
+    inRule = false;
+    for (comment in comments) {
+      if (inRule) {
+        if (isRuleContinuation(comment)) {
+          this.continueRule(comment, rule)
+        } else {
+          this.endRule(rule);
+          !inRule = false
+        }
+      };
+
+      if (isRuleStart(comment)) {
+        !rule = this.addRule(comment);
+        !inRule = true
+      }
+    };
+
+    this.checkRules();
+    this.printRules()
+  }
+
+  mutable fun addRule(comment: Comment): mutable Rule {
+    ruleName = comment.value.sub(3, comment.value.length() - 5);
+    printComment(comment);
+    if (this.rules.containsKey(ruleName)) {
+      reportError("Duplicate rule: " + ruleName)
+    } else if (ruleName.endsWith("-opt")) {
+      reportError("Don't define -opt rule: " + ruleName)
+    };
+
+    mutable Rule{name => ruleName, options => List[]}
+  }
+
+  mutable fun continueRule(comment: Comment, rule: mutable Rule): void {
+    printComment(comment);
+    rule.add(comment.value.sub(3, comment.value.length() - 4))
+  }
+
+  mutable fun endRule(rule: mutable Rule): void {
+    print_raw("\n\n");
+    this.!rules[rule.name] = freeze(rule)
+  }
+
+  readonly fun printRules(): void {
+    // print_string("Productions");
+    // this.rules.keys().each(print_string);
+
+    print_string("\n\nParsing entry rules");
+    rules = Vector::mcreateFromIterator(
+      this.rules.keys().filter(ruleName -> !this.usedRules.contains(ruleName)),
+    );
+    rules.sort();
+    rules.each(print_string);
+
+    tokenStrings = TokenKind.tokenKinds()
+      .map(kind ~> kind.toString())
+      .concat(PredefinedName.contextualKeywords())
+      .concat(List::of("@"))
+      .map(kind -> kind.split(" ").join("-"))
+      .collect(UnorderedSet);
+
+    print_string("\n\nTerminals");
+    terminals = Vector::mcreateFromIterator(
+      this.terminals.values().filter(terminal ->
+        !tokenStrings.contains(terminal)
+      ),
+    );
+    terminals.sort();
+    terminals.each(print_string)
+  }
+
+  mutable fun checkRules(): void {
+    this.rules.values()
+      .flatMap(rule -> rule.options.values())
+      .flatMap(option -> option.trim().split("  ").values())
+      .each(this.checkProduction)
+  }
+
+  mutable fun checkProduction(production: String): void {
+    terminal = this.productionToTerminal(production);
+    if (terminal.isSome()) {
+      this.terminals.insert(terminal.fromSome())
+    }
+  }
+
+  mutable fun productionToTerminal(production: String): ?String {
+    trimSuffix = () -> {
+      trimmed = attemptTrimProduction(production);
+      if (trimmed != production) {
+        !production = trimmed;
+        true
+      } else {
+        false
+      }
+    };
+    while (!this.rules.containsKey(production) && trimSuffix()) void;
+    if (this.rules.containsKey(production)) {
+      this.usedRules.insert(production);
+      None()
+    } else {
+      Some(production)
+    }
+  }
+}
+
+const suffixes: List<(String, String)> = List<(String, String)>[
+  ("-list", ""),
+  ("-opt", ""),
+  ("-comma", ""),
+  ("-modifier", ""),
+  ("-modifiers", "-modifier"),
+];
+
+fun attemptTrimProduction(production: String): String {
+  for (suffix in suffixes) {
+    if (production.endsWith(suffix.i0)) {
+      !production = production.stripSuffix(suffix.i0) + suffix.i1
+    }
+  };
+  production
+}

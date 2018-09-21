@@ -1,0 +1,6 @@
+// mutable lambdas allowed in fields
+mutable class Foo(f: () -> void)
+
+fun main(): void {
+  print_string("OK")
+}

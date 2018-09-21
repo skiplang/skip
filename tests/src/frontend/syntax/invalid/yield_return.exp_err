@@ -1,0 +1,15 @@
+File "./syntax/invalid/yield_return.sk", line 5, characters 3-10:
+Cannot both yield and return in the same function.
+3 |     return void
+4 |   };
+5 |   yield 37
+  |   ^^^^^^^^
+6 | }
+
+File "./syntax/invalid/yield_return.sk", line 3, characters 5-15:
+To return from a generator use 'yield break'
+1 | fun yieldAndReturn(): mutable Iterator<Int> {
+2 |   if (false) {
+3 |     return void
+  |     ^^^^^^^^^^^
+4 |   };

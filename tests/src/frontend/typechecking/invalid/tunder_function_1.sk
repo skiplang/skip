@@ -1,0 +1,11 @@
+fun f(): Int {
+  42
+}
+
+fun test(): () ~> _ {
+  f
+}
+
+fun main(): void {
+  print_string("Pass")
+}

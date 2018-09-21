@@ -1,0 +1,905 @@
+fun assertDeserializeSuccess<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+  expected: T,
+): void {
+  result = JSON.deserialize(str, metaClass);
+  assertTrue(result.isSuccess());
+  assertEqual(result.fromSuccess(), expected)
+}
+
+fun assertDeserializeFailure<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+  expectedError: Serialization.SerializationError,
+): void {
+  result = JSON.deserialize(str, metaClass);
+  result match {
+  | Success(_) -> assertTrue(result.isFailure())
+  | Failure(actualError) -> assertEqual(actualError, expectedError)
+  }
+}
+
+fun assertSerializeSuccess<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  object: T,
+  metaClass: S,
+  expected: String,
+  isPretty: Bool = false,
+): void {
+  result = JSON.serialize(object, metaClass, isPretty);
+  assertTrue(result.isSuccess());
+  assertEqual(result.fromSuccess(), expected)
+}
+
+fun assertSerializeFailure<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  object: T,
+  metaClass: S,
+  expectedError: Serialization.SerializationError,
+): void {
+  result = JSON.serialize(object, metaClass);
+  result match {
+  | Success(_) -> assertTrue(result.isFailure())
+  | Failure(actualError) -> assertEqual(actualError, expectedError)
+  }
+}
+
+fun assertSerializes<
+  T: readonly Equality & readonly Show,
+  S: Serialization.Serializer<T>,
+>(
+  str: String,
+  metaClass: S,
+  expected: T,
+  isPretty: Bool = false,
+): void {
+  assertDeserializeSuccess(str, metaClass, expected);
+  assertSerializeSuccess(expected, metaClass, str, isPretty)
+}
+
+@test
+fun testBoolSerializes(): void {
+  assertSerializes("true", Bool::meta, true);
+  assertSerializes("false", Bool::meta, false)
+}
+
+@test
+fun testIntSerializes(): void {
+  Range(-100, 100).each((x) -> assertSerializes(x.toString(), Int::meta, x));
+  assertDeserializeFailure(
+    "1",
+    String::meta,
+    JSON.InvalidJSONError(
+      Position::create(0, 0),
+      `Unexpected character '1' in JSON. Expected '"'.`,
+    ),
+  )
+}
+
+@test
+fun testFloatSerializes(): void {
+  for (float in Vector[-1.0, 0.0, 3.3, -2.3, -5.5]) {
+    assertSerializes(float.toString(), Float::meta, float)
+  }
+}
+
+@test
+fun testStringSerializes(): void {
+  assertSerializes(`""`, String::meta, "");
+  assertSerializes(`"abc"`, String::meta, "abc");
+  assertSerializes(`"abc[]abc"`, String::meta, "abc[]abc");
+  assertDeserializeFailure(
+    `"abc"`,
+    Int::meta,
+    JSON.InvalidJSONError(
+      Position::create(0, 0),
+      `Must have at least one digit`,
+    ),
+  )
+}
+
+@test
+fun testVectorOfIntSerializes(): void {
+  assertSerializes("[0, 1, 2]", Vector::meta(Int::meta), Vector[0, 1, 2]);
+  assertSerializes("[]", Vector::meta(Int::meta), Vector[]);
+  assertDeserializeFailure(
+    "[1]",
+    Vector::meta(String::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 1),
+      `Unexpected character '1' in JSON. Expected '"'.`,
+    ),
+  );
+  assertDeserializeFailure(
+    `[1, "a"]`,
+    Vector::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 4),
+      `Must have at least one digit`,
+    ),
+  );
+  assertDeserializeFailure(
+    `1`,
+    Vector::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 0),
+      `Unexpected character '1' in JSON. Expected '['.`,
+    ),
+  )
+}
+
+@test
+fun testVectorOfVectorOfIntSerializes(): void {
+  assertSerializes(
+    "[[0, 1, 2], [3, 4], [5], []]",
+    Vector::meta(Vector::meta(Int::meta)),
+    Vector[Vector[0, 1, 2], Vector[3, 4], Vector[5], Vector[]],
+  );
+  assertSerializes("[]", Vector::meta(Vector::meta(Int::meta)), Vector[]);
+  assertSerializes(
+    "[[]]",
+    Vector::meta(Vector::meta(Int::meta)),
+    Vector[Vector[]],
+  )
+}
+
+@test
+fun testVectorOfStringSerializes(): void {
+  assertSerializes(
+    `["a", "b", "c"]`,
+    Vector::meta(String::meta),
+    Vector["a", "b", "c"],
+  );
+  assertSerializes(`[]`, Vector::meta(String::meta), Vector[]);
+  assertDeserializeFailure(
+    `["a"]`,
+    Vector::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 1),
+      `Must have at least one digit`,
+    ),
+  )
+}
+
+@test
+fun testArrayOfIntSerializes(): void {
+  assertSerializes("[0, 1, 2]", Array::meta(Int::meta), Array[0, 1, 2]);
+  assertSerializes("[]", Array::meta(Int::meta), Array[]);
+  assertDeserializeFailure(
+    "[1]",
+    Array::meta(String::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 1),
+      `Unexpected character '1' in JSON. Expected '"'.`,
+    ),
+  );
+  assertDeserializeFailure(
+    `[1, "a"]`,
+    Array::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 4),
+      `Must have at least one digit`,
+    ),
+  );
+  assertDeserializeFailure(
+    `1`,
+    Array::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 0),
+      `Unexpected character '1' in JSON. Expected '['.`,
+    ),
+  )
+}
+
+@test
+fun testArrayOfArrayOfIntSerializes(): void {
+  assertSerializes(
+    "[[0, 1, 2], [3, 4], [5], []]",
+    Array::meta(Array::meta(Int::meta)),
+    Array[Array[0, 1, 2], Array[3, 4], Array[5], Array[]],
+  );
+  assertSerializes("[]", Array::meta(Array::meta(Int::meta)), Array[]);
+  assertSerializes("[[]]", Array::meta(Array::meta(Int::meta)), Array[Array[]])
+}
+
+@test
+fun testArrayOfStringSerializes(): void {
+  assertSerializes(
+    `["a", "b", "c"]`,
+    Array::meta(String::meta),
+    Array["a", "b", "c"],
+  );
+  assertSerializes(`[]`, Array::meta(String::meta), Array[]);
+  assertDeserializeFailure(
+    `["a"]`,
+    Array::meta(Int::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 1),
+      `Must have at least one digit`,
+    ),
+  )
+}
+
+@test
+fun testMapOfStringToIntSerializes(): void {
+  assertSerializes(
+    `{"a": 1, "b": 2, "c": 3}`,
+    Map::meta(String::meta, Int::meta),
+    Map["a" => 1, "b" => 2, "c" => 3],
+  );
+  assertSerializes(`{}`, Map::meta(String::meta, Int::meta), Map[])
+}
+
+@test
+fun testMapOfStringToMapOfStringToIntSerializes(): void {
+  assertSerializes(
+    `{"a": {"a": 1}, "b": {"b": 2, "c": 3}, "c": {"d": 4}}`,
+    Map::meta(String::meta, Map::meta(String::meta, Int::meta)),
+    Map[
+      "a" => Map["a" => 1],
+      "b" => Map["b" => 2, "c" => 3],
+      "c" => Map["d" => 4],
+    ],
+  );
+  assertSerializes(
+    `{}`,
+    Map::meta(String::meta, Map::meta(String::meta, Int::meta)),
+    Map[],
+  );
+  assertSerializes(
+    `{"a": {}}`,
+    Map::meta(String::meta, Map::meta(String::meta, Int::meta)),
+    Map["a" => Map[]],
+  )
+}
+
+@test
+fun testMapOfIntToIntNoSerializes(): void {
+  assertSerializeFailure(
+    Map[1 => 1, 2 => 2],
+    Map::meta(Int::meta, Int::meta),
+    Serialization.NotSupportedError("writeInt()"),
+  )
+}
+
+@test
+fun testTuple(): void {
+  assertDeserializeFailure(
+    `[]`,
+    Tuple2::meta(Int::meta, Int::meta),
+    Serialization.TupleSizeOutOfBoundsError(),
+  );
+  assertSerializes(`[1, "a"]`, Tuple2::meta(Int::meta, String::meta), (1, "a"));
+  assertSerializes(
+    `[1, "b", [1, 2, 3], true, {"a": 4}]`,
+    Tuple5::meta(
+      Int::meta,
+      String::meta,
+      Tuple3::meta(Int::meta, Int::meta, Int::meta),
+      Bool::meta,
+      Map::meta(String::meta, Int::meta),
+    ),
+    (1, "b", (1, 2, 3), true, Map["a" => 4]),
+  );
+  assertDeserializeFailure(
+    `[1, "a"]`,
+    Tuple3::meta(Int::meta, String::meta, Int::meta),
+    Serialization.TupleSizeOutOfBoundsError(),
+  )
+}
+
+@test
+fun testVectorOfTuple(): void {
+  assertSerializes(
+    `[[1, 2, 3], [4, 5, 6]]`,
+    Vector::meta(Tuple3::meta(Int::meta, Int::meta, Int::meta)),
+    Vector[(1, 2, 3), (4, 5, 6)],
+  )
+}
+
+@test
+fun testTupleOfVector(): void {
+  assertSerializes(
+    `[[1, 2, 3], [4, 5, 6]]`,
+    Tuple2::meta(Vector::meta(Int::meta), Vector::meta(Int::meta)),
+    (Vector[1, 2, 3], Vector[4, 5, 6]),
+  )
+}
+
+@test
+fun testMapOfStringToTuple(): void {
+  assertSerializes(
+    "{}",
+    Map::meta(String::meta, Tuple2::meta(Int::meta, Int::meta)),
+    Map[],
+  );
+  assertSerializes(
+    `{"a": [1, 2, 3, 4], "b": [5, 6, 7, 8]}`,
+    Map::meta(
+      String::meta,
+      Tuple4::meta(Int::meta, Int::meta, Int::meta, Int::meta),
+    ),
+    Map["a" => (1, 2, 3, 4), "b" => (5, 6, 7, 8)],
+  )
+}
+
+@test
+fun testOption(): void {
+  assertSerializes("null", Option::meta(Int::meta), (None() : ?Int));
+  assertSerializes("1", Option::meta(Int::meta), (Some(1) : ?Int));
+  assertSerializes(`"abc"`, Option::meta(String::meta), (Some("abc") : ?String))
+}
+
+@test
+fun testOptionOfMap(): void {
+  assertSerializes(
+    `{}`,
+    Option::meta(Map::meta(String::meta, Int::meta)),
+    (Some(Map[]) : ?Map<String, Int>),
+  );
+  assertSerializes(
+    `{"a": 1, "b": 2}`,
+    Option::meta(Map::meta(String::meta, Int::meta)),
+    (Some(Map["a" => 1, "b" => 2]) : ?Map<String, Int>),
+  )
+}
+
+@test
+fun testOptionOfOption(): void {
+  assertSerializeFailure(
+    (Some(Some(1)) : ??Int),
+    Option::meta(Option::meta(Int::meta)),
+    Serialization.NotSupportedError("writeOption()"),
+  );
+  assertDeserializeFailure(
+    `1`,
+    Option::meta(Option::meta(Int::meta)),
+    Serialization.NotSupportedError("readOption()"),
+  );
+  assertDeserializeFailure(
+    `[1, 1]`,
+    Vector::meta(Option::meta(Option::meta(Int::meta))),
+    Serialization.NotSupportedError("readOption()"),
+  )
+}
+
+@test
+fun testTestRecord(): void {
+  assertSerializes(
+    `{"str": "", "int": 0, "opt": false}`,
+    Serialization.TestRecord::meta,
+    Serialization.TestRecord{str => "", int => 0, opt => false},
+  )
+}
+
+@test
+fun testMapOfStringToTestRecord(): void {
+  assertSerializes(
+    `{"a": {"str": "a", "int": 0, "opt": false}}`,
+    Map::meta(String::meta, Serialization.TestRecord::meta),
+    Map["a" => Serialization.TestRecord{str => "a", int => 0, opt => false}],
+  );
+  assertSerializes(
+    `{"a": {"str": "a", "int": 0, "opt": false}, "b": {"str": "b", "int": 1, "opt": true}}`,
+    Map::meta(String::meta, Serialization.TestRecord::meta),
+    Map[
+      "a" => Serialization.TestRecord{str => "a", int => 0, opt => false},
+      "b" => Serialization.TestRecord{str => "b", int => 1, opt => true},
+    ],
+  )
+}
+
+@test
+fun testGenericRecord(): void {
+  assertSerializes(
+    `{"name": "test", "data": 1}`,
+    GenericRecord::meta(Int::meta),
+    GenericRecord{name => "test", data => 1},
+  );
+  assertSerializes(
+    `{"name": "test", "data": [1, 2, 3]}`,
+    GenericRecord::meta(Vector::meta(Int::meta)),
+    GenericRecord{name => "test", data => Vector[1, 2, 3]},
+  );
+  assertSerializes(
+    `{"name": "test", "data": [1, 2, null]}`,
+    GenericRecord::meta(Option::meta(Vector::meta(Option::meta(Int::meta)))),
+    GenericRecord{
+      name => "test",
+      data => (Some(Vector[Some(1), Some(2), None()]) : ?Vector<?Int>),
+    },
+  );
+  assertSerializes(
+    `{"name": "test", "data": {"name": "test2", "data": null}}`,
+    GenericRecord::meta(GenericRecord::meta(Option::meta(Int::meta))),
+    GenericRecord{
+      name => "test",
+      data => GenericRecord{name => "test2", data => (None() : ?Int)},
+    },
+  );
+  assertDeserializeFailure(
+    `{"name": "test", "data": 1}`,
+    GenericRecord::meta(String::meta),
+    JSON.InvalidJSONError(
+      Position::create(0, 25),
+      `Unexpected character '1' in JSON. Expected '"'.`,
+    ),
+  );
+  assertDeserializeFailure(
+    `{"name": "test"}`,
+    GenericRecord::meta(String::meta),
+    Serialization.RecordMissingFieldError("GenericRecord", "data"),
+  )
+}
+
+@test
+fun testBaseClass(): void {
+  assertSerializes(`"TestBaseA"`, TestBase::meta, (TestBaseA() : TestBase));
+  assertSerializes(`"TestBaseB"`, TestBase::meta, (TestBaseB() : TestBase));
+  assertDeserializeFailure(
+    `"TestBaseC"`,
+    TestBase::meta,
+    Serialization.NotChildClassError("TestBase", "TestBaseC"),
+  )
+}
+
+@test
+fun testDefaultArgs(): void {
+  assertSerializeSuccess(
+    DefaultPositional(0),
+    DefaultPositional::meta,
+    `{"int": 0, "str": "abc", "vec": [1, 2, 3]}`,
+  );
+  assertDeserializeSuccess(
+    `{"int": 0}`,
+    DefaultPositional::meta,
+    DefaultPositional(0),
+  );
+}
+
+@test
+fun testVariant(): void {
+  assertSerializes(`{"B": {"int": 5}}`, A::meta, (B(5) : A));
+  assertSerializes(`{"C": {"string": "abc"}}`, A::meta, (C("abc") : A))
+}
+
+@test
+fun testMapOfStringToRecordOfVariant(): void {
+  assertSerializes(
+    `{"B": {"name": "B", "data": {"B": {"int": 5}}}}`,
+    Map::meta(String::meta, GenericRecord::meta(A::meta)),
+    Map["B" => GenericRecord{name => "B", data => (B(5) : A)}],
+  );
+  assertSerializes(
+    `{"B": {"name": "B", "data": {"B": {"int": 5}}}, "C": {"name": "C", "data": {"C": {"string": "abc"}}}}`,
+    Map::meta(String::meta, GenericRecord::meta(A::meta)),
+    Map[
+      "B" => GenericRecord{name => "B", data => (B(5) : A)},
+      "C" => GenericRecord{name => "C", data => (C("abc") : A)},
+    ],
+  )
+}
+
+@test
+fun testPrettyJSON(): void {
+  assertSerializes(
+    `{
+  "B": {
+    "name": "B",
+    "data": {
+      "B": {
+        "int": 5
+      }
+    }
+  },
+  "C": {
+    "name": "C",
+    "data": {
+      "C": {
+        "string": "abc"
+      }
+    }
+  }
+}`,
+    Map::meta(String::meta, GenericRecord::meta(A::meta)),
+    Map[
+      "B" => GenericRecord{name => "B", data => (B(5) : A)},
+      "C" => GenericRecord{name => "C", data => (C("abc") : A)},
+    ],
+    true,
+  );
+  assertSerializes(
+    `{
+  "name": "test",
+  "data": [
+    1,
+    2,
+    3
+  ]
+}`,
+    GenericRecord::meta(Vector::meta(Int::meta)),
+    GenericRecord{name => "test", data => Vector[1, 2, 3]},
+    true,
+  );
+  assertSerializes(
+    `[
+  1,
+  "b",
+  [
+    1,
+    2,
+    3
+  ],
+  true,
+  {
+    "a": 4
+  }
+]`,
+    Tuple5::meta(
+      Int::meta,
+      String::meta,
+      Tuple3::meta(Int::meta, Int::meta, Int::meta),
+      Bool::meta,
+      Map::meta(String::meta, Int::meta),
+    ),
+    (1, "b", (1, 2, 3), true, Map["a" => 4]),
+    true,
+  );
+  assertSerializes(
+    `[
+  [
+    0,
+    1,
+    2
+  ],
+  [
+    3,
+    4
+  ],
+  [
+    5
+  ],
+  []
+]`,
+    Vector::meta(Vector::meta(Int::meta)),
+    Vector[Vector[0, 1, 2], Vector[3, 4], Vector[5], Vector[]],
+    true,
+  )
+}
+
+mutable class GenericRecord<T>{
+  name: String,
+  data: T,
+} uses Equality[T: Equality], Show[T: Show] {
+  static fun meta<U, C: MetaClass<U>>(
+    itemClass: C,
+  ): GenericRecordMetaClass<U, C> {
+    GenericRecordMetaClass(itemClass)
+  }
+
+  readonly fun ==<U: Equality>[T: U](other: readonly GenericRecord<U>): Bool {
+    this.name == other.name && this.data == other.data
+  }
+
+  readonly fun toString[T: Show](): String {
+    `GenericRecord(${this.name}, ${this.data.toString()})`
+  }
+}
+
+class GenericRecordMetaClass<T, CT: MetaClass<T>>(
+  itemClassT: CT,
+)
+  extends MetaClass<GenericRecord<T>>
+  uses
+    Serialization.Serializer<GenericRecord<T>>[CT: Serialization.Serializer<T>],
+   {
+  fun description(): String {
+    `GenericRecord<${this.itemClassT.description()}>`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[CT: Serialization.Serializer<T>](
+    value: GenericRecord<T>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    record = writer.writeRecord(Array["name", "data"]);
+    record.writeItem("name", value.name, String::meta);
+    record.writeItem("data", value.data, this.itemClassT);
+    record.end();
+  }
+
+  fun deserialize[CT: Serialization.Serializer<T>](
+    reader: mutable Serialization.Reader,
+  ): GenericRecord<T> {
+    record = reader.readRecord(Array["name", "data"]);
+    tempMaybe0: ?String = None();
+    tempMaybe1: ?T = None();
+    loop {
+      record.readKey() match {
+      | Some("name") -> !tempMaybe0 = Some(record.readValue(String::meta))
+      | Some("data") -> !tempMaybe1 = Some(record.readValue(this.itemClassT))
+      | None() -> break void
+      | Some(string) ->
+        throw Serialization.FieldNotInClassError(string, Array["data", "name"])
+      };
+    };
+    record.end();
+    (tempMaybe0, tempMaybe1) match {
+    | (Some(temp0), Some(temp1)) -> GenericRecord{name => temp0, data => temp1}
+    | (None(), _) ->
+      throw Serialization.RecordMissingFieldError("GenericRecord", "name")
+    | (_, None()) ->
+      throw Serialization.RecordMissingFieldError("GenericRecord", "data")
+    }
+  }
+}
+
+mutable base class TestBase() uses Equality, Show {
+  children =
+  | TestBaseA()
+  | TestBaseB()
+
+  readonly fun ==(other: readonly TestBase): Bool
+  | TestBaseA() ->
+    other match {
+    | TestBaseA() -> true
+    | _ -> false
+    }
+  | TestBaseB() ->
+    other match {
+    | TestBaseB() -> true
+    | _ -> false
+    }
+
+  readonly fun toString(): String
+  | TestBaseA() -> "TestBaseA"
+  | TestBaseB() -> "TestBaseB"
+
+  const meta: TestBaseMetaClass = TestBaseMetaClass();
+}
+
+class TestBaseMetaClass()
+  extends MetaClass<TestBase>
+  uses Serialization.Serializer<TestBase> {
+  fun description(): String {
+    `TestBase`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(value: TestBase, writer: mutable Serialization.Writer): void {
+    value match {
+    | TestBaseA() -> writer.writeType("TestBaseA")
+    | TestBaseB() -> writer.writeType("TestBaseB")
+    }
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): TestBase {
+    child = reader.readType();
+    child match {
+    | "TestBaseA" -> TestBaseA()
+    | "TestBaseB" -> TestBaseB()
+    | _ -> throw Serialization.NotChildClassError("TestBase", child)
+    }
+  }
+}
+
+class DefaultPositional(
+  int: Int,
+  str: String = "abc",
+  vec: Vector<Int> = Vector[1, 2, 3],
+) uses Show, Equality {
+  const meta: DefaultPositionalMetaClass = DefaultPositionalMetaClass();
+  fun toString(): String {
+    `DefaultPositional(${this.int}, ${this.str}, ${this.vec})`
+  }
+  fun ==(other: DefaultPositional): Bool {
+    this.int == other.int && this.str == other.str && this.vec == other.vec
+  }
+}
+
+class DefaultPositionalMetaClass()
+  extends MetaClass<DefaultPositional>
+  uses Serialization.Serializer<DefaultPositional> {
+  fun description(): String {
+    `Default`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(
+    value: DefaultPositional,
+    writer: mutable Serialization.Writer,
+  ): void {
+    record = writer.writeRecord(Array["int", "str", "vec"]);
+    record.writeItem("int", value.int, Int::meta);
+    record.writeItem("str", value.str, String::meta);
+    record.writeItem("vec", value.vec, Vector::meta(Int::meta));
+    record.end();
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): DefaultPositional {
+    record = reader.readRecord(Array["int", "str", "vec"]);
+    tempMaybe0: ?Int = None();
+    temp1: String = "abc";
+    temp2: Vector<Int> = Vector[1, 2, 3];
+    loop {
+      record.readKey() match {
+      | Some("int") -> !tempMaybe0 = Some(record.readValue(Int::meta))
+      | Some("str") -> !temp1 = record.readValue(String::meta)
+      | Some("vec") -> !temp2 = record.readValue(Vector::meta(Int::meta))
+      | None() -> break void
+      | Some(string) ->
+        throw Serialization.FieldNotInClassError(
+          string,
+          Array["int", "str", "vec"],
+        )
+      };
+    };
+    record.end();
+    (tempMaybe0) match {
+    | (Some(temp0)) -> DefaultPositional(temp0, temp1, temp2)
+    | (None()) -> throw Serialization.RecordMissingFieldError("Default", "int")
+    }
+  }
+}
+
+base class A() uses Equality, Show {
+  children =
+  | B(int: Int)
+  | C(string: String)
+
+  fun ==(other: A): Bool
+  | B(int) ->
+    other match {
+    | B(o) -> int == o
+    | _ -> false
+    }
+  | C(string) ->
+    other match {
+    | C(o) -> string == o
+    | _ -> false
+    }
+
+  fun toString(): String
+  | B(int) -> `B(${int})`
+  | C(string) -> `C(${string})`
+}
+
+extension base class A {
+  overridable const meta: BaseAMetaClass = AMetaClass();
+}
+
+base class BaseAMetaClass
+  extends MetaClass<A>
+  uses Serialization.Serializer<A> {}
+
+class AMetaClass() extends MetaClass<A>, BaseAMetaClass {
+  fun description(): String {
+    `A`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(_value: A, writer: mutable Serialization.Writer): void {
+    _value match {
+    | B _ -> writer.writeVariant("B", _value, B::meta)
+    | C _ -> writer.writeVariant("C", _value, C::meta)
+    }
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): A {
+    (childName, data, onEnd) = reader.readVariant();
+    result = childName match {
+    | "B" -> B::meta.deserialize(data)
+    | "C" -> C::meta.deserialize(data)
+    | _ -> throw Serialization.NotChildClassError("A", childName)
+    };
+    onEnd();
+    result
+  }
+}
+
+extension class B {
+  const meta: BMetaClass = BMetaClass();
+}
+
+class BMetaClass() extends MetaClass<B>, BaseAMetaClass {
+  fun description(): String {
+    `B`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(_value: A, writer: mutable Serialization.Writer): void {
+    _childValue = _value match {
+    | x @ B _ -> x
+    | _ -> throw Serialization.NotExpectedClassError("B")
+    };
+    record = writer.writeRecord(Array["int"]);
+    record.writeItem("int", _childValue.int, Int::meta);
+    record.end();
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): B {
+    record = reader.readRecord(Array["int"]);
+    tempMaybe0: ?Int = None();
+    loop {
+      record.readKey() match {
+      | Some("int") -> !tempMaybe0 = Some(record.readValue(Int::meta))
+      | None() -> break void
+      | Some(string) ->
+        throw Serialization.FieldNotInClassError(string, Array["int"])
+      };
+    };
+    record.end();
+    (tempMaybe0) match {
+    | (Some(temp0)) -> B(temp0)
+    | (None()) -> throw Serialization.RecordMissingFieldError("B", "int")
+    }
+  }
+}
+
+extension class C {
+  const meta: CMetaClass = CMetaClass();
+}
+
+class CMetaClass() extends MetaClass<C>, BaseAMetaClass {
+  fun description(): String {
+    `C`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(_value: A, writer: mutable Serialization.Writer): void {
+    _childValue = _value match {
+    | x @ C _ -> x
+    | _ -> throw Serialization.NotExpectedClassError("C")
+    };
+    record = writer.writeRecord(Array["string"]);
+    record.writeItem("string", _childValue.string, String::meta);
+    record.end();
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): C {
+    record = reader.readRecord(Array["string"]);
+    tempMaybe0: ?String = None();
+    loop {
+      record.readKey() match {
+      | Some("string") -> !tempMaybe0 = Some(record.readValue(String::meta))
+      | None() -> break void
+      | Some(string) ->
+        throw Serialization.FieldNotInClassError(string, Array["string"])
+      };
+    };
+    record.end();
+    (tempMaybe0) match {
+    | (Some(temp0)) -> C(temp0)
+    | (None()) -> throw Serialization.RecordMissingFieldError("C", "string")
+    }
+  }
+}

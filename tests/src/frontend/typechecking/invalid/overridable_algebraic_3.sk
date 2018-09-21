@@ -1,0 +1,10 @@
+base class L {
+  fun foo(): void
+  | A _ -> void
+}
+base class R {
+  fun foo(): void
+  | B _ -> void
+}
+class A() extends L, R
+class B() extends L, R

@@ -1,0 +1,312 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module UMap;
+
+type Name = (FileRange, String);
+
+value class NameKey(name: Name) uses Orderable, Hashable {
+  fun toName(): Name {
+    this.name
+  }
+  fun ==(other: NameKey): Bool {
+    this.name.i1 == other.name.i1
+  }
+  fun compare(other: NameKey): Order {
+    this.name.i1.compare(other.name.i1)
+  }
+  fun hash(): Int {
+    this.name.i1.hash()
+  }
+}
+
+private fun emptyName(n: String): NameKey {
+  NameKey((FileRange.none, n))
+}
+
+// Throws KeyNotFound if a key is not available.
+class .UMap<+V>(
+  private inner: SortedMap<NameKey, V>,
+) uses Hashable[V: Hashable], Equality[V: Equality] {
+  static fun create(): UMap<V> {
+    UMap(SortedMap[])
+  }
+
+  fun size(): Int {
+    this.inner.size()
+  }
+
+  fun containsRawKey(n: String): Bool {
+    this.inner.containsKey(emptyName(n))
+  }
+
+  fun containsKey(n: Name): Bool {
+    this.inner.containsKey(NameKey(n))
+  }
+
+  fun isEmpty(): Bool {
+    this.inner.isEmpty()
+  }
+
+  fun set<V2>[V: V2](n: Name, v: V2): UMap<V2> {
+    UMap(this.inner.set(NameKey(n), v))
+  }
+
+  fun add<V2>[V: V2](n: Name, v: V2): UMap<V2> {
+    (p, s) = n;
+    if (this.containsKey(n)) {
+      oldPos = this.getRawOrCrash(s).i0;
+      SkipError.name_already_bound(s, p, oldPos)
+    } else {
+      UMap(this.inner.add(NameKey(n), v))
+    }
+  }
+
+  fun replace<V2>[V: V2](n: String, v: V2): UMap<V2> {
+    (pos, _) = this.getRawOrCrash(n);
+    this.set((pos, n), v)
+  }
+
+  fun each(fn: (Name, V) -> void): void {
+    this.inner.each((n, v) -> fn(n.name, v))
+  }
+
+  fun toMap(): Map<String, V> {
+    result = mutable Map[];
+    for (k => value in this) {
+      result![k.i1] = value
+    };
+    unsafe_chill_trust_me(result)
+  }
+
+  fun getWithMsg(key: Name, fr: FileRange, msg: String): V {
+    try {
+      this.getOrCrash(key.i1)
+    } catch {
+    | KeyNotFound() -> SkipError.unbound_name_with_msg(fr, msg, key.i0, key.i1)
+    }
+  }
+
+  fun get(key: Name): V {
+    try {
+      this.inner[NameKey(key)]
+    } catch {
+    | KeyNotFound() -> SkipError.unbound_name(key.i1, key.i0)
+    }
+  }
+
+  fun getOrCrash(s: String): V {
+    this.inner[emptyName(s)]
+  }
+
+  fun getRawOrCrash(s: String): (FileRange, V) {
+    (nk, v) = this.inner.getItem(emptyName(s));
+    (nk.name.i0, v)
+  }
+
+  fun maybeGet(n: Name): ?V {
+    this.maybeGetNoPos(n.i1)
+  }
+
+  fun maybeGetRaw(s: String): ?(FileRange, V) {
+    this.inner.maybeGetItem(emptyName(s)).map(p -> (p.i0.name.i0, p.i1))
+  }
+
+  fun maybeGetNoPos(n: String): ?V {
+    this.maybeGetRaw(n).map(p -> p.i1)
+  }
+
+  fun remove(n: String): this {
+    UMap(this.inner.remove(emptyName(n)))
+  }
+
+  fun rawKeys(): mutable Iterator<String> {
+    this.keys().map(p -> p.i1)
+  }
+
+  fun keys(): mutable Iterator<Name> {
+    this.inner.keys().map(p -> p.name)
+  }
+
+  fun keySet(): Set<String> {
+    this.rawKeys().collect(Set)
+  }
+
+  fun values(): mutable Iterator<V> {
+    this.inner.values()
+  }
+
+  fun items(): mutable Iterator<(Name, V)> {
+    this.inner.items().map(p -> {
+      (nk, v) = p;
+      (nk.name, v)
+    })
+  }
+
+  fun itemsNoPos(): mutable Iterator<(String, V)> {
+    // (String, (FileRange, V)) -> (String, V)
+    this.items().map(p -> (p.i0.i1, p.i1))
+  }
+
+  fun itemsList(): List<(Name, V)> {
+    List::createFromIterator(this.items())
+  }
+
+  static fun createFromIterator<C: mutable Iterator<(Name, V)>>(
+    items: C,
+  ): this {
+    items.foldl((m, p) ~> m.add(p.i0, p.i1), static::create())
+  }
+
+  static fun createFromItems<C: Sequence<(Name, V)>>(items: C): this {
+    items.foldl((m, p) ~> m.add(p.i0, p.i1), static::create())
+  }
+
+  fun collect<C: FromIterator<V>>(cls: Concrete<C>): C {
+    cls::createFromIterator(this.values())
+  }
+
+  fun map<V2>(f: (Name, V) -> V2): UMap<V2> {
+    UMap(this.inner.map((nk, v) -> f(nk.name, v)))
+  }
+
+  frozen fun parallelMap<V2>(f: (Name, V) ~> V2): UMap<V2> {
+    v = this.items().collect(Array);
+    w = v.parallelMap(item ~> {
+      (name, value) = item;
+      (name, f(name, value))
+    });
+    UMap::createFromItems(w)
+  }
+
+  // Maps each element. The result of each map is either a result, or a thrown Error.
+  // If none of the maps throw, then return the map; otherwise, throw the aggregate
+  // result of all the thrown errors.
+  fun mapWithErrors<V2>(f: (Name, V) -> V2): UMap<V2> {
+    static::throwErrorOrReturnUMap(
+      this.map((n, x) -> SkipError.doWithError(() -> f(n, x))),
+    );
+  }
+
+  private static fun throwErrorOrReturnUMap<V2>(
+    results: UMap<Result<V2, Vector<SkipError.Error>>>,
+  ): UMap<V2> {
+    SkipError.throwFlattenedErrors(
+      results
+        .values()
+        .filter(either ~> either.isFailure())
+        .map(either ~> either.fromFailure())
+        .collect(Vector),
+    );
+    results.map((_, either) ~> either.fromSuccess());
+  }
+
+  fun reduce<R>(f: (R, Name, V) -> R, init: R): R {
+    this.inner.reduce((r, nk, x) -> f(r, nk.name, x), init)
+  }
+
+  fun mapAcc<V2, R>(f: (R, Name, V) -> (R, V2), init: R): (R, UMap<V2>) {
+    f2 = (r, nk, x) -> f(r, nk.name, x);
+    (r, m) = this.inner.mapAcc(f2, init);
+    (r, UMap(m))
+  }
+
+  fun combine<U, R>(other: UMap<U>, f: (Name, ?V, ?U) -> ?R): UMap<R> {
+    new = this.map((nm, v) -> f(nm, Some(v), other.maybeGet(nm)));
+    other.each((nm: Name, v2: U) ->
+      if (!this.containsKey(nm)) !new = new.add(nm, f(nm, None(), Some(v2)))
+    );
+    new.filter((_, v) -> v.isSome()).map((_, v) -> v.fromSome())
+  }
+
+  static fun merge<T, R>(
+    acc: R,
+    l: UMap<T>,
+    r: UMap<T>,
+    f: (R, T, T) -> (R, T),
+  ): (R, UMap<T>) {
+    new = l;
+    l.each((name, v) ->
+      r.maybeGet(name) match {
+      | None() -> void
+      | Some(v2) ->
+        (!acc, value) = f(acc, v, v2);
+        !new = new.set(name, value)
+      }
+    );
+    r.each((nm: Name, v2: T) -> if (!l.containsKey(nm)) !new = new.set(nm, v2));
+    (acc, new)
+  }
+
+  fun partition(f: (Name, V) -> Bool): (UMap<V>, UMap<V>) {
+    trues = UMap[];
+    falses = UMap[];
+    for (n => v in this) {
+      if (f(n, v)) !trues = trues.add(n, v) else !falses = falses.add(n, v);
+    } else {
+      (trues, falses)
+    }
+  }
+
+  static fun union<T>(l: UMap<T>, r: UMap<T>): UMap<T> {
+    l.reduce((result, key, value) -> result.add(key, value), r)
+  }
+
+  fun filter(f: (Name, V) -> Bool): UMap<V> {
+    !this.inner=.filter((nk, v) -> f(nk.name, v));
+    this
+  }
+
+  fun toFileRangeSMap(): SMap<(FileRange, V)> {
+    this.inner.mapItems((nk, v) -> (nk.name.i1, (nk.name.i0, v)))
+  }
+
+  fun toValuesSMap(): SMap<V> {
+    this.inner.mapItems((nk, v) -> (nk.name.i1, v))
+  }
+
+  fun all(f: (Name, V) -> Bool): Bool {
+    this.items().all(p -> f(p.i0, p.i1))
+  }
+
+  fun any(f: (Name, V) -> Bool): Bool {
+    this.items().any(p -> f(p.i0, p.i1))
+  }
+
+  fun inspect(): Inspect {
+    InspectMap(
+      "UMap",
+      {
+        items = Vector::mcreate(this.size());
+        this.inner.each((key, value) -> {
+          items.push((inspect(key), inspect(value)))
+        });
+        items.toArray();
+      },
+    );
+  }
+
+  fun find(p: (Name, V) -> Bool): ?V {
+    this.findItem(p).map(kv -> kv.i1)
+  }
+
+  fun findItem(p: (Name, V) -> Bool): ?(Name, V) {
+    this.items().find(kv -> p(kv.i0, kv.i1))
+  }
+
+  fun ==<V2: Equality>[V: V2](other: UMap<V2>): Bool {
+    this.inner == other.inner
+  }
+
+  fun !=<V2: Equality>[V: V2](other: UMap<V2>): Bool {
+    this.inner != other.inner
+  }
+
+  fun eqBy<V2>[V: V2](other: UMap<V2>, eq: (V2, V2) -> Bool): Bool {
+    this.inner.eqBy(other.inner, eq)
+  }
+}

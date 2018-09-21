@@ -1,0 +1,7 @@
+File "./syntax/invalid/missing_semi_before_bang.sk", line 4, characters 3-3:
+Missing semi-colon before expression in expression sequence. All expressions in an expression sequence must be separated by a ';'.
+2 |   c = consumed
+3 |   // Should get a decent error message here:
+4 |   !row = e;
+  |   ^
+5 |   "FAIL";

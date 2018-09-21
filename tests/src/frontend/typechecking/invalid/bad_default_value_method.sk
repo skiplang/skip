@@ -1,0 +1,14 @@
+mutable base class P {
+  children =
+  | L()
+  | R()
+}
+
+class Test() {
+  fun no1{x: L = R()}: void {
+    void
+  }
+  static fun no2{x: mutable L = L()}: void {
+    void
+  }
+}

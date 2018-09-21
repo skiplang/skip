@@ -1,0 +1,17 @@
+@serialize
+class OptionWrapper2{
+  option: ??Int,
+} uses Show, Equality {
+  fun toString(): String {
+    this.option.toString()
+  }
+}
+
+fun main(): void {
+  assertDeserializeFailure(`{"option": 0}`, OptionWrapper2::meta);
+  assertSerializeFailure(
+    OptionWrapper2{option => Some(Some(0))},
+    OptionWrapper2::meta,
+  );
+  print_string("Pass")
+}

@@ -1,0 +1,18 @@
+base class Foo {
+  static fun abs(): void;
+  deferred static fun foo(): String {
+    static::abs();
+    "Pass\n"
+  }
+}
+
+base class Bar extends Foo {
+  static fun abs(): void {
+    void
+  }
+  static fun foo from Foo;
+}
+
+fun main(): void {
+  print_raw(Bar::foo())
+}

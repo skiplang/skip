@@ -1,0 +1,118 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AP = ArgumentParser;
+
+module SkipProject;
+
+// Tool used to print the dependencies for a given target.
+//
+// Ex:
+//  skip_depends --binding "backend=native" src/tools:skip_to_parsetree
+class Arguments{
+  sourceOnly: Bool = false,
+  bindings: Map<String, String> = Map[],
+  targets: Vector<String> = Vector[],
+}
+
+const help: String = `
+Usage: skip_depends [--binding <variable>=<value>] [--source-only] <target>
+Where <target> is one of:
+  - project-dir
+  - program-unit
+  - project-dir:program-unit
+Options:
+`.trim();
+
+const schema: Array<AP.Param> = Array[
+  AP.BoolParam{name => "help", negatable => false, help => "Show help"},
+  AP.BoolParam{
+    name => "source-only",
+    negatable => false,
+    help => "Set to only include source files in the output and exclude skip.project.json files from the output",
+  },
+  AP.StringArrayParam{
+    name => "binding",
+    help => "Project bindings (<variable>=<value>)",
+    default => Some(Vector[]),
+  },
+];
+
+fun error(message: String): _ {
+  print_error_ln(message.trim());
+  print_error_ln(help);
+  print_error_ln(AP.help(schema));
+  SkipError.fail();
+}
+
+fun parseArguments(): Arguments {
+  args = AP.parse(schema, arguments()) match {
+  | Success(results) ->
+    if (results.getBool("help")) {
+      print_string(help);
+      print_string(AP.help(schema));
+      exit(0);
+    };
+    bindingStrings = results.getStringArray("binding");
+    bindings = Map::mcreate(bindingStrings.size());
+    for (binding in bindingStrings) {
+      (variable, value) = binding.splitLast("=");
+      if (variable == "") {
+        error(
+          `Missing variable in '--binding'. Use '--binding <variable>=<value>'.`,
+        );
+      };
+      if (bindings.containsKey(variable)) {
+        error(`Duplicate variable '${variable}' in '--binding'.`);
+      };
+      bindings.add(variable, value);
+    };
+    Arguments{
+      sourceOnly => results.getBool("source-only"),
+      bindings => freeze(bindings),
+      targets => results.unknown,
+    }
+  | Failure(exn) -> error(exn.getMessage())
+  };
+  log(args);
+  args
+}
+
+fun processTarget(
+  bindings: Map<String, String>,
+  target: String,
+  sourceOnly: Bool,
+): void {
+  TargetArgument::parse(target) match {
+  | None() -> error(`Invalid target '${target}'.`)
+  | Some(SourceFileArgument{filename}) -> print_string(filename)
+  | Some(ProgramUnitArgument{projectPath, programUnit}) ->
+    print_string(
+      SkipError.doAndReportErrors(() ~>
+        loadProjectProgramUnit(projectPath, programUnit).flatMap(solutionKey ~> {
+          (solution, key) = solutionKey;
+          solution.getAllSourceFilesFor(key, bindings).map(sourceFiles ~> {
+            if (sourceOnly) {
+              sourceFiles
+            } else {
+              sourceFiles.union(solution.getProjectFilesForProgramUnit(key))
+            }
+          });
+        })
+      ).join("\n"),
+    )
+  };
+}
+
+module end;
+
+fun main(): void {
+  args = SkipProject.parseArguments();
+  for (target in args.targets) {
+    SkipProject.processTarget(args.bindings, target, args.sourceOnly)
+  };
+}

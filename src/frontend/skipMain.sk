@@ -1,0 +1,54 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SkipMain;
+/*****************************************************************************/
+/* All the phases of the front-end. */
+/*****************************************************************************/
+
+untracked fun expand_program(files: List<String>): SkipAst.Program {
+  for (x in files) FileCache.addFile(x);
+
+  parsed_program = runCompilerPhase("frontend/parse_program", () ->
+    SkipParse.parse_files(files, true)
+  );
+
+  runCompilerPhase("frontend/expand_program", () ->
+    SkipExpand.program(parsed_program)
+  );
+}
+
+untracked fun type_program(files: List<String>): SkipTypedAst.Program {
+  expanded_program = expand_program(files);
+
+  typed_program = runCompilerPhase("frontend/type_program", () ->
+    SkipTyping.program(expanded_program)
+  );
+
+  typed_program
+}
+
+/*****************************************************************************/
+/* Main entry point */
+/*****************************************************************************/
+
+@gc
+untracked fun compile(files: List<String>): SkipTypedAst.Program {
+  SkipError.doAndReportErrors(() -> compileWithErrors(files))
+}
+
+@gc
+untracked fun compileWithErrors(
+  files: List<String>,
+): Result<SkipTypedAst.Program, Vector<SkipError.Error>> {
+  try {
+    Success(type_program(files));
+  } catch {
+  // TODO: We shouldn't need the unique() here. Fix this with T21967329.
+  | SkipError.SkipErrorException{errors} -> Failure(errors.unique())
+  }
+}

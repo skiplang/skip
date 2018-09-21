@@ -1,0 +1,15 @@
+trait X
+base class MyParent<T> {
+  fun foo(): void;
+}
+
+class Child<T: X>() extends MyParent<T> {
+  // somehow recognize [T: X] is useless...
+  fun foo[T: X](): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

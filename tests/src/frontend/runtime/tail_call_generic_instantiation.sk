@@ -1,0 +1,16 @@
+fun f<T: Show>(t: T, index: Int): String {
+  index match {
+  | 0 -> t.toString()
+  | 1 -> f(42, 0)
+  | _ -> f(t, index - 1)
+  }
+}
+
+fun main(): void {
+  print_raw(
+    f("HW", 2) match {
+    | "42" -> "Pass\n"
+    | _ -> "Fail"
+    },
+  )
+}

@@ -1,0 +1,30 @@
+File "./typechecking/invalid/strict_upper_bound_help_2.sk", line 4, characters 5-11:
+Invalid assignment
+2 |   result = None();
+3 |   if (n > 0) {
+4 |     !result = Some("Pass\n")
+  |     ^^^^^^^
+5 |   };
+
+File "./typechecking/invalid/strict_upper_bound_help_2.sk", line 4, characters 15-28:
+The type: Some<String>
+2 |   result = None();
+3 |   if (n > 0) {
+4 |     !result = Some("Pass\n")
+  |               ^^^^^^^^^^^^^^
+5 |   };
+
+File "./typechecking/invalid/strict_upper_bound_help_2.sk", line 2, characters 12-17:
+Is not a subtype of: None<_>
+1 | fun no(n: Int): ?String {
+2 |   result = None();
+  |            ^^^^^^
+3 |   if (n > 0) {
+
+File "./typechecking/invalid/strict_upper_bound_help_2.sk", line 2, characters 12-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Option<String>
+1 | fun no(n: Int): ?String {
+2 |   result = None();
+  |            ^^^^^^
+3 |   if (n > 0) {

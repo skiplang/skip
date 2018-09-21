@@ -1,0 +1,31 @@
+mutable class Cycle(n: Int, mutable other: ?readonly Cycle)
+
+fun main(): void {
+  {
+    a = 37;
+    b = intern(a);
+    print_string(`${a} ${b}`)
+  };
+
+  {
+    a = (37, "some long string", "short");
+    b = intern(a);
+    print_string(`${a} ${b}`)
+  };
+
+  {
+    c1 = mutable Cycle(25, None());
+    c2 = mutable Cycle(37, Some(c1));
+    c1.!other = Some(c2);
+
+    a = freeze(c1);
+    b = intern(a);
+
+    print_string(`${a.n}`);
+    print_string(`${b.n}`);
+    print_string(`${a.other.fromSome().n}`);
+    print_string(`${b.other.fromSome().n}`);
+    print_string(`${a.other.fromSome().other.fromSome().n}`);
+    print_string(`${b.other.fromSome().other.fromSome().n}`);
+  }
+}

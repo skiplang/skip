@@ -1,0 +1,4 @@
+fun main(): String {
+  tuple = ("a", "b", "c");
+  (x) = tuple;
+}

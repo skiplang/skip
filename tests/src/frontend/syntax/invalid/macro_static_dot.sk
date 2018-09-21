@@ -1,0 +1,17 @@
+trait T {
+  macro fun f(): String {
+    #ThisClass::c
+  }
+}
+
+class C() uses T {
+  const c: String = "C";
+}
+class D() uses T {
+  const c: String = "D";
+}
+
+fun main(): void {
+  print_string(C().f());
+  print_string(D().f());
+}

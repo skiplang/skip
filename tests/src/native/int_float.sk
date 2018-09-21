@@ -1,0 +1,30 @@
+// Avoid constant folding
+@no_inline
+fun toint(x: Float): Int {
+  x.toInt()
+}
+@no_inline
+fun tofloat(x: Int): Float {
+  x.toFloat()
+}
+
+fun main(): void {
+  i = 46;
+  f = 1.125;
+  print_raw(
+    "int->float " +
+      i +
+      " " +
+      tofloat(i) +
+      " folded " +
+      i.toFloat() +
+      "\n" +
+      "float->int " +
+      f +
+      " " +
+      toint(f) +
+      " folded " +
+      f.toInt() +
+      "\n",
+  )
+}

@@ -1,0 +1,8 @@
+fun matcher(value: Bool): Int {
+  value match {
+  | true -> 42
+  | false -> 101
+  | _ ->
+    43 // pattern already exhausted before this case
+  }
+}

@@ -1,0 +1,86 @@
+const myConstOne: Int = 37 - 36;
+
+class Fred() {
+  static fun x(): Int {
+    1
+  }
+}
+
+// Loop for ceilingPowerOfTwo.
+fun ceilingPowerOfTwoLoop(n: Int, g: Int): Int {
+  if (g >= n) {
+    g
+  } else {
+    ceilingPowerOfTwoLoop(n, g * 2)
+  }
+}
+
+// Returns the smallest power of two >= n, or 0 for 0.
+fun ceilingPowerOfTwo(n: Int): Int {
+  if (n == 0) {
+    0
+  } else {
+    ceilingPowerOfTwoLoop(n, 1)
+  }
+}
+
+fun hello_world(s: String): String {
+  print_string(s);
+  s match {
+  | "foo" -> void
+  | "bar" -> void
+  | "baz" -> void
+  | "frobozz5" -> void
+  | "wizard_of_oz" -> void
+  | "wizard_of_OZ" -> void
+  | _ -> void
+  };
+  if (s == "fred") {
+    print_string("saw fred!")
+  };
+  s + "I did it! Hurray!" + s
+}
+
+fun int_twice(n: Int): Int {
+  n match {
+  | 4 -> 4 + 4
+  | 9 -> 9 + 9
+  | _ -> n + n
+  }
+}
+
+fun fib(n: Int): Int {
+  if (n <= 1) {
+    myConstOne
+  } else {
+    fib(n - 1) + fib(n - 2)
+  }
+}
+
+fun float_twice(n: Float): Float {
+  print_string(n.toString());
+  n match {
+  | 4.0 -> 8.0
+  | 0.0 -> 0.0
+  | 9.0 -> 9.0 + 9.0
+  | _ -> n + n
+  }
+}
+
+fun bool_echo(n: Bool): Bool {
+  n
+}
+
+fun test_regpromote(x: Int, y: Int, a: Bool): Int {
+  ref = mutable Ref(0);
+  if (a) {
+    ref.!value = x
+  } else {
+    ref.!value = y
+  };
+  ref.value
+}
+
+fun main(): void {
+  print_raw("Hello, World!")
+}

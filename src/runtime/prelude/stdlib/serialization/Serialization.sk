@@ -1,0 +1,566 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// A runtime description of a class
+base class MetaClass<+T> {
+  fun description(): String;
+}
+
+module Serialization;
+
+// A trait that describes how a type T can be serialized/deserialize,
+// abstracted from any specific serialization format.
+trait Serializer<T> {
+  // Converts a value of type T into the serialization data model
+  // by calling the appropriate write* method on the Writer.
+  fun serialize(value: T, writer: mutable Writer): void;
+
+  // Creates a value of type T from the serialization data model
+  // by calling the appropriate read* method on the Reader.
+  fun deserialize(reader: mutable Reader): T;
+}
+
+// For types that directly represent the (dynamic) data model of a serialization
+// format (ie a JSON.Value or XML.Value type), use `readDynamic()` with a visitor
+// to let the formatter create a value depending on what is present in the data.
+trait Visitor<T> {
+  fun acceptBool(value: Bool): T;
+  fun acceptFloat(value: Float): T;
+  fun acceptInt(value: Int): T;
+  fun acceptString(value: String): T;
+  fun acceptSequence(reader: mutable SequenceReader<T>, sizeHint: SizeHint): T;
+  fun acceptTuple(reader: mutable TupleReader): T;
+  fun acceptKeyedSequence(
+    reader: mutable KeyedSequenceReader<T, T>,
+    sizeHint: SizeHint,
+  ): T;
+  fun acceptRecord(reader: mutable RecordReader): T;
+  fun acceptVoid(): T;
+  fun acceptNone(): T;
+  fun acceptSome(reader: mutable Reader): T;
+  fun acceptType(name: String, reader: mutable Reader): T;
+  fun acceptVariant(
+    baseName: String,
+    variantName: String,
+    reader: mutable Reader,
+  ): T;
+}
+
+base class Format private () {
+  type T_result;
+
+  static fun writer(): mutable Writer;
+
+  static deferred fun reader(data: this::T_result): mutable Reader;
+
+  deferred static fun serialize<T, S: Serializer<T>>(
+    value: T,
+    serializer: S,
+  ): Result<this::T_result, SerializationError> {
+    try {
+      writer = static::writer();
+      serializer.serialize(value, writer);
+      result = writer.result();
+      Success(result)
+    } catch {
+    | exn @ SerializationError _ -> Failure(exn)
+    }
+  }
+
+  deferred static fun deserialize<T, S: Serializer<T>>(
+    data: this::T_result,
+    serializer: S,
+  ): Result<T, SerializationError> {
+    try {
+      reader = static::reader(data);
+      result = serializer.deserialize(reader);
+      Success(result)
+    } catch {
+    | exn @ SerializationError _ -> Failure(exn)
+    }
+  }
+}
+
+type SizeHint = ?Int;
+type Size = Int;
+
+mutable base class Reader() {
+  mutable fun readBool(): Bool;
+  mutable fun readFloat(): Float;
+  mutable fun readInt(): Int;
+  mutable fun readString(): String;
+
+  mutable fun readSequence<T, S: Serializer<T>>(
+    serializer: S,
+  ): mutable SequenceReader<T>;
+  mutable fun readTuple(size: Size): mutable TupleReader;
+  mutable fun readKeyedSequence<Tk, Sk: Serializer<Tk>, Tv, Sv: Serializer<Tv>>(
+    keySerializer: Sk,
+    valueSerializer: Sv,
+  ): mutable KeyedSequenceReader<Tk, Tv>;
+  mutable fun readRecord(fieldNames: Array<String>): mutable RecordReader;
+
+  mutable fun readVoid(): void;
+  mutable fun readOption<T, S: Serializer<T>>(serializer: S): ?T;
+
+  mutable fun readType(): String;
+  mutable fun readVariant(): (String, mutable Reader, () -> void);
+
+  mutable fun readDynamic<T, V: Visitor<T>>(visitor: V): T;
+}
+
+mutable base class SequenceReader<T>() {
+  mutable fun sizeHint(): SizeHint;
+  mutable fun readValue(): ?T;
+  mutable fun end(): void;
+}
+
+mutable base class TupleReader() {
+  mutable fun readValue<T, S: Serializer<T>>(serializer: S): T;
+  mutable fun end(): void;
+}
+
+mutable base class KeyedSequenceReader<Tk, Tv>() {
+  mutable fun sizeHint(): SizeHint;
+  mutable fun readItem(): ?(Tk, Tv);
+  mutable fun end(): void;
+}
+
+mutable base class RecordReader() {
+  mutable fun readKey(): ?String;
+  mutable fun readValue<T, S: Serializer<T>>(serializer: S): T;
+  mutable fun end(): void;
+}
+
+mutable base class Writer() {
+  type T_result;
+
+  mutable deferred fun result(): this::T_result;
+
+  mutable fun writeBool(value: Bool): void;
+  mutable fun writeFloat(value: Float): void;
+  mutable fun writeInt(value: Int): void;
+  mutable fun writeString(value: String): void;
+
+  mutable fun writeSequence<T, S: Serializer<T>>(
+    serializer: S,
+    sizeHint: SizeHint = None(),
+  ): mutable SequenceWriter<T>;
+  mutable fun writeTuple(size: Size): mutable TupleWriter;
+  mutable fun writeKeyedSequence<
+    Tk,
+    Sk: Serializer<Tk>,
+    Tv,
+    Sv: Serializer<Tv>,
+  >(
+    keySerializer: Sk,
+    valueSerializer: Sv,
+    sizeHint: SizeHint = None(),
+  ): mutable KeyedSequenceWriter<Tk, Tv>;
+  mutable fun writeRecord(fieldNames: Array<String>): mutable RecordWriter;
+  mutable fun writeVoid(): void;
+  mutable fun writeOption<T, S: Serializer<T>>(value: ?T, serializer: S): void;
+
+  mutable fun writeType(name: String): void;
+  mutable fun writeVariant<T, S: Serializer<T>>(
+    childName: String,
+    value: T,
+    serializer: S,
+  ): void;
+}
+
+mutable base class SequenceWriter<T>() {
+  mutable fun writeValue(value: T): void;
+  mutable fun end(): void;
+}
+
+mutable base class TupleWriter() {
+  mutable fun writeValue<T, S: Serializer<T>>(value: T, serializer: S): void;
+  mutable fun end(): void;
+}
+
+mutable base class KeyedSequenceWriter<Tk, Tv>() {
+  mutable fun writeItem(key: Tk, value: Tv): void;
+  mutable fun end(): void;
+}
+
+mutable base class RecordWriter() {
+  mutable fun writeItem<T, S: Serializer<T>>(
+    fieldName: String,
+    value: T,
+    serializer: S,
+  ): void;
+  mutable fun end(): void;
+}
+
+mutable base class DefaultReader() extends Reader {
+  overridable mutable fun readBool(): Bool {
+    throw NotSupportedError(`readBool()`)
+  }
+  overridable mutable fun readFloat(): Float {
+    throw NotSupportedError(`readFloat()`)
+  }
+  overridable mutable fun readInt(): Int {
+    throw NotSupportedError(`readInt()`)
+  }
+  overridable mutable fun readString(): String {
+    throw NotSupportedError(`readString()`)
+  }
+
+  overridable mutable fun readSequence<T, S: Serializer<T>>(
+    _serializer: S,
+  ): mutable SequenceReader<T> {
+    throw NotSupportedError(`readSequence()`)
+  }
+  overridable mutable fun readTuple(_size: Size): mutable TupleReader {
+    throw NotSupportedError(`readTuple()`)
+  }
+  overridable mutable fun readKeyedSequence<
+    Tk,
+    Sk: Serializer<Tk>,
+    Tv,
+    Sv: Serializer<Tv>,
+  >(
+    _keySerializer: Sk,
+    _valueSerializer: Sv,
+  ): mutable KeyedSequenceReader<Tk, Tv> {
+    throw NotSupportedError(`readKeyedSequence()`)
+  }
+  overridable mutable fun readRecord(
+    _fieldNames: Array<String>,
+  ): mutable RecordReader {
+    throw NotSupportedError(`readRecord()`)
+  }
+
+  overridable mutable fun readVoid(): void {
+    throw NotSupportedError(`readVoid()`)
+  }
+  overridable mutable fun readOption<T, S: Serializer<T>>(_serializer: S): ?T {
+    throw NotSupportedError(`readOption()`)
+  }
+
+  overridable mutable fun readType(): String {
+    throw NotSupportedError(`readType()`)
+  }
+  overridable mutable fun readVariant(): (String, mutable Reader, () -> void) {
+    throw NotSupportedError(`readVariant()`)
+  }
+
+  overridable mutable fun readDynamic<T, V: Visitor<T>>(_visitor: V): T {
+    throw NotSupportedError(`readDynamic()`)
+  }
+}
+
+mutable base class DefaultSequenceReader<T>() extends SequenceReader<T> {
+  overridable mutable fun sizeHint(): SizeHint {
+    throw NotImplementedError(`sizeHint()`)
+  }
+  overridable mutable fun readValue(): ?T {
+    throw NotImplementedError(`readValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultTupleReader() extends TupleReader {
+  overridable mutable fun readValue<T, S: Serializer<T>>(_serializer: S): T {
+    throw NotImplementedError(`readValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultKeyedSequenceReader<Tk, Tv>() extends
+  KeyedSequenceReader<Tk, Tv>,
+{
+  overridable mutable fun sizeHint(): SizeHint {
+    throw NotImplementedError(`sizeHint()`)
+  }
+  overridable mutable fun readItem(): ?(Tk, Tv) {
+    throw NotImplementedError(`readItem()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultRecordReader() extends RecordReader {
+  overridable mutable fun readKey(): ?String {
+    throw NotImplementedError(`readKey()`)
+  }
+  overridable mutable fun readValue<T, S: Serializer<T>>(_serializer: S): T {
+    throw NotImplementedError(`readValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultWriter() extends Writer {
+  type T_result;
+
+  overridable mutable deferred fun result(): this::T_result {
+    throw NotSupportedError(`result()`)
+  }
+
+  overridable mutable fun writeBool(_value: Bool): void {
+    throw NotSupportedError(`writeBool()`)
+  }
+  overridable mutable fun writeFloat(_value: Float): void {
+    throw NotSupportedError(`writeFloat()`)
+  }
+  overridable mutable fun writeInt(_value: Int): void {
+    throw NotSupportedError(`writeInt()`)
+  }
+  overridable mutable fun writeString(_value: String): void {
+    throw NotSupportedError(`writeString()`)
+  }
+
+  overridable mutable fun writeSequence<T, S: Serializer<T>>(
+    _serializer: S,
+    _sizeHint: SizeHint = None(),
+  ): mutable SequenceWriter<T> {
+    throw NotSupportedError(`writeSequence()`)
+  }
+  overridable mutable fun writeTuple(_size: Size): mutable TupleWriter {
+    throw NotSupportedError(`writeTuple()`)
+  }
+  overridable mutable fun writeKeyedSequence<
+    Tk,
+    Sk: Serializer<Tk>,
+    Tv,
+    Sv: Serializer<Tv>,
+  >(
+    _keySerializer: Sk,
+    _valueSerializer: Sv,
+    _sizeHint: SizeHint = None(),
+  ): mutable KeyedSequenceWriter<Tk, Tv> {
+    throw NotSupportedError(`writeKeyedSequence()`)
+  }
+  overridable mutable fun writeRecord(
+    _fieldNames: Array<String>,
+  ): mutable RecordWriter {
+    throw NotSupportedError(`writeRecord()`)
+  }
+  overridable mutable fun writeVoid(): void {
+    throw NotSupportedError(`writeVoid()`)
+  }
+  overridable mutable fun writeOption<T, S: Serializer<T>>(
+    _value: ?T,
+    _serializer: S,
+  ): void {
+    throw NotSupportedError(`writeOption()`)
+  }
+
+  overridable mutable fun writeType(_name: String): void {
+    throw NotSupportedError(`writeType()`)
+  }
+  overridable mutable fun writeVariant<T, S: Serializer<T>>(
+    _childName: String,
+    _value: T,
+    _serializer: S,
+  ): void {
+    throw NotSupportedError(`writeVariant()`)
+  }
+}
+
+mutable base class DefaultSequenceWriter<T>() extends SequenceWriter<T> {
+  overridable mutable fun writeValue(_value: T): void {
+    throw NotImplementedError(`writeValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultTupleWriter() extends TupleWriter {
+  overridable mutable fun writeValue<T, S: Serializer<T>>(
+    _value: T,
+    _serializer: S,
+  ): void {
+    throw NotImplementedError(`writeValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultKeyedSequenceWriter<Tk, Tv>() extends
+  KeyedSequenceWriter<Tk, Tv>,
+{
+  overridable mutable fun writeItem(_key: Tk, _value: Tv): void {
+    throw NotImplementedError(`writeItem()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+mutable base class DefaultRecordWriter() extends RecordWriter {
+  overridable mutable fun writeKey(_fieldName: String): void {
+    throw NotImplementedError(`writeKey()`)
+  }
+  overridable mutable fun writeValue<T, S: Serializer<T>>(
+    _value: T,
+    _serializer: S,
+  ): void {
+    throw NotImplementedError(`writeValue()`)
+  }
+  overridable mutable fun end(): void {
+    throw NotImplementedError(`end()`)
+  }
+}
+
+base class SerializationError() extends Exception uses Show, Equality {
+  fun toString(): String;
+}
+
+class TupleSizeOutOfBoundsError() extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to create a tuple of size < 2 or > 10.`
+  }
+  fun toString(): String {
+    `TupleSizeOutOfBoundsSerializationError: ${this.getMessage()}`
+  }
+}
+
+class TupleSizeUnexpectedError(
+  expSize: Int,
+  actualSize: Int,
+) extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to (de)serialize a ${this.actualSize}-tuple as a ${this.expSize}`
+  }
+  fun toString(): String {
+    `TupleSizeUnexpectedSerializationError: ${this.getMessage()}`
+  }
+}
+
+class CollectionNotDoneError() extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to call end() on a collection that has not been fully read/written.`
+  }
+  fun toString(): String {
+    `CollectionNotDoneSerializationError: ${this.getMessage()}`
+  }
+}
+
+class RecordNoValuesLeftError() extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to read/write a Map value after Map has been fully read/written.`
+  }
+  fun toString(): String {
+    `MapNoValuesLeftError: ${this.getMessage()}`
+  }
+}
+
+class RecordMissingFieldError(
+  recordName: String,
+  fieldName: String,
+) extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to read class '${this.recordName}' but '${
+      this.fieldName
+    }' value missing.`
+  }
+  fun toString(): String {
+    `RecordMissingFieldSerializationError: ${this.getMessage()}`
+  }
+}
+
+class TypeNotImplementedError(typeName: String) extends SerializationError {
+  fun getMessage(): String {
+    `Type ${this.typeName} is not implemented.`
+  }
+  fun toString(): String {
+    `TypeNotImplementedError: ${this.getMessage()}`
+  }
+}
+
+class NotChildClassError(
+  baseClassName: String,
+  childClassName: String,
+) extends SerializationError {
+  fun getMessage(): String {
+    `"${this.childClassName}" is not a subclass of "${this.baseClassName}".`
+  }
+  fun toString(): String {
+    `NotChildClassSerializationError: ${this.getMessage()}`
+  }
+}
+
+class FieldNotInClassError(
+  fieldName: String,
+  realFieldNames: Array<String>,
+) extends SerializationError {
+  fun getMessage(): String {
+    `Invalid field '${
+      this.fieldName
+    }'. Expected one of ${this.realFieldNames.map((x) -> `'${x}'`).join(", ")}.`
+  }
+  fun toString(): String {
+    `FieldNotInClassSerializationError: ${this.getMessage()}`
+  }
+}
+
+class VariantMissingError() extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to deserialize base class but did not receive any data.`
+  }
+  fun toString(): String {
+    `VariantMissingError: ${this.getMessage()}`
+  }
+}
+
+class NotExpectedClassError(className: String) extends SerializationError {
+  fun getMessage(): String {
+    `Attempted to serialize ${this.className}; received non-${this.className}`
+  }
+  fun toString(): String {
+    `NotExpectedClassError: ${this.getMessage()}`
+  }
+}
+
+class UnnamedPositionalParameterError() extends SerializationError {
+  fun getMessage(): String {
+    `Unnamed Positional Parameters are not supported.`
+  }
+  fun toString(): String {
+    `UnnamedPositionalParameterError: ${this.getMessage()}`
+  }
+}
+
+class UnrecognizedDefaultValueError() extends SerializationError {
+  fun getMessage(): String {
+    `Unrecognized default value.`
+  }
+  fun toString(): String {
+    `UnrecognizedDefaultValueError: ${this.getMessage()}`
+  }
+}
+
+class NotImplementedError(location: String) extends SerializationError {
+  fun getMessage(): String {
+    `Method ${this.location} has not been implemented.`
+  }
+  fun toString(): String {
+    `NotImplementedError: ${this.getMessage()}`
+  }
+}
+
+class NotSupportedError(location: String) extends SerializationError {
+  fun getMessage(): String {
+    `Method ${this.location} is not supported.`
+  }
+  fun toString(): String {
+    `NotSupportedError: ${this.getMessage()}`
+  }
+}
+
+module end;

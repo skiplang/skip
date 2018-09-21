@@ -1,0 +1,145 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Represents an optional value, ie one that may or may not be present.
+// Some(T) represents a value that is present and None() represents a
+// missing value.
+//
+// Option fulfills a similar role to nullable types in other languages,
+// but in a type-safe way: the programmer must explicitly handle the case
+// of a missing value.
+//
+// Example:
+// ```
+// maybeValue = map.maybeGet(key);
+// maybeValue match {
+// | Some(value) -> /* use value */
+// | None() -> /* key not found, fallback...*/
+// };
+// ```
+//
+// NOTE: As a NBE optimization this implementation is customized in
+// native/FastOption.sk, and the APIs must be kept in sync.
+base class Option<+T> uses
+  Show[T: readonly Show],
+  Hashable[T: Hashable],
+  Orderable[T: Orderable],
+  Equality[T: Equality],
+{
+  children =
+  | Some(value: T)
+  | None()
+
+  // For Some() values, returns a new Option with the result of applying the
+  // mapping function to the contained value. Returns None() when this is None().
+  fun map<T2>(f: T -> T2): ?T2
+  | None() -> None()
+  | Some(x) -> Some(f(x))
+
+  // For Some() values, returns the results of applying the mapping function to the
+  // contained value. Returns None() when this is None().
+  fun flatMap<T2>(f: T -> ?T2): ?T2
+  | None() -> None()
+  | Some(x) -> f(x)
+
+  // Returns the result of calling the lambda for a Some() value or `nothing`
+  // for None() values. Equivalent to `option.map(mjust).default(nothing)`
+  fun maybe<T2>(nothing: T2, mjust: T -> T2): T2
+  | None() -> nothing
+  | Some(x) -> mjust(x)
+
+  // Returns the contained value for Some(), otherwise returns the default value.
+  fun default<T2>[T: T2](x: T2): T2
+  | None() -> x
+  | Some(y) -> y
+
+  // For Some() values, returns the result of calling the predicate on the
+  // contained value. Returns false for None() values.
+  fun test(p: T -> Bool): Bool
+  | None _ -> false
+  | Some(x) -> p(x)
+
+  fun fromSome(msg: String = "fromSome called on None"): T
+  | None() -> invariant_violation(msg)
+  | Some(x) -> x
+
+  fun isSome(): Bool
+  | None() -> false
+  | Some _ -> true
+
+  fun isNone(): Bool
+  | None() -> true
+  | Some _ -> false
+
+  fun hash[T: Hashable](): Int
+  | None() -> 1027410261
+  | Some(x) -> x.hash() + 1
+
+  // For Some() values, calls the lambda with the contained value. Does nothing
+  // for None() values.
+  fun each(f: T -> void): void
+  | None() -> void
+  | Some(value) -> f(value)
+
+  untracked fun eachUntracked(f: untracked T -> void): void
+  | None() -> void
+  | Some(value) -> f(value)
+
+  fun ==<U: Equality>[T: U](other: ?U): Bool
+  | None() -> other.isNone()
+  | Some(x) ->
+    other match {
+    | Some(y) -> x == y
+    | None() -> false
+    }
+
+  fun !=<U: Equality>[T: U](other: ?U): Bool {
+    !(this == other)
+  }
+
+  fun <<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) == LT()
+  }
+
+  fun ><U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) == GT()
+  }
+
+  fun <=<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) != GT()
+  }
+
+  fun >=<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) != LT()
+  }
+
+  // None() is less than Some().
+  fun compare<U: Orderable>[T: U](other: ?U): Order
+  | None() ->
+    if (other.isNone()) {
+      EQ()
+    } else {
+      LT()
+    }
+  | Some(x) ->
+    other match {
+    | Some(y) -> compare(x, y)
+    | None() -> GT()
+    }
+
+  fun toString[T: readonly Show](): String
+  | None() -> "None()"
+  | Some(x) -> `Some(${x.toString()})`
+
+  async frozen fun genMap<U>(f: T ~> ^U): ^?U
+  | None() -> None()
+  | Some(x) -> Some(await f(x))
+
+  async frozen fun genFilter(p: T ~> ^Bool): ^?T
+  | None() -> None()
+  | option @ Some(x) -> if (await p(x)) option else None()
+}

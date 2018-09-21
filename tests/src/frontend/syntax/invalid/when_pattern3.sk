@@ -1,0 +1,18 @@
+base class Mine {
+  children =
+  | Yours(Int)
+  | Theirs(Bool)
+}
+
+fun shouldPass(v: Mine): String {
+  v match {
+  | Yours(x) if (x) -> "Fail\n"
+  | Yours(x) if (x == 2) -> "Nope\n"
+  | _ -> "BOOOM\n"
+  }
+}
+
+fun main(): void {
+  x = Theirs(true);
+  print_raw(shouldPass(x))
+}

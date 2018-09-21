@@ -1,0 +1,7 @@
+class C {} {
+  const TID = 0;
+}
+
+fun main(): String {
+  ""
+}

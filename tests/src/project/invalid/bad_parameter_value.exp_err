@@ -1,0 +1,5 @@
+File "invalid/bad_parameter_value/skip.project.json"
+Value 'missing' is not a valid value for variable 'v' in program unit 'lib'.
+
+File "invalid/bad_parameter_value/skip.project.json"
+Missing value 'val1' for variable 'v' in program unit 'lib'.

@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import argparse
+import imp
+import logging
+import os
+import pipes
+import subprocess
+import sys
+
+import common
+import skip_native_compile
+import skip_js_compile
+
+logger = logging.getLogger(os.path.basename(__file__))
+
+build_dir = common.build_dir
+
+description = '''
+Run a skip program (with a skip.project.json) or ad-hoc script.
+'''
+
+def main(stack):
+    remainder = common.splitRemainder()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=description,
+        parents=[common.commonArguments(needsBackend=False), skip_native_compile.arguments()])
+    parser.add_argument('srcs', metavar='SOURCE', nargs='+')
+    parser.add_argument('--backend', default=os.environ.get('BACKEND', 'native'))
+    parser.add_argument('--watch', default=False, action='store_true')
+
+    args = common.parse_args(parser)
+
+    if all(common.isSkipFile(path) for path in args.srcs):
+        # if all inputs are skip files (ie not project files), add prelude for convenience
+        args.srcs += [os.path.join(common.runtime_dir, 'prelude:prelude')]
+
+    if args.backend == 'native':
+        common.buildNinjaTarget('skip_to_native')
+        binFile = skip_native_compile.compile(stack, args)
+        cmd = (binFile.name,)
+        if args.watch:
+            cmd += ('--watch',)
+    elif args.backend == 'js':
+        common.buildNinjaTarget('skip_to_js')
+        cmd = skip_js_compile.compile(stack, args)
+    elif args.backend == 'js_self':
+        common.buildNinjaTarget('bin/skip_to_js.js')
+        cmd = (os.path.join(common.runtime_dir, 'tools', 'skip_js_self_exec'),)
+        cmd += tuple(args.srcs)
+    elif args.backend == 'wasm':
+        common.buildNinjaTarget('skip_to_native')
+        common.buildNinjaTarget('skip_to_llvm')
+        common.buildNinjaTarget('preamble32.tests.dep')
+        cmd = (os.path.join(common.root_dir, 'experimental', 'wasm', 'tools', 'skip_wasm_exec'),)
+        cmd += tuple(args.srcs)
+    else:
+        print("Uknown backend %s" % (args.backend))
+        exit(2)
+
+    cmd += tuple(remainder)
+    logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
+    with common.PerfTimer('run.' + args.backend):
+        res = subprocess.call(cmd, env=os.environ)
+    if res != 0:
+        sys.exit(res)
+
+
+if __name__ == '__main__':
+    with common.ExitStack() as stack:
+        rc = main(stack)
+    sys.exit(rc)

@@ -1,0 +1,35 @@
+const c1: String = 0;
+const c2: String = 0;
+
+class C1{p1: String = 0, p2: String = 1} {
+  const c1: String = 0;
+  const c2: String = 0;
+  fun m1(): String {
+    0;
+  }
+  fun m2(): String {
+    0;
+  }
+}
+
+class C2{p1: String = 0, p2: String = 1} {
+  const c1: String = 0;
+  const c2: String = 0;
+  fun m1(): String {
+    0;
+  }
+  fun m2(): String {
+    0;
+  }
+}
+
+fun f1(): String {
+  0;
+}
+fun f2(): String {
+  0;
+}
+
+fun main(): void {
+  void
+}

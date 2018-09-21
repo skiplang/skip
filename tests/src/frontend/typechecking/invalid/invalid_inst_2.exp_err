@@ -1,0 +1,6 @@
+File "./typechecking/invalid/invalid_inst_2.sk", line 2, characters 14-17:
+The type 'inst' can only be used from within a trait
+1 | base class Foo {
+2 |   fun bar(x: inst): void;
+  |              ^^^^
+3 | }

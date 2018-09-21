@@ -1,0 +1,5 @@
+class X<T>() {
+  fun a[T: Show]<U>(): String {
+    ""
+  }
+}

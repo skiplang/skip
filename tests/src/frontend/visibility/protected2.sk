@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("OK")
+}
+base class X {
+  protected fun foo(): void {
+    this.foo()
+  }
+}
+
+class Y() extends X {
+  protected fun bar(): void {
+    this.foo()
+  }
+}

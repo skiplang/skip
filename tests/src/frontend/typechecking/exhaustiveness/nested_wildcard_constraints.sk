@@ -1,0 +1,13 @@
+fun test<T>(x: (?T, ?T)): void {
+  x match {
+  | (Some _, None())
+  | (None(), None())
+  | (None(), _)
+  | (Some(_), Some(_)) ->
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

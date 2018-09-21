@@ -1,0 +1,16 @@
+class Foo() uses Orderable {
+  fun compare(_: Foo): Order {
+    EQ()
+  }
+}
+
+fun main(): void {
+  a = Foo();
+  b = Foo();
+  print_raw(
+    a.compare(b) match {
+    | EQ() -> "Pass\n"
+    | _ -> "Fail"
+    },
+  )
+}

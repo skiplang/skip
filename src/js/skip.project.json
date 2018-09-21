@@ -1,0 +1,13 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "skip_to_js": {
+      "kind": "Program",
+      "sources": ["."],
+      "references": [
+        { "path": "../outer" },
+        { "path": "../project" }
+      ]
+    }
+  }
+}

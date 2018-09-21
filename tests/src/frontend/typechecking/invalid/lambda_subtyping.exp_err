@@ -1,0 +1,32 @@
+File "./typechecking/invalid/lambda_subtyping.sk", line 16, characters 7-18:
+Invalid lambda type
+14 |
+15 | fun main(): void {
+16 |   f = x -> x.foo();
+   |       ^^^^^^^^^^^^
+17 |   y: Child2 = apply(f, Child2("hello"));
+
+File "./typechecking/invalid/lambda_subtyping.sk", line 6, characters 14-19:
+The type: MyBase
+4 |   | Child2(value: String)
+5 |
+6 |   fun foo(): MyBase
+  |              ^^^^^^
+7 |   | Child1 _ -> Child1(42)
+
+File "./typechecking/invalid/lambda_subtyping.sk", line 17, characters 24-38:
+Is not a subtype of: Child2
+15 | fun main(): void {
+16 |   f = x -> x.foo();
+17 |   y: Child2 = apply(f, Child2("hello"));
+   |                        ^^^^^^^^^^^^^^^
+18 |   print_raw(
+
+File "./typechecking/invalid/lambda_subtyping.sk", line 17, characters 24-38:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: MyBase
+15 | fun main(): void {
+16 |   f = x -> x.foo();
+17 |   y: Child2 = apply(f, Child2("hello"));
+   |                        ^^^^^^^^^^^^^^^
+18 |   print_raw(

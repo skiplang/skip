@@ -1,0 +1,7 @@
+class Z(z: String)
+mutable class X(mutable y: Z)
+fun main(): void {
+  x = mutable X(Z("Hello"));
+  x.!y.z = "World\n";
+  print_raw(x.y.z)
+}

@@ -1,0 +1,25 @@
+fun idx(
+  x: Nullable<JSON.Value>,
+  key: String,
+  default: Nullable<JSON.Value> = Null(),
+): Nullable<JSON.Value> {
+  x match {
+  | Box(y) ->
+    y match {
+    | JSON.Object(obj) ->
+      if (obj.containsKey(key)) {
+        Box(obj.get(key))
+      } else {
+        default
+      }
+    | _ -> default
+    }
+  | _ -> default
+  }
+}
+
+fun main(): void {
+  result = Map[];
+  _ = idx(Box(JSON.Object(result)), "__errors");
+  print_string("Pass");
+}

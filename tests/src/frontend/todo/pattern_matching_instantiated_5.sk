@@ -1,0 +1,36 @@
+base class Expr<T> {
+  fun value(x: T): T;
+}
+
+class StringE(x: String) extends Expr<String> {
+  fun value(_: String): String {
+    this.x
+  }
+}
+
+class IntE(x: Int) extends Expr<Int> {
+  fun value(_: Int): Int {
+    this.x
+  }
+}
+
+class BoolE(x: Bool) extends Expr<Bool> {
+  fun value(_: Bool): Bool {
+    this.x
+  }
+}
+
+fun matcher<T>(x: Expr<T>, y: T): T {
+  x match {
+  | x @ BoolE _ -> x.value(false) && y && true
+  | x @ IntE _ -> x.value(0) * y * 1
+  | x @ StringE _ -> x.value("") + y + ""
+  }
+}
+
+fun main(): void {
+  s = matcher(StringE("Hello"), " ") + "world";
+  x = matcher(IntE(112), 1) + 0;
+  b = matcher(BoolE(true), true) || false;
+  print_string("Pass")
+}

@@ -1,0 +1,13 @@
+File "./syntax/invalid/duplicate_lambda_named_params.sk", line 2, characters 11-11:
+Name already bound: p
+1 | fun main(): void {
+2 |   l = {p, p} ~> p;
+  |           ^
+3 |   print_raw(l{p => "Fail"})
+
+File "./syntax/invalid/duplicate_lambda_named_params.sk", line 2, characters 8-8:
+Previously here
+1 | fun main(): void {
+2 |   l = {p, p} ~> p;
+  |        ^
+3 |   print_raw(l{p => "Fail"})

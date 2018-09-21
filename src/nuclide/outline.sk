@@ -1,0 +1,288 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+type ParseTree = ParseTree.ParseTree;
+
+fun outline(source: String): void {
+  outlineJson(source).print()
+}
+
+fun outlineJson(source: String): JSON.Value {
+  parseResults = SkipParser.parseSource(source, false);
+  // print_string(TokenKind.ensToString(tokens));
+  errorJson = errorsToJson(parseResults.errors);
+  vector = sourceUnitToJson(parseResults.tree).value.clone();
+  errorJson.value.each(vector.push);
+  JSON.Array(freeze(vector));
+}
+
+fun errorsToJson(errors: Array<SyntaxError>): JSON.Array {
+  JSON.Array::createFromIterator(errors.values().map(errorToJson))
+}
+
+fun errorToJson(error: SyntaxError): JSON.Object {
+  rangeToJson(error.messages.getHead().i0)
+    .set("kind", JSON.String("error"))
+    .set("name", JSON.String(error.toString()))
+}
+
+fun treesToJson(trees: mutable Iterator<ParseTree>): JSON.Array {
+  JSON.Array::createFromIterator(
+    trees
+      .map(treeToOptionJsonCatch)
+      .filter(x -> x.isSome())
+      .map(x -> x.fromSome()),
+  )
+}
+
+fun treeToOptionJsonCatch(tree: ParseTree): ?JSON.Value {
+  try {
+    treeToOptionJson(tree)
+  } catch {
+  | e ->
+    Some(
+      rangeToJson(tree.range)
+        .set("kind", JSON.String("exception"))
+        .set("name", JSON.String(e.getMessage())),
+    )
+  }
+}
+
+fun treeListToJson(trees: ParseTree): JSON.Array {
+  trees match {
+  | ParseTree.ParseTreeList{elements} -> treesToJson(elements.values())
+  | ParseTree.EmptyTree _ -> JSON.Array[]
+  | _ -> invariant_violation("Expected parse tree list")
+  }
+}
+
+fun treeToString(tree: ParseTree): JSON.String {
+  tree match {
+  | ParseTree.TokenTree{token} -> JSON.String(token.value)
+  | _ -> invariant_violation("Expected token tree" + tree.toDebugString())
+  }
+}
+
+fun treeToStringOpt(tree: ParseTree): ?JSON.String {
+  tree match {
+  | ParseTree.EmptyTree _ -> None()
+  | _ -> Some(treeToString(tree))
+  }
+}
+
+fun locationToJson(position: Position): JSON.Value {
+  JSON.Object[
+    "line" => JSON.FloatNumber(position.line().toFloat()),
+    "column" => JSON.FloatNumber(position.column().toFloat()),
+  ]
+}
+
+fun rangeToJson(range: TextRange): JSON.Value {
+  JSON.Object[
+    "start" => locationToJson(range.start),
+    "end" => locationToJson(range.end),
+  ]
+}
+
+fun modifiersToJson(modifiers: ParseTree): JSON.Array {
+  modifiers match {
+  | ParseTree.ParseTreeList{elements} ->
+    JSON.Array::createFromIterator(
+      elements.values().filter(tree ~> tree.isToken()).map(treeToString),
+    )
+  | _ -> invariant_violation("Expected modifers as ParseTreeList")
+  }
+}
+
+fun convertNamedParameters(parameters: ParseTree): JSON.Array {
+  parameters match {
+  | ParseTree.EmptyTree _ -> JSON.Array[]
+  | ParseTree.ParseTreeList{elements} ->
+    JSON.Array::createFromIterator(
+      elements.values().map(parameter ->
+        parameter match {
+        // TODO: modifiers
+        | ParseTree.NamedParameterTree{name} -> treeToString(name)
+        | _ -> invariant_violation("unexpected named parameter")
+        }
+      ),
+    )
+  | _ -> invariant_violation("Unexpected named parameters")
+  }
+}
+
+fun convertParameterNameColon(nameColon: ParseTree): JSON.String {
+  treeToString((nameColon as ParseTree.ParameterNameColonTree _).name);
+}
+
+fun convertPositionalParameters(parameters: ParseTree): JSON.Array {
+  parameters match {
+  | ParseTree.EmptyTree _ -> JSON.Array[]
+  | ParseTree.ParseTreeList{elements} ->
+    JSON.Array::createFromIterator(
+      elements
+        .values()
+        .map(parameter ->
+          parameter match {
+          // TODO: modifiers
+          | ParseTree.PositionalParameterTree{nameColon} ->
+            nameColon match {
+            | ParseTree.EmptyTree _ -> None()
+            | _ -> Some(convertParameterNameColon(nameColon))
+            }
+          | _ -> invariant_violation("unexpected named parameter")
+          }
+        )
+        .filter(x -> x.isSome())
+        .map(x -> x.fromSome()),
+    )
+  | _ -> invariant_violation("Unexpected named parameters")
+  }
+}
+
+fun convertParametersOpt(parametersOpt: ParseTree): JSON.Value {
+  parametersOpt match {
+  | ParseTree.EmptyTree _ -> JSON.Null()
+  | ParseTree.NamedParametersTree{parameters} ->
+    JSON.Object[
+      "isNamed" => JSON.Bool(true),
+      "parameters" => convertNamedParameters(parameters),
+    ]
+  | ParseTree.PositionalParametersTree{parameters} ->
+    JSON.Object[
+      "isNamed" => JSON.Bool(false),
+      "parameters" => convertPositionalParameters(parameters),
+    ]
+  | _ -> invariant_violation("Expected parameters")
+  }
+}
+
+fun convertGlobalName(tree: ParseTree): JSON.Value {
+  tree match {
+  | ParseTree.GlobalQualifiedTypeNameTree{
+    name => ParseTree.TypeNameTree{name},
+  } ->
+    JSON.String("." + treeToString(name).value)
+  | _ -> treeToString(tree)
+  }
+}
+
+fun treeOptToJson(tree: ParseTree): JSON.Value {
+  tree match {
+  | ParseTree.EmptyTree _ -> JSON.Null()
+  | _ -> treeToJson(tree)
+  }
+}
+
+// TODO: parameters
+fun treeToOptionJson(tree: ParseTree): ?JSON.Value {
+  locationJson = rangeToJson(tree.range);
+  tree match {
+  // module declarations
+  | ParseTree.ModuleTree{name, declarations} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("module"))
+        .set("name", treeToString(name))
+        .set("children", treeListToJson(declarations)),
+    )
+  | ParseTree.ModuleAliasTree{name} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("module alias"))
+        .set("name", treeToString(name)),
+    )
+  // module members
+  | ParseTree.FunctionDeclarationTree{modifiers, name, parameters} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("fun"))
+        .set("name", convertGlobalName(name))
+        .set("parameters", convertParametersOpt(parameters))
+        .set("modifiers", modifiersToJson(modifiers)),
+    )
+  | ParseTree.ClassDeclarationTree{modifiers, name, constructor, body} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("class"))
+        .set("name", convertGlobalName(name))
+        .set("parameters", treeOptToJson(constructor))
+        .set("modifiers", modifiersToJson(modifiers))
+        .set("children", treeListToJson(body)),
+    )
+  | ParseTree.TraitDeclarationTree{modifiers, name, constructor, body} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("trait"))
+        .set("name", convertGlobalName(name))
+        .set("parameters", treeOptToJson(constructor))
+        .set("modifiers", modifiersToJson(modifiers))
+        .set("children", treeListToJson(body)),
+    )
+  | ParseTree.ClassConstructorDeclarationTree{parameters} ->
+    Some(convertParametersOpt(parameters))
+  | ParseTree.GlobalConstantTree{modifiers, name} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("const"))
+        .set("name", convertGlobalName(name))
+        .set("modifiers", modifiersToJson(modifiers)),
+    )
+  | ParseTree.TypeAliasDeclarationTree{name} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("type"))
+        .set("name", convertGlobalName(name)),
+    )
+  // class members
+  | ParseTree.TypeConstantTree{name} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("type"))
+        .set("name", treeToString(name)),
+    )
+  | ParseTree.ConstantTree{modifiers, name} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("const"))
+        .set("name", treeToString(name))
+        .set("modifiers", modifiersToJson(modifiers)),
+    )
+  | ParseTree.ChildrenTree _ -> None()
+  | ParseTree.MethodDeclarationTree{modifiers, name, parameters} ->
+    Some(
+      locationJson
+        .set("kind", JSON.String("method"))
+        .set("name", treeToString(name))
+        .set("parameters", convertParametersOpt(parameters))
+        .set("modifiers", modifiersToJson(modifiers)),
+    )
+  | _ -> invariant_violation("Unexpected declaration: " + tree.range)
+  }
+}
+
+fun sourceUnitToJson(tree: ParseTree): JSON.Array {
+  treesToJson(tree.declarationListOfSourceUnitTree().values())
+}
+
+fun treeToJson(tree: ParseTree): JSON.Value {
+  treeToOptionJson(tree).fromSome()
+}
+
+fun processFile(fileName: String): void {
+  outline(FileSystem.readTextFile(fileName))
+}
+
+fun main(): void {
+  args = arguments();
+  if (args.isEmpty()) {
+    outline(read_stdin());
+  } else {
+    args.each(processFile);
+  };
+  void
+}

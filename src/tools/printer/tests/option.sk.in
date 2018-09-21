@@ -1,0 +1,2 @@
+const a: Option<T> = 1;
+const b: /*a*/Option/*b*/</*c*/T/*d*/,/*e*/>/*f*/ = 2;

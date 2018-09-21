@@ -1,0 +1,195 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+fun sk_create_counter_from_value(value: Int): () -> Int {
+  v = value;
+  () -> {
+    !v = v + 1;
+    v
+  }
+}
+
+fun sk_create_counter(): () -> Int {
+  sk_create_counter_from_value(-1)
+}
+
+fun sk_new_var(next: () -> Int, str: String): String {
+  str + "!" + next()
+}
+
+fun sk_new_var_name(next: () -> Int, pos: FileRange): (FileRange, String) {
+  (pos, sk_new_var(next, "var"))
+}
+
+fun new_tmp_sk(next: () -> Int): String {
+  "_tmp" + next()
+}
+
+fun make_jump_label(new_id: (() -> Int), pos: FileRange): (FileRange, String) {
+  var = sk_new_var(new_id, "jumpLab");
+  (pos, var)
+}
+
+// Exceptions
+class Error_name_already_bound(
+  String,
+  FileRange,
+  FileRange,
+) extends Exception {}
+class Error_unbound_name(String, FileRange) extends Exception {}
+class Error_unbound_name_with_msg(
+  FileRange,
+  String,
+  FileRange,
+  String,
+) extends Exception {}
+
+// Util.sk
+
+fun reportMemoryStatistics(phase: String): void {
+  // Use 'ninja tests/skip_to_llvm.tests.ll' to report stats.
+  if (config.profile) {
+    print_error(phase + ": ");
+    Debug.printMemoryStatistics();
+  }
+}
+
+class Config{
+  debug: Bool = false,
+  debugPhase: ?String = None(),
+  profile: Bool = false,
+  profilePath: ?String = None(),
+}
+
+const utilsConfigSchema: Array<ArgumentParser.Param> = Array[
+  ArgumentParser.BoolParam{
+    name => "profile",
+    help => "Set to enable profiling of compiler phases",
+    negatable => false,
+  },
+  ArgumentParser.StringParam{
+    name => "profile-path",
+    help => "Path to write profile data",
+    validate => ArgumentParser.nonEmpty,
+  },
+  ArgumentParser.BoolParam{
+    name => "debug",
+    help => "Set to enable debugging of compiler phases",
+    negatable => false,
+  },
+  ArgumentParser.StringParam{
+    name => "debug-phase",
+    help => "Name of a compiler phase to debug",
+  },
+];
+
+const config: Config = {
+  ArgumentParser.parse(utilsConfigSchema, arguments()) match {
+  | Success(results) ->
+    debugPhase = results.maybeGetString("debug-phase");
+    profilePath = results.maybeGetString("profile-path");
+    debug = results.getBool("debug");
+    profile = results.getBool("profile");
+    Config{debug, debugPhase, profile, profilePath}
+  | Failure(exn) ->
+    print_error_ln(exn.getMessage().trim());
+    print_error_ln(ArgumentParser.help(utilsConfigSchema));
+    exit(1)
+  }
+};
+
+// TODO: Add a distinct command line argument for this instead of overloading --debug.
+// TODO: Will do that once we've merged the various command line argument parsers.
+fun shouldDebugSymbol(symbolName: String): Bool {
+  config.debugPhase match {
+  | Some(debugPhase) -> symbolName.contains(debugPhase)
+  | _ -> false
+  }
+}
+
+// Returns elapsed time in milli-seconds.
+fun timeOperation<T>(timed: () -> T): (Float, T) {
+  startTime = now();
+  result = timed();
+  endTime = now();
+  (endTime - startTime, result);
+}
+
+// Writes elapsed time of phase() to a file in profilePath
+fun recordPhaseRuntime<T>(dir: String, phaseName: String, phase: () -> T): T {
+  filename = phaseName.replace("/", "_").replace(" ", "") + ".phase";
+  filepath = dir + '/' + filename;
+  (time, value) = timeOperation(phase);
+  FileSystem.writeTextFile(
+    filepath,
+    JSON.Object[
+      "label" => JSON.String(filename),
+      "tables" => JSON.Array[JSON.String("skip_compiler")],
+      "value" => JSON.FloatNumber(time),
+      "datatype" => JSON.String("double"),
+    ].encode(),
+  );
+  value
+}
+
+fun runCompilerPhase<T>(phaseName: String, phase: () -> T): T {
+  if (config.debug || config.profile) {
+    reportMemoryStatistics(`${phaseName} start`);
+    (elapsedTime, result) = timeOperation(phase);
+    reportMemoryStatistics(`${phaseName} end`);
+    print_error_ln(
+      `Elapsed time (in ms) for phase ${phaseName}: ` + elapsedTime,
+    );
+    if (config.debug) {
+      if (
+        config.debugPhase.isNone() ||
+        phaseName.contains(config.debugPhase.fromSome())
+      ) {
+        print_error_ln(`Results of pass: ${phaseName}`);
+        debug(result);
+      } else if (config.debugPhase.isSome()) {
+        print_error_ln(
+          `Not printing results of pass: ${phaseName} due to ` +
+            `filter ${config.debugPhase.fromSome()}.`,
+        );
+      }
+    };
+    result;
+    // TODO: Add support for exiting after a phase.
+  } else {
+    config.profilePath match {
+    | Some(dir) -> recordPhaseRuntime(dir, phaseName, phase)
+    | None() -> phase()
+    }
+  }
+}
+
+/*
+TODO: Add this once T25145580 is fixed.
+fun mtimeOperation<T>(timed: () -> mutable T): (Float, mutable T) {
+  startTime = now();
+  result = timed();
+  endTime = now();
+  (endTime - startTime, result);
+}
+
+fun mrunCompilerPhase<T>(phaseName: String, phase: () -> mutable T): mutable T {
+  if (debugCompilerPhases || profileCompilerPhases) {
+    reportMemoryStatistics(phaseName + " start");
+    (elapsedTime, result) = mtimeOperation(phase);
+    reportMemoryStatistics(phaseName + " start");
+    print_error_ln("Elapsed time (in seconds) for phase '" + phaseName + "': " + elapsedTime);
+    if (debugCompilerPhases) {
+      print_error_ln("Results of pass: " + phaseName);
+      debug(result);
+    };
+    result;
+  } else {
+    phase();
+  }
+}
+*/

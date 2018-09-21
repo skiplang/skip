@@ -1,0 +1,13 @@
+File "./typechecking/invalid/visibility_match_1.sk", line 5, characters 12-12:
+Invalid pattern match against the field 'y' due to visibility. Try replacing this pattern with '_'
+3 | fun no(f: Foo): Int {
+4 |   f match {
+5 |   | Foo(a, b) -> a + b
+  |            ^
+6 |   }
+
+File "./typechecking/invalid/visibility_match_1.sk", line 1, characters 19-25:
+It was declared as private
+1 | class Foo(x: Int, private y: Int)
+  |                   ^^^^^^^
+2 |

@@ -1,0 +1,13 @@
+base class AParent<P> {
+  fun foo(P): P;
+}
+
+class AChild<C>() extends AParent<C> {
+  fun foo(c: C): C {
+    c
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

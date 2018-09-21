@@ -1,0 +1,39 @@
+@test
+fun testEQ(): void {
+  assertEqual(void == void, true)
+}
+
+@test
+fun testNE(): void {
+  assertEqual(void != void, false);
+}
+
+@test
+fun testLT(): void {
+  assertEqual(void < void, false);
+}
+
+@test
+fun testLE(): void {
+  assertEqual(void <= void, true);
+}
+
+@test
+fun testGT(): void {
+  assertEqual(void > void, false);
+}
+
+@test
+fun testGE(): void {
+  assertEqual(void >= void, true);
+}
+
+@test
+fun testCompare(): void {
+  assertEqual(void.compare(void), EQ())
+}
+
+@test
+fun testShow(): void {
+  assertEqual("" + void, "void")
+}

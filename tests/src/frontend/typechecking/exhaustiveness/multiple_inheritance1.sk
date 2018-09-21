@@ -1,0 +1,15 @@
+base class P
+base class L extends P
+base class R extends P
+class C() extends L, R
+class D() extends L
+
+fun main(): void {
+  l: P = C();
+  print_raw(
+    l match {
+    | R _ -> "Pass\n"
+    | L _ -> "Fail\n"
+    },
+  )
+}

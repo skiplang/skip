@@ -1,0 +1,23 @@
+File "./typechecking/invalid/conditional_trait_tparam_constraint_merged.sk", line 2, characters 7-9:
+For the child: 'Foo', invalid use of the parent: 'X'
+1 | trait X<+T>
+2 | class Foo<+T, +U, +V>() uses X<T>, X<U>[T: U], X<V>[T: V]
+  |       ^^^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint_merged.sk", line 2, characters 30-30:
+Incompatible extend
+1 | trait X<+T>
+2 | class Foo<+T, +U, +V>() uses X<T>, X<U>[T: U], X<V>[T: V]
+  |                              ^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint_merged.sk", line 2, characters 50-50:
+The type: V
+1 | trait X<+T>
+2 | class Foo<+T, +U, +V>() uses X<T>, X<U>[T: U], X<V>[T: V]
+  |                                                  ^
+
+File "./typechecking/invalid/conditional_trait_tparam_constraint_merged.sk", line 2, characters 38-38:
+Does not share a common super type with: U
+1 | trait X<+T>
+2 | class Foo<+T, +U, +V>() uses X<T>, X<U>[T: U], X<V>[T: V]
+  |                                      ^

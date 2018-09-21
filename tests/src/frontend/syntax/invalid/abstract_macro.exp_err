@@ -1,0 +1,6 @@
+File "./syntax/invalid/abstract_macro.sk", line 2, characters 3-7:
+'macro' methods must include an expression body.
+1 | base class B {
+2 |   macro fun m(): void;
+  |   ^^^^^
+3 | }

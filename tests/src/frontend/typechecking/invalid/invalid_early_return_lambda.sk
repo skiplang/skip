@@ -1,0 +1,18 @@
+base class MyBase
+class Child2(value: String) extends MyBase
+class Child1<T>(value: T) extends MyBase
+
+fun apply<T>(f: T -> T, a: T): T {
+  f(a)
+}
+
+fun main(): void {
+  f = x -> {
+    if (true) return Child1(x);
+    x
+  };
+  y: Child2 = apply(f, Child2("FAIL"));
+  print_raw(
+    y.value, // boom, it's actually a Child1 now
+  )
+}

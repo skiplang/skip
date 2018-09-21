@@ -1,0 +1,18 @@
+base class AK {
+  children =
+  | IK(value: Int)
+  | SK(value: String)
+}
+
+mutable base class MyParent<+T>
+mutable class Foo<+T>(mutable x: T) extends MyParent<T>
+
+fun main(): void {
+  x: mutable Foo<SK> = mutable Foo(SK("Hi!"));
+  p: mutable MyParent<AK> = x; // error, type params invariant on mutables so no subtype
+  p match {
+  | o @ Foo _ ->
+    o.!x = IK(42) // boom
+  };
+  print_raw(x.x.value)
+}

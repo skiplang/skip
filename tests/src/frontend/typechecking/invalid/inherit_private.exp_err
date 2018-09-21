@@ -1,0 +1,15 @@
+File "./typechecking/invalid/inherit_private.sk", line 12, characters 5-14:
+Cannot access foo
+10 | class Y() extends X {
+11 |   fun bar(): void {
+12 |     this.foo()
+   |     ^^^^^^^^^^
+13 |   }
+
+File "./typechecking/invalid/inherit_private.sk", line 5, characters 3-9:
+It was declared as private
+3 | }
+4 | base class X {
+5 |   private fun foo(): void {
+  |   ^^^^^^^
+6 |     void

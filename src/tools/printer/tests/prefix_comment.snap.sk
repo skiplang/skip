@@ -1,0 +1,9 @@
+fun main(): void {
+  // comment line 1
+  // comment line 2
+  print_string(
+    // comment line 1
+    // comment line 2
+    "Hello Skip!",
+  )
+}

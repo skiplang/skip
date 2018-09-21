@@ -1,0 +1,13 @@
+base class Mine {
+  children =
+  | Yours(Int)
+}
+
+fun main(): void {
+  print_raw(
+    Yours(2) match {
+    | Yours(x) if (x == 2) -> "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

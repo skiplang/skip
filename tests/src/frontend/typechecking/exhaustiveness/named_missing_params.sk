@@ -1,0 +1,16 @@
+class Expr_body()
+class Explicity{}
+
+class InheritedKind{inh_explicit: Explicity, inh_value: Expr_body}
+
+fun t1(x: InheritedKind): void {
+  x match {
+  | InheritedKind{inh_value => Expr_body()} -> void
+  }
+}
+
+fun main(): void {
+  x = InheritedKind{inh_explicit => Explicity{}, inh_value => Expr_body()};
+  ignore(t1(x));
+  print_string("Pass")
+}

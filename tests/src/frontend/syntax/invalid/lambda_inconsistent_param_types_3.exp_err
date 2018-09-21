@@ -1,0 +1,6 @@
+File "./syntax/invalid/lambda_inconsistent_param_types_3.sk", line 2, characters 20-21:
+Expected typed lambda parameter. Lambda parameters must be consistent in including type annotations.
+1 | fun main(): String {
+2 |   l = {p1: String, p2} -> p1;
+  |                    ^^
+3 |   l{p1 => "Fail", p2 => 42}

@@ -1,0 +1,21 @@
+mutable class Cell(mutable value: String) {
+  readonly fun get(): String {
+    this.value
+  }
+
+  mutable fun set(v: String): void {
+    this.!value = v; //
+    void
+  }
+}
+
+mutable class Wrapper(cell: mutable Cell) {
+  readonly fun get(): String {
+    this.cell.get()
+  }
+
+  mutable fun set(v: String): void {
+    this.!cell = mutable Cell(v); // error, this.cell is immutable
+    void
+  }
+}

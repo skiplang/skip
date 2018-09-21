@@ -1,0 +1,23 @@
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_vector_map.sk", line 11, characters 7-59:
+Invalid annotation
+ 9 | fun main(): void {
+10 |   _ = Array<(String, Int)>["x" => 1, "y" => 2, "z" => 3]; // ok
+11 |   _ = Array<(String, String)>["x" => 1, "y" => 2, "z" => 3]; // error
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_vector_map.sk", line 11, characters 38-38:
+The type: Int
+ 9 | fun main(): void {
+10 |   _ = Array<(String, Int)>["x" => 1, "y" => 2, "z" => 3]; // ok
+11 |   _ = Array<(String, String)>["x" => 1, "y" => 2, "z" => 3]; // error
+   |                                      ^
+12 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_vector_map.sk", line 11, characters 22-27:
+Is not a subtype of: String
+ 9 | fun main(): void {
+10 |   _ = Array<(String, Int)>["x" => 1, "y" => 2, "z" => 3]; // ok
+11 |   _ = Array<(String, String)>["x" => 1, "y" => 2, "z" => 3]; // error
+   |                      ^^^^^^
+12 |   print_string("Fail")

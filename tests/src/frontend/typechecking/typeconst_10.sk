@@ -1,0 +1,18 @@
+base class Bar {
+  type T: Test.MixedScalar;
+
+  static fun getAs(x: Test.MixedScalar): this::T {
+    x match {
+    | x_ @ this::T _ -> x_
+    | _ -> invariant_violation("")
+    }
+  }
+}
+
+class Foo() extends Bar {
+  type T = Test.MixedString;
+}
+
+fun main(): void {
+  print_raw(Foo::getAs(Test.MixedString("Pass\n")).asString())
+}

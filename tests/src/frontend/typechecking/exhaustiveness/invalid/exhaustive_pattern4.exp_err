@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern4.sk", line 7, characters 5-6:
+The following pattern is unused:
+ | _z
+5 |   x match {
+6 |   | _y -> void
+7 |   | _z -> void
+  |     ^^
+8 |   }

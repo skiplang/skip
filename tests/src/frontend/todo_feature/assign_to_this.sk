@@ -1,0 +1,10 @@
+class Foo(x: Int, y: Int) {
+  fun hello(value: (Int, Int)): this {
+    (this.x, this.y) = value;
+    this
+  }
+}
+
+fun main(): Foo {
+  Foo(1, 2)->hello((3, 4))
+}

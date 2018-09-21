@@ -1,0 +1,7 @@
+File "./expand/invalid/macro_algebraic_body.sk", line 9, characters 5-6:
+Macros may only be used inside bodies of methods marked 'macro'.
+ 7 |   | C() -> void
+ 8 |   | D() -> void
+ 9 |   | #T() -> void
+   |     ^^
+10 | }

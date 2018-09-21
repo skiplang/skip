@@ -1,0 +1,7 @@
+File "./typechecking/invalid/untracked_lambda2.sk", line 4, characters 17-22:
+Cannot call an untracked function from a tracked context
+2 | fun main(): void {
+3 |   inc = untracked x -> x + 1;
+4 |   print_raw(if (inc(0) == 1) "Pass\n" else "Fail")
+  |                 ^^^^^^
+5 | }

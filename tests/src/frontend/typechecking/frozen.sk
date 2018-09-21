@@ -1,0 +1,30 @@
+mutable class X(mutable foo1: Int)
+mutable class Y(mutable foo2: mutable X) {
+  mutable fun getMutableThis(): mutable this {
+    this
+  }
+
+  readonly fun getReadonlyThis(): readonly this {
+    this
+  }
+
+  frozen fun getFrozenThis(): this {
+    this
+  }
+
+  mutable fun accessMutablefieldFromMutable(): mutable X {
+    this.foo2
+  }
+
+  fun accessMutablefieldFromReadonly(): readonly X {
+    this.foo2
+  }
+
+  frozen fun accessMutableFieldFromFrozen(): X {
+    this.foo2
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

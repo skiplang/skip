@@ -1,0 +1,10 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "bundler": {
+      "kind": "Program",
+      "sources": ["."],
+      "references": [{ "path": "../../src/runtime/prelude" }]
+    }
+  }
+}

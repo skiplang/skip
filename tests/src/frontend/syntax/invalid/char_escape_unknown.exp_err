@@ -1,0 +1,6 @@
+File "./syntax/invalid/char_escape_unknown.sk", line 2, characters 5-5:
+Invalid escape sequence
+1 | fun main(): String {
+2 |   '\k'.toString()
+  |     ^
+3 | }

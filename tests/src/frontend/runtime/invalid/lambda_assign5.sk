@@ -1,0 +1,19 @@
+fun stuff(fun1: () -> Int, fun2: () ~> Int): String {
+  invariant(fun2() == 37, "");
+  invariant(fun1() == 38, "");
+  invariant(fun2() == 38, "");
+  invariant(fun1() == 39, "");
+  fun1().toString() + "\n"
+}
+
+fun main(): void {
+  n = 37;
+  fun1 = () -> {
+    !n = n + 1;
+    n
+  };
+  fun2 = () ~> {
+    n
+  };
+  print_raw(stuff(fun1, fun2))
+}

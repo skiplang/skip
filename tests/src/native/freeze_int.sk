@@ -1,0 +1,17 @@
+mutable value class Foo<T>(y: T, z: mutable Array<T> = mutable Array[])
+
+fun myFreeze<T: frozen>(f: readonly Foo<T>): Foo<T> {
+  freeze(f)
+}
+
+fun main(): void {
+  a = freeze(mutable Foo(true)).y.toString();
+  b = freeze(mutable Foo(37)).y.toString();
+  c = freeze(mutable Foo(42.5)).y.toString();
+  d = freeze(mutable Foo("hello")).y.toString();
+
+  ri: readonly Int = 99;
+  e = freeze(mutable Foo(ri)).y.toString();
+
+  print_raw(a + " " + b + " " + c + " " + d + " " + e + "\n")
+}

@@ -1,0 +1,53 @@
+File "./typechecking/invalid/macro_type_error.sk", line 3, characters 5-18:
+The value returned from the function is incompatible with the return type 'Int'
+1 | class C(i: Int, s: String) {
+2 |   macro fun typeError1(): Int {
+3 |     #thisClassName
+  |     ^^^^^^^^^^^^^^
+4 |   }
+
+File "./typechecking/invalid/macro_type_error.sk", line 3, characters 5-18:
+The type: String
+1 | class C(i: Int, s: String) {
+2 |   macro fun typeError1(): Int {
+3 |     #thisClassName
+  |     ^^^^^^^^^^^^^^
+4 |   }
+
+File "./typechecking/invalid/macro_type_error.sk", line 2, characters 27-29:
+Is not a subtype of: Int
+1 | class C(i: Int, s: String) {
+2 |   macro fun typeError1(): Int {
+  |                           ^^^
+3 |     #thisClassName
+
+File "./typechecking/invalid/macro_type_error.sk", line 7, characters 35-35:
+Constraint not satisfied
+5 |   macro fun typeError2(): Int {
+6 |     r = 0;
+7 |     #forEachField (#field) !r = r + this.#field;
+  |                                   ^
+8 |     r
+
+File "./typechecking/invalid/macro_type_error.sk", line 1, characters 20-25:
+The type: String
+1 | class C(i: Int, s: String) {
+  |                    ^^^^^^
+2 |   macro fun typeError1(): Int {
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 12-19:
+Is not a subtype of: Integral
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |            ^^^^^^^^
+22 |     this.plusImpl(other.toInt())
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 12-19:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Orderable
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |            ^^^^^^^^
+22 |     this.plusImpl(other.toInt())

@@ -1,0 +1,361 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Safepoint;
+
+/*
+
+This file implements "Safepoint", a base class for optimizations that
+want to (semantically) save and restore a subset of live values at certain
+Instrs. It handles both identifying what is live and the SSA rewrite plumbing
+to handle the safepoint instructions appearing to produce new ("reassigned")
+values for existing Instrs.
+
+The classic use case for this is LocalGC, which dumps all live pointers
+to an array, garbage collects using them as a root set, then reloads those
+pointers as they may have been relocated by the GC. Semantically the values
+did not change, but their physical addresses may have, so we consider them
+to be "reassigned".
+
+Subclasses get to decide both what counts as as a "safepoint" (by implementing
+isSafepoint()) and which Instrs should be saved/restored (by implementing
+isSaved()).
+
+Here's the SSA rewrite algorithm (see Safepoint::optimizeAllBlocks).
+
+1) Do a "local dataflow" pass, where for each Block we identify Instrs
+   defined by that block, and Instrs used by that Block but defined elsewhere.
+2) Do a "global dataflow" pass, using information from (1), where we determine
+   all Instrs live on entry to each block.
+3) For each safepoint Instr, identify the set of live isSaved() Instrs there.
+   Consider those values to be "reassigned" by that safepoint and update
+   all Blocks to know the Instrs which are (or might be) reassigned on exit.
+   [NOTE: Someday, we may make the reassignment set configurable, as for a
+   hypothetical safepoint that reads values but does not ever reassign].
+4) Identify for each Block any possibly reassigned Instrs feeding into it,
+   based on the reassigned-on-exit sets from (3), and give each one a
+   BlockParam.
+5) Allow the Safepoint subclass to do remaining processing. In particular,
+   it needs to do whatever logic it wanted to do at each safepoint, and it
+   is responsible for updating Instrs to use any reassigned values; if
+   they were locally reassigned by a safepoint, use its new value, else
+   use the incoming BlockParam designed to hold that value. The subclass
+   is also responsible for passing any new BlockParams that may have
+   been created.
+
+NOTE: This can result in some unnecessary BlockParams (where all inputs are
+the same). We could clean this up by invoking Peephole in a new mode that only
+fixes those, skipping its other optimizations, but we might as well let LLVM
+clean up the unnecessary phi nodes instead.
+
+*/
+
+// Temporary block used during analysis
+mutable base class SafepointBlockBase(
+  // Saved pointers which were live on entry to this Block.
+  mutable liveOnEntry: mutable Set<InstrID> = mutable Set[],
+
+  defined: mutable UnorderedSet<InstrID> = mutable UnorderedSet[],
+
+  // The pre-relocation Instr values to be fed in as block parameters.
+  // Predecessors should pass in their post-relocation values for these instrs.
+  mutable extraBlockParams: Array<InstrID> = Array[],
+
+  // Temporary set used to build up extraBlockParams.
+  extraBlockParamsSet: mutable UnorderedSet<InstrID> = mutable UnorderedSet[],
+
+  // Pointers which might be reassigned when this block exits.
+  reassignedOnExit: mutable UnorderedSet<InstrID> = mutable UnorderedSet[],
+)
+
+// Canonicalize a Set as an Array by sorting it.
+private fun sortedArray<T: Hashable & Orderable>(
+  s: readonly UnorderedSet<T>,
+): Array<T> {
+  if (s.isEmpty()) {
+    Array[]
+  } else {
+    s.toArray().sorted()
+  }
+}
+
+// See top-of-file comments.
+mutable base class .Safepoint<SafepointBlock: mutable SafepointBlockBase>{
+  // Filled in by optimizeAllBlocks.
+  mutable blocks: mutable Array<SafepointBlock> = mutable Array[],
+
+  // Saved instrs live upon execution of each safepoint.
+  livePerSafepoint: mutable Map<InstrID, Array<InstrID>> = mutable Map[],
+
+  // Where each reassigned Instr currently is in the Block being transformed.
+  current: mutable UnorderedMap<InstrID, InstrID> = mutable UnorderedMap[],
+} extends Rewrite {
+  // Should we treat this instruction as a safepoint?
+  protected readonly fun isSafepoint(instr: Stmt): Bool;
+
+  // Is this a value that should be saved by a safepoint?
+  // If not, it will be ignored by this algorithm.
+  protected readonly fun isSaved(instr: Instr): Bool;
+
+  // Does this pass want to know about instrs live on entry to each safepoint,
+  // as opposed to those live after each safepoint.
+  protected readonly fun liveBefore(): Bool;
+
+  // For each Block, compute "local" dataflow information spb.defined
+  // (which Instrs are defined in this block) and spb.liveOnEntry
+  // (initially, Instrs live on entry to this block, ignoring what
+  // successors want).
+  private mutable fun computeLocalDataflow(blocks: Array<Block>): void {
+    for (b in blocks) {
+      spb = this.blocks[b.id.id];
+
+      noteUsed = id -> {
+        if (!spb.defined.contains(id) && this.isSaved(this.getInstr(id))) {
+          _ = spb.liveOnEntry.maybeInsert(id)
+        }
+      };
+      noteDefined = (instr: Instr) ->
+        _ = {
+          if (this.isSaved(instr)) {
+            spb.defined.insert(instr.id)
+          }
+        };
+
+      b.params.each(noteDefined);
+      for (instr in b.instrs) {
+        noteDefined(instr);
+        instr.visitInputs(noteUsed, this.optinfo);
+      }
+    }
+  }
+
+  // Propagate the information computed by computeLocalDataflow globally,
+  // so spb.liveOnEntry knows for each block what is live, including
+  // what successors need.
+  private mutable fun computeGlobalDataflow(blocks: Array<Block>): void {
+    stack = mutable Vector[];
+
+    for (b in blocks) {
+      spb = this.blocks[b.id.id];
+      for (iid in spb.liveOnEntry) stack.push((b.id, iid));
+
+      while (!stack.isEmpty()) {
+        // Instr iid is live on entry to Block bid. Tell its predecessors.
+        (bid, iid) = stack.pop();
+        for (predecessorID in this.optinfo.getPredecessors(bid)) {
+          pb = this.blocks[predecessorID.id];
+          if (!pb.defined.contains(iid) && pb.liveOnEntry.maybeInsert(iid)) {
+            stack.push((predecessorID, iid))
+          }
+        }
+      };
+    }
+  }
+
+  private mutable fun findReassignedPointers(blocks: Array<Block>): void {
+    live = mutable UnorderedSet[];
+    markLive = id -> {
+      if (this.isSaved(this.getInstr(id))) {
+        _ = live.maybeInsert(id)
+      }
+    };
+    markDead = id -> _ = live.maybeRemove(id);
+
+    successorAlreadyVisited = mutable UnorderedSet[];
+
+    liveBefore = this.liveBefore();
+
+    // Remember what saved Instrs are live at this Instr.
+    recordSafepointInfo = (spb, instr) -> {
+      r = sortedArray(live);
+      this.livePerSafepoint.set(instr.id, r);
+      spb.reassignedOnExit.extend(r)
+    };
+
+    for (b in blocks) {
+      spb = this.blocks[b.id.id];
+
+      // Reset for the new block.
+      live.clear();
+      successorAlreadyVisited.clear();
+      // At the end of the block, everything live in some successor is live.
+      for (succ in b.successors()) {
+        if (successorAlreadyVisited.maybeInsert(succ.target)) {
+          live.extend(this.blocks[succ.target.id].liveOnEntry)
+        }
+      };
+
+      // Walk backwards through the block and track what is live.
+      for (ii in Range(0, b.instrs.size())) {
+        instr = b.instrs[b.instrs.size() - 1 - ii];
+
+        isSafepoint = this.isSafepoint(instr);
+
+        if (isSafepoint && !liveBefore) {
+          recordSafepointInfo(spb, instr)
+        };
+
+        // Inputs are live.
+        instr.visitInputs(markLive, this.optinfo);
+
+        // Outputs are dead. Note that we need to process outputs after inputs
+        // because a terminator can pass itself as an outgoing BlockParam.
+        markDead(instr.id);
+
+        if (isSafepoint && liveBefore) {
+          recordSafepointInfo(spb, instr)
+        }
+      }
+    }
+  }
+
+  // Compute extraBlockParams for each block.
+  private mutable fun addBlockParams(blocks: Array<Block>): void {
+    // Create a stack to let us propagate the set of live reassigned pointers.
+    stack = mutable Vector[];
+    for (b in blocks) {
+      for (r in this.blocks[b.id.id].reassignedOnExit) stack.push((b, r));
+
+      // Update every block's extraBlockParamsSet and reassignedOnExit to take
+      // into account pointers which might come in reassigned.
+      while (!stack.isEmpty()) {
+        (bb, r) = stack.pop();
+        // Tell successors about what we reassigned.
+        for (succ in bb.successors()) {
+          spb = this.blocks[succ.target.id];
+          if (
+            spb.liveOnEntry.contains(r) &&
+            spb.extraBlockParamsSet.maybeInsert(r) &&
+            spb.reassignedOnExit.maybeInsert(r)
+          ) {
+            // Forward-propagate this information.
+            stack.push((this.getBlock(succ.target), r))
+          }
+        }
+      };
+    };
+
+    // Canonicalize the order of each extraBlockParams so predecessors know
+    // in what order they should pass these values.
+    for (b in blocks) {
+      spb = this.blocks[b.id.id];
+      spb.!extraBlockParams = sortedArray(spb.extraBlockParamsSet)
+    }
+  }
+
+  // Hook for subclasses.
+  protected overridable mutable fun analyzeBlocks(_blocks: Array<Block>): void {
+    void
+  }
+
+  protected mutable fun defaultOptimizeInstr(
+    instr: Stmt,
+    remap: InstrID -> InstrID,
+  ): Bool {
+    // See if any input to this Instr is a relocated pointer with
+    // a potentially different value.
+    replaced = false;
+    instr.visitInputs(
+      in_ -> {
+        if (remap(in_) != in_) {
+          !replaced = true
+        }
+      },
+      this.optinfo,
+    );
+
+    newSuccessors = instr match {
+    | Terminator{successors} ->
+      successorsChanged = false;
+      ns = successors.map(s -> {
+        extra = this.blocks[s.target.id].extraBlockParams;
+        if (!replaced && extra.isEmpty()) {
+          s
+        } else {
+          !successorsChanged = true;
+          BlockSuccessor(s.target, s.args.concat(extra).map(remap))
+        }
+      });
+
+      if (!successorsChanged) {
+        Some(successors)
+      } else {
+        !replaced = true;
+        Some(ns)
+      }
+    | _ -> None()
+    };
+
+    if (replaced) {
+      _ = this.emitInstr(instr.clone(instr.id, instr.typ, remap, newSuccessors))
+    };
+
+    replaced
+  }
+
+  protected overridable mutable fun beginOptimizeBlock(b: Block): void {
+    this.defaultBeginOptimizeBlock(b)
+  }
+
+  protected mutable fun defaultBeginOptimizeBlock(b: Block): void {
+    // Seed the mapping that lets us find reassigned pointers with
+    // the initial state for this block.
+    cur = this.current;
+    cur.clear();
+    spb = this.blocks[b.id.id];
+    for (p in spb.liveOnEntry) cur.set(p, p);
+    for (p in b.params) cur.set(p.id, p.id);
+
+    // Remap any possibly-reassigned values to BlockParams.
+    if (!spb.extraBlockParams.isEmpty()) {
+      this.!blockChanged = true;
+
+      this.!blockParams = b.params.concat(
+        spb.extraBlockParams.mapWithIndex((i, reassignedID) -> {
+          paramID = this.iid();
+
+          cur.set(reassignedID, paramID);
+
+          bp = BlockParam{
+            id => paramID,
+            typ => this.getInstr(reassignedID).typ,
+            pos => b.instrs[0].pos,
+            index => b.params.size() + i,
+          };
+
+          this.optinfo.idToInstr.insert(bp);
+          this.optinfo.instrToBlock.add(paramID, b.id);
+
+          bp
+        }),
+      )
+    }
+  }
+
+  protected readonly fun createSafepointBlock(): SafepointBlock;
+
+  protected mutable fun optimizeAllBlocks(inputBlocks: Array<BlockID>): void {
+    dummy = this.createSafepointBlock();
+    this.!blocks = Array::mfillBy(this.optinfo.idToBlock.size(), i -> {
+      if (this.optinfo.idToBlock.contains(BlockID(i))) {
+        this.createSafepointBlock()
+      } else {
+        dummy
+      }
+    });
+
+    blocks = inputBlocks.map(b -> this.getBlock(b));
+
+    this.computeLocalDataflow(blocks);
+    this.computeGlobalDataflow(blocks);
+    this.findReassignedPointers(blocks);
+    this.analyzeBlocks(blocks);
+    this.addBlockParams(blocks);
+
+    for (b in blocks) this.optimizeBlock(b)
+  }
+}

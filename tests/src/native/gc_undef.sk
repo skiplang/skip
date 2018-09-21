@@ -1,0 +1,91 @@
+// This test takes a bunch of optional arguments and triggers a GC before
+// it has finished providing them with default values.
+@always_inline
+fun default(): mutable Ref<String> {
+  localGC();
+  mutable Ref("")
+}
+
+@no_inline
+fun test{
+  n: Int,
+  p00: mutable Ref<String> = default(),
+  p01: mutable Ref<String> = default(),
+  p02: mutable Ref<String> = default(),
+  p03: mutable Ref<String> = default(),
+  p04: mutable Ref<String> = default(),
+  p05: mutable Ref<String> = default(),
+  p06: mutable Ref<String> = default(),
+  p07: mutable Ref<String> = default(),
+  p08: mutable Ref<String> = default(),
+  p09: mutable Ref<String> = default(),
+  p10: mutable Ref<String> = default(),
+  p11: mutable Ref<String> = default(),
+  p12: mutable Ref<String> = default(),
+  p13: mutable Ref<String> = default(),
+  p14: mutable Ref<String> = default(),
+  p15: mutable Ref<String> = default(),
+  p16: mutable Ref<String> = default(),
+}: String {
+  localGC();
+
+  p00.!value = "long string:00=>" + (n + 0);
+  p01.!value = "long string:01=>" + (n + 1);
+  p02.!value = "long string:02=>" + (n + 2);
+  p03.!value = "long string:03=>" + (n + 3);
+  p04.!value = "long string:04=>" + (n + 4);
+  p05.!value = "long string:05=>" + (n + 5);
+  p06.!value = "long string:06=>" + (n + 6);
+  p07.!value = "long string:07=>" + (n + 7);
+  p08.!value = "long string:08=>" + (n + 8);
+  p09.!value = "long string:09=>" + (n + 9);
+  p10.!value = "long string:10=>" + (n + 10);
+  p11.!value = "long string:11=>" + (n + 11);
+  p12.!value = "long string:12=>" + (n + 12);
+  p13.!value = "long string:13=>" + (n + 13);
+  p14.!value = "long string:14=>" + (n + 14);
+  p15.!value = "long string:15=>" + (n + 15);
+  p16.!value = "long string:16=>" + (n + 16);
+
+  localGC();
+
+  p00.value.split(":")[1] +
+    "\n" +
+    p01.value.split(":")[1] +
+    "\n" +
+    p02.value.split(":")[1] +
+    "\n" +
+    p03.value.split(":")[1] +
+    "\n" +
+    p04.value.split(":")[1] +
+    "\n" +
+    p05.value.split(":")[1] +
+    "\n" +
+    p06.value.split(":")[1] +
+    "\n" +
+    p07.value.split(":")[1] +
+    "\n" +
+    p08.value.split(":")[1] +
+    "\n" +
+    p09.value.split(":")[1] +
+    "\n" +
+    p10.value.split(":")[1] +
+    "\n" +
+    p11.value.split(":")[1] +
+    "\n" +
+    p12.value.split(":")[1] +
+    "\n" +
+    p13.value.split(":")[1] +
+    "\n" +
+    p14.value.split(":")[1] +
+    "\n" +
+    p15.value.split(":")[1] +
+    "\n" +
+    p16.value.split(":")[1] +
+    "\n"
+}
+
+fun main(): void {
+  m = mutable Ref("");
+  print_raw(test{n => 100, p13 => m} + m.value + "\n")
+}

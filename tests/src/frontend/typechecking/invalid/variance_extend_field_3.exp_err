@@ -1,0 +1,14 @@
+File "./typechecking/invalid/variance_extend_field_3.sk", line 2, characters 12-12:
+Invalid variance annotation
+1 | class Boxy<T>()
+2 | class Foo<+T>() {
+  |            ^
+3 |   fun doit(): Boxy<T> {
+
+File "./typechecking/invalid/variance_extend_field_3.sk", line 3, characters 20-20:
+The parameter appears in an invariant position
+1 | class Boxy<T>()
+2 | class Foo<+T>() {
+3 |   fun doit(): Boxy<T> {
+  |                    ^
+4 |     Boxy()

@@ -1,0 +1,38 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Menu;
+
+const MENU: Array<(String, Int)> = Array[
+  "cake" => 99,
+  "cupcake" => 20,
+  "donut" => 10,
+  "muffin" => 25,
+  "cookie" => 5,
+];
+const PRICE: Int = 1035;
+
+memoized fun combinations(menu: Array<(String, Int)>, remaining: Int): Int {
+  if (menu.size() == 0) {
+    return if (remaining == 0) 1 else 0;
+  };
+  cur_price = menu[0].i1;
+  Range(0, remaining / cur_price + 1).map(num_cur ->
+    combinations(menu.slice(1), remaining - num_cur * cur_price)
+  ).sumInt()
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  bencher.bench{
+    run => () -> {
+      invariant(combinations(MENU, PRICE) == 46432, "Incorrect result")
+    },
+  }
+}
+
+module end;

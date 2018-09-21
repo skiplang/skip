@@ -1,0 +1,9 @@
+class C(String) {}
+
+fun main(): void {
+  print_raw(
+    C("Pass\n") match {
+    | C(result) -> result
+    },
+  )
+}

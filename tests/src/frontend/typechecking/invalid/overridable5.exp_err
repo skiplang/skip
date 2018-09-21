@@ -1,0 +1,15 @@
+File "./typechecking/invalid/overridable5.sk", line 10, characters 7-9:
+Cannot redeclare Foo2::foo as abstract
+ 8 | }
+ 9 | base class Foo2 extends Foo, Traity {
+10 |   fun foo from Foo;
+   |       ^^^
+11 | }
+
+File "./typechecking/invalid/overridable5.sk", line 5, characters 31-31:
+Traity::foo was given a definition here
+3 | }
+4 | base class Traity {
+5 |   overridable fun foo(): void {
+  |                               ^
+6 |     void

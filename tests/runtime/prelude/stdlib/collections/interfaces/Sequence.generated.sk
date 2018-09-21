@@ -1,0 +1,501 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// @generated
+// Use tools/generate_sequence_zip.py to regenerate
+module Sequence;
+
+class Zip2Sequence<T0, T1>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+) extends Sequence<(T0, T1)> {
+  fun values(): mutable Iterator<(T0, T1)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    loop {
+      (it0.next(), it1.next()) match {
+      | (Some(val0), Some(val1)) -> yield (val0, val1)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[this.s0.size(), this.s1.size()].min().fromSome()
+  }
+}
+
+class Zip3Sequence<T0, T1, T2>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+) extends Sequence<(T0, T1, T2)> {
+  fun values(): mutable Iterator<(T0, T1, T2)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    loop {
+      (it0.next(), it1.next(), it2.next()) match {
+      | (Some(val0), Some(val1), Some(val2)) -> yield (val0, val1, val2)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[this.s0.size(), this.s1.size(), this.s2.size()].min().fromSome()
+  }
+}
+
+class Zip4Sequence<T0, T1, T2, T3>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+) extends Sequence<(T0, T1, T2, T3)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    loop {
+      (it0.next(), it1.next(), it2.next(), it3.next()) match {
+      | (Some(val0), Some(val1), Some(val2), Some(val3)) ->
+        yield (val0, val1, val2, val3)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip5Sequence<T0, T1, T2, T3, T4>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+) extends Sequence<(T0, T1, T2, T3, T4)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    loop {
+      (it0.next(), it1.next(), it2.next(), it3.next(), it4.next()) match {
+      | (Some(val0), Some(val1), Some(val2), Some(val3), Some(val4)) ->
+        yield (val0, val1, val2, val3, val4)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip6Sequence<T0, T1, T2, T3, T4, T5>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+  s5: Sequence<T5>,
+) extends Sequence<(T0, T1, T2, T3, T4, T5)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4, T5)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    it5 = this.s5.values();
+    loop {
+      (
+        it0.next(),
+        it1.next(),
+        it2.next(),
+        it3.next(),
+        it4.next(),
+        it5.next(),
+      ) match {
+      | (
+        Some(val0),
+        Some(val1),
+        Some(val2),
+        Some(val3),
+        Some(val4),
+        Some(val5),
+      ) ->
+        yield (val0, val1, val2, val3, val4, val5)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+      this.s5.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip7Sequence<T0, T1, T2, T3, T4, T5, T6>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+  s5: Sequence<T5>,
+  s6: Sequence<T6>,
+) extends Sequence<(T0, T1, T2, T3, T4, T5, T6)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4, T5, T6)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    it5 = this.s5.values();
+    it6 = this.s6.values();
+    loop {
+      (
+        it0.next(),
+        it1.next(),
+        it2.next(),
+        it3.next(),
+        it4.next(),
+        it5.next(),
+        it6.next(),
+      ) match {
+      | (
+        Some(val0),
+        Some(val1),
+        Some(val2),
+        Some(val3),
+        Some(val4),
+        Some(val5),
+        Some(val6),
+      ) ->
+        yield (val0, val1, val2, val3, val4, val5, val6)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+      this.s5.size(),
+      this.s6.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip8Sequence<T0, T1, T2, T3, T4, T5, T6, T7>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+  s5: Sequence<T5>,
+  s6: Sequence<T6>,
+  s7: Sequence<T7>,
+) extends Sequence<(T0, T1, T2, T3, T4, T5, T6, T7)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4, T5, T6, T7)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    it5 = this.s5.values();
+    it6 = this.s6.values();
+    it7 = this.s7.values();
+    loop {
+      (
+        it0.next(),
+        it1.next(),
+        it2.next(),
+        it3.next(),
+        it4.next(),
+        it5.next(),
+        it6.next(),
+        it7.next(),
+      ) match {
+      | (
+        Some(val0),
+        Some(val1),
+        Some(val2),
+        Some(val3),
+        Some(val4),
+        Some(val5),
+        Some(val6),
+        Some(val7),
+      ) ->
+        yield (val0, val1, val2, val3, val4, val5, val6, val7)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+      this.s5.size(),
+      this.s6.size(),
+      this.s7.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip9Sequence<T0, T1, T2, T3, T4, T5, T6, T7, T8>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+  s5: Sequence<T5>,
+  s6: Sequence<T6>,
+  s7: Sequence<T7>,
+  s8: Sequence<T8>,
+) extends Sequence<(T0, T1, T2, T3, T4, T5, T6, T7, T8)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4, T5, T6, T7, T8)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    it5 = this.s5.values();
+    it6 = this.s6.values();
+    it7 = this.s7.values();
+    it8 = this.s8.values();
+    loop {
+      (
+        it0.next(),
+        it1.next(),
+        it2.next(),
+        it3.next(),
+        it4.next(),
+        it5.next(),
+        it6.next(),
+        it7.next(),
+        it8.next(),
+      ) match {
+      | (
+        Some(val0),
+        Some(val1),
+        Some(val2),
+        Some(val3),
+        Some(val4),
+        Some(val5),
+        Some(val6),
+        Some(val7),
+        Some(val8),
+      ) ->
+        yield (val0, val1, val2, val3, val4, val5, val6, val7, val8)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+      this.s5.size(),
+      this.s6.size(),
+      this.s7.size(),
+      this.s8.size(),
+    ].min().fromSome()
+  }
+}
+
+class Zip10Sequence<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(
+  s0: Sequence<T0>,
+  s1: Sequence<T1>,
+  s2: Sequence<T2>,
+  s3: Sequence<T3>,
+  s4: Sequence<T4>,
+  s5: Sequence<T5>,
+  s6: Sequence<T6>,
+  s7: Sequence<T7>,
+  s8: Sequence<T8>,
+  s9: Sequence<T9>,
+) extends Sequence<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> {
+  fun values(): mutable Iterator<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> {
+    it0 = this.s0.values();
+    it1 = this.s1.values();
+    it2 = this.s2.values();
+    it3 = this.s3.values();
+    it4 = this.s4.values();
+    it5 = this.s5.values();
+    it6 = this.s6.values();
+    it7 = this.s7.values();
+    it8 = this.s8.values();
+    it9 = this.s9.values();
+    loop {
+      (
+        it0.next(),
+        it1.next(),
+        it2.next(),
+        it3.next(),
+        it4.next(),
+        it5.next(),
+        it6.next(),
+        it7.next(),
+        it8.next(),
+        it9.next(),
+      ) match {
+      | (
+        Some(val0),
+        Some(val1),
+        Some(val2),
+        Some(val3),
+        Some(val4),
+        Some(val5),
+        Some(val6),
+        Some(val7),
+        Some(val8),
+        Some(val9),
+      ) ->
+        yield (val0, val1, val2, val3, val4, val5, val6, val7, val8, val9)
+      | _ -> break void
+      }
+    }
+  }
+  fun size(): Int {
+    Vector[
+      this.s0.size(),
+      this.s1.size(),
+      this.s2.size(),
+      this.s3.size(),
+      this.s4.size(),
+      this.s5.size(),
+      this.s6.size(),
+      this.s7.size(),
+      this.s8.size(),
+      this.s9.size(),
+    ].min().fromSome()
+  }
+}
+
+extension mutable base class .Sequence {
+  static fun zip2<T0, T1>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+  ): Sequence<(T0, T1)> {
+    Zip2Sequence(s0, s1)
+  }
+  static fun zip3<T0, T1, T2>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+  ): Sequence<(T0, T1, T2)> {
+    Zip3Sequence(s0, s1, s2)
+  }
+  static fun zip4<T0, T1, T2, T3>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+  ): Sequence<(T0, T1, T2, T3)> {
+    Zip4Sequence(s0, s1, s2, s3)
+  }
+  static fun zip5<T0, T1, T2, T3, T4>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+  ): Sequence<(T0, T1, T2, T3, T4)> {
+    Zip5Sequence(s0, s1, s2, s3, s4)
+  }
+  static fun zip6<T0, T1, T2, T3, T4, T5>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+    s5: Sequence<T5>,
+  ): Sequence<(T0, T1, T2, T3, T4, T5)> {
+    Zip6Sequence(s0, s1, s2, s3, s4, s5)
+  }
+  static fun zip7<T0, T1, T2, T3, T4, T5, T6>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+    s5: Sequence<T5>,
+    s6: Sequence<T6>,
+  ): Sequence<(T0, T1, T2, T3, T4, T5, T6)> {
+    Zip7Sequence(s0, s1, s2, s3, s4, s5, s6)
+  }
+  static fun zip8<T0, T1, T2, T3, T4, T5, T6, T7>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+    s5: Sequence<T5>,
+    s6: Sequence<T6>,
+    s7: Sequence<T7>,
+  ): Sequence<(T0, T1, T2, T3, T4, T5, T6, T7)> {
+    Zip8Sequence(s0, s1, s2, s3, s4, s5, s6, s7)
+  }
+  static fun zip9<T0, T1, T2, T3, T4, T5, T6, T7, T8>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+    s5: Sequence<T5>,
+    s6: Sequence<T6>,
+    s7: Sequence<T7>,
+    s8: Sequence<T8>,
+  ): Sequence<(T0, T1, T2, T3, T4, T5, T6, T7, T8)> {
+    Zip9Sequence(s0, s1, s2, s3, s4, s5, s6, s7, s8)
+  }
+  static fun zip10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>(
+    s0: Sequence<T0>,
+    s1: Sequence<T1>,
+    s2: Sequence<T2>,
+    s3: Sequence<T3>,
+    s4: Sequence<T4>,
+    s5: Sequence<T5>,
+    s6: Sequence<T6>,
+    s7: Sequence<T7>,
+    s8: Sequence<T8>,
+    s9: Sequence<T9>,
+  ): Sequence<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> {
+    Zip10Sequence(s0, s1, s2, s3, s4, s5, s6, s7, s8, s9)
+  }
+}
+
+module end;

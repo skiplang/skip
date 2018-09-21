@@ -1,0 +1,3780 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Bits of the type checker that are needed both in typechecking and pattern
+ * match exhaustiveness checking. We need these here so that we can get around
+ * circular dependencies between our typechecking and exhaustiveness modules. */
+/*****************************************************************************/
+module alias N = SkipNamedAst;
+module alias Ast = SkipAst;
+module alias TAst = SkipTypedAst;
+module alias TAstUtils = SkipTypedAstUtils;
+module alias Types = SkipTypes;
+module alias Expand = SkipTypedAstExpand;
+
+/*****************************************************************************/
+/* The lexical level where a local has been introduced. This is a neat trick
+ * to quickly determine if a local is bound or not (I didn't discover it,
+ * someone told me about it, but I can't remember who).
+ * By giving each variable a "level" (a number increasing lexically), one can
+ * easily determine if a local is bound within the scope of a closure for
+ * example.
+ * Concretely:
+ *   x = 22; (LEVEL X = 1)
+ *   y = 33; (LEVEL Y = 2)
+ *   f = z -> (LEVEL 3)
+ *     x = 22; (LEVEL X = 4)
+ * Now, within the scope of "f", we can verify very quickly if a variable is
+ * bound or captured by f. We just have to look if the level higher (or lower)
+ * than f (in this case 3).
+ */
+/*****************************************************************************/
+module SkipTypingUtils;
+
+type Level = Int;
+
+/*****************************************************************************/
+/* Lambda types. */
+/*****************************************************************************/
+/* Exception raised when we don't know all the types of the arguments passed
+ * to a lambda. When that is the case, we wait until the end of the function/
+ * method is reached to type-check its body.
+ */
+class Delay() extends Exception
+
+class Lambda{
+  /* The body */
+  lam_body: N.Expr,
+  /* Binding level in which the lambda was declared */
+  lam_frozen_level: FrozenLevel,
+  /* The lambda id. */
+  lam_id: Int,
+  /* The locals accessible */
+  lam_locals: SMap<(N.Type_, Level)>,
+  /* The locals determined to be captured during naming */
+  lam_captured: SMap<FileRange>,
+  /* The parameters */
+  lam_params: Parameters<(N.Name, N.Type_)>,
+  /* True iff the lambda has explicity type annotations on the params */
+  lam_explicit_param_ty: Bool,
+  /* The position of the lambda */
+  lam_pos: FileRange,
+  /* mutability */
+  lam_tfun_modifiers: N.Tfun_modifiers,
+  /* The type of the function */
+  lam_type: N.Type_,
+  /* Is this a generator? */
+  yields: ?FileRange,
+}
+
+base class FrozenLevel
+class LNone() extends FrozenLevel
+class LIfBlock(fr: FileRange, level: Level) extends FrozenLevel
+
+base class NoMutableFrozenLevel extends FrozenLevel
+class LPureLambda(fr: FileRange, level: Level) extends NoMutableFrozenLevel
+class LAsyncBlock(fr: FileRange, level: Level) extends NoMutableFrozenLevel
+
+base class ReturnCase {
+  children =
+  | RNotAllowed(reason: String)
+  | RType(ty: N.Type_)
+}
+
+base class YieldCase {
+  children =
+  | YNotAllowed(reason: String)
+  | YType(ty: N.Type_)
+
+  // Type "yield" operands, e.g. T for a generator returning
+  // mutable Iterator<T>.
+  fun getType(pos: FileRange): N.Type_
+  | YNotAllowed(msg) -> SkipError.error(pos, "Invalid context for yield" + msg)
+  | YType(ty) -> ty
+}
+
+class Env{
+  frozen_level: FrozenLevel,
+  check_exhaustive_match: Bool,
+  deferred_body: Bool,
+  locals: SMap<(N.Type_, Level)>,
+  kind: ?N.FieldKind,
+  orig_this_class: ?N.Name,
+  this_class: ?N.Name,
+  tracked_context: Bool,
+  return_type: ReturnCase,
+  yield_type: YieldCase,
+  sk_async: ?FileRange,
+  break_type: ?N.Type_,
+}
+
+type TparamNeighbors = IMap<
+  ((FileRange, N.Tparam), IMap<(FileRange, N.Tparam)>),
+>;
+
+class Acc{
+  /* Constraints added throughout a type or expression */
+  constraints: Constraints,
+  lambda_list: List<(Int, Lambda)>,
+  lambdas: IMap<Lambda>,
+  /* The place holder in the typed Ast for lambdas */
+  lambda_bodies: IMap<TAst.Expr>,
+  level: Int,
+  subst: IMap<N.Type_>,
+  // tparam_hierarchy and tparam_neighbors will be useful
+  // if we make Tparams have a Tset form, but right now its not needed
+  // /* Full hierarchy of tparams
+  //  * So T : U, U : V, would give T => { U, V }, U => { V }, and V => {}
+  //  */
+  // tparam_hierarchy: IMap<IMap<(FileRange, N.Tparam)>>,
+  // /* immediate subtypes of tparams
+  //  * So T : U, U : V, would give T => { U }, U => { V }, and V => {}
+  //  */
+  // tparam_neighbors: TparamNeighbors,
+  tvars: IMap<N.Name>,
+  /* Upper bounds of type parameters */
+  tparam_constraints: TparamConstraints,
+
+  /* MismatchedVariance Tparams need to get replaced for the NBE.
+   * This map stores what the type would have been if not mismatched
+   */
+  mismatched_variance_bounds: SMap<N.Type_>,
+
+  /* Generic mapping for methods.
+   * You should look at generic_mapping in skipTypedAst if you want to know
+   * what this is about.
+   * Method_name => Parent_name => Generic_ID => Type_
+   */
+  generic_maps: SMap<SMap<SMap<TAst.Type_>>>,
+} {
+  fun last_lambda_id(): Int {
+    this.lambda_list match {
+    | List.Nil() -> 0
+    | List.Cons((id, _), _) -> id
+    }
+  }
+}
+
+const empty_acc: Acc = Acc{
+  tparam_constraints => TparamConstraints::empty,
+  subst => SortedMap[],
+  tvars => SortedMap[],
+  lambdas => SortedMap[],
+  lambda_list => List[],
+  lambda_bodies => SortedMap[],
+  constraints => Constraints::empty,
+  level => 0,
+  generic_maps => SortedMap[],
+  mismatched_variance_bounds => SortedMap[],
+};
+
+// tparam prefix for uknown type argument existentials
+const unknown_prefix: String = "!$!unknown:";
+// tparam prefix for mismatched variance existentials
+const mismatched_prefix: String = "!$!mismatched_variance:";
+const check_mutable_local_msg: String = "You cannot capture this variable";
+
+/*****************************************************************************/
+/* Debugging */
+/*****************************************************************************/
+fun debug_type_no_newline(acc: Acc, ty_orig: N.Type_): void {
+  ty = Types.unfold_type(acc.subst, ty_orig);
+  ty match {
+  | (
+    _,
+    N.Tparam(frozen_, _, i, _),
+  ) if (!acc.tparam_constraints.findUppers(i).isEmpty()) ->
+    freeze_upper = Types.should_freeze_upper(
+      acc.tparam_constraints,
+      acc.subst,
+      frozen_,
+      i,
+    );
+    print_curr = freeze_upper match {
+    | None() -> (cur -> BufferedPrinter.pp_list(SkipNamedAstPp.type, cur))
+    | Some(pos) ->
+      (cur ->
+        BufferedPrinter.pp_list(
+          SkipNamedAstPp.type,
+          Types.freeze(pos, acc.subst, acc.tparam_constraints, cur),
+        ))
+    };
+    print_error("(");
+    BufferedPrinter.pp_no_newline(SkipNamedAstPp.type, ty);
+    print_error(" : ");
+    acc.tparam_constraints.findUppers(i).each(print_curr);
+    print_error(")")
+  | (_, N.Tanything()) ->
+    BufferedPrinter.pp_no_newline(SkipNamedAstPp.type, ty_orig)
+  | _ -> BufferedPrinter.pp_no_newline(SkipNamedAstPp.type, ty)
+  }
+}
+
+fun debug_type(acc: Acc, ty: N.Type_): void {
+  debug_type_no_newline(acc, ty);
+  print_error_ln("")
+}
+
+fun debug_constraints(acc: Acc): void {
+  print_raw(acc.constraints.toString());
+  print_error_ln("")
+}
+
+fun debug_subst(acc: Acc): void {
+  print_raw(subst_to_string(acc.subst));
+  print_newline()
+}
+
+fun subst_to_string(subst: IMap<N.Type_>): String {
+  rev_entries = subst.reduce((l, i, t) -> List.Cons((i, t), l), List[]);
+  entries = rev_entries.reversed();
+  entries.map(subst_entry_to_string).join("\n")
+}
+
+fun subst_entry_to_string(entry: (Int, N.Type_)): String {
+  (id, ty) = entry;
+  id.toString() + " => " + BufferedPrinter.pp_to_string(SkipNamedAstPp.type, ty)
+}
+
+/*****************************************************************************/
+/* Type promotion */
+/*****************************************************************************/
+fun make_tenv(env: Env, acc: Acc): Types.Env {
+  this_class = env.this_class;
+  tparam_constraints = acc.tparam_constraints;
+  promoted = SSet[];
+  solving_constraints = false;
+  tvars = ISet[];
+  Types.Env{
+    this_class,
+    tparam_constraints,
+    promoted,
+    solving_constraints,
+    tvars,
+  }
+}
+
+fun promote(env: Env, acc: Acc, ty: N.Type_): N.Type_ {
+  tenv = make_tenv(env, acc);
+  Types.promote(tenv, Ast.Vplus(), acc.subst, ty)
+}
+
+fun contra_promote(env: Env, acc: Acc, ty: N.Type_): N.Type_ {
+  tenv = make_tenv(env, acc);
+  Types.promote(tenv, Ast.Vminus(), acc.subst, ty)
+}
+
+fun inv_promote(env: Env, acc: Acc, ty: N.Type_): N.Type_ {
+  tenv = make_tenv(env, acc);
+  Types.promote(tenv, Ast.Vnone(), acc.subst, ty)
+}
+
+fun freeze(caller_pos: FileRange, acc: Acc, x: N.Type_): N.Type_ {
+  Types.freeze(caller_pos, acc.subst, acc.tparam_constraints, x)
+}
+
+/* Strip off hte outer most mutability modifier to make it immutable
+ *
+ * Currently this operation is done by the unsafe operater
+ * unsafe_chill_trust_me
+ *
+ * BIG TODO we need some sort of linear check to prove this chilling statically
+ */
+fun user_chill(
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+): N.Type_ {
+  Types.unfold_type(acc.subst, ty) match {
+  | (_, N.Tapply(N.Mchilled(), _, _))
+  | (_, N.Tpromoted(_, N.Mchilled(), _, _, _, _))
+  | (_, N.Tset(_, N.Mchilled(), _, _)) ->
+    ty
+  | (fr, N.Tapply(_, n, tyl)) -> (fr, N.Tapply(N.Mchilled(), n, tyl))
+  | (fr, tp @ N.Tpromoted _) -> (fr, tp with {mode => N.Mchilled()})
+  | (fr, ts @ N.Tset _) -> (fr, ts with {mode => N.Mchilled()})
+  // Intentionally leaving out tparams here
+  | (fr, _) ->
+    SkipError.errorl(
+      List[
+        (caller_pos, "Invalid call to 'unsafe_chill_trust_me'"),
+        (
+          fr,
+          "Expected an object type but got: " +
+            Types.to_string(env.this_class, acc.subst, ty),
+        ),
+      ],
+    )
+  }
+}
+
+/* Semi unsafe wrappers for creating certain predefined object types
+ * We jump straight from tapply to tpromoted as a very minor optimization
+ * Could definitely make this promote(tapply) for safety
+ */
+fun make_tvoid(fr: FileRange, var: N.Variance): N.Type_ {
+  (
+    fr,
+    N.Tpromoted(var, N.Mchilled(), SSet[], SortedMap[], (fr, "Void"), Array[]),
+  )
+}
+
+fun make_tbool(fr: FileRange, var: N.Variance): N.Type_ {
+  (
+    fr,
+    N.Tpromoted(var, N.Mchilled(), SSet[], SortedMap[], (fr, "Bool"), Array[]),
+  )
+}
+
+fun make_tstring(fr: FileRange, var: N.Variance): N.Type_ {
+  (
+    fr,
+    N.Tpromoted(
+      var,
+      N.Mchilled(),
+      SSet[],
+      SortedMap[],
+      (fr, "String"),
+      Array[],
+    ),
+  )
+}
+
+fun make_texn(fr: FileRange, var: N.Variance): N.Type_ {
+  (
+    fr,
+    N.Tpromoted(
+      var,
+      N.Mchilled(),
+      SSet[],
+      SortedMap[],
+      (fr, "Exception"),
+      Array[],
+    ),
+  )
+}
+
+fun make_tapply(
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  mode: N.Modality,
+  class_name: N.Name,
+  targs: Array<N.Type_>,
+): N.Type_ {
+  promote(env, acc, (pos, N.Tapply(mode, class_name, targs)))
+}
+
+fun is_this_ty(env: Env, acc: Acc, ty: N.Type_): Bool {
+  sk_this = env.this_class;
+  sk_this match {
+  | None() -> false
+  | Some((_, this_cstr)) -> is_this_ty_(this_cstr, acc, ty)
+  }
+}
+
+fun is_this_ty_(this_cstr: String, acc: Acc, x: N.Type_): Bool {
+  x match {
+  | (_, N.Tnamed(N.NThis((_, cstr)), _)) if (cstr == this_cstr) -> true
+  | (_, N.Tnamed(_, t)) -> is_this_ty_(this_cstr, acc, t)
+  | (_, N.Tvar(i)) if (acc.subst.containsKey(i)) ->
+    is_this_ty_(this_cstr, acc, acc.subst[i])
+  | _ -> false
+  }
+}
+
+fun make_tconcrete(env: Env, acc: Acc, pos: FileRange, ty: N.Type_): N.Type_ {
+  tclass = make_tapply(
+    env,
+    acc,
+    pos,
+    N.Mchilled(),
+    (pos, "Concrete"),
+    Array[ty],
+  );
+  if (is_this_ty(env, acc, ty)) {
+    (pos, N.Tnamed(N.NStatic(env.this_class.fromSome()), tclass))
+  } else {
+    tclass
+  }
+}
+
+fun make_tobject(env: Env, acc: Acc, pos: FileRange, ty: N.Type_): N.Type_ {
+  tclass = make_tapply(env, acc, pos, N.Mchilled(), (pos, "Class"), Array[ty]);
+  if (is_this_ty(env, acc, ty)) {
+    (pos, N.Tnamed(N.NStatic(env.this_class.fromSome()), tclass))
+  } else {
+    tclass
+  }
+}
+
+fun make_tbase(env: Env, acc: Acc, pos: FileRange, ty: N.Type_): N.Type_ {
+  /* is never this */
+  make_tapply(env, acc, pos, N.Mchilled(), (pos, "Base"), Array[ty])
+}
+
+const invalidCastError: String = "InvalidCast";
+
+/*****************************************************************************/
+/* Solving constraints.
+ * We wait until the 'end' (when the entire method body has been checked),
+ * to verify if all the constraints are satisfied.
+ */
+/*****************************************************************************/
+
+base class Constraint uses Show {
+  fun solve(next_id: () -> Int, msg: String, env: Env, acc: Acc): Acc;
+
+  fun solve_call(next_id: () -> Int, last_tvar: Int, env: Env, acc: Acc): Acc;
+
+  static fun solve_pair(
+    next_id: () -> Int,
+    msg: String,
+    env: Env,
+    acc: Acc,
+    fr: FileRange,
+    lty_co: N.Type_,
+    rty: N.Type_,
+  ): Acc {
+    rty_contra = contra_promote(env, acc, rty);
+    (acc1, _) = join_constraints(
+      next_id,
+      env,
+      fr,
+      msg,
+      acc,
+      lty_co,
+      rty_contra,
+    );
+    acc1
+  }
+}
+
+base class TypingConstraint extends Constraint
+
+// Simple relational t1 <: t2 constraint introduced by tparam constraints on
+// function calls or object instantiation
+class RelationalConstraint(
+  fr: FileRange,
+  lty: N.Type_,
+  rtys: Array<N.Type_>,
+) extends TypingConstraint {
+  fun solve(next_id: () -> Int, msg: String, env: Env, acc: Acc): Acc {
+    lty_co = promote(env, acc, this.lty);
+    expand_type(env, acc, lty_co) match {
+    | (_, N.Tanything()) -> acc
+    | _ ->
+      rtype = (acc, rty) ->
+        Constraint::solve_pair(next_id, msg, env, acc, this.fr, lty_co, rty);
+      this.rtys.reduce(rtype, acc)
+    }
+  }
+
+  /***************************************************************************/
+  /* Function used to solve constraints types introduced during a call.
+   * Both sides of the constraint must have been bound, when they are not, we
+   * just wait until the end of the function (as usual).
+   * Solving eagerly facilitates type inference in certain cases.
+   *
+   * NOTE: here we're also adjusting certain tparam instantiations to agree with
+   * our typing rules. The adjustment is approximate and after the fact, and it
+   * loosens constraints, so it may be the cause of bugs we haven't run into yet.
+   * Describing it in detail here so it'll be easier to blame problems to it, and
+   * as a guide for moving the logic upstream when time allows.
+   *
+   * The rule concerns how we instantiate type params that appear on the *right*
+   * side of a constraint - in particular, a constraint on a polymorphic method,
+   * such as `m` in the following:
+   *
+   * class C<T> {
+   *   fun m<U>[T: U](u: U): U { ... }
+   * }
+   *
+   * Here, we want `m` to be available when T <: U *and* when U <: T.
+   * T <: U follows immediately from the constraint, while U <: T requires us
+   * to search among T's supertypes.
+   *
+   * In other words, we interpret T: U to mean T <: LUB(T, U) here, with the
+   * constraint failing if T and U have no common supertype. (Since we have no
+   * top type, this is viable.)
+   *
+   * Issue 1: the proper scope of this interpretation isn't clear, beyond the
+   * motivating case described above. It's not clear which tparam instantiations
+   * we could/should use this interpretation for:
+   * - any tparam appearing in constraints?
+   * - only those which conditionalize methods (`m<U>[T: U]`)?
+   * - only those where the RHS is the type of an incoming argument
+   *   (`m<U>[T: U](U)``)?
+   * - something else?
+   * The current implementation is an approximation of the second, but this
+   * needs to be settled on and formalized.
+   *
+   * Issue 2: the implementation below is approximate, in the sense that it
+   * doesn't actually identify and adjust the tparams described above.
+   * Instead it takes watermarks for constraints and tvar ids, and adjusts
+   * all constraining tvars generated after those watermarks. This means that
+   * tvars unrelated to the tparams of interest may be inadvertently adjusted.
+   *
+   * The mechanics of the adjustment happen in solve_call_constraint below.
+   */
+  /***************************************************************************/
+
+  fun solve_call(next_id: () -> Int, last_tvar: Int, env: Env, acc: Acc): Acc {
+    msg = "Constraint not satisfied";
+    pos = this.fr;
+    lty = this.lty;
+    rtys = this.rtys;
+    lty_co = promote(env, acc, lty);
+    Types.unfold_type(acc.subst, lty_co) match {
+    | (_, N.Tanything()) -> acc
+    | _ ->
+      rtype = (acc: Acc, rty: N.Type_) -> {
+        if (!this.currentlySolvable(lty_co, rty, env, acc)) return acc;
+        // if rty is a tvar of interest, rebind it to the LUB of lty and rty
+        acc1 = rty match {
+        | (_, N.Tvar(id)) if (id >= last_tvar) ->
+          rty_co = promote(env, acc, rty);
+          (acc1, joined) = join_constraints(
+            next_id,
+            env,
+            pos,
+            msg,
+            acc,
+            lty_co,
+            rty_co,
+          );
+          // back-propagate LUB to old tvar id. constraint forwarding should simplify
+          new_rty_co = promote(env, acc1, rty);
+          acc2 = static::fix_subst(id, new_rty_co, acc1);
+          (acc3, _) = join(next_id, env, pos, msg, acc2, rty, joined);
+          acc3
+        | _ -> acc
+        };
+        // then solve as usual
+        TypingConstraint::solve_pair(next_id, msg, env, acc1, pos, lty_co, rty);
+      };
+      rtys.foldl(rtype, acc)
+    }
+  }
+
+  private fun currentlySolvable(
+    lty_co: N.Type_,
+    rty: N.Type_,
+    env: Env,
+    acc: Acc,
+  ): Bool {
+    Types.unfold_type(acc.subst, lty_co).i1 match {
+    // Tsets are already promoted
+    | N.Tpromoted(_, _, _, _, n, targs)
+    | N.Tapply(_, n, targs) ->
+      cd = SkipNaming.getClass(n);
+      conditionalUses = cd.use.filter((_, _, p) -> !p.conditions.isEmpty());
+      if (conditionalUses.isEmpty()) {
+        true
+      } else {
+        tparams = cd.tparams.map(N.tparam_ident);
+        subst_tparams = N.make_subst(lty_co.i0, tparams, targs);
+        tsubst = t ->
+          N.type_subst(Types.freeze, subst_tparams, acc.tparam_constraints, t);
+        presentTraits = this.rtyKTraits(rty, env, acc);
+        for ((parName, _tya, par) in conditionalUses) {
+          if (!presentTraits.contains(parName.i1)) continue;
+          allPossibleConditionsHaveUnresolved = par.conditions.all(conds -> {
+            !conds = conds.map(wc -> (tsubst(wc.i0), wc.i1.map(tsubst)));
+            Types.hasUnresolvedConditions(acc.subst, conds)
+          });
+          if (allPossibleConditionsHaveUnresolved) break false;
+        } else {
+          true
+        }
+      }
+    | N.Tparam(_, _, id, _) ->
+      acc.tparam_constraints
+        .findUppers(id)
+        .foldl((b, t) -> b && this.currentlySolvable(t, rty, env, acc), true)
+
+    | N.Tdefault(ty) -> this.currentlySolvable(ty, rty, env, acc)
+    | _ -> true
+    }
+  }
+
+  private fun rtyKTraits(rty: N.Type_, env: Env, acc: Acc): SSet {
+    Types.unfold_type(acc.subst, rty).i1 match {
+    | N.Tpromoted(_, _, _, _, n, _)
+    | N.Tapply(_, n, _) ->
+      cd = SkipNaming.getClass(n);
+      cd.kind match {
+      | Ast.KTrait() ->
+        s =
+          cd.extends_.values().map(par -> par.i0.i1) |>
+          SSet::createFromIterator;
+        s.add(n.i1)
+      | _ -> SSet[]
+      }
+    | N.Tset(_, _, _, elts) ->
+      elts
+        .values()
+        .filter(elt -> elt.kind is Ast.KTrait())
+        .map(elt -> elt.name.i1) |> SSet::createFromIterator
+    | N.Tparam(_, _, id, _) ->
+      acc.tparam_constraints
+        .findUppers(id)
+        .foldl((s, t) -> s.union(this.rtyKTraits(t, env, acc)), SSet[])
+
+    | N.Tdefault(ty) -> this.rtyKTraits(ty, env, acc)
+    | _ -> SSet[]
+    }
+  }
+
+  private static fun fix_subst(id: Int, new_co_ty2: N.Type_, acc: Acc): Acc {
+    N.unfold_tnamed(acc.subst[id]) match {
+    | (_, N.Tvar(id2)) -> static::fix_subst(id2, new_co_ty2, acc)
+    | _ -> acc with {subst => acc.subst.set(id, new_co_ty2)}
+    }
+  }
+
+  fun toString(): String {
+    ty_to_string = t -> BufferedPrinter.pp_to_string(SkipNamedAstPp.type, t);
+    this.fr.toString() +
+      " " +
+      ty_to_string(this.lty) +
+      " <: [" +
+      (this.rtys.map(ty_to_string).join(", ")) +
+      "]"
+  }
+}
+
+// This cosntraint checks that a given type is frozen for valid subtying on
+// immutable objects. This could be a relational check, but the error message
+// would be super awful
+class MutPreservationConstraint(
+  child: N.Type_,
+  joined: N.Type_,
+  targ: N.Type_,
+  tparam: N.Type_parameter,
+  tvar: (FileRange, N.Tvar),
+) extends TypingConstraint {
+  fun solve(next_id: () -> Int, msg: String, env: Env, acc: Acc): Acc {
+    fr = this.tvar.i0;
+    tfrozen = (fr, N.Tfrozen(Ast.Vminus()));
+    tvar_co = promote(env, acc, this.tvar);
+    try {
+      (!acc, _) = join_exn(next_id, env, acc, tvar_co, tfrozen);
+      acc
+    } catch {
+    | Types.Join _ ->
+      mut_pres = Types.MutPreservation(
+        this.child,
+        this.joined,
+        this.targ,
+        this.tparam,
+      );
+      types_error(next_id, true, env, acc, fr, msg, mut_pres)
+    | e @ Types.Exception _ -> types_error(next_id, true, env, acc, fr, msg, e)
+    }
+  }
+
+  fun solve_call(() -> Int, Int, Env, acc: Acc): Acc {
+    acc
+  }
+
+  fun toString(): String {
+    ty_to_string = t -> BufferedPrinter.pp_to_string(SkipNamedAstPp.type, t);
+    ty_to_string(this.child) +
+      " joined upcast to " +
+      ty_to_string(this.joined) +
+      " at tparam " +
+      this.tparam.i2.i1 +
+      "#" +
+      this.tparam.i1 +
+      " with targ " +
+      ty_to_string(this.targ) +
+      " with tvar " +
+      ty_to_string(this.tvar)
+  }
+}
+
+// Constraint for checking that checking mutable locals weren't captured
+class LocalMutableCosntraint(
+  level: NoMutableFrozenLevel,
+  fr: FileRange,
+  ty: N.Type_,
+) extends Constraint {
+  fun solve(_next_id: () -> Int, _msg: String, _env: Env, acc: Acc): Acc {
+    mode = this.level match {
+    | LAsyncBlock _ -> is_mutable(acc, this.ty, true)
+    | LPureLambda _ -> is_mutable(acc, this.ty, false)
+    };
+    mode match {
+    | N.Efrozen _ -> void
+    | mut @ N.EffectiveNotFrozen _ -> this.error_local_mutable_contstraint(mut)
+    };
+    acc
+  }
+
+  fun solve_call(() -> Int, Int, Env, acc: Acc): Acc {
+    acc
+  }
+
+  private fun error_local_mutable_contstraint(
+    mutability: N.EffectiveNotFrozen,
+  ): void {
+    this.level match {
+    | LPureLambda(pos_closure, _) ->
+      local_msg = (this.fr, check_mutable_local_msg);
+      mut_msg = (mutability.fr, check_mutable_error_msg(mutability));
+      emsg =
+        "Because this closure was declared as pure (~>)" + "\nTry '->' instead";
+      SkipError.errorl(List[local_msg, mut_msg, (pos_closure, emsg)])
+    | LAsyncBlock(pos_block, _) ->
+      local_msg = (this.fr, check_mutable_local_msg);
+      mut_msg = (mutability.fr, check_mutable_error_msg(mutability));
+      emsg =
+        "Because of this `async` block." +
+        "\nInside, locals cannot be modified and mutables cannot be captured";
+      SkipError.errorl(List[local_msg, mut_msg, (pos_block, emsg)])
+    }
+  }
+
+  fun toString(): String {
+    "captured in " +
+      this.level match {
+      | LAsyncBlock _ -> "async: "
+      | LPureLambda _ -> "pure: "
+      } +
+      BufferedPrinter.pp_to_string(SkipNamedAstPp.type, this.ty)
+  }
+}
+
+fun check_mutable_error_msg(mutability: N.EffectiveNotFrozen): String {
+  mutability match {
+  | N.Echilled(N.Mreadonly _, _) ->
+    "Immutable but contains a possibly mutable type"
+  | N.Echilled(N.Mmutable _, _) -> "Immutable but contains a mutable type"
+  | N.Mreadonly _ -> "Possibly mutable because of this position"
+  | N.Mmutable _ -> "Mutable because of this position"
+  }
+}
+
+value class Constraints(
+  private typing: List<TypingConstraint>,
+  private locals: List<LocalMutableCosntraint>,
+) {
+  fun add(fr: FileRange, lty: N.Type_, rtys: Array<N.Type_>): this {
+    !this.typing = List.Cons(RelationalConstraint(fr, lty, rtys), this.typing);
+    this
+  }
+
+  fun add_local_check(
+    level: NoMutableFrozenLevel,
+    fr: FileRange,
+    ty: N.Type_,
+  ): this {
+    !this.locals = List.Cons(
+      LocalMutableCosntraint(level, fr, ty),
+      this.locals,
+    );
+    this
+  }
+
+  fun add_mut_pres(
+    child: N.Type_,
+    joined: N.Type_,
+    targ: N.Type_,
+    tparam: N.Type_parameter,
+    tvar: (FileRange, N.Tvar),
+  ): this {
+    !this.typing = List.Cons(
+      MutPreservationConstraint(child, joined, targ, tparam, tvar),
+      this.typing,
+    );
+    this
+  }
+
+  fun add_contraint(c: Constraint): this {
+    c match {
+    | t @ TypingConstraint _ ->
+      !this.typing = List.Cons(t, this.typing);
+      this
+    | l @ LocalMutableCosntraint _ ->
+      !this.locals = List.Cons(l, this.locals);
+      this
+    }
+  }
+
+  fun concat(other: this): this {
+    static(this.typing.concat(other.typing), this.locals.concat(other.locals))
+  }
+
+  const empty: this = Constraints(List[], List[]);
+
+  fun isEmpty(): Bool {
+    this.typing.isEmpty() && this.locals.isEmpty()
+  }
+
+  fun typing_size(): Int {
+    this.typing.size()
+  }
+
+  fun typing_fold<R>(
+    f: (R, (FileRange, N.Type_, Array<N.Type_>)) -> R,
+    init: R,
+  ): R {
+    this.typing.foldl(
+      (r, c) ->
+        c match {
+        | RelationalConstraint(fr, lty, rtys) -> f(r, (fr, lty, rtys))
+        | MutPreservationConstraint _ -> r
+        },
+      init,
+    )
+  }
+
+  fun toString(): String {
+    this.typing.map(c -> c.toString()).join("\n") +
+      this.locals.map(c -> c.toString()).join("\n")
+  }
+
+  fun solve(next_id: () -> Int, env: Env, acc: Acc): Acc {
+    this.solve_msg(next_id, "Constraint not satisfied", env, acc)
+  }
+
+  fun solve_msg(next_id: () -> Int, msg: String, env: Env, acc: Acc): Acc {
+    original = acc.constraints;
+    !acc.constraints = static::empty;
+    (relational_upper, other) = this.typing.partition(x ->
+      x is RelationalConstraint _
+    );
+    relational = relational_upper.map(x ->
+      x match {
+      | r @ RelationalConstraint _ -> r
+      | _ -> invariant_violation("ICE impossible match solve_msg")
+      }
+    );
+    !acc = relational.foldl((acc, c) -> c.solve(next_id, msg, env, acc), acc);
+    !acc = static::check_constraint_consistency(next_id, env, acc, relational);
+    !acc = other.foldl((acc, c) -> c.solve(next_id, msg, env, acc), acc);
+    for (c in this.locals) _ = c.solve(next_id, msg, env, acc);
+    if (acc.constraints.isEmpty()) {
+      acc with {constraints => original}
+    } else {
+      acc.constraints.solve(next_id, env, acc)
+    }
+  }
+
+  fun solve_at_call(
+    next_id: () -> Int,
+    last_constraint: Int,
+    last_tvar: Int,
+    env: Env,
+    acc: Acc,
+  ): Acc {
+    constraints = this.typing;
+    len = constraints.size();
+    // grab the relational constraints for call contraints as described above
+    (!constraints, _) = constraints.takeAndDrop(len - last_constraint);
+    constraints.foldl(
+      (acc, c) -> c.solve_call(next_id, last_tvar, env, acc),
+      acc,
+    );
+  }
+
+  /* check internal consistency of acc.constraints.
+   * covariantly join all leaf RHS types within each constraint
+   * (and across constraints with common tvars or tparams)
+   *
+   * NOTE: this is not a complete check. RHS types with any non-leaf
+   * parts are completely avoided, meaning we might not report context-free
+   * inconsistencies. Extending this check to subtler cases might require the
+   * same machinery as needed to avoid sending tvars to the backend.
+   *
+   * TODO kill this with fire. We forward tvars to properly solve constraints
+   * We could probbably remove all this shenanigans if we try to keep a
+   * canonical form for constraints
+   */
+  private static fun check_constraint_consistency(
+    next_id: () -> Int,
+    env: Env,
+    acc: Acc,
+    constraints: List<RelationalConstraint>,
+  ): Acc {
+    // extract tvar and tparam constraints and map them by id
+    extract_c = (
+      state: (
+        List<RelationalConstraint>,
+        IMap<List<RelationalConstraint>>,
+        SMap<List<RelationalConstraint>>,
+      ),
+      c: RelationalConstraint,
+    ) -> {
+      (clist, tvar_map, tpar_map) = state;
+      c.lty match {
+      // tvar constraints go into tvar_map, either new or merged with existing
+      | (_, N.Tvar(id)) ->
+        root_id = Types.tvar_root(acc.subst, id) match {
+        | Some((_, N.Tvar(n))) -> n
+        | _ -> id
+        };
+        cs = tvar_map.maybeGet(root_id) match {
+        | Some(cs) -> List.Cons(c, cs)
+        | None() -> List[c]
+        };
+        (clist, tvar_map.set(root_id, cs), tpar_map)
+      // tparam constraints go into tparam_map, either new or merged with existing
+      | (_, N.Tparam(_, _, id, _)) ->
+        cs = tpar_map.maybeGet(id) match {
+        | Some(cs) -> List.Cons(c, cs)
+        | None() -> List[c]
+        };
+        (clist, tvar_map, tpar_map.set(id, cs))
+      // leave others unmerged
+      | _ -> (List.Cons(c, clist), tvar_map, tpar_map)
+      }
+    };
+
+    (clist, tvar_map, tpar_map) = constraints.foldl(
+      extract_c,
+      (List[], SortedMap[], SortedMap[]),
+    );
+
+    // for all constraints with a common LHS, join all leaf RHS types
+    check_cs = (acc: Acc, cs: List<RelationalConstraint>) -> {
+      phys_rtys = mutable Vector[];
+      for (c in cs) {
+        rtys = c.rtys.filter(t -> static::is_leaf_type(env, acc, t));
+        pos_rtys = rtys.map(t -> (c.fr, t));
+        phys_rtys.extend(pos_rtys)
+      };
+      if (phys_rtys.isEmpty()) acc else {
+        rtysIter = phys_rtys.values();
+        (_, rtys_hd) = rtysIter.next().fromSome();
+        join_co = (acc_ty: (Acc, N.Type_), pos_rty: (FileRange, N.Type_)) -> {
+          (rty_acc, ty_co) = acc_ty;
+          (pos, rty) = pos_rty;
+          rty_co = promote(env, acc, rty);
+          msg = "Constraint not satisfied";
+          join(next_id, env, pos, msg, rty_acc, ty_co, rty_co)
+        };
+        init = (acc, promote(env, acc, rtys_hd));
+
+        (acc1, _) = rtysIter.reduce(join_co, init);
+        acc1
+      }
+    };
+
+    !acc = clist.foldl((acc, c) -> check_cs(acc, List[c]), acc);
+    !acc = tvar_map.reduce((acc, _, cs) -> check_cs(acc, cs), acc);
+    !acc = tpar_map.reduce((acc, _, cs) -> check_cs(acc, cs), acc);
+
+    acc
+  }
+
+  /* leaf types are types which have a context-free consistency relationship
+   * to each other - e.g. leaf classes are leaf types, but base classes and
+   * traits are not.
+   */
+  private static fun is_leaf_type(env: Env, acc: Acc, ty: N.Type_): Bool {
+    child = t -> static::is_leaf_type(env, acc, t);
+    Types.unfold_type(acc.subst, ty) match {
+    | (_, N.Tapply(_, name, targs)) ->
+      SkipNaming.getClass(name).kind match {
+      | Ast.KClass() -> targs.all(child)
+      | _ -> false
+      }
+    | (_, N.Tfun(_, _, targs, ptypes, rtype)) ->
+      targs.all(child) &&
+        (ptypes match {
+        | Positional(l) -> l.all(child)
+        | Named(m) -> m.all((_, t) -> child(t))
+        }) &&
+        child(rtype)
+    | (_, N.Tlambda(_, _, _, t))
+    | (_, N.Tdefault(t)) ->
+      child(t)
+    | _ -> false
+    }
+  }
+}
+
+// Check for solveable constraints on methods. If they are not solveable,
+// the method doesn't need to be implemented by the child in question
+fun solvableWhenparams(
+  next_id: () -> Int,
+  _fr: FileRange,
+  env: Env,
+  acc: Acc,
+  cd: N.Class_def,
+  whenclauses: Array<N.Whenclause>,
+): ?Bool {
+  if (whenclauses.isEmpty()) return Some(true);
+  tps = cd.tparams.foldl((set, tp) -> set.add(tp.i1), SSet[]);
+  // Our inference for whenclauses adding constraints is relatively weak
+  // Due to conditional constraints on traits, we often don't have enough
+  // information
+  for ((lhs, rhss) in whenclauses) {
+    unresovledInnerTvars = isCDTparam(tps, lhs) || !hasCDTparam(tps, lhs);
+    if (unresovledInnerTvars) continue;
+    for (rhs in rhss) {
+      traits = ktraits(acc.subst, rhs);
+      if (hasConditionalTrait(acc.subst, traits, lhs)) return None();
+    }
+  };
+  finst = t -> {
+    (!acc, !t) = instantiate(next_id, env, acc, t);
+    t
+  };
+  // Actual check
+  try {
+    for ((lhs, rhss) in whenclauses) {
+      !lhs = promote(env, acc, finst(lhs));
+      for (rhs in rhss) {
+        !rhs = contra_promote(env, acc, finst(rhs));
+        (!acc, _) = join_exn_(next_id, true, env, acc, lhs, rhs)
+      }
+    };
+    _ = acc.constraints.solve(next_id, env, acc);
+    Some(true)
+  } catch {
+  | SkipError.SkipErrorException _
+  | Types.Exception _ ->
+    Some(false)
+  }
+}
+
+fun isCDTparam(tps: SSet, ty: N.Type_): Bool {
+  ty.i1 match {
+  | N.Tdefault(inner)
+  | N.Tnamed(_, inner) ->
+    isCDTparam(tps, inner)
+  | N.Tparam(_, _, id, _) -> tps.contains(id)
+  | _ -> false
+  }
+}
+
+fun hasCDTparam(tps: SSet, ty: N.Type_): Bool {
+  N.type_fold((cur, t) -> cur || isCDTparam(tps, t), false, ty)
+}
+
+fun ktraits(subst: IMap<N.Type_>, ty: N.Type_): SSet {
+  Types.unfold_type(subst, ty).i1 match {
+  | N.Tdefault(inner)
+  | N.Tnamed(_, inner) ->
+    ktraits(subst, inner)
+  | N.Tpromoted(_, _, _, _, n, _)
+  | N.Tapply(_, n, _) ->
+    SkipNaming.getClass(n).kind match {
+    | Ast.KTrait() -> SSet[n.i1]
+    | _ -> SSet[]
+    }
+  | N.Tset(_, _, _, elts) ->
+    elts
+      .values()
+      .filter(elt -> SkipNaming.getClass(elt.name).kind is Ast.KTrait())
+      .map(elt -> elt.name.i1) |> SSet::createFromIterator
+  | _ -> SSet[]
+  }
+}
+
+fun hasConditionalTrait(subst: IMap<N.Type_>, traits: SSet, ty: N.Type_): Bool {
+  Types.unfold_type(subst, ty).i1 match {
+  | N.Tdefault(inner)
+  | N.Tnamed(_, inner) ->
+    hasConditionalTrait(subst, traits, inner)
+  | N.Tpromoted(_, _, _, _, n, _)
+  | N.Tapply(_, n, _) ->
+    hasConditionalTraitPoint(traits, n)
+  | N.Tset(_, _, _, elts) ->
+    elts.any(elt -> hasConditionalTraitPoint(traits, elt.name))
+  | _ -> false
+  }
+}
+
+fun hasConditionalTraitPoint(traits: SSet, n: N.Name): Bool {
+  cd = SkipNaming.getClass(n);
+  cd.use.any((n, _, par) -> traits.contains(n.i1) && !par.conditions.isEmpty())
+}
+
+/*****************************************************************************/
+/* Type and Expression Expansion */
+/*****************************************************************************/
+fun make_expand_env(env: Env, acc: Acc): Expand.Env {
+  sk_this = env.this_class;
+  Expand.Env{
+    sk_this,
+    is_constraint => false,
+    tparam_constraints => acc.tparam_constraints,
+    mismatched_variance_bounds => acc.mismatched_variance_bounds,
+  }
+}
+
+fun expand_expr(env: Env, acc: Acc, e: TAst.Expr): TAst.Expr {
+  exp_env = make_expand_env(env, acc);
+  Expand.expr(exp_env, acc.lambda_bodies, acc.subst, e)
+}
+
+fun expand_type(env: Env, acc: Acc, ty: N.Type_): N.Type_ {
+  exp_env = make_expand_env(env, acc);
+  Expand.type(exp_env, acc.subst, ty)
+}
+
+/*****************************************************************************/
+/* Creates a fresh type variable. */
+/*****************************************************************************/
+fun fresh_(next_id: () -> Int): N.Type__ {
+  N.Tvar(next_id())
+}
+
+fun fresh<Tb>(next_id: () -> Int, nm: (FileRange, Tb)): N.Type_ {
+  (pos, _) = nm;
+  (pos, fresh_(next_id))
+}
+
+fun type_subst(subst: SMap<N.Type_>, acc: Acc, ty: N.Type_): N.Type_ {
+  N.type_subst(Types.freeze, subst, acc.tparam_constraints, ty)
+}
+
+fun tparam_subst(
+  subst: SMap<N.Type_>,
+  acc: Acc,
+  tp: N.Type_parameter,
+): N.Type_parameter {
+  N.tparam_subst(Types.freeze, subst, acc.tparam_constraints, tp)
+}
+
+fun type_contra_tparam_subst(
+  subst: SMap<N.Type_>,
+  acc: Acc,
+  ty: N.Type_,
+): N.Type_ {
+  N.type_map(
+    ty -> {
+      ty match {
+      | (_, N.Tparam(frozen_, Ast.Vminus(), i, _)) ->
+        subst.maybeGet(i) match {
+        | None() -> ty
+        | Some(ty_mapped) ->
+          frozen_ match {
+          | None() -> ty_mapped
+          | Some(pos1) ->
+            Types.freeze(pos1, SortedMap[], acc.tparam_constraints, ty_mapped)
+          }
+        }
+      | _ -> ty
+      }
+    },
+    ty,
+  )
+}
+
+/*****************************************************************************/
+/* Helpers on lambdas */
+/*****************************************************************************/
+
+fun is_mutable(acc: Acc, x: N.Type_, for_async: Bool): N.EffectiveMode {
+  (pos, _) = x;
+  Types.unfold_type(acc.subst, x).i1 match {
+  | N.Tnamed _
+  | N.Tvar _ ->
+    invariant_violation("bad unfold")
+
+  | N.Tfrozen _ -> N.Efrozen()
+
+  | N.Tpromoted(_, mode @ N.MnotFrozen _, _, _, _, _)
+  | N.Tapply(mode @ N.MnotFrozen _, _, _)
+  | N.Tset(_, mode @ N.MnotFrozen _, _, _) ->
+    mode
+
+  | N.Tpromoted(_, N.Mchilled(), _, _, _, tyl)
+  | N.Tapply(N.Mchilled(), _, tyl) ->
+    is_mutable_object(acc, tyl, for_async)
+  | N.Tset(_, N.Mchilled(), _, elts) -> is_mutable_elts(acc, elts, for_async)
+
+  | N.Tanything() ->
+    N.unfold_tnamed(x).i1 match {
+    | N.Tvar _ ->
+      SkipError.error(
+        pos,
+        "[Internal Error] The type cannot be resolved. It is likely a type " +
+          "parameter that has not received a concrete type argument in this " +
+          "typechecking context. Often this can be worked around by supplying " +
+          "a type annotation: for example, if you write Vector[], it may " +
+          "suffice to write (e.g.) Vector<String>[]. Note that this is a " +
+          "limitation of the current type system - your code is probably not " +
+          "at fault. (site=is_mutable)",
+      )
+    | _ -> N.Efrozen()
+    }
+  | N.TnonNullable _ -> N.Mmutable(pos)
+
+  | N.Tparam(Some _, _, _, _) -> N.Efrozen()
+  | N.Tparam(_, _, id, _) ->
+    mutable_default: N.EffectiveMode = N.Mmutable(pos);
+    acc.tparam_constraints
+      .findUppers(id)
+      .foldl(
+        (res, ty) ->
+          res match {
+          | N.Efrozen() -> res
+          | N.Echilled _ -> is_mutable(acc, ty, for_async)
+          | mut @ N.MnotFrozen _ ->
+            is_mutable(acc, ty, for_async) match {
+            | N.Echilled _ -> mut
+            | next_res -> next_res
+            }
+          },
+        mutable_default,
+      )
+  | N.Tawaitable(_, inner) ->
+    if (for_async) is_mutable(acc, inner, true) else N.Mmutable(pos)
+  | N.Tlambda(_, _, mods, _)
+  | N.Tfun(_, mods, _, _, _) ->
+    if (Types.is_frozen_tfun_modifiers(mods)) N.Efrozen() else N.Mmutable(pos)
+  | N.Tdefault(inner) -> is_mutable(acc, inner, for_async)
+  }
+}
+
+private fun chilled_object_init(mode: N.EffectiveMode): N.EffectiveMode {
+  mode match {
+  | N.Efrozen()
+  | N.Echilled _ ->
+    mode
+  | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+  }
+}
+
+private fun is_mutable_object(
+  acc: Acc,
+  tyl: Array<N.Type_>,
+  for_async: Bool,
+): N.EffectiveMode {
+  if (tyl.isEmpty()) return N.Efrozen();
+
+  iterTyl = tyl.values();
+  hd = iterTyl.next().fromSome();
+  iterTyl.reduce(
+    (cur_mode, ty) ->
+      cur_mode match {
+      | N.Echilled _ -> cur_mode
+      | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+      | N.Efrozen() ->
+        is_mutable(acc, ty, for_async) match {
+        | next_mode @ N.Echilled _ -> next_mode
+        | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+        | N.Efrozen() -> N.Efrozen()
+        }
+      },
+    chilled_object_init(is_mutable(acc, hd, for_async)),
+  )
+}
+
+private fun is_mutable_elts(
+  acc: Acc,
+  elts: Array<N.InterElt>,
+  for_async: Bool,
+): N.EffectiveMode {
+  invariant(!elts.isEmpty(), "ICE Empty Tset");
+  iterElts = elts.values();
+  hd = iterElts.next().fromSome();
+  iterElts.reduce(
+    (cur_mode, elt) ->
+      cur_mode match {
+      | N.Echilled _ -> cur_mode
+      | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+      | N.Efrozen() ->
+        is_mutable_object(acc, elt.targs, for_async) match {
+        | next_mode @ N.Echilled _ -> next_mode
+        | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+        | N.Efrozen() -> N.Efrozen()
+        }
+      },
+    chilled_object_init(is_mutable_object(acc, hd.targs, for_async)),
+  )
+}
+
+private fun is_readonly(acc: Acc, x: N.Type_): N.EffectiveMode {
+  (pos, _) = x;
+  Types.unfold_type(acc.subst, x).i1 match {
+  | N.Tnamed _
+  | N.Tvar _ ->
+    invariant_violation("bad unfold")
+  | N.Tanything() ->
+    SkipError.error(
+      pos,
+      "[Internal Error] The type cannot be resolved. It is likely a type " +
+        "parameter that has not received a concrete type argument in this " +
+        "typechecking context. Often this can be worked around by supplying " +
+        "a type annotation: for example, if you write Vector[], it may " +
+        "suffice to write (e.g.) Vector<String>[]. Note that this is a " +
+        "limitation of the current type system - your code is probably not " +
+        "at fault. (site=is_readonly)",
+    )
+
+  | N.Tfrozen _ -> N.Efrozen()
+
+  | N.Tpromoted(_, mode @ N.MnotFrozen _, _, _, _, _)
+  | N.Tapply(mode @ N.MnotFrozen _, _, _)
+  | N.Tset(_, mode @ N.MnotFrozen _, _, _) ->
+    mode
+
+  | N.Tpromoted(_, N.Mchilled(), _, _, _, tyl)
+  | N.Tapply(N.Mchilled(), _, tyl) ->
+    is_readonly_object(acc, tyl)
+  | N.Tset(_, N.Mchilled(), _, elts) -> is_readonly_elts(acc, elts)
+
+  | N.TnonNullable _ -> N.Mreadonly(pos)
+
+  | N.Tparam(Some _, _, _, _) -> N.Efrozen()
+  | N.Tparam(_, _, id, _) ->
+    readonly_default: N.EffectiveMode = N.Mreadonly(pos);
+    acc.tparam_constraints
+      .findUppers(id)
+      .foldl(
+        (res, ty) ->
+          res match {
+          | N.Efrozen() -> res
+          | N.Echilled _ -> is_readonly(acc, ty)
+          | mut @ N.MnotFrozen _ ->
+            is_readonly(acc, ty) match {
+            | N.Echilled _ -> mut
+            | next_res -> next_res
+            }
+          },
+        readonly_default,
+      )
+  | N.Tawaitable _ -> N.Mmutable(pos)
+  | N.Tlambda(_, _, mods, _)
+  | N.Tfun(_, mods, _, _, _) ->
+    if (Types.is_frozen_tfun_modifiers(mods)) N.Efrozen() else N.Mmutable(pos)
+  | N.Tdefault(inner) -> is_readonly(acc, inner)
+  }
+}
+
+private fun is_readonly_object(acc: Acc, tyl: Array<N.Type_>): N.EffectiveMode {
+  if (tyl.isEmpty()) return N.Efrozen();
+
+  iterTyl = tyl.values();
+  hd = iterTyl.next().fromSome();
+  iterTyl.reduce(
+    (cur_mode, ty) ->
+      cur_mode match {
+      | N.Echilled _ -> cur_mode
+      | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+      | N.Efrozen() ->
+        is_readonly(acc, ty) match {
+        | next_mode @ N.Echilled _ -> next_mode
+        | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+        | N.Efrozen() -> N.Efrozen()
+        }
+      },
+    chilled_object_init(is_readonly(acc, hd)),
+  )
+}
+
+private fun is_readonly_elts(
+  acc: Acc,
+  elts: Array<N.InterElt>,
+): N.EffectiveMode {
+  invariant(!elts.isEmpty(), "ICE Empty Tset");
+  iterElts = elts.values();
+  hd = iterElts.next().fromSome();
+  iterElts.reduce(
+    (cur_mode, elt) ->
+      cur_mode match {
+      | N.Echilled _ -> cur_mode
+      | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+      | N.Efrozen() ->
+        is_readonly_object(acc, elt.targs) match {
+        | next_mode @ N.Echilled _ -> next_mode
+        | mut @ N.MnotFrozen _ -> N.Echilled(mut, mut.fr)
+        | N.Efrozen() -> N.Efrozen()
+        }
+      },
+    chilled_object_init(is_readonly_object(acc, hd.targs)),
+  )
+}
+
+// used for finding the mode of the type during patterns
+private fun pat_object_mode(acc: Acc, x: N.Type_): N.Modality {
+  (pos, _) = x;
+  Types.unfold_type(acc.subst, x).i1 match {
+  | N.Tnamed _
+  | N.Tvar _ ->
+    invariant_violation("bad unfold")
+
+  /* These cases are meaningless as they will end in a type error in
+   * checking the branch */
+  | N.Tanything()
+  | N.TnonNullable _
+  | N.Tfrozen _ ->
+    N.Mchilled()
+  | N.Tawaitable _ -> N.Mmutable(pos)
+  | N.Tlambda(_, _, mods, _)
+  | N.Tfun(_, mods, _, _, _) ->
+    if (Types.is_frozen_tfun_modifiers(mods)) N.Mchilled() else N.Mmutable(pos)
+
+  | N.Tdefault(inner) -> pat_object_mode(acc, inner)
+
+  | N.Tpromoted(_, mode, _, _, _, _)
+  | N.Tapply(mode, _, _)
+  | N.Tset(_, mode, _, _) ->
+    mode
+
+  | N.Tparam(Some _, _, _, _) -> N.Mchilled()
+  | N.Tparam(_, _, id, _) ->
+    first_object = acc.tparam_constraints
+      .findUppers(id)
+      .values()
+      .filter(ty -> has_pat_object_mode(acc, ty))
+      .next();
+    first_object match {
+    | None() -> N.Mmutable(pos)
+    | Some(next) -> pat_object_mode(acc, next)
+    }
+  }
+}
+
+private fun has_pat_object_mode(acc: Acc, x: N.Type_): Bool {
+  Types.unfold_type(acc.subst, x).i1 match {
+  | N.Tnamed _
+  | N.Tvar _ ->
+    invariant_violation("bad unfold")
+
+  | N.Tanything()
+  | N.TnonNullable _
+  | N.Tfrozen _
+  | N.Tawaitable _
+  | N.Tlambda _
+  | N.Tfun _ ->
+    false
+
+  | N.Tdefault(inner) -> has_pat_object_mode(acc, inner)
+
+  | N.Tpromoted _
+  | N.Tapply _
+  | N.Tset _ ->
+    true
+
+  | N.Tparam(Some _, _, _, _) -> true
+  | N.Tparam(_, _, id, _) ->
+    acc.tparam_constraints.findUppers(id).values().any(ty ->
+      has_pat_object_mode(acc, ty)
+    )
+  }
+}
+
+/*****************************************************************************/
+/* Joining */
+/*****************************************************************************/
+fun suggested_frozen_fix(
+  ty: N.Type_,
+  preface: String,
+): List<(FileRange, String)> {
+  (pos, ty_) = ty;
+  ty_ match {
+  | N.Tset(_, mode @ N.MnotFrozen(epos), _, _)
+  | N.Tpromoted(_, mode @ N.MnotFrozen(epos), _, _, _, _)
+  | N.Tapply(mode @ N.MnotFrozen(epos), _, _) ->
+    List[
+      (
+        epos,
+        preface +
+          "calling 'freeze' on any expression of this type, or try removing the '" +
+          mode +
+          "' modifier",
+      ),
+    ]
+  | N.Tfun(
+    _,
+    (purity, _),
+    _,
+    _,
+    _,
+  ) if (!purity.isEmpty() && purity[0] is N.Fmutable()) ->
+    List[(pos, preface + "replacing '->' with '~>'")]
+  | N.Tparam(_, _, _, (_, tparam)) ->
+    List[
+      (
+        pos,
+        preface +
+          "calling 'freeze' on any expression of this type, or try constraining the type parameter to be frozen, for example '" +
+          tparam +
+          ": frozen'",
+      ),
+    ]
+  | _ -> List[]
+  }
+}
+
+fun suggested_join_fix(
+  next_id: () -> Int,
+  solving_constraints: Bool,
+  env: Env,
+  acc: Acc,
+  var1: ?Ast.Variance,
+  ty1: N.Type_,
+  var2: ?Ast.Variance,
+  ty2: N.Type_,
+): List<(FileRange, String)> {
+  (var1, var2) match {
+  // Nothing to suggest, these types are innherintely incompatible
+  | (None(), _)
+  | (_, None())
+  | (Some(Ast.Vminus()), Some(Ast.Vminus()))
+  | (Some(Ast.Vplus()), Some(Ast.Vplus())) ->
+    List.Nil()
+  // Annotate the minus or none type
+  | (Some(Ast.Vplus()), Some(Ast.Vminus()))
+  | (Some(Ast.Vplus()), Some(Ast.Vnone())) ->
+    try {
+      prom_ty2 = promote(env, acc, ty2);
+      (!acc, new_ty) = join_exn_(
+        next_id,
+        solving_constraints,
+        env,
+        acc,
+        ty1,
+        prom_ty2,
+      );
+      new_ty_str = Types.to_string(env.this_class, acc.subst, new_ty);
+      ty2_str = Types.to_string(env.this_class, acc.subst, ty2);
+      invariant(
+        ty2_str != new_ty_str,
+        "ICE the suggested type is the same as the original type. How are they not compatible already?",
+      );
+      List[
+        (
+          ty2.i0,
+          "This type was found to be a fixed upper bound and could not be changed to a compatible type.\nTo make these types compatible, annotate as this type: " +
+            new_ty_str,
+        ),
+      ]
+    } catch {
+    | _ -> List.Nil()
+    }
+  // Annotate both types
+  | (Some(Ast.Vnone()), Some(Ast.Vnone()))
+  | (Some(Ast.Vminus()), Some(Ast.Vnone())) ->
+    try {
+      prom_ty1 = promote(env, acc, ty1);
+      prom_ty2 = promote(env, acc, ty2);
+      (!acc, new_ty) = join_exn_(
+        next_id,
+        solving_constraints,
+        env,
+        acc,
+        prom_ty1,
+        prom_ty2,
+      );
+      new_ty_str = Types.to_string(env.this_class, acc.subst, new_ty);
+      ty1_str = Types.to_string(env.this_class, acc.subst, ty1);
+      ty2_str = Types.to_string(env.this_class, acc.subst, ty2);
+      fst_msg = "These types were found to be fixed upper bounds and could not be changed to a compatible type.\nTo make these types compatible, annotate as this type: ";
+      snd_msg = "Also annotate here as this type: ";
+      (ty1_str == new_ty_str, ty2_str == new_ty_str) match {
+      // Annotatation needed on both types
+      | (false, false) ->
+        List[(ty1.i0, fst_msg + new_ty_str), (ty2.i0, snd_msg + new_ty_str)]
+      // Annotation needed just on the first type
+      | (false, true) -> List[(ty1.i0, fst_msg + new_ty_str)]
+      // Annotation needed just on the second type
+      | (true, false) -> List[(ty2.i0, fst_msg + new_ty_str)]
+      | (true, true) ->
+        invariant_violation(
+          "ICE the suggested type is the same as BOTH original types. How are they not compatible already?",
+        )
+      }
+    } catch {
+    | _ -> List.Nil()
+    }
+  | (Some(Ast.Vnone()), _)
+  | (Some(Ast.Vminus()), Some(Ast.Vplus())) ->
+    invariant_violation("ICE these variances should have been flipped")
+  }
+}
+
+fun types_error<T>(
+  next_id: () -> Int,
+  solving_constraints: Bool,
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  msg: String,
+  x: Types.Exception,
+): T {
+  x match {
+  // A mutable was found in a place where an immutable type was expected
+  | Types.Join((ty @ (mpos, _)), tf @ (fpos, N.Tfrozen _))
+  | Types.Join(tf @ (fpos, N.Tfrozen _), (ty @ (mpos, _))) ->
+    // determine mutable vs readonly
+    mutability_msg = is_readonly(acc, ty) match {
+    | N.Efrozen _ ->
+      debug_type(acc, tf);
+      debug_type(acc, ty);
+      SkipError.errorl(
+        List[
+          (pos, "ICE type is frozen. During: " + msg),
+          (fpos, "tfrozen"),
+          (mpos, Types.to_string(env.this_class, acc.subst, ty)),
+        ],
+      )
+    | N.Echilled _ -> "chilled type containing a mutable"
+    | N.Mreadonly _ -> "possibly mutable"
+    | N.Mmutable _ -> "mutable"
+    };
+    SkipError.errorl(
+      List.Cons(
+        (pos, msg),
+        List.Cons(
+          (
+            mpos,
+            "The " +
+              mutability_msg +
+              " type '" +
+              Types.to_string(env.this_class, acc.subst, ty) +
+              "' appeared inside an immutable type.",
+          ),
+          List.Cons(
+            (
+              fpos,
+              "This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.",
+            ),
+            // Find any susggested
+            suggested_frozen_fix(ty, "To keep it immutable, try "),
+          ),
+        ),
+      ),
+    )
+  | Types.Join(ty1, ty2) ->
+    var1 = N.get_variance(Types.unfold_type(acc.subst, ty1));
+    var2 = N.get_variance(Types.unfold_type(acc.subst, ty2));
+    // Get the message based on variance
+    (msg1, msg2) = (var1, var2) match {
+    | (None(), _)
+    | (_, None())
+    | (Some(Ast.Vminus()), Some(Ast.Vminus())) ->
+      ("The type: ", "Is incompatible with: ")
+    | (Some(Ast.Vplus()), Some(Ast.Vplus())) ->
+      ("The type: ", "Does not share a common super type with: ")
+
+    | (Some(Ast.Vplus()), Some(Ast.Vminus())) ->
+      ("The type: ", "Is not a subtype of: ")
+    | (Some(Ast.Vminus()), Some(Ast.Vplus())) ->
+      // flip ty1 and ty2 for wording
+      (!var1, !var2) = (var2, var1);
+      (!ty1, !ty2) = (ty2, ty1);
+      ("The type: ", "Is not a subtype of: ")
+
+    | (Some(Ast.Vnone()), Some(Ast.Vnone())) ->
+      ("The invariant type: ", "Is incompatible with the invariant type: ")
+    | (_, Some(Ast.Vnone())) ->
+      ("The type: ", "Is incompatible with the invariant type: ")
+    | (Some(Ast.Vnone()), _) ->
+      // flip ty1 and ty2 for wording
+      (!var1, !var2) = (var2, var1);
+      (!ty1, !ty2) = (ty2, ty1);
+      ("The type: ", "Is incompatible with the invariant type: ")
+    };
+    // Report the errors
+    SkipError.errorl(
+      List.Cons(
+        (pos, msg),
+        List.Cons(
+          (ty1.i0, msg1 + Types.to_string(env.this_class, acc.subst, ty1)),
+          List.Cons(
+            (ty2.i0, msg2 + Types.to_string(env.this_class, acc.subst, ty2)),
+            // Add any casting/annotation suggestions
+            suggested_join_fix(
+              next_id,
+              solving_constraints,
+              env,
+              acc,
+              var1,
+              ty1,
+              var2,
+              ty2,
+            ),
+          ),
+        ),
+      ),
+    )
+  | Types.MutPreservation(child_ty, new_ty, missed_targ, missed_tp) ->
+    child_str = Types.to_string(env.this_class, acc.subst, child_ty);
+    new_str = Types.to_string(env.this_class, acc.subst, new_ty);
+    targ_str = Types.to_string(env.this_class, acc.subst, missed_targ);
+    (_, _, (tp_fr, tp_str), _) = missed_tp;
+    SkipError.errorl(
+      List[
+        (pos, msg + "\nInvalid upcast. Mutability is not preserved."),
+        (
+          child_ty.i0,
+          "The type '" +
+            child_str +
+            "' has the type parameter '" +
+            tp_str +
+            "' instantiated with a non-frozen type argument '" +
+            targ_str +
+            "'",
+        ),
+        (
+          new_ty.i0,
+          "It was found to necessary to upcast to the type: " + new_str,
+        ),
+        (
+          tp_fr,
+          "But this type parameter is not visible after the upcast, which resulted in the new type to be considered fully frozen.",
+        ),
+        (
+          missed_targ.i0,
+          "This is not safe since the original type contained this non-frozen type",
+        ),
+      ],
+    )
+  | Types.FrozenPreservation(child_ty, new_ty) ->
+    child_str = Types.to_string(env.this_class, acc.subst, child_ty);
+    new_str = Types.to_string(env.this_class, acc.subst, new_ty);
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          msg +
+            "\nInvalid upcast. The frozen status of the type is not preserved.",
+        ),
+        (child_ty.i0, "The type '" + child_str + "' is frozen"),
+        (
+          new_ty.i0,
+          "It was found to necessary to upcast to the type '" +
+            new_str +
+            "', but this type is not frozen",
+        ),
+      ],
+    )
+  | Types.ArityMismatch(pos1, arity1, pos2, arity2) ->
+    SkipError.errorl(
+      List[
+        (pos, msg),
+        (pos1, "This is of arity " + arity1),
+        (pos2, "This is of arity " + arity2),
+      ],
+    )
+  | Types.TypeArityMismatch(pos1, arity1, arity2) ->
+    arity11 = arity1.toString();
+    arity21 = arity2.toString();
+    SkipError.errorl(
+      List[
+        (pos, msg),
+        (pos1, "This is of arity " + arity11 + " (" + arity21 + " expected)"),
+      ],
+    )
+  | Types.RecursiveType(pos2) ->
+    SkipError.errorl(
+      List[(pos, msg), (pos2, "This value has a recursive type")],
+    )
+  }
+}
+
+fun join_exn_(
+  next_id: () -> Int,
+  solving_constraints: Bool,
+  env: Env,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  tenv = make_tenv(env, acc) with {solving_constraints};
+  tacc = Types.Acc{subst => acc.subst, constraints => Constraints::empty};
+  (!tacc, ty) = Types.join(next_id, tenv, tacc, ty1, ty2);
+  // TODO: turn this back on when memory crunch eases
+  // constraints = fwd_constraints(acc);
+  !acc = acc with {
+    subst => tacc.subst,
+    constraints => tacc.constraints.concat(acc.constraints),
+  };
+  (acc, ty)
+}
+
+/* for any tvar chain [i0 => Tvar(i1); i1 => Tvar(...); ... => Tvar(iN)],
+ * move all constraints on i0, i1, ... to iN.
+ *
+ * Ensures that all constraints are checked for any tvar in the chain.
+ * When a complete list of constraints is checked all at once, forwarding
+ * isn't necessary. But when checking constraint subsets (as in
+ * SkipTyping.solve_call_constraints) or constraints for particular tvars
+ * (not done currently), forwarding is needed to ensure that constraints
+ * aren't left behind.
+ *
+ * Note: could do this as tvars are added (Types.fwd_tvar et al), but
+ * going it after the fact like this this is a less intrusive code change.
+ *
+ * Note: an effect of forwarding is to cause constraints whose tvars were
+ * previously different to become the same. However, we don't attempt to merge
+ * these, because `solve_call_constraints` currently relies on the cardinality
+ * and order of this list remaining undisturbed. This means the constraints
+ * list cannot be treated as a map from LHS to lists of RHS - rather, it's a
+ * relation.
+ */
+//  fun fwd_constraints(acc: Acc): List<Constraint> {
+//   fwd = c -> c match {
+//     | (pos, (_, N.Tvar(id)), rtys) ->
+//       Types.tvar_root(acc.subst, id) match {
+//         | Some(root) -> (pos, root, rtys)
+//         | _ -> c
+//       }
+//     | _ -> c
+//   };
+//   acc.constraints.map(fwd)
+// }
+
+fun join_(
+  next_id: () -> Int,
+  solving_constraints: Bool,
+  env: Env,
+  pos: FileRange,
+  msg: String,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  try {
+    join_exn_(next_id, solving_constraints, env, acc, ty1, ty2)
+  } catch {
+  | e @ Types.Exception _ ->
+    types_error(next_id, solving_constraints, env, acc, pos, msg, e)
+  }
+}
+
+fun join_constraints(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  msg: String,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  join_(next_id, true, env, pos, msg, acc, ty1, ty2)
+}
+
+fun join_constraints_exn(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  join_exn_(next_id, true, env, acc, ty1, ty2)
+}
+
+fun join(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  msg: String,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  join_(next_id, false, env, pos, msg, acc, ty1, ty2)
+}
+
+fun join_exn(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  join_exn_(next_id, false, env, acc, ty1, ty2)
+}
+
+/*****************************************************************************/
+/* Helpers to manipulate the upper_bounds of type paremeters. */
+/*****************************************************************************/
+
+fun reset_tparam_bounds_for_tset_tpromoted(
+  tparams: SMap<String>,
+  x: N.Type_,
+): N.Type_ {
+  x match {
+  | (pos, N.Tnamed(n, ty)) ->
+    (pos, N.Tnamed(n, reset_tparam_bounds_for_tset_tpromoted(tparams, ty)))
+  | (pos, N.Tpromoted(var, mode, prom, _old_bounds, n, tyl)) ->
+    (pos, N.Tpromoted(var, mode, prom, tparams, n, tyl))
+  | (pos, N.Tset(var, mode, _old_bounds, elts)) ->
+    (pos, N.Tset(var, mode, tparams, elts))
+  | (_, N.Tapply _)
+  | (_, N.Tanything())
+  | (_, N.Tdefault _)
+  | (_, N.Tvar _) ->
+    invariant_violation("ICE bad type for tset tpromoted")
+  | ty -> ty
+  }
+}
+
+// Lower bounds will be added in the future
+value class TparamConstraints private {
+  private uppers: SMap<this::Bounds>,
+} uses Equality, Hashable {
+  // This type could change based on fixes to canonicalized constraints
+  type Bounds = Array<N.Type_>;
+
+  const empty: this = TparamConstraints{uppers => SortedMap[]};
+
+  fun create{uppers: SMap<Array<N.Type_>>}: this {
+    TparamConstraints{uppers}
+  }
+
+  fun hasTparam(id: String): Bool {
+    this.uppers.containsKey(id)
+  }
+
+  fun findUppers(id: String): this::Bounds {
+    this.uppers.maybeGet(id).default(Array[])
+  }
+
+  // addition encapsoilate any changes needed for canonicalized constraints
+  fun addAdditionalTparamConstraints(
+    env: Env,
+    acc: Acc,
+    id: String,
+    tyl: Array<N.Type_>,
+  ): this {
+    this.addUppers(env, acc, id, tyl)
+  }
+
+  fun resetTparamConstraints(
+    env: Env,
+    acc: Acc,
+    id: String,
+    tyl: Array<N.Type_>,
+  ): this {
+    !this.uppers = this.uppers.remove(id);
+    this.addUppers(env, acc, id, tyl)
+  }
+
+  fun bindTparamConstraints(
+    env: Env,
+    acc: Acc,
+    tparams: Array<N.Type_parameter>,
+  ): this {
+    tparams.foldl(
+      (tc, tparam) -> {
+        (_variance, id, tparam_name, tyl) = tparam;
+        if (tc.hasTparam(id)) {
+          print_error_ln(
+            "ICE newly bound tparam already has constraints: " +
+              tparam_name.i1 +
+              "#" +
+              id,
+          );
+          print_stack_trace();
+          invariant_violation("")
+        };
+        tc.addUppers(env, acc, id, tyl)
+      },
+      this,
+    )
+  }
+
+  /* For conditional constraints, we allow arbitrary constraints, i.e. things
+   * like [Foo<T>: Bar<U>] is valid, and we will determine T <: U given that
+   * Foo <: Bar
+   *
+   * To do this, there are two passes, instantiate all the tparams with fresh
+   * tvars on the left. Then do it again on the right
+   * So
+   * Foo<alpha> <: Bar<U>
+   * then
+   * Foo<T> <: Bar<beta>
+   *
+   * We then find that alpha => -U, meaning that T has an upperbound of U
+   * Then we find that beta => +T, meaning that U has a lowerbound of T
+   * If we found that alpha => .U, meaning that
+   * TODO we dont currently track lowerbounds
+   */
+  fun addWhenparamConstraints(
+    next_id: () -> Int,
+    env: Env,
+    acc: Acc,
+    whenclauses: Array<N.Whenclause>,
+  ): this {
+    whenclauses.reduce(
+      (tc, wp) -> {
+        (ty, tyl) = wp;
+        _ = (env, acc, tc, ty, tyl);
+        (upper_subst, instantiated_ty) = static::instantiateAllTparams(
+          next_id,
+          ty,
+        );
+        // Upper bounds
+        !tc = tc.solveForBounds(
+          next_id,
+          env,
+          acc,
+          upper_subst,
+          instantiated_ty,
+          tyl,
+        );
+        // Lower bounds
+        (lower_subst, instantiated_tyl) = static::instantiateAllTparamsList(
+          next_id,
+          tyl,
+        );
+        !tc = tc.solveForBounds(
+          next_id,
+          env,
+          acc,
+          lower_subst,
+          ty,
+          instantiated_tyl,
+        );
+        tc
+      },
+      this,
+    )
+  }
+
+  private static fun instantiateAllTparams(
+    next_id: () -> Int,
+    ty: N.Type_,
+  ): (IMap<(FileRange, N.Tparam)>, N.Type_) {
+    (m, tyl) = static::instantiateAllTparamsList(next_id, Array[ty]);
+    invariant(tyl.size() == 1, "ICE malformed tyl");
+    (m, tyl[0])
+  }
+
+  private static fun instantiateAllTparamsList(
+    next_id: () -> Int,
+    tyl: Array<N.Type_>,
+  ): (IMap<(FileRange, N.Tparam)>, Array<N.Type_>) {
+    tparams_to_tvars = SortedMap[];
+    tvars_to_tparams = SortedMap[];
+    !tyl = tyl.map(ty ->
+      N.type_map(
+        t ->
+          t match {
+          | (_, N.Tvar _) ->
+            invariant_violation("ICE whenparam type already instantiated")
+          | (_, N.Tparam(_, _, id, _)) if (tparams_to_tvars.containsKey(id)) ->
+            tparams_to_tvars[id]
+          | (fr, (tp @ N.Tparam(_, _, id, _))) ->
+            tvar_id = next_id();
+            tvar = (fr, N.Tvar(tvar_id));
+            !tparams_to_tvars = tparams_to_tvars.add(id, tvar);
+            !tvars_to_tparams = tvars_to_tparams.add(tvar_id, (fr, tp));
+            tvar
+          | _ -> t
+          },
+        ty,
+      )
+    );
+    (tvars_to_tparams, tyl)
+  }
+
+  private fun addConstraint(
+    env: Env,
+    acc: Acc,
+    tparam_id: String,
+    ty: N.Type_,
+  ): this {
+    ty.i1 match {
+    | N.Tlambda _
+    | N.Tdefault _
+    | N.Tnamed _
+    | N.Tvar _
+    | N.Tanything()
+    | N.Tapply _ ->
+      invariant_violation("ICE impossible constraint case")
+    | N.Tparam(_, Ast.Vplus(), _, _) ->
+      this // TODO lower bounds
+    | N.Tparam(_, Ast.Vnone(), _, _) -> // TODO lower bounds
+      uppers = static::appendUppers(tparam_id, Array[ty], this.uppers);
+      this with {uppers}
+
+    | N.Tawaitable(v, _)
+    | N.Tfrozen(v)
+    | N.TnonNullable(v)
+    | N.Tfun(v, _, _, _, _)
+    | N.Tpromoted(v, _, _, _, _, _)
+    | N.Tset(v, _, _, _)
+    | N.Tparam(_, v, _, _) ->
+      v match {
+      | Ast.Vplus() ->
+        print_error(`${tparam_id} <:`);
+        BufferedPrinter.pp(SkipNamedAstPp.type, ty);
+        SkipError.error(
+          ty.i0,
+          `ICE TODO This constraint adds a lower bound to a type parameter which is not yet supported`,
+        )
+      | Ast.Vnone() ->
+        SkipError.error(
+          ty.i0,
+          "ICE TODO This constraint adds equality to a type parameter to a type which is not yet supported",
+        )
+      | Ast.Vminus() ->
+        co_ty = promote(env, acc, ty);
+        uppers = static::appendUppers(tparam_id, Array[co_ty], this.uppers);
+        this with {uppers}
+      }
+    }
+  }
+
+  private fun addForBounds(
+    env: Env,
+    acc: Acc,
+    tvars_to_tparams: IMap<(FileRange, N.Tparam)>,
+    tvar_subst: IMap<N.Type_>,
+    tparam_id: String,
+    bound_ty: N.Type_,
+  ): this {
+    constraint = ty -> this.addConstraint(env, acc, tparam_id, ty);
+    next = ty ->
+      this.addForBounds(env, acc, tvars_to_tparams, tvar_subst, tparam_id, ty);
+    bound_ty match {
+    | (_, N.Tdefault(inner))
+    | (_, N.Tnamed(_, inner)) ->
+      next(inner)
+    | (_, N.Tvar(id)) ->
+      if (tvars_to_tparams.containsKey(id)) {
+        constraint(tvars_to_tparams[id])
+      } else if (tvar_subst.containsKey(id)) {
+        next(tvar_subst[id])
+      } else {
+        this
+      }
+    | _ -> constraint(bound_ty)
+    }
+  }
+
+  private fun solveForBounds(
+    next_id: () -> Int,
+    env: Env,
+    acc: Acc,
+    tvars_to_tparams: IMap<(FileRange, N.Tparam)>,
+    subtype: N.Type_,
+    supertypes: Array<N.Type_>,
+  ): this {
+    cosubtype = promote(env, acc, subtype);
+    supertypes.reduce(
+      (tc, supertype) -> {
+        contrasupertype = contra_promote(env, acc, supertype);
+        try {
+          (tmp_acc, _) = join_constraints_exn(
+            next_id,
+            env,
+            acc,
+            cosubtype,
+            contrasupertype,
+          );
+          subst = tmp_acc.subst;
+          subst.reduce(
+            (tc, id, ty) ->
+              tvars_to_tparams.maybeGet(id) match {
+              | None() -> tc
+              | Some((_, tp)) ->
+                tc.addForBounds(env, acc, tvars_to_tparams, subst, tp.id, ty)
+              },
+            tc,
+          )
+        } catch {
+        | Types.Exception _ -> tc
+        }
+      },
+      this,
+    )
+  }
+
+  private fun addUppers(
+    env: Env,
+    acc: Acc,
+    id: String,
+    tys: this::Bounds,
+  ): this {
+    !tys = tys.map(ty -> promote(env, acc, ty));
+    uppers = static::appendUppers(id, tys, this.uppers);
+    this with {uppers}
+  }
+
+  private static fun appendUppers(
+    id: String,
+    tys: this::Bounds,
+    m: SMap<this::Bounds>,
+  ): SMap<this::Bounds> {
+    m.maybeGet(id) match {
+    | None() -> m.set(id, tys)
+    | Some(uppers) -> m.set(id, tys.concat(uppers))
+    }
+  }
+
+  fun filter(p: String -> Bool): this {
+    uppers = this.uppers.filter((id, _) -> p(id));
+    TparamConstraints{uppers}
+  }
+
+  fun merge(other: this): this {
+    other.uppers.reduce(
+      (acc, id, v) ->
+        acc with {uppers => static::appendUppers(id, v, acc.uppers)},
+      this,
+    )
+  }
+
+  fun debug(_acc: Acc): void {
+    print_error_ln("bounds: ");
+    if (!this.uppers.isEmpty()) {
+      for (i => tyl in this.uppers) {
+        print_error("#" + i + " : ");
+        for (ty in tyl) {
+          // debug_type_no_newline(acc, ty);
+          BufferedPrinter.pp_no_newline(SkipNamedAstPp.type, ty);
+          print_error(" & ")
+        };
+        print_error(", ");
+        print_error_ln("")
+      };
+      print_error_ln("");
+    }
+  }
+
+  fun ==(other: TparamConstraints): Bool {
+    this.uppers.eqBy(other.uppers, (l1, l2) ->
+      l1.eqBy(l2, (t1, t2) -> t1.i1 == t2.i1)
+    )
+  }
+
+  fun hash(): Int {
+    // Does not hash on position
+    this.uppers.reduce(
+      (outer, k, l) -> (k, l.foldl((x, t) -> (x, t.i1).hash(), outer)).hash(),
+      0,
+    )
+  }
+}
+
+fun add_additional_tparam_constraints(
+  env: Env,
+  acc: Acc,
+  id: String,
+  tyl: Array<N.Type_>,
+): Acc {
+  tparam_constraints = acc.tparam_constraints.addAdditionalTparamConstraints(
+    env,
+    acc,
+    id,
+    tyl,
+  );
+  acc with {tparam_constraints}
+}
+
+fun reset_tparam_constraints(
+  env: Env,
+  acc: Acc,
+  id: String,
+  tyl: Array<N.Type_>,
+): Acc {
+  tparam_constraints = acc.tparam_constraints.resetTparamConstraints(
+    env,
+    acc,
+    id,
+    tyl,
+  );
+  acc with {tparam_constraints}
+}
+
+fun bind_tparam_constraints(
+  env: Env,
+  acc: Acc,
+  tparams: Array<N.Type_parameter>,
+): Acc {
+  tparam_constraints = acc.tparam_constraints.bindTparamConstraints(
+    env,
+    acc,
+    tparams,
+  );
+  acc with {tparam_constraints}
+}
+
+fun add_whenparams(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  whenclauses: Array<N.Whenclause>,
+): Acc {
+  tparam_constraints = acc.tparam_constraints.addWhenparamConstraints(
+    next_id,
+    env,
+    acc,
+    whenclauses,
+  );
+  acc with {tparam_constraints}
+}
+
+/*****************************************************************************/
+/* Function calls. */
+/*****************************************************************************/
+
+/* When traversing during pattern matching, we need to know what pattern/class
+ * we came from, and the visibility of the current field
+ */
+base class PatInfo(ty: N.Type_)
+class InitPat extends PatInfo
+class NestedPat(
+  class_name: N.Name,
+  source: N.Name,
+  name: N.Name,
+  visibility: N.Visibility,
+) extends PatInfo
+
+fun make_param_type(
+  subst: SMap<N.Type_>,
+  bounds: TparamConstraints,
+  par: N.Parameter,
+): N.Type_ {
+  ty = N.type_subst(Types.freeze, subst, bounds, par.type);
+  ty1 = {
+    par.value match {
+    | None() -> ty
+    | Some(x) -> (x.i0, N.Tdefault(ty))
+    }
+  };
+  ty1
+}
+
+fun make_params_type(
+  subst: SMap<N.Type_>,
+  bounds: TparamConstraints,
+  params: Parameters<N.Parameter>,
+): Parameters<N.Type_> {
+  params.map(par -> make_param_type(subst, bounds, par))
+}
+
+fun make_params_vis_type(
+  subst: SMap<N.Type_>,
+  bounds: TparamConstraints,
+  class_name: N.Name,
+  params: Parameters<N.Parameter>,
+): Parameters<NestedPat> {
+  params.map(par ->
+    NestedPat(
+      class_name,
+      par.source.default(class_name),
+      par.name,
+      par.visibility,
+      make_param_type(subst, bounds, par),
+    )
+  )
+}
+
+fun make_class_params_type_for_instantiation(
+  caller_pos: FileRange,
+  mode: N.Modality,
+  subst: SMap<N.Type_>,
+  bounds: TparamConstraints,
+  x: N.MaybeClassParams,
+): ?Parameters<N.Type_> {
+  x match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    None()
+  | N.HasParams(N.Class_params{params => cp_params}) ->
+    fixed_types = mode match {
+    | N.Mmutable _ -> make_params_type(subst, bounds, cp_params)
+    | N.Mreadonly _ ->
+      SkipError.error(
+        caller_pos,
+        "ICE Cannot instantiate an object as readonly",
+      )
+    | N.Mchilled() ->
+      fake_freeze = (_, _, _, _) ->
+        SkipError.error(
+          caller_pos,
+          "ICE Unexpected freezing of tparam after chill instantiate",
+        );
+      params = make_params_type(SortedMap[], bounds, cp_params);
+      fake_subst = SortedMap[];
+      chilled_types = params.map(ty ->
+        Types.chill(caller_pos, fake_subst, bounds, ty)
+      );
+      chilled_types.map(ty -> N.type_subst(fake_freeze, subst, bounds, ty))
+    };
+    Some(fixed_types)
+  }
+}
+
+fun make_class_params_type_for_deconstruction(
+  caller_pos: FileRange,
+  mode: N.Modality,
+  subst: SMap<N.Type_>,
+  bounds: TparamConstraints,
+  class_name: N.Name,
+  x: N.MaybeClassParams,
+): ?Parameters<NestedPat> {
+  x match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    None()
+  | N.HasParams(N.Class_params{params => cp_params}) ->
+    fixed_types = mode match {
+    | N.Mmutable _ -> make_params_vis_type(subst, bounds, class_name, cp_params)
+    | N.Mreadonly(rpos) ->
+      params = make_params_vis_type(SortedMap[], bounds, class_name, cp_params);
+      fake_subst = SortedMap[];
+      ro_types = params.map(p ->
+        p with {ty => Types.to_readonly(rpos, fake_subst, bounds, p.ty)}
+      );
+      fake_freeze = (_, _, _, _) ->
+        SkipError.error(
+          caller_pos,
+          "ICE Unexpected freezing of tparam after to_readonly deconstruct",
+        );
+      ro_types.map(p ->
+        p with {ty => N.type_subst(fake_freeze, subst, bounds, p.ty)}
+      )
+    | N.Mchilled() ->
+      fake_freeze = (_, _, _, _) ->
+        SkipError.error(
+          caller_pos,
+          "ICE Unexpected freezing of tparam after chill deconstruct",
+        );
+      params = make_params_vis_type(SortedMap[], bounds, class_name, cp_params);
+      fake_subst = SortedMap[];
+      chilled_types = params.map(p ->
+        p with {ty => Types.chill(caller_pos, fake_subst, bounds, p.ty)}
+      );
+      chilled_types.map(p ->
+        p with {ty => N.type_subst(fake_freeze, subst, bounds, p.ty)}
+      )
+    };
+    Some(fixed_types)
+  }
+}
+
+/*****************************************************************************/
+/* Adds missing type arguments to the special types "this/inst" */
+/*****************************************************************************/
+fun make_this_type<Ta, Tb>(
+  env: Env,
+  acc: Acc,
+  mode: N.Modality,
+  cla_name: N.Name,
+  tparams: Array<(Ta, String, N.Name, Tb)>,
+): (FileRange, N.Type__) {
+  (pos, _) = cla_name;
+  targs = tparams.map(p -> {
+    (_, id, name, _) = p;
+    (name.i0, N.Tparam(None(), Ast.Vnone(), id, name))
+  });
+  this_ty = make_tapply(env, acc, pos, mode, cla_name, targs);
+  (pos, N.Tnamed(N.NThis(cla_name), this_ty))
+}
+
+/*****************************************************************************/
+/* Specialize this/inst */
+/*****************************************************************************/
+fun subst_tapply_this(p1: N.Name, p2: N.Type_, ty: N.Type_): N.Type_ {
+  (_, old_name) = p1;
+  (_, new_ty) = p2;
+  N.type_map(
+    (x -> {
+      x match {
+      // TODO UNSOUND MODE DROP FIXME
+      | (pos, N.Tapply(_mode, (_, name), _)) if (old_name == name) ->
+        (pos, new_ty)
+      | x1 -> x1
+      }
+    }),
+    ty,
+  )
+}
+
+fun substitute_inst_and_this(
+  old_this_str: String,
+  p: N.Type_,
+  ty: N.Type_,
+): N.Type_ {
+  (_, new_this_inst_ty) = p;
+  N.type_map(
+    (x -> {
+      x match {
+      | (pos, N.Tnamed(N.NThis((_, cstr1)), (_, N.Tapply(mode, (_, cstr2), _))))
+      | (
+        pos,
+        N.Tnamed(N.NInst((_, cstr1)), (_, N.Tapply(mode, (_, cstr2), _))),
+      ) ->
+        assert(cstr1 == old_this_str);
+        assert(cstr2 == old_this_str);
+        set_mutability_mode(mode, (pos, new_this_inst_ty))
+      | (_, N.Tnamed(N.NStatic _, _)) -> invariant_violation("TODO")
+      | ty1 -> ty1
+      }
+    }),
+    ty,
+  )
+}
+
+fun set_mutability_mode(mode: N.Modality, ty: N.Type_): N.Type_ {
+  N.unfold_tnamed(ty) match {
+  | (fr, N.Tapply(_old_mode, n, tyl)) -> (fr, N.Tapply(mode, n, tyl))
+  | (fr, N.Tpromoted(var, _old_mode, prom, tp, n, tyl)) ->
+    (fr, N.Tpromoted(var, mode, prom, tp, n, tyl))
+  | (fr, N.Tset(var, _old_mode, tp, elts)) -> (fr, N.Tset(var, mode, tp, elts))
+  | (fr, _) ->
+    SkipError.error(fr, "ICE expected object type for set_mutability_mode")
+  }
+}
+
+/*****************************************************************************/
+/* Remembers constraints on type variables. */
+/*****************************************************************************/
+fun add_param_constraints<Ta, Tb>(
+  subst: SMap<(FileRange, N.Type__)>,
+  acc: Acc,
+  param_constraints: Array<Array<(String, Ta, Tb)>>,
+  tvars: Array<N.Type_>,
+): Acc {
+  constraints = param_constraints
+    .values()
+    .zip(tvars.values())
+    .reduce(
+      (constrs, paramsTvar) -> {
+        (params, tvar) = paramsTvar;
+        params.reduce(
+          (constrs, tp) ->
+            subst.maybeGet(tp.i0) match {
+            | Some(t) -> constrs.add(t.i0, tvar, Array[t])
+            | None() -> constrs
+            },
+          constrs,
+        )
+      },
+      acc.constraints,
+    );
+  acc with {constraints}
+}
+
+fun mk_param_constraints<Ta, Tb, Tc>(
+  pos: FileRange,
+  subst: SMap<N.Type_>,
+  acc: Acc,
+  tparams: Array<(Ta, Tb, Tc, Array<N.Type_>)>,
+  targs: Array<N.Type_>,
+): Acc {
+  constraints = tparams
+    .zip(targs)
+    .reduce(
+      (cstrs, tparamTvar) -> {
+        (tparam, tvar) = tparamTvar;
+        tparam match {
+        | (_, _, _, ctyl) if (ctyl.isEmpty()) -> cstrs
+        | (_, _, _, ctyl) ->
+          !ctyl = ctyl.map(cur1 -> type_subst(subst, acc, cur1));
+          cstrs.add(pos, tvar, ctyl)
+        }
+      },
+      acc.constraints,
+    );
+  acc with {constraints}
+}
+
+fun mk_tparams(
+  next_id: () -> Int,
+  pos: FileRange,
+  acc: Acc,
+  tparams: Array<N.Type_parameter>,
+): (Acc, SMap<(FileRange, N.Type__)>, Array<(FileRange, N.Type__)>) {
+  tparam_names = tparams.map(N.tparam_name);
+  targs = tparam_names.map(cur1 -> fresh(next_id, cur1));
+  tparam_idents = tparams.map(N.tparam_ident);
+  subst = N.make_subst(pos, tparam_idents, targs);
+  acc1 = mk_param_constraints(pos, subst, acc, tparams, targs);
+  (acc1, subst, targs)
+}
+
+fun mk_tparams_with_targs(
+  pos: FileRange,
+  acc: Acc,
+  tparams: Array<N.Type_parameter>,
+  targs: Array<N.Type_>,
+): (Acc, SMap<N.Type_>) {
+  tparam_idents = tparams.map(N.tparam_ident);
+  subst = N.make_subst(pos, tparam_idents, targs);
+  acc1 = mk_param_constraints(pos, subst, acc, tparams, targs);
+  (acc1, subst)
+}
+
+/*****************************************************************************/
+/* Adds default values to arguments. */
+/*****************************************************************************/
+fun add_default_arguments<Ta>(
+  add_args: Array<(?N.Name, Ta)>,
+  x: Parameters<Ta>,
+): Parameters<Ta> {
+  x match {
+  | Positional(args) ->
+    add_args1 = add_args.map(p -> {
+      (name_opt, ordered_expr) = p;
+      assert(name_opt.isNone());
+      ordered_expr
+    });
+    Positional(args.concat(add_args1))
+  | Named(args) ->
+    add_args1 = add_args.map(p -> {
+      (name_opt, ordered_expr) = p;
+      name = {
+        name_opt match {
+        | None() -> invariant_violation("ICE unnamed named param")
+        | Some(x1) -> x1
+        }
+      };
+      (name, ordered_expr)
+    });
+    Named(add_args1.reduce((m, p) -> m.add(p.i0, p.i1), args))
+  }
+}
+
+/*****************************************************************************/
+/* Local binding */
+/*****************************************************************************/
+fun bind_local_var(env: Env, acc: Acc, ty: N.Type_, name: N.Name): (Env, Acc) {
+  name.i1 match {
+  | "_" -> (env, acc)
+  | str ->
+    level = acc.level;
+    acc1 = acc with {level => acc.level + 1};
+    locals = env.locals.set(str, (ty, level));
+    env1 = env with {locals};
+    (env1, acc1)
+  }
+}
+
+fun bind_param(ea: (Env, Acc), p: TAst.Parameter): (Env, Acc) {
+  (env, acc) = ea;
+  ty = p.type;
+  ty1 = promote(env, acc, ty);
+  (env1, acc1) = bind_local_var(env, acc, ty1, p.name);
+  (env1, acc1)
+}
+
+fun bind_params(env: Env, acc: Acc, x: Parameters<TAst.Parameter>): (Env, Acc) {
+  x match {
+  | Positional(l) -> l.foldl(bind_param, (env, acc))
+  | Named(fds) -> fds.reduce(((ea, _, p) -> bind_param(ea, p)), (env, acc))
+  }
+}
+
+fun classname_ty(
+  sk_this: Bool,
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  cd: N.Class_def,
+  ty: N.Type_,
+): N.Type_ {
+  ty match {
+  | _ -> void
+  };
+  cd.kind match {
+  | Ast.KTrait() ->
+    if (!sk_this) {
+      SkipError.error(
+        pos,
+        "Traits do not have a Class<_> object, " +
+          "and their static members cannot be accssed directly",
+      )
+    };
+    make_tobject(env, acc, pos, ty)
+  | Ast.KBase() ->
+    if (sk_this) {
+      make_tobject(env, acc, pos, ty)
+    } else {
+      make_tbase(env, acc, pos, ty)
+    }
+  | Ast.KClass() -> make_tconcrete(env, acc, pos, ty)
+  }
+}
+
+fun bind_this_type(fkind: N.FieldKind, env: Env, cd: N.Class_def): ?N.Type_ {
+  acc = empty_acc;
+  fkind match {
+  | N.FKStatic _ -> None()
+  | N.FKFrozen(frozen_fr) ->
+    this_ty = make_this_type(env, acc, N.Mchilled(), cd.name, cd.tparams);
+    Some(freeze(frozen_fr, acc, this_ty))
+  | _ ->
+    mode = fkind match {
+    | N.FKStatic _
+    | N.FKFrozen _ ->
+      invariant_violation("ICE imposible match bind_this_type")
+    | N.FKChilled() -> N.Mchilled()
+    | N.FKReadonly(fr) -> N.Mreadonly(fr)
+    | N.FKMutable(fr) -> N.Mmutable(fr)
+    };
+    Some(make_this_type(env, acc, mode, cd.name, cd.tparams))
+  }
+}
+
+fun bind_static_type(env: Env, cd: N.Class_def): N.Type_ {
+  (pos, _) = cd.name;
+  acc = empty_acc;
+  this_ty = make_this_type(env, acc, N.Mchilled(), cd.name, cd.tparams);
+  classname_ty(true, env, acc, pos, cd, this_ty)
+}
+
+fun bind_this_and_static(fkind: N.FieldKind, env: Env, cd: N.Class_def): Env {
+  (pos, _) = cd.name;
+  fkind match {
+  | N.FKStatic _ ->
+    static_ty = bind_static_type(env, cd);
+    (!env, _acc) = bind_local_var(env, empty_acc, static_ty, (pos, "static"));
+    env
+  | N.FKDynamic _ ->
+    this_ty = bind_this_type(fkind, env, cd).fromSome();
+    (!env, _acc) = bind_local_var(env, empty_acc, this_ty, (pos, "this"));
+    env
+  }
+}
+
+/*****************************************************************************/
+/* Object instantiation. */
+/*****************************************************************************/
+fun instantiate(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+): (Acc, N.Type_) {
+  (caller_pos, _) = ty;
+  instantiate_(next_id, caller_pos, env, acc, ty)
+}
+
+fun instantiate_(
+  next_id: () -> Int,
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+): (Acc, N.Type_) {
+  (pos, ty_) = ty;
+  (acc1, ty_1) = instantiate_type_(next_id, caller_pos, env, acc, pos, ty_);
+  (acc1, (pos, ty_1))
+}
+
+fun instantiate_type_(
+  next_id: () -> Int,
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  x: N.Type__,
+): (Acc, N.Type__) {
+  x match {
+  | N.Tanything()
+  | N.Tfrozen _
+  | N.TnonNullable _ ->
+    (acc, x)
+  | N.Tapply(mode, x1, tyl) ->
+    (acc1, targs) = instantiate_tapply(
+      next_id,
+      caller_pos,
+      env,
+      acc,
+      pos,
+      x1,
+      tyl,
+    );
+    (acc1, N.Tapply(mode, x1, targs))
+  | N.Tpromoted(seen, mode, var, tparams, x1, tyl) ->
+    (acc1, targs) = instantiate_tapply(
+      next_id,
+      caller_pos,
+      env,
+      acc,
+      pos,
+      x1,
+      tyl,
+    );
+    (acc1, N.Tpromoted(seen, mode, var, tparams, x1, targs))
+  | N.Tawaitable(var, ty) ->
+    (acc1, ty1) = instantiate_(next_id, caller_pos, env, acc, ty);
+    (acc1, N.Tawaitable(var, ty1))
+  | N.Tfun(variance, ml, _, params, rty) ->
+    (acc1, params1) = params.map_foldl(
+      (p1, p2) -> instantiate_(next_id, caller_pos, env, p1, p2),
+      acc,
+    );
+    (acc2, rty1) = instantiate_(next_id, caller_pos, env, acc1, rty);
+    (acc2, N.Tfun(variance, ml, Array[], params1, rty1))
+  | tparam @ N.Tparam _ -> (acc, tparam)
+  | N.Tvar _ -> invariant_violation("ICE instantiate tvar")
+  | N.Tlambda _ -> invariant_violation("ICE instantiate tlambda")
+  | N.Tdefault(ty) ->
+    (acc1, ty1) = instantiate_(next_id, caller_pos, env, acc, ty);
+    (acc1, N.Tdefault(ty1))
+  | N.Tnamed(names, ty) ->
+    (acc1, ty1) = instantiate_(next_id, caller_pos, env, acc, ty);
+    (acc1, N.Tnamed(names, ty1))
+  | N.Tset(var, mode, tparams, inter) ->
+    (acc1, inter1) = instantiate_inter(
+      next_id,
+      caller_pos,
+      env,
+      acc,
+      pos,
+      inter,
+    );
+    (acc1, N.Tset(var, mode, tparams, inter1))
+  }
+}
+
+fun instantiate_tapply(
+  next_id: () -> Int,
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  x: N.Name,
+  targs: Array<N.Type_>,
+): (Acc, Array<N.Type_>) {
+  cd = SkipNaming.getClass(x);
+  expected_length = cd.tparams.size();
+  if (expected_length != targs.size()) {
+    SkipError.errorl(
+      List[
+        (pos, `Invalid arity, expected ${expected_length} type arguments`),
+        (cd.name.i0, "The definition is here"),
+      ],
+    )
+  };
+  (!acc, _tparam_subst, tparams) = mk_tparams(
+    next_id,
+    caller_pos,
+    acc,
+    cd.tparams,
+  );
+  (!acc, targs1) = instantiate_targs(next_id, env, acc, tparams, targs);
+  (acc, targs1)
+}
+
+fun instantiate_targs(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  tparams: Array<N.Type_>,
+  targs: Array<N.Type_>,
+): (Acc, Array<N.Type_>) {
+  instantiated = tparams.zipWith(targs, (tparam, targ) -> {
+    (pos, _) = targ;
+    (!acc, ty) = join(
+      next_id,
+      env,
+      pos,
+      "Invalid type argument",
+      acc,
+      tparam,
+      targ,
+    );
+    ty
+  });
+  (acc, instantiated)
+}
+
+fun instantiate_inter(
+  next_id: () -> Int,
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  pos: FileRange,
+  inter: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  inter.mapAcc(
+    ((acc1, elt) -> {
+      (acc2, !elt.targs) = instantiate_tapply(
+        next_id,
+        caller_pos,
+        env,
+        acc1,
+        pos,
+        elt.name,
+        elt.targs,
+      );
+      (acc2, elt)
+    }),
+    acc,
+  )
+}
+
+fun instantiate_option(
+  next_id: () -> Int,
+  caller_pos: FileRange,
+  env: Env,
+  acc: Acc,
+  x: ?N.Type_,
+): (Acc, ?N.Type_) {
+  x match {
+  | None() -> (acc, None())
+  | Some(ty) ->
+    (acc1, ty1) = instantiate_(next_id, caller_pos, env, acc, ty);
+    (acc1, Some(ty1))
+  }
+}
+
+fun instantiate_object_type_(
+  caller_pos: FileRange,
+  next_id: () -> Int,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, N.Class_def, SMap<(FileRange, N.Type__)>, (N.Type_, Array<N.Type_>)) {
+  cd = SkipNaming.getClass(name);
+  (acc1, subst, targs) = mk_tparams(next_id, caller_pos, acc, cd.tparams);
+  rty = (caller_pos, N.Tapply(mode, name, targs));
+  (acc1, cd, subst, (rty, targs))
+}
+
+fun instantiate_object_type(
+  caller_pos: FileRange,
+  next_id: () -> Int,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, N.Class_def, (FileRange, N.Type__)) {
+  (acc1, cd, _subst, (rty, _targs)) = instantiate_object_type_(
+    caller_pos,
+    next_id,
+    acc,
+    mode,
+    name,
+  );
+  (acc1, cd, rty)
+}
+
+class InvalidPattern(
+  last_id: Int,
+  solving_constraints: Bool,
+  acc: Acc,
+  fr: FileRange,
+  msg: String,
+  thrown: Types.Exception,
+) extends Exception
+
+/* Given a parents type parameter, add new bounds found when type checking the
+ * child's type
+ */
+fun reconstrain_parent(
+  next_id: () -> Int,
+  env: Env,
+  orig_pos: FileRange,
+  tvar_id: Int,
+  tp: (?FileRange, N.Variance, String, N.Name),
+  acc: Acc,
+): Acc {
+  (fr, var, tparam_id, tparam_name) = tp;
+  (pos, _) = tparam_name;
+  tvar = (pos, N.Tvar(tvar_id));
+  new_bound = Types.unfold_type(acc.subst, tvar);
+  new_bound match {
+  | (_, N.Tanything()) ->
+    (!acc, _) = join_exn(
+      next_id,
+      env,
+      acc,
+      tvar,
+      (pos, N.Tparam(fr, var, tparam_id, tparam_name)),
+    );
+    acc
+  // | (_, N.Tparam(_, _, tparam_id2, _)) if (tparam_id == tparam_id2) ->
+  //   acc
+  | ty ->
+    unfolded_ty = Types.unfold_type(acc.subst, ty);
+    prom_ty = promote(env, acc, ty);
+    new_uppers = mutable Vector[];
+    folded_acc = acc.tparam_constraints
+      .findUppers(tparam_id)
+      .foldl(
+        (acc1, upper_bound_ty) ->
+          (unfolded_ty, Types.unfold_type(acc1.subst, upper_bound_ty)) match {
+          /* ignore constraint types */
+          | ((_, N.TnonNullable _), ub @ (_, N.Tfrozen _))
+          | ((_, N.Tfrozen _), ub @ (_, N.TnonNullable _)) ->
+            // Don't drop Tfrozen and TnonNullable from the new uppers
+            new_uppers.push(ub);
+            acc1
+          | _ ->
+            /* the promotion of @ty must join with the contrapromotion of the
+             * upper bounds for @tparam_id. */
+            bounding_ty = contra_promote(env, acc1, upper_bound_ty);
+            try {
+              join_exn(next_id, env, acc1, prom_ty, bounding_ty).i0
+            } catch {
+            | e @ Types.Exception _ ->
+              throw InvalidPattern(
+                next_id(),
+                false,
+                acc1,
+                orig_pos,
+                "Invalid pattern. Constraint not satisfied when refining the type for this branch",
+                e,
+              )
+            }
+          },
+        acc,
+      );
+    // The new upper is a subtype of EVERY current upper bound
+    // Thus, we can just replace the upper bound with that type
+    new_uppers.push(ty);
+    reset_tparam_constraints(env, folded_acc, tparam_id, new_uppers.toArray())
+  }
+}
+
+fun isTanything(ty: N.Type_): Bool {
+  ty.i1 match {
+  | N.Tanything() -> true
+  | _ -> false
+  }
+}
+
+fun createExistentialName(fr: FileRange): N.Name {
+  (fr, "Unknown")
+}
+
+/* For any unknown type arguments, add a new type parameter to the enverionment
+ */
+fun create_existentials(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  pattern_mode: N.Modality,
+  ty: SkipNamedAst.Type_,
+): (Acc, SkipNamedAst.Type_) {
+  SkipNamedAst.type(
+    (_, acc1, ty1) -> {
+      ty1 match {
+      | (pos, N.Tvar(tvar_id)) if (!acc1.subst.containsKey(tvar_id)) ->
+        /* Creates an existential type */
+        exist_id = unknown_prefix + next_id().toString();
+        /* TODO do a better job counting for better error messages */
+        exist_name = createExistentialName(pos);
+        frozen_ = pattern_mode match {
+        | N.MnotFrozen _ -> None()
+        | N.Mchilled() -> Some(pos)
+        };
+        exist = (pos, N.Tparam(frozen_, Ast.Vnone(), exist_id, exist_name));
+        exist_tp = (Ast.Vnone(), exist_id, exist_name, Array[]);
+        acc2 = bind_tparam_constraints(env, acc1, Array[exist_tp]);
+        (acc3, ty2) = join_exn(next_id, env, acc2, ty1, exist);
+        (acc3, ty2)
+      | x -> (acc1, x)
+      }
+    },
+    void,
+    acc,
+    ty,
+  )
+}
+
+/* We need to replace any existential types with exact copies for the cast
+ * type
+ * The cast type is used by the NBE to correctly retrieve fields from the
+ * object during the match
+ * If we do not copy them for the cast type, we over-refine
+ * create_existentials due to GADT refinement of the existentials
+ * (which are tparams)
+ */
+fun rebindPatternExistentials(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  oldTparams: TparamConstraints,
+  caseTy: N.Type_,
+): (Acc, N.Type_) {
+  ty = Types.fill_vars(acc.subst, caseTy);
+  rebound = mutable Map<String, N.Type_parameter>[];
+  newTy = N.type_map(
+    t ->
+      t match {
+      | (
+        fr,
+        N.Tparam(frozen_, var, id, _),
+      ) if (id.startsWith(unknown_prefix) && !oldTparams.hasTparam(id)) ->
+        rebound.maybeGet(id) match {
+        | None() ->
+          newId = unknown_prefix + next_id().toString();
+          newName = createExistentialName(fr);
+          newTparam = (var, newId, newName, Array[]);
+          rebound![id] = newTparam;
+          uppers = acc.tparam_constraints.findUppers(id);
+          reboundUppers = uppers.map(upper -> {
+            (!acc, upper2) = rebindPatternExistentials(
+              next_id,
+              env,
+              acc,
+              oldTparams,
+              upper,
+            );
+            upper2
+          });
+          !newTparam.i3 = reboundUppers;
+          rebound![id] = newTparam;
+          (fr, N.Tparam(frozen_, var, newId, newName))
+        | Some(newTparam) ->
+          newId = newTparam.i1;
+          (fr, N.Tparam(frozen_, var, newId, createExistentialName(fr)))
+        }
+      | _ -> t
+      },
+    ty,
+  );
+  !acc.tparam_constraints = acc.tparam_constraints.bindTparamConstraints(
+    env,
+    acc,
+    rebound.values().collect(Array),
+  );
+  (acc, newTy)
+}
+
+fun reconstrain_child(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  constraint: (FileRange, N.Type_, Array<N.Type_>),
+): Acc {
+  (_, ty, ty_constraints) = constraint;
+  tparam_id = Types.unfold_type(acc.subst, ty) match {
+  | (_, N.Tparam(_, _, tparam_id, _)) -> Some(tparam_id)
+  | _ -> None()
+  };
+  effecitively_empty = id ~>
+    acc.tparam_constraints.findUppers(id).all(ty ->
+      ty match {
+      | (_, N.Tfrozen _)
+      | (_, N.TnonNullable _) ->
+        true
+      | _ -> false
+      }
+    );
+  tparam_id match {
+  // If the tparam does not have upper bounds
+  // Refine the generic by adding the constraints as upper bounds
+  | Some(id) if (effecitively_empty(id)) ->
+    add_additional_tparam_constraints(env, acc, id, ty_constraints)
+  // If the tparam DOES have upper bounds
+  // They must be MORE specific to satisfy the constraints,
+  //   thus leave them as is
+  | _ ->
+    prom_ty = promote(env, acc, ty);
+    ty_constraints.foldl(
+      (facc, constraint_ty) -> {
+        !constraint_ty = contra_promote(env, facc, constraint_ty);
+        try {
+          join_constraints_exn(next_id, env, facc, constraint_ty, prom_ty).i0
+        } catch {
+        | e @ Types.Exception _ ->
+          msg = if (tparam_id.isSome()) {
+            "Invalid pattern. Constraint not satisfied when constraining this pattern's generics"
+          } else {
+            "Unused branch"
+          };
+          throw InvalidPattern(next_id(), true, facc, pos, msg, e)
+        }
+      },
+      acc,
+    )
+  }
+}
+
+fun build_parents(env: Env, acc: Acc, obj_ty: N.Type_): SSet {
+  Types.unfold_type(acc.subst, obj_ty) match {
+  | (_, N.Tpromoted(_, _, _, _, (_, n), _))
+  | (_, N.Tapply(_, (_, n), _)) ->
+    SSet[n]
+  | (_, N.Tset(_, _, _, elts)) ->
+    elts.foldl(((s, p) -> s.set(p.name.i1)), SSet[])
+  | (_, N.Tparam(_, _, i, _)) ->
+    acc.tparam_constraints
+      .findUppers(i)
+      .foldl((s, ty) -> s.union(build_parents(env, acc, ty)), SSet[])
+  | _ -> SSet[]
+  }
+}
+
+/* For any type argument with a mismatched variance in the parents extends list
+ * i.e. an invariant type ends up in co/contravariant postion
+ * Replace it with an existential to prevent unsound behavior
+ */
+fun fix_mismatched_variance<Ta>(
+  next_id: () -> Int,
+  name: (FileRange, String),
+  parents: SSet,
+  child_subst: SMap<N.Type_>,
+  acc: Acc,
+): Acc {
+  cd = SkipNaming.getClass(name);
+  mismatched = cd.tparam_mismatched;
+  if (mismatched.isEmpty()) {
+    acc
+  } else {
+    mismatched_variance = i -> {
+      mismatched.maybeGet(i) match {
+      | Some(x) -> x.any(s -> parents.contains(s))
+      | None() -> false
+      }
+    };
+    fix_ty = (
+      p: N.Type_parameter,
+      ty: N.Type_,
+      mvmap_accsubst: (SMap<N.Type_>, IMap<N.Type_>),
+    ) -> {
+      (mv_map, acc_subst) = mvmap_accsubst;
+      (_, _, (npos, n), _) = p;
+      tvar = ty match {
+      | (_, N.Tvar(i1)) -> i1
+      | _ ->
+        invariant_violation(
+          "ICE expected tvar in tvar map fix_mismatched_variance",
+        )
+      };
+      if (!acc_subst.containsKey(tvar)) {
+        mvmap_accsubst
+      } else {
+        new_n = (npos, "MismatchedVariance[" + n + "]");
+        new_id = mismatched_prefix + next_id().toString();
+        new_ty = (npos, N.Tparam(None(), Ast.Vnone(), new_id, new_n));
+        (mv_map.add(new_id, acc_subst[tvar]), acc_subst.set(tvar, new_ty))
+      }
+    };
+    tparam_map = cd.tparams.foldl(
+      ((m, tparam) -> {
+        (_, i, _, _) = tparam;
+        m.set(i, tparam)
+      }),
+      SortedMap[],
+    );
+    (mv_map, acc_subst) = child_subst.reduce(
+      (cur, i, ty) ->
+        if (mismatched_variance(i)) fix_ty(tparam_map.get(i), ty, cur) else cur,
+      (acc.mismatched_variance_bounds, acc.subst),
+    );
+    acc with {mismatched_variance_bounds => mv_map, subst => acc_subst}
+  }
+}
+
+fun instantiate_pattern_object_is_same_type(
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): ?(N.Modality, Array<N.Type_>) {
+  Types.unfold_type(acc.subst, obj_ty).i1 match {
+  | N.Tdefault(inner)
+  | N.Tnamed(_, inner) ->
+    instantiate_pattern_object_is_same_type(acc, inner, name)
+  | N.Tapply(mode, n, tyl)
+  | N.Tpromoted(
+    _,
+    mode,
+    _,
+    _,
+    n,
+    tyl,
+  ) if (n.i1 == name.i1) ->
+    Some((mode, tyl))
+  | N.Tset(_, mode, _, elts) ->
+    elts.find(elt -> elt.name.i1 == name.i1) match {
+    | Some(elt) -> Some((mode, elt.targs))
+    | None() -> None()
+    }
+  | _ -> None()
+  }
+}
+
+/* throws for invalid patterns */
+fun instantiate_pattern_object_no_params_exn(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): (Env, Acc, N.Modality, SMap<N.Type_>, SkipNamedAst.Type_) {
+  sameType = instantiate_pattern_object_is_same_type(acc, obj_ty, name);
+  sameType match {
+  | Some((mode, tyl)) ->
+    cd = SkipNaming.getClass(name);
+    subst = N.make_subst(pos, cd.tparams.map(tp -> tp.i1), tyl);
+    (env, acc, mode, subst, obj_ty)
+  | None() ->
+    instantiate_pattern_object_no_params_exn_full(
+      next_id,
+      pos,
+      env,
+      acc,
+      obj_ty,
+      name,
+    )
+  }
+}
+
+fun instantiate_pattern_object_no_params_exn_full(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): (Env, Acc, N.Modality, SMap<(FileRange, N.Type__)>, SkipNamedAst.Type_) {
+  constraints_copy = acc.constraints;
+  !acc = acc with {constraints => Constraints::empty};
+  mode = pat_object_mode(acc, obj_ty);
+  (parent_tvars, obj_ty_tvars) = N.replace_tparams(obj_ty, next_id);
+  (!acc, _cd, subst, (case_ty, _targs)) = instantiate_object_type_(
+    pos,
+    next_id,
+    acc,
+    mode,
+    name,
+  );
+  !case_ty = promote(env, acc, case_ty);
+  (!acc, _) = {
+    try {
+      join_exn(next_id, env, acc, obj_ty_tvars, case_ty)
+    } catch {
+    | e @ Types.Exception _ ->
+      throw InvalidPattern(next_id(), false, acc, name.i0, "Invalid pattern", e)
+    }
+  };
+  parents = build_parents(env, acc, obj_ty);
+  !acc = fix_mismatched_variance(next_id, name, parents, subst, acc);
+  !acc = parent_tvars.reduce(
+    (acc1, id, tp) -> reconstrain_parent(next_id, env, pos, id, tp, acc1),
+    acc,
+  );
+  (!acc, !case_ty) = create_existentials(next_id, env, acc, mode, case_ty);
+  !acc = acc.constraints.typing_fold(
+    (acc1, cur) -> reconstrain_child(next_id, env, pos, acc1, cur),
+    acc,
+  );
+  /* could stop early here for exhaustiveness, but would make it messier
+   * than it's worth */
+  !acc = acc with {constraints => constraints_copy};
+  (env, acc, mode, subst, case_ty)
+}
+
+/* throws for invalid patterns */
+fun instantiate_pattern_object_exn(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): (
+  Env,
+  Acc,
+  (?Parameters<NestedPat>, SkipNamedAst.Type_, SkipNamedAst.Type_),
+) {
+  cd = SkipNaming.getClass(name);
+  oldTparams = acc.tparam_constraints;
+  (!env, !acc, mode, subst, case_ty) = instantiate_pattern_object_no_params_exn(
+    next_id,
+    pos,
+    env,
+    acc,
+    obj_ty,
+    name,
+  );
+  /* We need to replace any existential types with exact copies for the cast
+   * type
+   * The cast type is used by the NBE to correctly retrieve fields from the
+   * object during the match
+   * If we do not copy them for the cast type, we over-refine
+   * create_existentials due to GADT refinement of the existentials
+   * (which are tparams)
+   */
+  (!acc, castType) = rebindPatternExistentials(
+    next_id,
+    env,
+    acc,
+    oldTparams,
+    case_ty,
+  );
+  params_ty = make_class_params_type_for_deconstruction(
+    pos,
+    mode,
+    subst,
+    acc.tparam_constraints,
+    name,
+    cd.params,
+  );
+  (env, acc, (params_ty, case_ty, castType))
+}
+
+fun instantiate_pattern_object_exn_only(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): void {
+  cd = SkipNaming.getClass(name);
+  (!env, !acc, mode, subst, _) = instantiate_pattern_object_no_params_exn(
+    next_id,
+    pos,
+    env,
+    acc,
+    obj_ty,
+    name,
+  );
+  // join the case_ty with the parameter patterns.
+  _ = make_class_params_type_for_deconstruction(
+    pos,
+    mode,
+    subst,
+    acc.tparam_constraints,
+    name,
+    cd.params,
+  );
+}
+
+fun instantiate_pattern_object(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  obj_ty: N.Type_,
+  name: N.Name,
+): (
+  Env,
+  Acc,
+  (?Parameters<NestedPat>, SkipNamedAst.Type_, SkipNamedAst.Type_),
+) {
+  try {
+    instantiate_pattern_object_exn(next_id, pos, env, acc, obj_ty, name)
+  } catch {
+  | InvalidPattern(last_id, solving_constraints, acc1, pos1, msg, e) ->
+    new_id = sk_create_counter_from_value(last_id);
+    types_error(new_id, solving_constraints, env, acc1, pos1, msg, e)
+  }
+}
+
+fun instantiate_object_type_with_targs(
+  pos: FileRange,
+  targs: Array<N.Type_>,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, N.Class_def, SMap<N.Type_>, (N.Type_, Array<N.Type_>)) {
+  cd = SkipNaming.getClass(name);
+  (acc1, subst) = mk_tparams_with_targs(pos, acc, cd.tparams, targs);
+  rty = (pos, N.Tapply(mode, name, targs));
+  (acc1, cd, subst, (rty, targs))
+}
+
+fun instantiate_object_impl(
+  caller_pos: FileRange,
+  next_id: () -> Int,
+  k_object_type: (FileRange, (() -> Int), Acc, N.Modality, N.Name) -> (
+    Acc,
+    N.Class_def,
+    SMap<N.Type_>,
+    (N.Type_, Array<N.Type_>),
+  ),
+  env: Env,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, (?Parameters<N.Type_>, N.Type_, Array<N.Type_>)) {
+  (acc1, cd, subst, (rty, targs)) = k_object_type(
+    caller_pos,
+    next_id,
+    acc,
+    mode,
+    name,
+  );
+  params_ty = make_class_params_type_for_instantiation(
+    caller_pos,
+    mode,
+    subst,
+    acc1.tparam_constraints,
+    cd.params,
+  );
+  rty1 = promote(env, acc1, rty);
+  (acc1, (params_ty, rty1, targs))
+}
+
+fun instantiate_object(
+  caller_pos: FileRange,
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, (?Parameters<N.Type_>, N.Type_, Array<N.Type_>)) {
+  instantiate_object_impl(
+    caller_pos,
+    next_id,
+    instantiate_object_type_,
+    env,
+    acc,
+    mode,
+    name,
+  )
+}
+
+fun instantiate_object_with_targs(
+  caller_pos: FileRange,
+  targs: Array<N.Type_>,
+  env: Env,
+  acc: Acc,
+  mode: N.Modality,
+  name: N.Name,
+): (Acc, ?Parameters<N.Type_>) {
+  next_id = () -> invariant_violation("Should not be called");
+  (acc1, (params_ty, _cty, _targs)) = instantiate_object_impl(
+    caller_pos,
+    next_id,
+    (pos, _p1, p2, p3, p4) ->
+      instantiate_object_type_with_targs(pos, targs, p2, p3, p4),
+    env,
+    acc,
+    mode,
+    name,
+  );
+  (acc1, params_ty)
+}
+
+/* For pattern matching, we need to know for a given object type, what are all
+ * possible concrete/instantiable types for that class
+ * For a KClass, this is just itself
+ * For a KBase, this is all of its KClass children, that are valid for this type
+ * For example, P<T> with C extends P<Int>, C2 extends P<String> and we want
+ * the children for P<Int> we get {C}
+ */
+fun build_match_class_set(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+): SSet {
+  tapply_children = cd -> {
+    cd.kind match {
+    | Ast.KTrait() -> SSet[]
+    | Ast.KClass() -> SSet[cd.name.i1]
+    | Ast.KBase() -> cd.concrete_children
+    }
+  };
+  unfolded_ty = Types.unfold_type(acc.subst, ty);
+  possibly_children = may_have_children(acc, unfolded_ty);
+  if (!possibly_children) {
+    return SSet[]
+  };
+
+  known_valid_members = SSet[];
+  handle_tapply = (n, tyl) -> {
+    !known_valid_members = known_valid_members.set(n.i1);
+    cd = SkipNaming.getClass(n);
+    // if the parent has no type arguments. ALL children must be valid
+    if (tyl.isEmpty()) {
+      !known_valid_members = known_valid_members.union(cd.concrete_children);
+    };
+    tapply_children(cd)
+  };
+
+  sk_children = unfolded_ty match {
+  | (_, N.Tdefault(ty1)) -> build_match_class_set(next_id, env, acc, ty1)
+  | (_, N.Tapply(_, n, tyl))
+  | (_, N.Tpromoted(_, _, _, _, n, tyl)) ->
+    handle_tapply(n, tyl)
+  | (_, N.Tset(_, _, _, elts)) ->
+    parents = SSet[];
+    boundary_elts = elts.filter(elt -> {
+      if (elt.kind == Ast.KTrait()) return false;
+      // Skip an elt if it is the parent of a previous element
+      if (parents.contains(elt.name.i1)) return false;
+      for (parentName in SkipNaming.getClass(elt.name).extends_.keys()) {
+        !parents = parents.set(parentName.i1)
+      };
+      true
+    });
+    elts_children = boundary_elts.map(elt ->
+      handle_tapply(elt.name, elt.targs)
+    );
+    combine_children(elts_children)
+  | (_, N.Tparam(_, _, i, _)) ->
+    upper_bound_children = acc.tparam_constraints
+      .findUppers(i)
+      .filter(cur1 -> may_have_children(acc, cur1))
+      .map(x -> build_match_class_set(next_id, env, acc, x));
+    combine_children(upper_bound_children)
+  | _ ->
+    debug_type(acc, unfolded_ty);
+    invariant_violation("Expected object for class set build_match_class_set")
+  };
+  sk_children.filter(s ->
+    known_valid_members.contains(s) ||
+      valid_child_for_match(next_id, env, acc, ty, s)
+  )
+}
+
+fun may_have_children(acc: Acc, x: N.Type_): Bool {
+  x.i1 match {
+  | N.Tlambda(_, _, _, ty)
+  | N.Tdefault(ty)
+  | N.Tnamed(_, ty) ->
+    may_have_children(acc, ty)
+  | N.Tapply _
+  | N.Tpromoted _
+  | N.Tset _ ->
+    true
+  | N.Tparam(_, _, i, _) ->
+    acc.tparam_constraints.findUppers(i).any(cur1 ->
+      may_have_children(acc, cur1)
+    )
+  | N.Tvar _ -> invariant_violation("ICE bad unfold may_have_children")
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything()
+  | N.Tawaitable _
+  | N.Tfun _ ->
+    false
+  }
+}
+
+fun combine_children(l: Array<SSet>): SSet {
+  l.reduce(combine_child_map, (None() : ?SSet)).default(SSet[])
+}
+
+fun combine_child_map(x: ?SSet, s: SSet): ?SSet {
+  x match {
+  | None() -> Some(s)
+  | Some(s_acc) -> Some(s_acc.intersection(s))
+  }
+}
+
+fun valid_child_for_match(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+  child_name: String,
+): Bool {
+  try {
+    !ty = contra_promote(env, acc, ty);
+    instantiate_pattern_object_exn_only(
+      next_id,
+      ty.i0,
+      env,
+      acc,
+      ty,
+      (ty.i0, child_name),
+    );
+    true
+  } catch {
+  | InvalidPattern _ -> false
+  }
+}
+
+// None for no error. Some(b) where b iff the tparam has a trait constraint
+fun has_concrete_type_for_matching_tparam(
+  tc: TparamConstraints,
+  subst: IMap<N.Type_>,
+  id: String,
+): ?Bool {
+  res: ?Bool = Some(false);
+  _ = tc.findUppers(id).any(ty -> {
+    has_concrete_type_for_matching(tc, subst, ty) match {
+    | None() ->
+      !res = None();
+      true
+    | Some(b) ->
+      if (b) {
+        !res = Some(true)
+      };
+      false
+    }
+  });
+  res
+}
+
+fun has_concrete_type_for_matching(
+  tc: TparamConstraints,
+  subst: IMap<N.Type_>,
+  ty: N.Type_,
+): ?Bool {
+  Types.unfold_type(subst, ty).i1 match {
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything() ->
+    Some(false)
+
+  | N.Tawaitable _
+  | N.Tlambda _
+  | N.Tfun _ ->
+    None()
+  | N.Tapply(_, n, _)
+  | N.Tpromoted(_, _, _, _, n, _) ->
+    SkipNaming.getClass(n).kind match {
+    | Ast.KTrait() -> Some(true)
+    | _ -> None()
+    }
+  | N.Tset(_, _, _, elts) if (elts.isEmpty()) -> Some(false)
+  | N.Tset(_, _, _, elts) ->
+    elts[0].kind match {
+    | Ast.KTrait() -> Some(true)
+    | _ -> None()
+    }
+
+  | N.Tparam(_, _, id, _) ->
+    has_concrete_type_for_matching_tparam(tc, subst, id)
+
+  | N.Tdefault(inner) -> has_concrete_type_for_matching(tc, subst, inner)
+
+  | N.Tvar _
+  | N.Tnamed _ ->
+    invariant_violation("bad unfold")
+  }
+}
+
+/***************************************************************************/
+/*             Utilities for literal types                                 */
+/***************************************************************************/
+/* This is shared across both skipTyping, and skipExhaustivePatterns. */
+fun literal_type_name(l: Ast.LiteralValue): String {
+  l match {
+  | Ast.BoolLiteral _ -> "Bool"
+  | Ast.IntLiteral _ -> "Int"
+  | Ast.FloatLiteral _ -> "Float"
+  | Ast.CharLiteral _ -> "Char"
+  | Ast.StringLiteral _ -> "String"
+  | Ast.VoidLiteral() -> "Void"
+  }
+}
+
+/* The set of all the literal class names.
+ * This may seem way more complicated than it needs to be, but we want to make
+ * sure that these names stay in sync with what we return from @literal_type_name. */
+const literal_class_names: SSet = ({
+  i = 1;
+  literals = List[
+    Ast.BoolLiteral(true),
+
+    Ast.IntLiteral(i),
+
+    Ast.FloatLiteral(1.0),
+
+    Ast.CharLiteral(i),
+    Ast.StringLiteral(" "),
+  ];
+  SSet::createFromItems(
+    literals.foldl(
+      ((acc: List<String>, lit: Ast.LiteralValue) -> {
+        List.Cons(literal_type_name(lit), acc)
+      }),
+      (List[] : List<String>),
+    ),
+  )
+});

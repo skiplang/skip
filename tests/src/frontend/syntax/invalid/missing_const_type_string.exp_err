@@ -1,0 +1,4 @@
+File "./syntax/invalid/missing_const_type_string.sk", line 1, characters 9-9:
+Missing constant type annotation. ': String ='
+1 | const x = "ab cd";
+  |         ^

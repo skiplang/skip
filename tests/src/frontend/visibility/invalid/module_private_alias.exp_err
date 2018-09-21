@@ -1,0 +1,7 @@
+File "./visibility/invalid/module_private_alias.sk", line 7, characters 12-12:
+Cannot access a private module element T outside of module M
+5 | module end;
+6 |
+7 | fun f(): M.T {
+  |            ^
+8 |   0;

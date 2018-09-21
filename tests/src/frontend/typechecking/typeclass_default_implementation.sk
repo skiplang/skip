@@ -1,0 +1,15 @@
+fun main(): void {
+  print_string("OK")
+}
+trait Eq2 {
+  fun ==(this): Bool;
+  fun !=(x: this): Bool {
+    !(this == x)
+  }
+}
+
+class Foo() uses Eq2 {
+  fun ==(this): Bool {
+    true
+  }
+}

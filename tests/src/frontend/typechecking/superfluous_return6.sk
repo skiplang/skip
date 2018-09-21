@@ -1,0 +1,11 @@
+fun shouldWork(value: ?Int): Int {
+  (_, x) = value match {
+  | None() -> return 1
+  | Some(_) -> (0, 0)
+  };
+  x
+}
+
+fun main(): void {
+  print_string("OK")
+}

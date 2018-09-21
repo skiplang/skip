@@ -1,0 +1,11 @@
+File "./typechecking/invalid/memoized_untracked.sk", line 1, characters 10-18:
+A function cannot be both 'memoized' and 'untracked'
+1 | memoized untracked fun no(): void {
+  |          ^^^^^^^^^
+2 |   void
+
+File "./typechecking/invalid/memoized_untracked.sk", line 1, characters 1-8:
+Declared 'memoized' here
+1 | memoized untracked fun no(): void {
+  | ^^^^^^^^
+2 |   void

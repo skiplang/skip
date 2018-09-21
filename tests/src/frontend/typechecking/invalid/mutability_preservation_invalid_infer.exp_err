@@ -1,0 +1,105 @@
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 21, characters 3-3:
+The value returned from the function is incompatible with the return type 'P<Int>'
+Invalid upcast. Mutability is not preserved.
+19 |   c.setT1(mutable Vector[]);
+20 |   c.setT2(0);
+21 |   c
+   |   ^
+22 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 18, characters 7-10:
+The type 'C1<mutable Vector<_>, Int>' has the type parameter 'T1' instantiated with a non-frozen type argument 'mutable Vector<_>'
+16 |
+17 | fun no1(): P<Int> {
+18 |   c = C1();
+   |       ^^^^
+19 |   c.setT1(mutable Vector[]);
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 18, characters 7-10:
+It was found to necessary to upcast to the type: P<Int>
+16 |
+17 | fun no1(): P<Int> {
+18 |   c = C1();
+   |       ^^^^
+19 |   c.setT1(mutable Vector[]);
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 2, characters 10-11:
+But this type parameter is not visible after the upcast, which resulted in the new type to be considered fully frozen.
+1 | base class P<T>
+2 | class C1<T1, T2>() extends P<T2> {
+  |          ^^
+3 |   fun setT1(T1): void {
+
+File "../../runtime/prelude/stdlib/collections/mutable/Vector.sk", line 60, characters 67-78:
+This is not safe since the original type contained this non-frozen type
+58 |   }
+59 |
+60 |   static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
+   |                                                                   ^^^^^^^^^^^^
+61 |     size = items.size(); // can't trust that each() will yield exactly this many items
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 27, characters 3-3:
+The value returned from the function is incompatible with the return type 'P<Int>'
+Invalid upcast. Mutability is not preserved.
+25 |   c = C2();
+26 |   c.setT(mutable Vector[]);
+27 |   c
+   |   ^
+28 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 25, characters 7-10:
+The type 'C2<mutable Vector<_>>' has the type parameter 'T' instantiated with a non-frozen type argument 'mutable Vector<_>'
+23 |
+24 | fun no2(): P<Int> {
+25 |   c = C2();
+   |       ^^^^
+26 |   c.setT(mutable Vector[]);
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 25, characters 7-10:
+It was found to necessary to upcast to the type: P<Int>
+23 |
+24 | fun no2(): P<Int> {
+25 |   c = C2();
+   |       ^^^^
+26 |   c.setT(mutable Vector[]);
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 10, characters 10-10:
+But this type parameter is not visible after the upcast, which resulted in the new type to be considered fully frozen.
+ 8 |   }
+ 9 | }
+10 | class C2<T>() extends P<Int> {
+   |          ^
+11 |   fun setT(T): void {
+
+File "../../runtime/prelude/stdlib/collections/mutable/Vector.sk", line 60, characters 67-78:
+This is not safe since the original type contained this non-frozen type
+58 |   }
+59 |
+60 |   static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
+   |                                                                   ^^^^^^^^^^^^
+61 |     size = items.size(); // can't trust that each() will yield exactly this many items
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 31, characters 3-6:
+The value returned from the function is incompatible with the return type 'P<mutable Vector<Int>>'
+Invalid upcast. The frozen status of the type is not preserved.
+29 |
+30 | fun no3(): P<mutable Vector<Int>> {
+31 |   C3()
+   |   ^^^^
+32 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 31, characters 3-6:
+The type 'C3<_>' is frozen
+29 |
+30 | fun no3(): P<mutable Vector<Int>> {
+31 |   C3()
+   |   ^^^^
+32 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 31, characters 3-6:
+It was found to necessary to upcast to the type 'P<mutable Vector<Int>>', but this type is not frozen
+29 |
+30 | fun no3(): P<mutable Vector<Int>> {
+31 |   C3()
+   |   ^^^^
+32 | }

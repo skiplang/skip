@@ -1,0 +1,11 @@
+File "invalid/references/p3/skip.project.json"
+Is not a valid project config because 'Invalid field 'broken'. Expected one of 'default', 'programUnits', 'skipVersion', 'variables'.'
+
+File "invalid/references/p2/skip.project.json"
+Referenced from
+
+File "invalid/references/p1/skip.project.json"
+Referenced from
+
+File "invalid/references/skip.project.json"
+Referenced from

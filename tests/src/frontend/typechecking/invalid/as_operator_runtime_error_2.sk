@@ -1,0 +1,4 @@
+fun main(): void {
+  x = 4;
+  _ = x as Int _
+}

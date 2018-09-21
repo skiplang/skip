@@ -1,0 +1,7 @@
+File "./typechecking/invalid/unused_locals_in_class_default.sk", line 3, characters 5-5:
+Local variable 'x' was not used. Prefix it with an underscore to silence the error: '_x'
+1 | class C1(
+2 |   f: Int = {
+3 |     x = 1;
+  |     ^
+4 |     42

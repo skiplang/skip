@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/child_override_base_class_multi_params_base_named_dead_pattern.sk", line 10, characters 5-24:
+The following pattern is unused:
+ | A{a => 42, b => "c"}
+ 8 |   | B{x => "Hi", t => 1, b => "b"} -> "s"
+ 9 |   | B _ -> "\n"
+10 |   | A{a => 42, b => "c"} -> "s"
+   |     ^^^^^^^^^^^^^^^^^^^^
+11 |   }

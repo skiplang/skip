@@ -1,0 +1,4 @@
+fun foo(): void {
+  _ = x -> void;
+  void
+}

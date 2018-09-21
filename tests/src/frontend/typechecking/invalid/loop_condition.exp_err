@@ -1,0 +1,44 @@
+File "./typechecking/invalid/loop_condition.sk", line 2, characters 9-11:
+Invalid loop condition
+1 | fun no1(): void {
+2 |   while (0) void
+  |         ^^^
+3 | }
+
+File "./typechecking/invalid/loop_condition.sk", line 2, characters 9-11:
+The type: Int
+1 | fun no1(): void {
+2 |   while (0) void
+  |         ^^^
+3 | }
+
+File "./typechecking/invalid/loop_condition.sk", line 2, characters 9-11:
+Is not a subtype of: Bool
+1 | fun no1(): void {
+2 |   while (0) void
+  |         ^^^
+3 | }
+
+File "./typechecking/invalid/loop_condition.sk", line 6, characters 17-20:
+Invalid loop condition
+4 |
+5 | fun no2(): void {
+6 |   do void while ("")
+  |                 ^^^^
+7 | }
+
+File "./typechecking/invalid/loop_condition.sk", line 6, characters 17-20:
+The type: String
+4 |
+5 | fun no2(): void {
+6 |   do void while ("")
+  |                 ^^^^
+7 | }
+
+File "./typechecking/invalid/loop_condition.sk", line 6, characters 17-20:
+Is not a subtype of: Bool
+4 |
+5 | fun no2(): void {
+6 |   do void while ("")
+  |                 ^^^^
+7 | }

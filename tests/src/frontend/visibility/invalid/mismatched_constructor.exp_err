@@ -1,0 +1,17 @@
+File "./visibility/invalid/mismatched_constructor.sk", line 2, characters 34-34:
+Mismatched visibility. Child constructor visibility must match the parent's or must be more visible than the parent's
+1 | base class X protected {f: Int}
+2 | class Y private {g: Int} extends X
+  |                                  ^
+
+File "./visibility/invalid/mismatched_constructor.sk", line 1, characters 14-22:
+Parent's constructor was declared with a visibility of: protected
+1 | base class X protected {f: Int}
+  |              ^^^^^^^^^
+2 | class Y private {g: Int} extends X
+
+File "./visibility/invalid/mismatched_constructor.sk", line 2, characters 9-15:
+Child constructor was declared with a visibility of: private
+1 | base class X protected {f: Int}
+2 | class Y private {g: Int} extends X
+  |         ^^^^^^^

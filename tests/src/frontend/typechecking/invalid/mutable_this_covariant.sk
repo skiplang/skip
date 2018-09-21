@@ -1,0 +1,20 @@
+// covariant type params behave invariantly on mutable instances
+//
+base class MyBase {
+  children =
+  | Nully()
+  | Inty(val: Int)
+}
+
+mutable class Cov<+T>(mutable v: T) {
+  mutable fun put(v: this): void {
+    this.!v = v.v
+  }
+}
+
+fun main(): void {
+  x = mutable Cov(Inty(42));
+  x.put(Cov(Nully()));
+  _ = x.v.val; //boom
+  print_string("Pass")
+}

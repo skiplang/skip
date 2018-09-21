@@ -1,0 +1,34 @@
+base class Foo<T> {
+  fun doIt(x: T): T;
+}
+
+class Bar<T>(x: T) extends Foo<T> {
+  fun get(): T {
+    this.x
+  }
+  fun doIt(x: T): T {
+    x
+  }
+}
+
+class Boom<T: Int> extends Foo<T> {
+  fun doIt(x: T): T {
+    _ = x + 112;
+    x
+  }
+}
+
+fun matcher<T>(x: Foo<T>, y: T): T {
+  x match {
+  | x @ Bar _ -> x.doIt(x.get())
+  | x @ Boom _ ->
+    _ = x.doIt(112);
+    y
+  }
+}
+
+fun main(): void {
+  x: Boom<Int> = Boom();
+  y = matcher(x, 5) + 5;
+  print_string("Pass")
+}

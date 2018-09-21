@@ -1,0 +1,392 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SkipError;
+
+fun fail<T>(): T {
+  exit(2)
+}
+
+type Trace = (FileRange, String);
+
+class Fix{
+  oldRange: TextRange,
+  newText: String,
+  // If included, this will be used to verify that the edit still applies cleanly.
+  // TODO: oldText: ?String,
+  // speculative means do not perform fix when 'Fix all in file' is executed.
+  speculative: Bool = false,
+  title: String = "Fix",
+} uses Hashable, Equality
+
+class Error{
+  traces: List<(FileRange, String)>,
+  fix: ?Fix,
+} uses Show, Hashable, Equality {
+  fun toString(): String {
+    this.traces.map(traceToString).join("\n");
+  }
+
+  fun filename(): String {
+    this.traces.getHead().i0.filename;
+  }
+
+  fun range(): FileRange {
+    this.traces.getHead().i0;
+  }
+
+  fun message(): String {
+    this.traces.getHead().i1;
+  }
+}
+
+fun errorFromSyntaxError(error: SyntaxError, filename: String): Error {
+  SkipError.Error{
+    traces => error.messages.map(message -> {
+      (FileRange.create(filename, message.i0), message.i1);
+    }),
+    fix => error.fix,
+  }
+}
+
+class SkipErrorException{errors: Vector<Error>} extends Exception {
+  fun getMessage(): String {
+    this.errors.join("");
+  }
+}
+
+fun throwErrors(errors: Vector<Error>): void {
+  if (!errors.isEmpty()) {
+    throw SkipErrorException{errors};
+  };
+}
+
+fun throwFlattenedErrors(errors: Vector<Vector<Error>>): void {
+  throwErrors(errors.flatten());
+}
+
+fun doWithError<T>(f: () -> T): Result<T, Vector<Error>> {
+  try {
+    Success(f());
+  } catch {
+  | SkipErrorException{errors} -> Failure(errors)
+  }
+}
+
+fun do2WithError<T1, T2>(f1: () -> T1, f2: () -> T2): (T1, T2) {
+  r1 = doWithError(f1);
+  r2 = doWithError(f2);
+  throwFlattenedErrors(
+    Vector[r1.maybeFailure(), r2.maybeFailure()].filterNone(),
+  );
+  (r1.fromSuccess(), r2.fromSuccess());
+}
+
+fun do3WithError<T1, T2, T3>(
+  f1: () -> T1,
+  f2: () -> T2,
+  f3: () -> T3,
+): (T1, T2, T3) {
+  r1 = doWithError(f1);
+  r2 = doWithError(f2);
+  r3 = doWithError(f3);
+  throwFlattenedErrors(
+    Vector[
+      r1.maybeFailure(),
+      r2.maybeFailure(),
+      r3.maybeFailure(),
+    ].filterNone(),
+  );
+  (r1.fromSuccess(), r2.fromSuccess(), r3.fromSuccess());
+}
+
+fun do4WithError<T1, T2, T3, T4>(
+  f1: () -> T1,
+  f2: () -> T2,
+  f3: () -> T3,
+  f4: () -> T4,
+): (T1, T2, T3, T4) {
+  r1 = doWithError(f1);
+  r2 = doWithError(f2);
+  r3 = doWithError(f3);
+  r4 = doWithError(f4);
+  throwFlattenedErrors(
+    Vector[
+      r1.maybeFailure(),
+      r2.maybeFailure(),
+      r3.maybeFailure(),
+      r4.maybeFailure(),
+    ].filterNone(),
+  );
+  (r1.fromSuccess(), r2.fromSuccess(), r3.fromSuccess(), r4.fromSuccess());
+}
+
+// Reports errors to stderr and exits if any errors are produced by operation.
+fun doAndReportErrors<T>(
+  operation: () -> Result<T, Vector<SkipError.Error>>,
+): T {
+  operation() match {
+  | Success(result) -> result
+  | Failure(errors) ->
+    print_error(errors.take(100).join("\n"));
+    exit(2)
+  }
+}
+
+fun renderTextRange(range: TextRange): String {
+  // TODO: This is a poor format as it doesn't show the end line correctly.
+  startColumn = range.start.column() + 1;
+  `line ${(range.start.line() + 1)}, characters ${startColumn}-${max(
+    startColumn,
+    range.end.column(),
+  )}`;
+}
+
+private fun render_pos(pos: FileRange): String {
+  file = `File "${pos.filename}"`;
+
+  position = if (!pos.range.isNone()) {
+    `, ${renderTextRange(pos.range)}:`
+  } else {
+    "";
+  };
+
+  file + position + "\n";
+}
+
+private fun traceToString(trace: Trace): String {
+  render_pos(trace.i0) + trace.i1 + "\n" + get_context_of_pos(trace.i0);
+}
+
+private fun get_context_of_pos(
+  t: FileRange,
+  fileContents: ?String = None(),
+): String {
+  if (t.range.isNone()) {
+    return "";
+  };
+
+  contents = fileContents match {
+  | Some(contents) -> contents
+  | None() ->
+    try {
+      FileSystem.readTextFile(t.filename)
+    } catch {
+    | _ -> return ""
+    }
+  };
+  getContextOfRange(t.range, contents)
+}
+
+fun syntaxErrorToString(error: SyntaxError, fileContents: String): String {
+  error.messages
+    .map(message ~> syntaxErrorMessageToString(message, fileContents))
+    .join("\n")
+}
+
+fun syntaxErrorMessageToString(
+  message: SyntaxError.Message,
+  fileContents: String,
+): String {
+  `${renderTextRange(message.i0)}: ${message.i1}\n${getContextOfRange(
+    message.i0,
+    fileContents,
+  )}`
+}
+
+fun getContextOfRange(range: TextRange, fileContents: String): String {
+  if (range.isNone()) {
+    return "";
+  };
+
+  line_number = range.start.line();
+  start_position = range.start;
+  end_position = range.end;
+
+  lines = List::createFromItems(fileContents.split("\n"));
+  number_of_lines = if (lines.isEmpty()) {
+    0
+  } else {
+    lines.size() -
+      if (lines.last() == "") {
+        1
+      } else {
+        0
+      }
+  };
+
+  /* How many digits do we need to print
+   *   0..9 -> 1
+   *   10..99 -> 2
+   *   100..999 -> 3
+   *   etc.
+   */
+  prefix_size = ((line_number + 3).toString()).length();
+
+  // Note that line
+  if (number_of_lines <= line_number) {
+    ""
+  } else {
+    line_numbered_line = lineToPrint ~> {
+      if (lineToPrint < 0 || lineToPrint >= number_of_lines) {
+        ""
+      } else {
+        digits = (lineToPrint + 1).toString();
+        padding = if (digits.length() < prefix_size) {
+          " "
+        } else {
+          ""
+        };
+        lineString = lines.getNth(lineToPrint);
+        linePrefix = if (lineString == "") {
+          ""
+        } else {
+          " "
+        };
+        padding + digits + " |" + linePrefix + lineString + "\n";
+      }
+    };
+
+    chevroned_line = (start, end, line_contents) ~> {
+      if (start.line() > end.line()) {
+        ""
+      } else {
+        // Do not display chevrons under leading spaces
+        line_length = line_contents.length();
+        firstNonSpaceColumnOpt = line_contents.search(0, ch ~> ch != ' ');
+        chevron_start = firstNonSpaceColumnOpt match {
+        | None() ->
+          if (start.line() == end.line()) {
+            max(start.column(), end.column());
+          } else {
+            line_length;
+          }
+        | Some(firstNonSpaceColumn) -> max(start.column(), firstNonSpaceColumn)
+        };
+        chevron_length = if (start.line() == end.line()) {
+          max(start.column() + 1, end.column()) - chevron_start;
+        } else {
+          line_length - chevron_start;
+        };
+
+        if (chevron_length > 0) {
+          paddingSize = prefix_size + 1;
+          ' '.repeat(paddingSize) +
+            "| " +
+            ' '.repeat(chevron_start) +
+            '^'.repeat(chevron_length) +
+            "\n"
+        } else {
+          ""
+        }
+      }
+    };
+
+    // The end position can go beyond the current line ending.
+    error_line = lines.getNth(line_number);
+    after_error_line = if (line_number + 1 >= number_of_lines) {
+      ""
+    } else {
+      lines.getNth(line_number + 1)
+    };
+
+    line_numbered_line(line_number - 2) +
+      line_numbered_line(line_number - 1) +
+      line_numbered_line(line_number) +
+      chevroned_line(start_position, end_position, error_line) +
+      line_numbered_line(line_number + 1) +
+      chevroned_line(start_position.nextLine(), end_position, after_error_line)
+  }
+}
+
+fun error<T>(pos: FileRange, msg: String, fix: ?Fix = None()): T {
+  errorl(List[(pos, msg)], fix);
+}
+
+fun errorl<T>(traces: List<(FileRange, String)>, fix: ?Fix = None()): T {
+  throw SkipErrorException{errors => Vector[Error{traces, fix}]};
+}
+
+fun independent_errors<T>(traces: List<(FileRange, String)>): T {
+  throw SkipErrorException{
+    errors => traces
+      .values()
+      .map(trace -> Error{traces => List[trace], fix => None()})
+      .collect(Vector),
+  }
+}
+
+fun internal_error2<T>(
+  primary_pos: FileRange,
+  primary_message: String,
+  related_pos: FileRange,
+  related_message: String,
+): T {
+  errorl(List[(primary_pos, primary_message), (related_pos, related_message)])
+}
+
+private fun unboundNameMapping(name: String): ?String {
+  name match {
+  | "Boolean" -> Some("Bool")
+  | "Integer" -> Some("Int")
+  | "Double" -> Some("Float")
+  | _ -> None()
+  }
+}
+
+private fun didYouMeanUnboundName(name: String): String {
+  unboundNameMapping(name) match {
+  | Some(correct_name) -> ". Did you mean '" + correct_name + "'?"
+  | None() -> ""
+  }
+}
+
+fun unbound_name<T>(name: String, pos: FileRange): T {
+  errorl(List[(pos, "Unbound name: " + name + didYouMeanUnboundName(name))])
+}
+
+fun unbound_name_with_msg<T>(
+  pos: FileRange,
+  msg: String,
+  npos: FileRange,
+  name: String,
+): T {
+  errorl(
+    List[
+      (pos, msg),
+      (npos, "Unbound name: " + name + didYouMeanUnboundName(name)),
+    ],
+  )
+}
+
+fun name_already_bound<T>(name: String, pos1: FileRange, pos2: FileRange): T {
+  errorl(List[(pos1, "Name already bound: " + name), (pos2, "Previously here")])
+}
+
+fun duplicate<T>(kind: String, pos1: FileRange, pos2: FileRange): T {
+  msg1 = (pos1, "Duplicate " + kind);
+  msg2 = (pos2, "Previously defined here");
+  errorl(List[msg1, msg2])
+}
+
+fun duplicate_modifier<T>(pos1: FileRange, pos2: FileRange): T {
+  duplicate("modifier", pos1, pos2)
+}
+
+fun duplicate_visibility<T>(pos1: FileRange, pos2: FileRange): T {
+  duplicate("visibility", pos1, pos2)
+}
+
+fun duplicate_class_kind<T>(pos1: FileRange, pos2: FileRange): T {
+  duplicate("class kind", pos1, pos2)
+}
+
+fun duplicate_context_type<T>(pos1: FileRange, pos2: FileRange): T {
+  duplicate("context type", pos1, pos2)
+}
+
+module end;

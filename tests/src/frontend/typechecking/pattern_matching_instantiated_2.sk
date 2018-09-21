@@ -1,0 +1,36 @@
+base class Expr<T>() {
+  fun doIt(x: T, y: T): T;
+}
+
+class StringE extends Expr<String> {
+  fun doIt(x: String, y: String): String {
+    x + y
+  }
+}
+
+class IntE extends Expr<Int> {
+  fun doIt(x: Int, y: Int): Int {
+    x + y
+  }
+}
+
+class BoolE extends Expr<Bool> {
+  fun doIt(x: Bool, y: Bool): Bool {
+    x || y
+  }
+}
+
+fun matcher<T>(x: Expr<T>, y: T): T {
+  x match {
+  | _x @ BoolE _ -> y
+  | _x @ IntE _ -> y
+  | _x @ StringE _ -> y
+  }
+}
+
+fun main(): void {
+  _ = matcher(StringE(), "Hellow world") + "";
+  _ = matcher(IntE(), 112) * 1;
+  _ = matcher(BoolE(), true) && true;
+  print_string("Pass")
+}

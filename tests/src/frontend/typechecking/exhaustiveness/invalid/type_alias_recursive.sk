@@ -1,0 +1,15 @@
+base class Expr {
+  children =
+  | Plus(Expr, Expr)
+  | Value(Int)
+}
+class Test() {
+  type Foo = Plus;
+
+  fun bar(x: Expr): Int {
+    x match {
+    | this::Foo(_, Value(1)) -> 0
+    | Value(_) -> 1
+    }
+  }
+}

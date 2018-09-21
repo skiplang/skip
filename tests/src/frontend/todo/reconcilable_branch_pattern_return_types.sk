@@ -1,0 +1,23 @@
+base class Expr<T>
+class IntExpr(Int) extends Expr<Int>
+class BoolExpr(Bool) extends Expr<Bool>
+
+fun int_perform<T: Int>(x: T): void {
+  void
+}
+fun bool_perform<T: Bool>(x: T): void {
+  void
+}
+
+fun perform<T>(e: Expr<T>, v: T): void {
+  e match {
+  | IntExpr(i) -> int_perform(v)
+  | BoolExpr(b) -> bool_perform(v)
+  }
+  // Fails to solve constraints on T here since it's not existential
+}
+
+fun main(): void {
+  perform(IntExpr(1), 1);
+  print_string("Pass")
+}

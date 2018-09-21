@@ -1,0 +1,20 @@
+base class C {
+  children =
+  | A(Bool, Int)
+  | B(Int, Bool)
+  | D(Int)
+}
+
+fun main(): void {
+  print_raw(
+    (B(1, true) : C) match {
+    | A(_, y)
+    | B(
+      y,
+      _,
+    ) if (y == 1) ->
+      "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

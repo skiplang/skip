@@ -1,0 +1,9 @@
+class C() {
+  macro fun m(): void {
+    #undefined
+  }
+}
+
+fun main(): void {
+  void
+}

@@ -1,0 +1,12 @@
+trait Foo {
+  type Tthis: inst default inst;
+}
+
+class Bar() uses Foo
+class Baz() uses Foo {
+  type Tthis = this;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

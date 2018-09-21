@@ -1,0 +1,29 @@
+@serialize
+class VectorWrapper2{
+  vec: Vector<Vector<Int>>,
+} uses Show, Equality {
+  fun toString(): String {
+    this.vec.toString()
+  }
+}
+
+fun main(): void {
+  assertSerializes(
+    `{"vec": []}`,
+    VectorWrapper2::meta,
+    VectorWrapper2{vec => Vector[]},
+  );
+  assertSerializes(
+    `{"vec": [[], [], []]}`,
+    VectorWrapper2::meta,
+    VectorWrapper2{vec => Vector[Vector[], Vector[], Vector[]]},
+  );
+  assertSerializes(
+    `{"vec": [[1, 2, 3], [4, 5], [6], []]}`,
+    VectorWrapper2::meta,
+    VectorWrapper2{
+      vec => Vector[Vector[1, 2, 3], Vector[4, 5], Vector[6], Vector[]],
+    },
+  );
+  print_string("Pass")
+}

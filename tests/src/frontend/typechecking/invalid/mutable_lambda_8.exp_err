@@ -1,0 +1,24 @@
+File "./typechecking/invalid/mutable_lambda_8.sk", line 6, characters 12-14:
+You cannot capture this variable
+4 |
+5 | fun bar(bad: (Int, Int) -> Int): Int {
+6 |   foo(x ~> bad(x, x))
+  |            ^^^
+7 | }
+
+File "./typechecking/invalid/mutable_lambda_8.sk", line 5, characters 14-30:
+Mutable because of this position
+3 | }
+4 |
+5 | fun bar(bad: (Int, Int) -> Int): Int {
+  |              ^^^^^^^^^^^^^^^^^
+6 |   foo(x ~> bad(x, x))
+
+File "./typechecking/invalid/mutable_lambda_8.sk", line 6, characters 7-20:
+Because this closure was declared as pure (~>)
+Try '->' instead
+4 |
+5 | fun bar(bad: (Int, Int) -> Int): Int {
+6 |   foo(x ~> bad(x, x))
+  |       ^^^^^^^^^^^^^^
+7 | }

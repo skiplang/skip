@@ -1,0 +1,13 @@
+base class C {
+  children =
+  | A{x: Int}
+  | B{y: Int}
+}
+
+fun shouldFail(): String {
+  (A{x => true} : C) match {
+  | A{x => t}
+  | B{y => x} ->
+    "Fail\n"
+  }
+}

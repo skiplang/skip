@@ -1,0 +1,12 @@
+base class B final (x: Int, deferred y: this::T) {
+  type T;
+
+  fun yes(): B {
+    _ = static(0, 100);
+    class(this)(0, 100)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,12 @@
+base class L
+base class R
+class C() extends L, R
+base class P<+T>
+class Cont<+T: R>(T) extends P<T>
+
+fun test<V>(x: P<V>): void {
+  x match {
+  | Cont(L _) -> void
+  | _ -> void
+  }
+}

@@ -1,0 +1,9 @@
+fun main(): void {
+  x = try {
+    void
+  } catch {
+  | _e -> void
+  };
+  x;
+  print_string("Pass")
+}

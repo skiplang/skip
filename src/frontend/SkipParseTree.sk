@@ -1,0 +1,292 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module ParseTree;
+
+extension base class ParseTree {
+  fun getId(): String {
+    this.getToken().getId();
+  }
+
+  fun getModifier(kind: TokenKind.TokenKind): Sequence<ParseTree> {
+    this.getList().filter(tree -> tree.matchTreeKind(kind));
+  }
+
+  fun hasModifier(kind: TokenKind.TokenKind): Bool {
+    !this.getModifier(kind).isEmpty();
+  }
+
+  fun getModifierName(name: String): Sequence<ParseTree> {
+    this.getList().filter(tree ->
+      tree.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+        tree.getTokenString() == name
+    );
+  }
+
+  fun isBang(): Bool {
+    (this is UnaryExpressionTree _) &&
+      (this as UnaryExpressionTree _).operator.matchTreeKind(TokenKind.BANG());
+  }
+
+  fun moduleAliasesOfSourceUnitTree(): ParseTree {
+    (this as SourceUnitTree _).moduleAliases;
+  }
+
+  fun declarationsOfSourceUnitTree(): ParseTree {
+    (this as SourceUnitTree _).declarations;
+  }
+
+  fun declarationListOfSourceUnitTree(): Array<ParseTree> {
+    this.moduleAliasesOfSourceUnitTree()
+      .getList()
+      .concat(this.declarationsOfSourceUnitTree().getList());
+  }
+
+  fun isPositionalArgument(size: Int): Bool {
+    this match {
+    | PositionalArgumentsTree{arguments} -> arguments.getList().size() == size
+    | _ -> false
+    }
+  }
+
+  fun getPositionalArgument(index: Int): ParseTree {
+    (this as PositionalArgumentsTree _).arguments.getList()[index];
+  }
+
+  fun matchTypeName(typename: String): Bool {
+    this match {
+    | GenericTypeNameTree{name} -> name.matchTypeIdentifier(typename)
+    | _ -> false
+    }
+  }
+
+  fun isMacroTypeIdentifierExpression(): Bool {
+    this match {
+    | GenericTypeNameTree{
+      name,
+    } if (name.matchTreeKind(TokenKind.MACRO_TYPE_IDENTIFIER())) ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun matchDottedTypeName(left: String, right: String): Bool {
+    this match {
+    | MemberSelectionExpressionTree{object, operator, member} ->
+      object.matchTypeName(left) &&
+        operator.matchTreeKind(TokenKind.PERIOD()) &&
+        member.matchTypeIdentifier(right)
+    | _ -> false
+    }
+  }
+
+  // Does this expression require parens as the operand to a unary operator
+  fun requiresParensAsUnaryOperand(): Bool {
+    this match {
+    | LambdaExpressionTree _ -> true
+
+    // Primary
+    | TokenTree _
+    | BlockTree _
+    | IfExpressionTree _
+    | TupleExpressionTree _
+    | ThrowExpressionTree _
+    | TryExpressionTree _
+    | ParenExpressionTree _
+    | TypeAnnotatedExpressionTree _
+    | GlobalExpressionTree _
+    | TemplateLiteralExpressionTree _ ->
+      false
+
+    // Postfix
+    | MemberSelectionExpressionTree _
+    | CallExpressionTree _
+    | CallArrayExpressionTree _
+    | CallMapExpressionTree _ ->
+      false
+
+    | UnaryExpressionTree _ -> false
+
+    | BinaryExpressionTree _ -> true
+
+    | MatchExpressionTree _
+    | WithExpressionTree _ ->
+      true
+
+    | CompoundBindingExpressionTree _
+    | SimpleBindingExpressionTree _ ->
+      true
+
+    | _ -> invariant_violation("Unexpected ExpressionTree")
+    }
+  }
+
+  // Does this expression require parens if it appears on the LHS of . or ::
+  fun requiresParensAsObjectInMemberSelection(): Bool {
+    this match {
+    // Ends with expression
+    | LambdaExpressionTree _ -> true
+
+    // Primary
+    | TokenTree _
+    | BlockTree _ ->
+      false
+    // Ends with expression
+    | IfExpressionTree _ -> true
+    | TupleExpressionTree _ -> false
+    // Ends with expression
+    | ThrowExpressionTree _ -> true
+    | TryExpressionTree _
+    | ParenExpressionTree _
+    | TypeAnnotatedExpressionTree _
+    | GlobalExpressionTree _
+    | TemplateLiteralExpressionTree _ ->
+      false
+
+    // Postfix
+    | MemberSelectionExpressionTree _
+    | CallExpressionTree _
+    | CallArrayExpressionTree _
+    | CallMapExpressionTree _ ->
+      false
+
+    | UnaryExpressionTree _ -> true
+
+    | BinaryExpressionTree _ -> true
+
+    | MatchExpressionTree _
+    | WithExpressionTree _ ->
+      true
+
+    | CompoundBindingExpressionTree _
+    | SimpleBindingExpressionTree _ ->
+      true
+
+    | _ -> invariant_violation("Unexpected ExpressionTree")
+    }
+  }
+
+  // Does this expression need parens if it appears on the LHS of operator
+  fun requiresParensOnBinaryLeft(operator: TokenKind.TokenKind): Bool {
+    invariant(operator.isBinaryOperator());
+    this match {
+    // Ends with expression
+    | LambdaExpressionTree _ -> true
+
+    // Primary
+    | TokenTree _
+    | BlockTree _ ->
+      false
+    // Ends with expression
+    | IfExpressionTree _ -> true
+    | TupleExpressionTree _ -> false
+    // Ends with expression
+    | ThrowExpressionTree _ -> true
+    | TryExpressionTree _
+    | ParenExpressionTree _
+    | TypeAnnotatedExpressionTree _
+    | GlobalExpressionTree _
+    | TemplateLiteralExpressionTree _ ->
+      false
+
+    // Postfix
+    | MemberSelectionExpressionTree _
+    | CallExpressionTree _
+    | CallArrayExpressionTree _
+    | CallMapExpressionTree _ ->
+      false
+
+    | UnaryExpressionTree _ -> false
+
+    | BinaryExpressionTree{operator => thisOperator} ->
+      thisOperator.getTokenKind().precedence() < operator.precedence()
+
+    | MatchExpressionTree _
+    | WithExpressionTree _ ->
+      true
+
+    | CompoundBindingExpressionTree _
+    | SimpleBindingExpressionTree _ ->
+      true
+
+    | _ -> invariant_violation("Unexpected ExpressionTree")
+    }
+  }
+
+  // Does this expression need parens if it appears on the RHS of operator
+  fun requiresParensOnBinaryRight(operator: TokenKind.TokenKind): Bool {
+    invariant(operator.isBinaryOperator());
+    this match {
+    // Ends with expression
+    | LambdaExpressionTree _ -> true
+
+    // Primary
+    | TokenTree _
+    | BlockTree _ ->
+      false
+    // Ends with expression
+    | IfExpressionTree _ -> true
+    | TupleExpressionTree _ -> false
+    // Ends with expression
+    | ThrowExpressionTree _ -> true
+    | TryExpressionTree _
+    | ParenExpressionTree _
+    | TypeAnnotatedExpressionTree _
+    | GlobalExpressionTree _
+    | TemplateLiteralExpressionTree _ ->
+      false
+
+    // Postfix
+    | MemberSelectionExpressionTree _
+    | CallExpressionTree _
+    | CallArrayExpressionTree _
+    | CallMapExpressionTree _ ->
+      false
+
+    | UnaryExpressionTree _ -> false
+
+    | BinaryExpressionTree{operator => thisOperator} ->
+      thisOperator.getTokenKind().precedence() <= operator.precedence()
+
+    | MatchExpressionTree _
+    | WithExpressionTree _ ->
+      true
+
+    | CompoundBindingExpressionTree _
+    | SimpleBindingExpressionTree _ ->
+      true
+
+    | _ -> invariant_violation("Unexpected ExpressionTree")
+    }
+  }
+
+  fun getParameterTypeSpecifier(): ParseTree
+  | NamedParameterTree{typeSpecifier} -> typeSpecifier
+  | PositionalParameterTree{typeSpecifier} -> typeSpecifier
+  | _ ->
+    invariant_violation(
+      `Expected NamedParameterTree or PositionalParameterTree; found ${this.getKind()}`,
+    )
+
+  fun getParameterDefaultValue(): ParseTree
+  | NamedParameterTree{defaultValue} -> defaultValue
+  | PositionalParameterTree{defaultValue} -> defaultValue
+  | _ ->
+    invariant_violation(
+      `Expected NamedParameterTree or PositionalParameterTree; found ${this.getKind()}`,
+    )
+
+  fun matchTypeIdentifier(name: String): Bool {
+    this.matchTreeKind(TokenKind.TYPE_IDENTIFIER()) &&
+      this.getTokenString() == name;
+  }
+
+  fun matchNonTypeIdentifier(name: String): Bool {
+    this.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+      this.getTokenString() == name;
+  }
+}

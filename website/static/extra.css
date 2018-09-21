@@ -1,0 +1,309 @@
+body {
+  font-size: 16px;
+}
+
+h1, h2, h3, h4, .container .wrapper h2 {
+  color: rgb(57, 57, 57);
+}
+
+footer.nav-footer {
+  background-color: #461b44;
+}
+
+.fixedHeaderContainer {
+  background-color: black;
+}
+
+.blogContainer .postHeader p.post-meta {
+  float: left;
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+header h2 {
+  font-size: 26px;
+  margin-bottom: 3px;
+}
+
+header h2.headerTitle {
+  display: none;
+}
+
+.fixedHeaderContainer header img {
+  height: 30px;
+  margin-right: 7px;
+}
+
+.docsNavContainer {
+  height: 0;
+  background-color: #f9f9f9;
+}
+
+nav.toc .toggleNav .navBreadcrumb h2 {
+  display: none;
+}
+
+.docsSliderActive nav.toc .navBreadcrumb {
+  padding: 0;
+  height: 0;
+}
+
+nav.toc section .navGroups {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sideNavVisible .navPusher .mainContainer {
+  padding-top: 0;
+  max-width: inherit;
+}
+
+@media only screen and (min-width: 735px) {
+  .docsNavContainer {
+    order: 1;
+    width: 160px;
+    margin: 20px 0 20px 40px;
+    overflow-y: inherit;
+    height: auto;
+  }
+}
+
+nav.toc .toggleNav .navToggle {
+  background-color: rgb(32, 35, 42);
+  bottom: 44px;
+  color: rgb(97, 218, 251);
+  cursor: pointer;
+  position: fixed;
+  width: 62px;
+  height: 62px;
+  right: 20px;
+  box-shadow: rgba(0, 0, 0, 0.3) 0px 0px 20px;
+  border-radius: 50%;
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-image: initial;
+}
+
+nav.toc .toggleNav .navToggle::before,
+nav.toc .toggleNav .navToggle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  left: 28px;
+  width: 6px;
+  height: 12px;
+  border: 10px solid #b743b3;
+  border-width: 10px 0;
+  margin-top: -16px;
+  z-index: 1;
+}
+
+nav.toc .toggleNav .navToggle i::before,
+nav.toc .toggleNav .navToggle i::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  background: transparent;
+  border-width: 0 10px 10px;
+  border-style: solid;
+  border-color: transparent #b743b3;
+  height: 0;
+  margin-top: -15px;
+  opacity: 1;
+  width: 10px;
+  z-index: 10;
+}
+
+nav.toc .toggleNav .navToggle i::after {
+  border-width: 10px 10px 0;
+  margin-top: 5px;
+}
+
+.docsSliderActive nav.toc .toggleNav .navToggle::before,
+.docsSliderActive nav.toc .toggleNav .navToggle::after {
+  border-width: 12px 0;
+  height: 0px;
+  margin-top: -12px;
+}
+
+.hljs, code, a code, .mainContainer .wrapper a code, .mainContainer .wrapper a:focus code {
+  font-family: Menlo, monospace;
+  font-size: 12px;
+}
+
+html .hljs, .runnable-block {
+  margin: 5px 0;
+  padding: 5px 10px;
+  border-left: 4px solid rgba(183, 67, 179, 0.5);
+  background-color: hsla(300, 66%, 59%, 0.02);
+  line-height: 20px;
+  box-sizing: border-box;
+}
+
+.CodeMirror {
+  padding: 0 5px;
+  background-color: transparent;
+}
+
+html .hljs-keyword, html .hljs-title {
+  font-weight: normal;
+}
+html .hljs-title, html .hljs-params {
+  color: black;
+}
+html .hljs-number {
+  color: rgb(91, 47, 142);
+}
+html .hljs-keyword, html .hljs-literal {
+  color: rgb(170, 16, 148);
+}
+html .hljs-comment {
+  color: rgb(170, 136, 102);
+}
+html .hljs-type, html .hljs-string {
+  color: rgb(71, 158, 71);
+}
+
+.mainContainer .wrapper p, .blockElement p, .mainContainer .wrapper ul li, .mainContainer .wrapper ol li {
+  max-width: inherit;
+}
+
+.mainContainer .wrapper p, .blockElement p {
+  padding: 5px 0;
+}
+
+nav.toc {
+  width: auto;
+}
+
+.mainContainer {
+  font-size: inherit;
+}
+
+.mainContainer:not(.blogContainer) .wrapper .post,
+.blogContainer .posts,
+.blogContainer .lonePost {
+  padding-top: 20px;
+}
+
+nav.toc .toggleNav .navGroup.navGroupActive ul,
+nav.toc .toggleNav ul {
+  padding: 0;
+}
+
+nav.toc .toggleNav ul li a {
+  display: block;
+  transition: none;
+  margin: 0;
+  padding: 5px 0px;
+}
+
+nav.toc .toggleNav,
+nav.toc .toggleNav .navGroup,
+nav.toc .toggleNav .navGroup h3,
+nav.toc .toggleNav .navGroup.navGroupActive,
+nav.toc .toggleNav .navGroup.navGroupActive h3 {
+  background-color: transparent;
+  color: inherit;
+}
+
+nav.toc .toggleNav .navGroup h3,
+nav.toc .toggleNav .navGroup.navGroupActive h3 {
+  margin-top: 10px;
+  margin-bottom: 5px;
+  padding: 0;
+  color: #b743b3;
+}
+
+
+nav.toc .toggleNav .navToggle {
+  background-color: rgb(32, 35, 42);
+  bottom: 44px;
+  color: rgb(97, 218, 251);
+  cursor: pointer;
+  position: fixed;
+  width: 62px;
+  height: 62px;
+  right: 20px;
+  z-index: 10;
+  box-shadow: rgba(0, 0, 0, 0.3) 0px 0px 20px;
+  border-radius: 50%;
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-image: initial;
+}
+
+nav.toc:last-child {
+  padding-bottom: 0;
+}
+
+.docsSliderActive nav.toc:last-child {
+  padding-bottom: 100px;
+}
+
+.docs-prev {
+  float: none;
+}
+
+.stdlib-method {
+  margin-top: 10px;
+}
+
+.stdlib-method-contents {
+  margin-left: 20px;
+}
+
+.stdlib-method-name {
+  font-weight: bold;
+  color: inherit;
+}
+
+.stdlib-class-kind {
+  font-size: 24px;
+}
+
+.stdlib-class-tparams {
+  font-size: 24px;
+}
+
+.runnable-block {
+  position: relative;
+}
+
+.runnable-block .CodeMirror {
+  margin-bottom: 0;
+}
+
+.runnable-block .playground-button.run {
+  margin-left: 10px;
+  line-height: 14px;
+  font-size: 12px;
+  background-color: transparent;
+  border: 1px solid #b743b3;
+  color: #b743b3;
+}
+
+.playground-button.run .playground-spin {
+  border-left-color: #b743b3;
+  margin-top: 2px;
+}
+
+.runnable-block {
+  padding: 0;
+}
+
+.output, .output .log {
+  background-color: transparent;
+}
+.output .log {
+  color: rgb(71, 158, 71);
+}
+
+.output .error {
+  color: #bb0000;
+  border-left: none;
+}

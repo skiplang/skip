@@ -1,0 +1,13 @@
+File "./visibility/invalid/private_abstract_3.sk", line 2, characters 17-17:
+Private constants in base classes must be defined for that class since they are only visible for that class
+1 | base class Foo {
+2 |   private const i: Int;
+  |                 ^
+3 | }
+
+File "./visibility/invalid/private_abstract_3.sk", line 2, characters 3-9:
+Declared private here
+1 | base class Foo {
+2 |   private const i: Int;
+  |   ^^^^^^^
+3 | }

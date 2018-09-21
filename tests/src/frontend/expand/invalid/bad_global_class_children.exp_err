@@ -1,0 +1,7 @@
+File "./expand/invalid/bad_global_class_children.sk", line 3, characters 5-6:
+You can only use '.' to access the global namespace while within a module
+1 | base class Foo {
+2 |   children =
+3 |   | .A()
+  |     ^^
+4 | }

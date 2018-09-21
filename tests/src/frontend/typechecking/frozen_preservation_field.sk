@@ -1,0 +1,12 @@
+mutable base class P<+T: mutable Ref<Int>> final (v: T)
+mutable class C extends P<mutable Ref<Int>>
+
+fun no(): void {
+  c = mutable C(mutable Ref(0));
+  p: mutable P<mutable Ref<Int>> = c;
+  p.v.set(42)
+}
+
+fun main(): void {
+  print_string("Pass")
+}

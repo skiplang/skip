@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/named_recursive_constraints_wildcard.sk", line 8, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | B{x => Int _, y => B _}
+ 6 |
+ 7 | fun test(): String {
+ 8 |   B{x => 1, y => A{x => 1}} match {
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |   | B{x => Int _, y => A{x => _}} -> "Fail\n"
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

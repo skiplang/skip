@@ -1,0 +1,11 @@
+base class Root
+base class Valued<V> extends Root
+base class Keyed<K, V> extends Valued<V>, Root
+
+class Foo<-T>()
+
+fun main(): void {
+  o: Foo<Root> = Foo();
+  _ = o;
+  print_string("Pass")
+}

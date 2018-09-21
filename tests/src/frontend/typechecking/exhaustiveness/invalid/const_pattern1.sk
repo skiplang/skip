@@ -1,0 +1,11 @@
+// exhaustiveness checking should read through constant initializers
+const MyInt: Int = MyOtherInt;
+const MyOtherInt: Int = 42;
+
+fun shouldFail(x: Int): String {
+  x match {
+  | MyInt -> "Pass\n"
+  | MyOtherInt -> "Fail\n"
+  | _ -> "Fail\n"
+  }
+}

@@ -1,0 +1,5 @@
+mutable class Foo<T>(mutable v: T)
+
+fun no(x: Foo<String>): void {
+  _ = class(x)(42)
+}

@@ -1,0 +1,15 @@
+CTestCustom.ctest
+CTestTestfile.cmake
+config.h
+pcre.h
+pcre_chartables.c
+pcre_grep_test.sh
+pcre_jit_test
+pcre_scanner_unittest
+pcre_stringpiece.h
+pcre_stringpiece_unittest
+pcre_test.sh
+pcrecpp_unittest
+pcrecpparg.h
+pcregrep
+pcretest

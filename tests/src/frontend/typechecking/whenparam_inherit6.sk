@@ -1,0 +1,15 @@
+trait ArrayKeyish extends Hashable, Equality
+
+base class MyParent<-P> {
+  fun eat<P2: ArrayKeyish>[P: P2](_: Map<P2, void>): void;
+}
+
+class C<T: ArrayKeyish>() extends MyParent<T> {
+  fun eat(_: Map<T, void>): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

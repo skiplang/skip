@@ -1,0 +1,7 @@
+fun no(n: Int): ?String {
+  result = None();
+  if (n > 0) {
+    !result = Some("Pass\n")
+  };
+  result
+}

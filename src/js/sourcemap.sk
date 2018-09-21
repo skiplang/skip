@@ -1,0 +1,246 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Sourcemap;
+
+class T{
+  file: String,
+  mappings: List<Mapping>,
+  names: SSet,
+  sources: SSet,
+  sources_content: SMap<String>,
+}
+
+class Mapping{
+  generated: Line_col,
+  name: ?String,
+  original: Line_col,
+  source: String,
+}
+
+class Line_col{col: Int, line: Int} uses Equality {}
+
+class Mapping_state{
+  prev_gen_col: Int,
+  prev_gen_line: Int,
+  prev_mapping: ?Mapping,
+  prev_name: Int,
+  prev_orig_col: Int,
+  prev_orig_line: Int,
+  prev_source: Int,
+}
+fun create(file: String, sources_content: List<(String, String)>): T {
+  T{
+    file,
+    sources => SSet[],
+    names => SSet[],
+    mappings => List[],
+    sources_content => sources_content.reduce(
+      ((map, s_c) -> {
+        (source, content) = s_c;
+        map.set(source, content)
+      }),
+      SortedMap[],
+    ),
+  }
+}
+
+fun line_col_to_string(line_col: Line_col): String {
+  "(" + line_col.line + ", " + line_col.col + ")"
+}
+
+fun add_mapping(
+  name: ?String,
+  source: String,
+  original: Line_col,
+  generated: Line_col,
+  map: T,
+): T {
+  sources = map.sources.set(source);
+  names = {
+    name match {
+    | Some(name1) -> map.names.set(name1)
+    | None() -> map.names
+    }
+  };
+  mappings = List.Cons(
+    Mapping{name, source, original, generated},
+    map.mappings,
+  );
+  map with {sources, mappings, names}
+}
+
+fun add_source_content(source: String, content: String, map: T): T {
+  sources_content = map.sources_content.set(source, content);
+  map with {sources_content}
+}
+
+fun add_string_repeat(
+  times: Int,
+  vector: mutable Vector<Char>,
+  str: String,
+): void {
+  if (times == 0) {
+    void
+  } else {
+    str.each(vector.push);
+    add_string_repeat((times - 1), vector, str)
+  }
+}
+
+fun index_map(set: SSet): SMap<Int> {
+  (_, map) = set.reduce(
+    (result, element) ->
+      ((item: String, i_m: (Int, SMap<Int>)) -> {
+        (i, map) = i_m;
+        (i + 1, map.set(item, i))
+      })(element, result),
+
+    (0, SortedMap[]),
+  );
+  map
+}
+
+fun json_of_mappings(map: T): Json.Json {
+  state = Mapping_state{
+    prev_gen_col => 0,
+    prev_gen_line => 0,
+    prev_orig_col => 0,
+    prev_orig_line => 0,
+    prev_name => 0,
+    prev_source => 0,
+    prev_mapping => None(),
+  };
+  source_indexes = index_map(map.sources);
+  name_indexes = index_map(map.names);
+  vector = mutable Vector[];
+  _ = map.mappings
+    .reversed()
+    .foldl(
+      ((state1, mapping) -> {
+        state2 = {
+          line_diff = mapping.generated.line - state1.prev_gen_line;
+          (skip, state2) = {
+            if (line_diff > 0) {
+              add_string_repeat(line_diff, vector, ";");
+              (
+                false,
+                state1 with {
+                  prev_gen_col => 0,
+                  prev_gen_line => mapping.generated.line,
+                },
+              )
+            } else {
+              skip = {
+                state1.prev_mapping match {
+                | Some(prev_mapping) ->
+                  if (
+                    mapping.source == prev_mapping.source &&
+                    mapping.original == prev_mapping.original
+                  ) {
+                    true
+                  } else {
+                    ",".each(vector.push);
+                    false
+                  }
+                | None() -> false
+                }
+              };
+              (skip, state1)
+            }
+          };
+          if (skip) {
+            state2
+          } else {
+            Vlq.encode(vector, mapping.generated.col - state2.prev_gen_col);
+            source_idx = source_indexes[mapping.source];
+
+            /* lines are stored 0-based in SourceMap spec version 3 */
+            Vlq.encode(vector, source_idx - state2.prev_source);
+            Vlq.encode(
+              vector,
+              mapping.original.line - 1 - state2.prev_orig_line,
+            );
+            Vlq.encode(vector, mapping.original.col - state2.prev_orig_col);
+            prev_name = {
+              mapping.name match {
+              | Some(name) ->
+                name_idx = name_indexes[name];
+                Vlq.encode(vector, name_idx - state2.prev_name);
+                name_idx
+              | None() -> state2.prev_name
+              }
+            };
+            state2 with {
+              prev_gen_col => mapping.generated.col,
+              prev_source => source_idx,
+              prev_orig_line => (mapping.original.line - 1),
+              prev_orig_col => mapping.original.col,
+              prev_name,
+            }
+          }
+        };
+        state2 with {prev_mapping => Some(mapping)}
+      }),
+      state,
+    );
+  Json.JSON_String(String::fromChars(vector.toArray()))
+}
+
+fun json_of_sources_content(map: T): Json.Json {
+  Json.JSON_Array(
+    map.sources
+      .reduce(
+        (result, element) ->
+          ((source, acc) -> {
+            value = {
+              if (map.sources_content.containsKey(source)) {
+                Json.JSON_String(map.sources_content[source])
+              } else {
+                Json.JSON_Null()
+              }
+            };
+            List.Cons(value, acc)
+          })(element, result),
+
+        (List[] : List<Json.Json>),
+      )
+      .reversed(),
+  )
+}
+
+fun json_of_sourcemap(map: T): Json.Json {
+  /* build props in reverse, "version" *must* end up first! */
+  json_string = str -> Json.JSON_String(str);
+  rev_props = List[
+    ("mappings", json_of_mappings(map)),
+
+    (
+      "names",
+      Json.JSON_Array(
+        List::createFromIterator(map.names.values()).map(json_string),
+      ),
+    ),
+
+    (
+      "sources",
+      Json.JSON_Array(
+        List::createFromIterator(map.sources.values()).map(json_string),
+      ),
+    ),
+    ("version", Json.JSON_Number("3")),
+  ];
+  rev_props1 = List.Cons(("file", Json.JSON_String(map.file)), rev_props);
+  rev_props2 = {
+    if (map.sources_content.isEmpty()) {
+      rev_props1
+    } else {
+      List.Cons(("sourcesContent", json_of_sources_content(map)), rev_props1)
+    }
+  };
+  Json.JSON_Object(rev_props2.reversed())
+}

@@ -1,0 +1,35 @@
+File "./typechecking/invalid/frozen_preservation_invalid_factory.sk", line 10, characters 15-15:
+In 'C's version of the member 'new' inherited from 'P'
+ 8 |   }
+ 9 | }
+10 | mutable class C extends P<mutable Ref<Int>>
+   |               ^
+11 |
+
+File "./typechecking/invalid/frozen_preservation_invalid_factory.sk", line 3, characters 12-12:
+Invalid argument to the construction of a 'C'
+1 | mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+2 |   deferred static fun new(x: T): this {
+3 |     static(x)
+  |            ^
+4 |   }
+
+File "./typechecking/invalid/frozen_preservation_invalid_factory.sk", line 2, characters 30-30:
+The type: mutable Ref<Int>
+1 | mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+2 |   deferred static fun new(x: T): this {
+  |                              ^
+3 |     static(x)
+
+File "./typechecking/invalid/frozen_preservation_invalid_factory.sk", line 1, characters 54-54:
+Is not a subtype of: Ref<Int>
+1 | mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+  |                                                      ^
+2 |   deferred static fun new(x: T): this {
+
+File "./typechecking/invalid/frozen_preservation_invalid_factory.sk", line 1, characters 54-54:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Ref<Int>
+1 | mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+  |                                                      ^
+2 |   deferred static fun new(x: T): this {

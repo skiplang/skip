@@ -1,0 +1,411 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+extension class Bool {
+  const meta: BoolMetaClass = BoolMetaClass();
+}
+
+class BoolMetaClass()
+  extends MetaClass<Bool>
+  uses Serialization.Serializer<Bool> {
+  fun description(): String {
+    `Bool`
+  }
+
+  fun serialize(value: Bool, writer: mutable Serialization.Writer): void {
+    writer.writeBool(value);
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): Bool {
+    reader.readBool();
+  }
+}
+
+extension class Float {
+  const meta: FloatMetaClass = FloatMetaClass();
+}
+
+class FloatMetaClass()
+  extends MetaClass<Float>
+  uses Serialization.Serializer<Float> {
+  fun description(): String {
+    `Float`
+  }
+
+  fun serialize(value: Float, writer: mutable Serialization.Writer): void {
+    writer.writeFloat(value);
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): Float {
+    reader.readFloat();
+  }
+}
+
+extension class Int {
+  const meta: IntMetaClass = IntMetaClass();
+}
+
+class IntMetaClass() extends MetaClass<Int> uses Serialization.Serializer<Int> {
+  fun description(): String {
+    `Int`
+  }
+
+  fun serialize(value: Int, writer: mutable Serialization.Writer): void {
+    writer.writeInt(value);
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): Int {
+    reader.readInt();
+  }
+}
+
+extension class String {
+  const meta: StringMetaClass = StringMetaClass();
+}
+
+class StringMetaClass()
+  extends MetaClass<String>
+  uses Serialization.Serializer<String> {
+  fun description(): String {
+    `String`
+  }
+
+  fun serialize(value: String, writer: mutable Serialization.Writer): void {
+    writer.writeString(value);
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): String {
+    reader.readString();
+  }
+}
+
+extension base class Option {
+  static fun meta<U, C: MetaClass<U>>(itemClass: C): OptionMetaClass<U, C> {
+    OptionMetaClass(itemClass)
+  }
+}
+
+class OptionMetaClass<T, C: MetaClass<T>>(
+  itemClass: C,
+)
+  extends MetaClass<?T>
+  uses Serialization.Serializer<?T>[C: Serialization.Serializer<T>] {
+  fun description(): String {
+    `?${this.itemClass.description()}`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[C: Serialization.Serializer<T>](
+    value: ?T,
+    writer: mutable Serialization.Writer,
+  ): void {
+    writer.writeOption(value, this.itemClass);
+  }
+
+  fun deserialize[C: Serialization.Serializer<T>](
+    reader: mutable Serialization.Reader,
+  ): ?T {
+    reader.readOption(this.itemClass);
+  }
+}
+
+extension class Vector {
+  static fun meta<U, C: MetaClass<U>>(itemClass: C): VectorMetaClass<U, C> {
+    VectorMetaClass(itemClass)
+  }
+}
+
+class VectorMetaClass<T, C: MetaClass<T>>(
+  itemClass: C,
+)
+  extends MetaClass<Vector<T>>
+  uses Serialization.Serializer<Vector<T>>[C: Serialization.Serializer<T>] {
+  fun description(): String {
+    `Vector<${this.itemClass.description()}>`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[C: Serialization.Serializer<T>](
+    value: Vector<T>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    itemClass = this.itemClass;
+    sequence = writer.writeSequence(itemClass, Some(value.size()));
+    for (item in value) {
+      sequence.writeValue(item)
+    };
+    sequence.end();
+  }
+
+  fun deserialize[C: Serialization.Serializer<T>](
+    reader: mutable Serialization.Reader,
+  ): Vector<T> {
+    itemClass = this.itemClass;
+    sequence: mutable Serialization.SequenceReader<T> = reader.readSequence(
+      itemClass,
+    );
+    sizeHint = sequence.sizeHint().default(0);
+    vector = Vector::mcreate(sizeHint);
+    loop {
+      sequence.readValue() match {
+      | Some(item) -> vector.push(item)
+      | None() -> break void
+      };
+    };
+    sequence.end();
+    unsafe_chill_trust_me(vector);
+  }
+}
+
+extension class Array {
+  static fun meta<U, C: MetaClass<U>>(itemClass: C): ArrayMetaClass<U, C> {
+    ArrayMetaClass(itemClass)
+  }
+}
+
+class ArrayMetaClass<T, C: MetaClass<T>>(
+  itemClass: C,
+)
+  extends MetaClass<Array<T>>
+  uses Serialization.Serializer<Array<T>>[C: Serialization.Serializer<T>] {
+  fun description(): String {
+    `Array<${this.itemClass.description()}>`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[C: Serialization.Serializer<T>](
+    value: Array<T>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    itemClass = this.itemClass;
+    sequence = writer.writeSequence(itemClass, Some(value.size()));
+    for (item in value) {
+      sequence.writeValue(item)
+    };
+    sequence.end();
+  }
+
+  fun deserialize[C: Serialization.Serializer<T>](
+    reader: mutable Serialization.Reader,
+  ): Array<T> {
+    itemClass = this.itemClass;
+    sequence: mutable Serialization.SequenceReader<T> = reader.readSequence(
+      itemClass,
+    );
+    sizeHint = sequence.sizeHint().default(0);
+    vector = Vector::mcreate(sizeHint);
+    loop {
+      sequence.readValue() match {
+      | Some(item) -> vector.push(item)
+      | None() -> break void
+      };
+    };
+    sequence.end();
+    Array::createFromItems(vector);
+  }
+}
+
+extension class Map {
+  static fun meta<
+    Tk: Hashable & Equality,
+    Ck: MetaClass<Tk>,
+    Tv,
+    Cv: MetaClass<Tv>,
+  >(
+    keyClass: Ck,
+    valueClass: Cv,
+  ): MapMetaClass<Tk, Ck, Tv, Cv> {
+    MapMetaClass(keyClass, valueClass)
+  }
+}
+
+class MapMetaClass<
+  Tk: Hashable & Equality,
+  Ck: MetaClass<Tk>,
+  Tv,
+  Cv: MetaClass<Tv>,
+>(
+  keyClass: Ck,
+  valueClass: Cv,
+)
+  extends MetaClass<Map<Tk, Tv>>
+  uses
+    Serialization.Serializer<Map<Tk, Tv>>[
+      Ck: Serialization.Serializer<Tk>,
+      Cv: Serialization.Serializer<Tv>,
+    ],
+   {
+  fun description(): String {
+    `Map<${this.keyClass.description()}, ${this.valueClass.description()}>`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[
+    Ck: Serialization.Serializer<Tk>,
+    Cv: Serialization.Serializer<Tv>,
+  ](
+    map: Map<Tk, Tv>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    keyClass = this.keyClass;
+    valueClass = this.valueClass;
+    sequence = writer.writeKeyedSequence(
+      keyClass,
+      valueClass,
+      Some(map.size()),
+    );
+    for (key => value in map) {
+      sequence.writeItem(key, value);
+    };
+    sequence.end();
+  }
+
+  fun deserialize[
+    Ck: Serialization.Serializer<Tk>,
+    Cv: Serialization.Serializer<Tv>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Map<Tk, Tv> {
+    keyClass = this.keyClass;
+    valueClass = this.valueClass;
+    sequence: mutable Serialization.KeyedSequenceReader<
+      Tk,
+      Tv,
+    > = reader.readKeyedSequence(keyClass, valueClass);
+    sizeHint = sequence.sizeHint().default(0);
+    map = Map::mcreate(sizeHint);
+    loop {
+      sequence.readItem() match {
+      | Some((key, value)) -> map.set(key, value)
+      | None() -> break void
+      };
+    };
+    sequence.end();
+    unsafe_chill_trust_me(map);
+  }
+}
+
+extension class Set {
+  static fun meta<U: Hashable & Equality, C: MetaClass<U>>(
+    itemClass: C,
+  ): SetMetaClass<U, C> {
+    SetMetaClass(itemClass)
+  }
+}
+
+class SetMetaClass<T: Hashable & Equality, C: MetaClass<T>>(
+  itemClass: C,
+)
+  extends MetaClass<Set<T>>
+  uses Serialization.Serializer<Set<T>>[C: Serialization.Serializer<T>] {
+  fun description(): String {
+    `Set<${this.itemClass.description()}>`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize[C: Serialization.Serializer<T>](
+    value: Set<T>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    itemClass = this.itemClass;
+    sequence = writer.writeSequence(itemClass, Some(value.size()));
+    for (item in value) {
+      sequence.writeValue(item)
+    };
+    sequence.end();
+  }
+
+  fun deserialize[C: Serialization.Serializer<T>](
+    reader: mutable Serialization.Reader,
+  ): Set<T> {
+    itemClass = this.itemClass;
+    sequence: mutable Serialization.SequenceReader<T> = reader.readSequence(
+      itemClass,
+    );
+    sizeHint = sequence.sizeHint().default(0);
+    set = Set::mcreate(sizeHint);
+    loop {
+      sequence.readValue() match {
+      | Some(item) -> set.insert(item)
+      | None() -> break void
+      };
+    };
+    sequence.end();
+    unsafe_chill_trust_me(set);
+  }
+}
+
+module Serialization;
+
+// Example of deserializing an object
+mutable class TestRecord{str: String, int: Int, opt: Bool} uses Show, Equality {
+  const meta: TestRecordMetaClass = TestRecordMetaClass();
+
+  readonly fun toString(): String {
+    `TestRecord(${this.str}, ${this.int}, ${this.opt})`
+  }
+}
+
+// Example of deserializing an object
+class TestRecordMetaClass()
+  extends MetaClass<TestRecord>
+  uses Serialization.Serializer<TestRecord> {
+  fun description(): String {
+    `TestRecord`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(value: TestRecord, writer: mutable Serialization.Writer): void {
+    record = writer.writeRecord(Array["str", "int", "opt"]);
+    record.writeItem("str", value.str, String::meta);
+    record.writeItem("int", value.int, Int::meta);
+    record.writeItem("opt", value.opt, Bool::meta);
+    record.end();
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): TestRecord {
+    record = reader.readRecord(Array["str", "int", "opt"]);
+    str: ?String = None();
+    int: ?Int = None();
+    opt: ?Bool = None();
+    for (_ in Range(0, 3)) {
+      record.readKey() match {
+      | Some("str") -> !str = Some(record.readValue(String::meta))
+      | Some("int") -> !int = Some(record.readValue(Int::meta))
+      | Some("opt") -> !opt = Some(record.readValue(Bool::meta))
+      | None() -> break void
+      | Some(string) -> invariant_violation(`Unexpected field '${string}'`)
+      };
+    };
+    record.end();
+    TestRecord{
+      str => str.fromSome(),
+      int => int.fromSome(),
+      opt => opt.fromSome(),
+    };
+  }
+}
+
+module end;

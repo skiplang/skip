@@ -1,0 +1,6 @@
+File "./typechecking/invalid/superfluous_return1.sk", line 2, characters 3-13:
+The 'return' keyword is superfluous here, please remove it
+1 | fun main(): void {
+2 |   return void;
+  |   ^^^^^^^^^^^
+3 | }

@@ -1,0 +1,4 @@
+File "./syntax/invalid/lowercase_type_generic.sk", line 1, characters 16-21:
+Type specifier expected. Types start with an uppercase letter, did you mean 'String'?
+1 | fun f(): Array<string> {}
+  |                ^^^^^^

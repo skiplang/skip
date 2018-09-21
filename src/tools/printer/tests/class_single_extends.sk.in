@@ -1,0 +1,12 @@
+mutable class ClassConstructorTransformer {
+  className: String,
+  fields: mutable UnorderedSet<String>,
+} extends HackAstTransformer {
+  fun f(): void { void }
+}
+
+mutable class VariableRenamer {
+  renames: UnorderedMap<String, String>,
+} extends HackAstTransformer {
+  fun f(): void { void }
+}

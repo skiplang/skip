@@ -1,0 +1,22 @@
+fun main(): void {
+  value = X.get() + X().get() + X.Y().get();
+  print_raw(if (value == 11) "Pass\n" else "FAILED")
+}
+
+module X;
+
+class .X() {
+  fun get(): Int {
+    1
+  }
+}
+
+class Y() {
+  fun get(): Int {
+    10
+  }
+}
+
+fun get(): Int {
+  0
+}

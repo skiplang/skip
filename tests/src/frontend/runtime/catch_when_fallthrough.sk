@@ -1,0 +1,33 @@
+class E() extends Exception {
+  fun getMessage(): String {
+    ""
+  }
+}
+
+class Ex() extends Exception {
+  fun getMessage(): String {
+    ""
+  }
+}
+
+fun t(_e: Exception): Bool {
+  false
+}
+
+fun throws(): String {
+  try {
+    throw E();
+  } catch {
+  | e if (t(e)) -> throw Ex()
+  }
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      throws()
+    } catch {
+    | E() -> "Pass\n"
+    },
+  )
+}

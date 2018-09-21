@@ -1,0 +1,8 @@
+class Conflict() {}
+
+// The following alias should cause a name conflict with the class above.
+type Conflict = (Int, Int);
+
+fun main(): void {
+  print_raw("Oops should not have compiled")
+}

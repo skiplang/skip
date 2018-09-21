@@ -1,0 +1,606 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module OuterIstToIR;
+
+//
+//
+// This holds the "generic IR", IR we use initially before specialization
+// and then never again.
+//
+//
+
+// This is also subclassed by ClassKind, which is a subset (no KTrait).
+base class .GClassKind {
+  children =
+  | KTrait()
+
+  fun isFinal(): Bool
+  | KBase() -> false
+  | KClass() -> true
+  | KValue() -> true
+  | KTrait() -> false
+
+  fun isBaseClass(): Bool
+  | KBase() -> true
+  | _ -> false
+
+  fun isValueClass(): Bool
+  | KValue() -> true
+  | _ -> false
+
+  fun isKClass(): Bool
+  | KClass() -> true
+  | _ -> false
+}
+
+// A descriptor that can produce a GClass on demand. See Converter::getGClass().
+// TODO: T31411692: Delete Hashable/Equality/hash once the only thing
+// looking these up is the memoizer.
+base class .LazyGClass() uses Hashable, Equality, HasClassName {
+  children =
+  // The name of a front end class, with an associated OuterIst.Class_def.
+  | .FrontEndLazyGClass(id: String)
+  | .LiteralLazyGClass(cls: GClass)
+  | .BaseMetaLazyGClass(cls: LazyGClass)
+  | .BaseMetaImplLazyGClass(cls: LazyGClass)
+  | .ClassMetaLazyGClass(cls: LazyGClass)
+  | .ConcreteMetaLazyGClass(cls: LazyGClass)
+  | .ConcreteMetaImplLazyGClass(cls: LazyGClass)
+  | .ClosureBaseLazyGClass(numParams: Int, isMutable: Bool, isTracked: Bool)
+  | .MetaMetaLazyGClass()
+  | .ReturnTupleLazyGClass(arity: Int)
+
+  fun name(): GClassName
+  | c @ FrontEndLazyGClass _ -> GClassName(c.id)
+  | LiteralLazyGClass(cls) -> cls.name
+  | BaseMetaLazyGClass(cls) -> GClassName(cls.nameStr() + baseMetaSuffix)
+  | BaseMetaImplLazyGClass(cls) ->
+    GClassName(cls.nameStr() + baseMetaImplSuffix)
+  | ClassMetaLazyGClass(cls) -> GClassName(cls.nameStr() + classMetaSuffix)
+  | ConcreteMetaLazyGClass(cls) ->
+    GClassName(cls.nameStr() + concreteMetaSuffix)
+  | ConcreteMetaImplLazyGClass(cls) ->
+    GClassName(cls.nameStr() + concreteMetaImplSuffix)
+  | ClosureBaseLazyGClass(numParams, isMutable, isTracked) ->
+    m = if (isMutable) "_mutable" else "";
+    t = if (isTracked) "" else "_untracked";
+    GClassName(`<builtin>.Closure${numParams}${m}${t}`)
+  | MetaMetaLazyGClass() -> GClassName("<builtin>.MetaMeta")
+  | ReturnTupleLazyGClass(arity) -> GClassName("<builtin>.ReturnTuple" + arity)
+
+  fun nameStr(): String {
+    this.name().id
+  }
+
+  fun hash(): Int {
+    this.name().hash()
+  }
+
+  fun ==(other: LazyGClass): Bool {
+    // Check class names first to avoid allocating unneeded name strings.
+    this.getClassName() == other.getClassName() && this.name() == other.name()
+  }
+}
+
+// Globally unique String name for each generic function.
+value class .GFunctionName() uses TypeSafeID<String>
+
+const gtAny: GTapply = intern(
+  GTapply(
+    LiteralLazyGClass(
+      GClass{
+        name => GClassName(tAny.sclassID.id),
+        tparams => Array[],
+        variances => Array[],
+        pos => FileRange.builtin,
+        isMutable => false,
+        fieldsFinal => true,
+        kind => KValue(),
+        canInstantiate => false,
+      },
+    ),
+    DeepFrozen(),
+  ),
+);
+const gtBool: GTapply = GTapply(
+  FrontEndLazyGClass(tBool.sclassID.id),
+  DeepFrozen(),
+);
+const gtChar: GTapply = GTapply(
+  FrontEndLazyGClass(tChar.sclassID.id),
+  DeepFrozen(),
+);
+const gtConstSingleton: GTapply = intern(
+  GTapply(
+    LiteralLazyGClass(
+      GClass{
+        name => GClassName(tConstSingleton.sclassID.id),
+        tparams => Array[],
+        variances => Array[],
+        pos => FileRange.builtin,
+        isMutable => true,
+        isNative => true,
+        fieldsFinal => true,
+        kind => KClass(),
+      },
+    ),
+    Mutable(),
+  ),
+);
+
+const gtException: GTapply = GTapply(
+  FrontEndLazyGClass(tException.sclassID.id),
+  DeepFrozen(),
+);
+const gtFloat: GTapply = GTapply(
+  FrontEndLazyGClass(tFloat.sclassID.id),
+  DeepFrozen(),
+);
+const gtHhvmHandle: GTapply = GTapply(
+  FrontEndLazyGClass(tHhvmHandle.sclassID.id),
+  Mutable(),
+);
+const gtHhvmShapeHandle: GTapply = GTapply(
+  FrontEndLazyGClass(tHhvmShapeHandle.sclassID.id),
+  Mutable(),
+);
+const gtInspect: GTapply = GTapply(FrontEndLazyGClass("Inspect"), DeepFrozen());
+const gtInt: GTapply = GTapply(FrontEndLazyGClass("Int"), DeepFrozen());
+const gtGCPointer: GTapply = GTapply(
+  FrontEndLazyGClass("Runtime.GCPointer"),
+  DeepFrozen(),
+);
+const gtMutableGCPointer: GTapply = GTapply(
+  FrontEndLazyGClass(tGCPointer.sclassID.id),
+  Mutable(),
+);
+const gtNonGCPointer: GTapply = GTapply(
+  FrontEndLazyGClass(tNonGCPointer.sclassID.id),
+  DeepFrozen(),
+);
+const gtString: GTapply = GTapply(
+  FrontEndLazyGClass(tString.sclassID.id),
+  DeepFrozen(),
+);
+const gtVoid: GTapply = GTapply(
+  FrontEndLazyGClass(tVoid.sclassID.id),
+  DeepFrozen(),
+);
+
+mutable base class GHasID<T: HasIDValue<Int>>{
+  id: T,
+} extends HasFileRange uses HasIDValue<Int> {
+  readonly fun idValue(): Int {
+    this.id.idValue()
+  }
+}
+
+value class GInstrID() uses TypeSafeID<Int> {
+  const none: GInstrID = GInstrID(-1);
+}
+
+value class GBlockID() uses TypeSafeID<Int> {
+  const none: GBlockID = GBlockID(-1);
+}
+
+mutable base class HasFileRange{pos: FileRange} {
+  readonly fun die(msg: String): _ {
+    this.pos.die(msg)
+  }
+}
+
+mutable class GFunInfo{
+  funType: GFunType,
+  // The containing class, if a front end class. For static methods this will
+  // be the original class, not the metaclass that actually hosts them.
+  className: ?GClassName,
+  tparams: Array<GTparam>,
+  isAsync: Bool = false,
+  isGenerator: Bool = false,
+} extends FunInfoCommon, HasFileRange
+
+// Globally unique name for each generic function.
+value class .GClassName() uses TypeSafeID<String> {
+  protected fun name(): String {
+    "generic_class"
+  }
+}
+
+// A generic class.
+class GClass{
+  // A globally unique String name for this class.
+  name: GClassName,
+  tparams: Array<GTparam>,
+  variances: Array<OuterIst.Variance>,
+  isMutable: Bool,
+  isNative: Bool = false,
+  isLambda: Bool = false,
+  isMemoizeThunk: Bool = false,
+  // Did this class come from the front end, as opposed to being synthetically
+  // generated in the back end?
+  isFrontEndClass: Bool = false,
+  hasMeta: Bool = false,
+  isReturnTuple: Bool = false,
+  constructorParametersNamed: Bool = false,
+  // If true, no new fields can be added by subclasses (but this does not
+  // prevent there being subclasses at all).
+  fieldsFinal: Bool,
+  kind: GClassKind,
+  extends_: Array<GTapply> = Array[],
+  methods: UnorderedMap<String, GMethodDef> = GClass::emptyMethods,
+  methodSources: UnorderedMap<String, LazyGClass> = UnorderedMap[],
+  annotations: SSet = SSet[],
+  fields: Array<GField> = Array[],
+  // For imported classes we swap out the fields as specified by the user with a
+  // fake proxyPointer field.  origFields gives the original fields as if we
+  // hadn't done that.
+  origFields: Array<GField> = Array[],
+  canInstantiate: Bool = true,
+  scalarType: ?ScalarType = None(),
+} extends HasFileRange {
+  fun maybeGetField(name: String): ?GField {
+    this.fields.find(field -> field.name == name)
+  }
+
+  fun getField(name: String, pos: FileRange): GField {
+    this.maybeGetField(name) match {
+    | Some(field) -> field
+    | None() ->
+      pos.die(`Could not find field '${name}' in class ${this.name.id}`)
+    }
+  }
+
+  const emptyMethods: UnorderedMap<String, GMethodDef> = UnorderedMap[];
+}
+
+private const emptyTparamInherit: UnorderedMap<
+  FrontEndLazyGClass,
+  Array<GType>,
+> = UnorderedMap[];
+
+class GMethodDef{
+  // The actual implementation. It has the name "ThisClass::thisMethod" and
+  // takes as tparams the tparams for the containing class followed by the
+  // tparams for this method.
+
+  // FIXME: Should this take LazyGClass? That way the reciever isn't forced
+  // to create a LiteralLazyGClass to make a GTapply.
+  function: ?(LazyGClass ~> LazyGFun),
+  tparams: Array<GTparam>,
+  tparamInherit: UnorderedMap<
+    FrontEndLazyGClass,
+    Array<GType>,
+  > = emptyTparamInherit,
+} extends HasFileRange
+
+class GField{
+  name: String,
+  typ: GType,
+  // Can this field be assigned a new value if the containing instance
+  // is not frozen?
+  isAssignable: Bool,
+  index: Int,
+} extends HasFileRange
+
+mutable class GBlock{
+  instrs: mutable Vector<GStmt> = mutable Vector[],
+  prettyName: String = "",
+} extends GHasID<GBlockID>, HasFileRange
+
+// See CoroutineInfo.
+class GUnfinishedNext(rampUp: GFunInfo)
+
+class GFunction{
+  funInfo: GFunInfo,
+  params: Array<GFunParam>,
+  blocks: Array<GBlock>,
+  coroutineInfo: ?GUnfinishedNext = None(),
+} uses Show, Hashable, Equality {
+  fun toString(): String {
+    "<GFunction " + this.funInfo.gfunction.id + ">"
+  }
+
+  fun ==(other: GFunction): Bool {
+    this.funInfo.gfunction == other.funInfo.gfunction
+  }
+
+  fun hash(): Int {
+    this.funInfo.gfunction.hash()
+  }
+
+  fun hasImplementation(): Bool {
+    !this.blocks.isEmpty()
+  }
+}
+
+base class GType uses Show, Equality, Hashable {
+  // Return a new type with the given type parameters bound to new values.
+  fun applyTparams(tparamEnv: UnorderedMap<GTparam, GType>): GType;
+
+  fun toString(): String {
+    this.toGroupedString(false)
+  }
+
+  // Produce a string, but if parens is true, group it with parens if
+  // needed to make it parse unambiguously.
+  fun toGroupedString(parens: Bool): String;
+
+  fun frozenType(): GType;
+
+  fun asGTapply(pos: Pos): GTapply
+  | GTapply _ -> this
+  | _ -> pos.die(`Expected GTapply, but got ${this.toGroupedString(true)}`)
+
+  // Does this type depend directly or indirectly on any GTparams?
+  fun isParametric(): Bool
+  | GTparam _ -> true
+  | GTapply(_, _, targs) -> targs.any(t -> t.isParametric())
+}
+
+// Applies type parameters to a generic type.
+class GTapply(
+  generic: LazyGClass,
+  mutability: Mutability,
+  targs: Array<GType> = Array[],
+) extends GType {
+  fun ==(other: GType): Bool {
+    other match {
+    | GTapply(generic, mutability, targs) ->
+      (this.generic == generic &&
+        this.mutability == mutability &&
+        this.targs == targs)
+    | _ -> false
+    }
+  }
+
+  fun applyTparams(tparamEnv: UnorderedMap<GTparam, GType>): GTapply {
+    if (this.targs.isEmpty() || tparamEnv.isEmpty()) {
+      this
+    } else {
+      newTargs = this.targs.map(t -> t.applyTparams(tparamEnv));
+      if (this.targs == newTargs) {
+        this
+      } else {
+        this with {targs => newTargs}
+      }
+    }
+  }
+
+  fun toGroupedString(parens: Bool): String {
+    name = if (this.targs.isEmpty()) {
+      this.generic.nameStr()
+    } else {
+      this.generic.nameStr() + "<" + this.targs.join(", ") + ">"
+    };
+
+    this.mutability match {
+    | DeepFrozen() -> name
+    | Mutable()
+    | Readonly() ->
+      n = `${this.mutability} ${name}`;
+      if (parens) {
+        "(" + n + ")"
+      } else {
+        n
+      }
+    }
+  }
+
+  fun frozenType(): GTapply {
+    if (
+      this.mutability == DeepFrozen() &&
+      this.targs.all(t -> t == t.frozenType())
+    ) {
+      this
+    } else {
+      GTapply(this.generic, DeepFrozen(), this.targs.map(t -> t.frozenType()))
+    }
+  }
+}
+
+class GTparam(
+  // The unique key to use in tables, etc. It's not technically globally
+  // unique, but it's used in a way that's always unambiguous.
+  id: String,
+
+  // The tparam name from the original source code, with no semantic meaning
+  // as it can appear in ambiguous contexts.
+  name: String,
+) extends GType {
+  fun toGroupedString(_parens: Bool): String {
+    this.name
+  }
+
+  fun hash(): Int {
+    this.id.hash()
+  }
+
+  fun ==(other: GType): Bool {
+    other match {
+    | GTparam(id, _) -> this.id == id
+    | _ -> false
+    }
+  }
+
+  fun applyTparams(tparamEnv: UnorderedMap<GTparam, GType>): GType {
+    tparamEnv.maybeGet(this).default(this)
+  }
+
+  fun frozenType(): GTparam {
+    invariant_violation(`Cannot ask ${this} for a frozen type`)
+  }
+}
+
+// NOTE: this corresponds to a raw code pointer, not a front end function
+// pointer, so there are no Instrs of this type (it is not a GType at all).
+//
+// Frond end Tfun corresponds to Tapply instances of a machine-generated
+// "Closure" class.
+class GFunType{
+  isMutable: Bool,
+  isTracked: Bool,
+  // Parameter types, required args followed by flags/count indicating which
+  // optional args are supplied followed by optional args.
+  params: Array<GType>,
+  // Return type. TODO: Should this become an array, so after we expand
+  // value classes they become separate values?
+  returnType: GType,
+} {
+  fun applyTparams(tparamEnv: UnorderedMap<GTparam, GType>): GFunType {
+    this with {
+      params => this.params.map(t -> t.applyTparams(tparamEnv)),
+      returnType => this.returnType.applyTparams(tparamEnv),
+    }
+  }
+}
+
+base class GInstr uses Show {
+  // NOTE: GTypedStmt must be first to resolve GInvokeBase ambiguity.
+  fun getType(): GType
+  | GTypedStmt{typ} -> typ
+  | GLandingPad _ -> gtException
+  | GVoidStmt _ -> gtVoid
+  | GConstantBool _ -> gtBool
+  | GConstantChar _ -> gtChar
+  | GConstantDefaultArg{typ} -> typ
+  | GConstantFloat _ -> gtFloat
+  | GConstantInt _ -> gtInt
+  | GConstantPointer _ -> gtNonGCPointer
+  | GConstantString _ -> gtString
+  | GConstantVoid _ -> gtVoid
+  | GConstantZero{typ} -> typ
+  | GFunParam{typ} -> typ
+
+  fun toString(): String;
+
+  fun getSuccessors(): ?Array<GBlockID> {
+    this match {
+    | GTerminator{successors} -> Some(successors)
+    | _ -> None()
+    }
+  }
+
+  macro fun opname(): String {
+    #thisClassName
+  }
+}
+
+base class GConstant extends GInstr {
+  children =
+  | GConstantBool{value: Bool}
+  | GConstantChar{value: Char}
+  | GConstantDefaultArg{typ: GType}
+  | GConstantFloat{value: Float}
+  | GConstantInt{value: Int}
+  | GConstantPointer{value: Int}
+  | GConstantString{value: UTF8String}
+  | GConstantVoid{}
+  | GConstantZero{typ: GType}
+
+  fun toString(): String {
+    this.opname()
+  }
+}
+
+base class GNonConstantInstr{
+  id: GInstrID = GInstrID::none,
+  prettyName: String = "",
+} extends GInstr, HasFileRange {
+  fun toString(): String {
+    "<" + this.opname() + " " + this.id + ">"
+  }
+}
+
+// Function parameter.
+class GFunParam{typ: GType} extends GNonConstantInstr
+
+// These are Instrs that can appear inside Blocks.
+base class GStmt extends GNonConstantInstr
+
+base class GVoidStmt extends GStmt {
+  children =
+  | GSetField{obj: GInstr, field: String, value: GInstr}
+  | GSuspend{awaitable: GInstr}
+  | GYield{value: GInstr, none: GInstr}
+}
+
+base class GTypedStmt{typ: GType} extends GStmt {
+  children =
+  | GCast{value: GInstr}
+  | GEArray{args: Array<GInstr>}
+  | GFreeze{obj: GInstr}
+  | GGetConst{name: ConstID}
+  | GGetCurrentAwaitable{}
+  | GGetField{obj: GInstr, field: String}
+  // TODO: Delete forceCanInstantiate once T25379806 is fixed.
+  | GObject{args: Array<GInstr>, forceCanInstantiate: Bool = false}
+  | GWith{obj: GInstr, fieldAssignments: Array<(String, GInstr)>}
+  | GZeroExtend{value: GInstr}
+}
+
+// A GCustomInstr is given a lambda to emit the body for one-off custom
+// instructions.
+class GCustomInstr{
+  emit: (ginstr: GCustomInstr, mutable FunSpecializer) ~> void,
+  request: ?(
+    mutable Specializer,
+    targs: Array<Tclass>,
+    tparamEnv: UnorderedMap<GTparam, Tclass>,
+  ) ~> void,
+  args: Array<GInstr> = Array[],
+} extends GTypedStmt {}
+
+// Stmts that are appear only as the last Stmt in a Block. They cannot
+// appear anywhere else, and a Block must always end with one of these.
+base class GTerminator{
+  successors: Array<GBlockID> = Array[],
+} extends GVoidStmt {
+  children =
+  | GAsyncReturn{}
+  | GIntSwitch{value: GInstr, cases: Array<Int>}
+  | GStringSwitch{value: GInstr, cases: Array<GConstantString>}
+  | GIf{predicate: GInstr}
+  | GJump{}
+  | GLandingPad{}
+  | GReturn{value: GInstr}
+  | GThrow{exception: GInstr}
+  | GTypeSwitch{value: GInstr, cases: Array<GClassName>}
+  | GUnreachable{why: String}
+  | GYieldBreak{none: GInstr}
+}
+
+// Common base class for function/method call/invoke.
+base class GCallBase{
+  args: Array<GInstr>,
+  targs: Array<GType> = Array[],
+} extends GTypedStmt
+
+base class GCallFunctionBase{name: LazyGFun} extends GCallBase
+
+base class GCallMethodBase{
+  method: String,
+  source: LazyGClass,
+} extends GCallBase
+
+class GCallFunction extends GCallFunctionBase
+class GCallMethod extends GCallMethodBase
+
+class GCallHhvmFunction{hhvmName: String, object: ?GInstr} extends GCallBase
+
+class GCallHhvmWrappedFunction{
+  targetParamTypes: Array<GType>,
+  targetReturnType: GType,
+} extends GCallFunctionBase
+
+// A "call" inside a "try". Ends a block, which has two successors:
+// where to go if no exception thrown, and where to go if exception thrown.
+base class GInvokeBase extends GTerminator, GCallBase
+class GInvokeFunction extends GInvokeBase, GCallFunctionBase
+class GInvokeMethod extends GInvokeBase, GCallMethodBase
+
+module end;

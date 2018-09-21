@@ -1,0 +1,8 @@
+mutable base class Foo(mutable v: Int) {
+  type T;
+  deferred async fun t1(this::T): this::T;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

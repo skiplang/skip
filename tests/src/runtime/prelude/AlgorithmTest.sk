@@ -1,0 +1,6 @@
+@test
+fun testMin(): void {
+  assertEqual(min(0, 1), 0);
+  assertEqual(min(0.0, 1.0), 0.0);
+  void
+}

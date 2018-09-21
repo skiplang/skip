@@ -1,0 +1,13 @@
+module M;
+
+type T = String;
+
+module end;
+
+fun f(): M.T {
+  "Pass\n"
+}
+
+fun main(): void {
+  print_raw(f())
+}

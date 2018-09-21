@@ -1,0 +1,3 @@
+memoized fun foo(): mutable Ref<Int> {
+  mutable Ref(0)
+}

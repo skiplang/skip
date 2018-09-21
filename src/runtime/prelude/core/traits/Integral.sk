@@ -1,0 +1,125 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+trait Integral extends Orderable, Show, Hashable {
+  readonly fun toInt(): Int;
+  static fun truncate(n: Int): inst;
+  overridable static macro fun create(n: Int): inst {
+    x = static::truncate(n);
+    if (n != x.toInt()) {
+      static::throwOutOfRange(n)
+    };
+    x
+  }
+  protected static macro fun throwOutOfRange(n: Int): _ {
+    throw InvalidIntegralCastError(n, #thisClassName)
+  }
+  overridable readonly fun ==<I: Integral>(other: I): Bool {
+    this.toInt() == other
+  }
+  overridable readonly fun !=<I: Integral>(other: I): Bool {
+    this.toInt() != other
+  }
+  overridable readonly fun +<I: Integral>(other: I): Int {
+    this.toInt() + other
+  }
+  overridable readonly fun -<I: Integral>(other: I): Int {
+    this.toInt() - other
+  }
+  overridable readonly fun *<I: Integral>(other: I): Int {
+    this.toInt() * other
+  }
+  overridable readonly fun /<I: Integral>(other: I): Int {
+    this.toInt() / other
+  }
+  overridable readonly fun %<I: Integral>(other: I): Int {
+    this.toInt() % other
+  }
+  overridable readonly fun <<I: Integral>(other: I): Bool {
+    this.toInt() < other
+  }
+  overridable readonly fun <=<I: Integral>(other: I): Bool {
+    this.toInt() <= other
+  }
+  overridable readonly fun ><I: Integral>(other: I): Bool {
+    this.toInt() > other
+  }
+  overridable readonly fun >=<I: Integral>(other: I): Bool {
+    this.toInt() >= other
+  }
+  overridable readonly fun ult<I: Integral>(other: I): Bool {
+    this.toInt().ult(other)
+  }
+  overridable readonly fun ugt<I: Integral>(other: I): Bool {
+    this.toInt().ugt(other)
+  }
+  overridable readonly fun ule<I: Integral>(other: I): Bool {
+    this.toInt().ule(other)
+  }
+  overridable readonly fun uge<I: Integral>(other: I): Bool {
+    this.toInt().uge(other)
+  }
+  overridable readonly fun and<I: Integral>(other: I): Int {
+    this.toInt().and(other)
+  }
+  overridable readonly fun or<I: Integral>(other: I): Int {
+    this.toInt().or(other)
+  }
+  overridable readonly fun xor<I: Integral>(other: I): Int {
+    this.toInt().xor(other)
+  }
+  overridable readonly fun shl<I: Integral>(other: I): Int {
+    this.toInt().shl(other)
+  }
+  overridable readonly fun shr<I: Integral>(other: I): Int {
+    this.toInt().shr(other)
+  }
+  overridable readonly fun ushr<I: Integral>(other: I): Int {
+    this.toInt().ushr(other)
+  }
+  overridable readonly fun not(): Int {
+    this.toInt().not()
+  }
+  overridable readonly fun negate(): Int {
+    this.toInt().negate()
+  }
+  overridable readonly fun clz(): Int {
+    this.toInt().clz()
+  }
+  overridable readonly fun ctz(): Int {
+    this.toInt().ctz()
+  }
+  overridable readonly fun popcount(): Int {
+    this.toInt().popcount()
+  }
+  overridable readonly fun toString(): String {
+    this.toInt().toString()
+  }
+  overridable readonly fun toFloat(): Float {
+    this.toInt().toFloat()
+  }
+  overridable readonly fun compare<I: Integral>(other: I): Order {
+    this.toInt().compare(other)
+  }
+  overridable readonly fun chr(): Char {
+    this.toInt().chr()
+  }
+  overridable readonly fun hash(): Int {
+    this.toInt().hash()
+  }
+  overridable readonly fun inspect(): Inspect {
+    this.toInt().inspect()
+  }
+  const min: inst;
+  const max: inst;
+}
+
+class InvalidIntegralCastError(val: Int, className: String) extends Exception {
+  fun getMessage(): String {
+    `InvalidIntegralCastError: Tried to cast ${this.val} to ${this.className}`
+  }
+}

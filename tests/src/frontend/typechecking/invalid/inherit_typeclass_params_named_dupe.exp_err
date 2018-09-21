@@ -1,0 +1,13 @@
+File "./typechecking/invalid/inherit_typeclass_params_named_dupe.sk", line 4, characters 11-11:
+Field name already bound: s
+2 | trait Foo{s: String}
+3 |
+4 | class Bar{s: String} uses Foo
+  |           ^
+
+File "./typechecking/invalid/inherit_typeclass_params_named_dupe.sk", line 2, characters 11-11:
+Conflicts with field declared in Foo
+1 | // named constructor TC inheritance, field already bound
+2 | trait Foo{s: String}
+  |           ^
+3 |

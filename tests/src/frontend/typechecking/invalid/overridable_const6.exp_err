@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable_const6.sk", line 6, characters 9-9:
+Cannot redeclare Child::x as abstract
+4 |
+5 | class Child() extends MyBase {
+6 |   const x: Int;
+  |         ^
+7 | }
+
+File "./typechecking/invalid/overridable_const6.sk", line 2, characters 16-19:
+MyBase::x was given a definition here
+1 | base class MyBase {
+2 |   const x: Int = 12;
+  |                ^^^^
+3 | }

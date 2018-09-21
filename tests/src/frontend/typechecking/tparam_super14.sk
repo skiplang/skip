@@ -1,0 +1,21 @@
+trait MyTC {
+  fun foo(inst, inst): inst;
+}
+
+class Cont<T>(x: T) {
+  fun get(): T {
+    this.x
+  }
+  fun set(x: T): this {
+    !this.x = x;
+    this
+  }
+
+  fun fooit<V1: MyTC, V2: MyTC>[T: V1 & V2](x: V1, y: V2): (V1, V2) {
+    (this.get().foo(x, y), this.get().foo(x, y))
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,9 @@
+fun test<T: (Int, Int), B: (T, Int)>(x: B): void {
+  x match {
+  | ((_, _), _) -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

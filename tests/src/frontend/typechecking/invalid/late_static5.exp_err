@@ -1,0 +1,15 @@
+File "./typechecking/invalid/late_static5.sk", line 3, characters 5-19:
+Possible base class instantiation
+1 | base class Foo final {x: Int} {
+2 |   static fun construct(): this {
+3 |     static{x => 42}
+  |     ^^^^^^^^^^^^^^^
+4 |   }
+
+File "./typechecking/invalid/late_static5.sk", line 3, characters 5-10:
+To create an instance from this Class<_> object: it must be 'static' in an instance method. Or a Concrete<_> object in a deferred context
+1 | base class Foo final {x: Int} {
+2 |   static fun construct(): this {
+3 |     static{x => 42}
+  |     ^^^^^^
+4 |   }

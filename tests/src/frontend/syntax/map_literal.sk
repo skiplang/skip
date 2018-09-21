@@ -1,0 +1,4 @@
+fun main(): void {
+  v = Map["key" => "Hello world!\n"];
+  print_raw(v["key"])
+}

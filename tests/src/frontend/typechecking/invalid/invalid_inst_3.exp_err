@@ -1,0 +1,4 @@
+File "./typechecking/invalid/invalid_inst_3.sk", line 1, characters 10-13:
+The type 'inst' can only be used from within a trait
+1 | const x: inst = 5;
+  |          ^^^^

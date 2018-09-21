@@ -1,0 +1,7 @@
+fun apply(f: () ~> void): void {
+  f()
+}
+
+fun no(): void {
+  apply(() -> void)
+}

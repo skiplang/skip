@@ -1,0 +1,7 @@
+const c: String = i + j;
+const i: String = "Pa";
+const j: String = "ss\n";
+
+fun main(): void {
+  print_raw(c)
+}

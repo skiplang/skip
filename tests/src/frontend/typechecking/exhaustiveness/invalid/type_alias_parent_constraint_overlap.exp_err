@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/type_alias_parent_constraint_overlap.sk", line 13, characters 7-14:
+The following pattern is unused:
+ | I(Int _)
+11 |     x match {
+12 |     | this::Foo _ -> void
+13 |     | I(Int _) -> void
+   |       ^^^^^^^^
+14 |     }

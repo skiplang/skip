@@ -1,0 +1,96 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Skip CodeMod
+//
+// Define your transformer by creating a class derived from ParseTree.CodeMod.
+// Implement its transformTree() method, and call it from transformSource().
+//
+// To run your codemod:
+//   cd build && ninja skip_codemod
+//   build/bin/skip_codemod <source-file>
+//
+// Once you've run your code mod, archive it in CodeModTransform.sk
+
+module alias P = ParseTree;
+
+type ParseTree = P.ParseTree;
+
+module ParseTree;
+
+// Generated API:
+// type Subst = (TextRange, ParseTree);
+
+// Parse the file and report errors
+fun parseAndLines(
+  source: String,
+  filename: String = "",
+): (Vector<String>, P.SourceUnitTree) {
+  parseResults = SkipParser.parseSource(source, false);
+  parseResults.throwOnError(filename);
+  tree = parseResults.tree as P.SourceUnitTree _;
+  lines = source.split(Chars.lineFeed.toString());
+  (lines, tree);
+}
+
+// This class extends a generated class in parseTreeGenerated.sk.
+extension base class CodeMod {
+  // Generated API:
+  // fun transformTree(tree: ParseTree): ?ParseTree;
+  // overridable fun transform(tree: ParseTree): (ParseTree, Vector<Subst>) {
+  // overridable fun transformChildren(tree: ParseTree): (ParseTree, Vector<Subst>) {
+
+  // Transforms a block of Skip source code.
+  // source must be a parsable Skip source-unit.
+  mutable fun transformText(source: String): String {
+    (lines, tree) = parseAndLines(source);
+    this.transformAst(tree, lines);
+  }
+
+  mutable fun transformAst(ast: P.ParseTree, lines: Vector<String>): String {
+    // Run the tree transform
+    substitutions = this.transform(ast).i1;
+
+    // Interleave sections of the original file with the transformed trees.
+    position = Position.start;
+    result = mutable Vector[];
+    addText = text -> result.push(text);
+    addOriginalText = endPosition -> {
+      invariant(
+        endPosition >= position,
+        "substitions are not sorted, or overlap",
+      );
+      addText(
+        TextRange.contentFromLines(
+          TextRange.create(position, endPosition),
+          lines,
+        ),
+      );
+    };
+    ctx = SkipPrinter.Context{contents => "UNUSED"};
+    for (substitution in substitutions) {
+      range = substitution.i0;
+      tree = substitution.i1;
+      addOriginalText(range.start);
+
+      // Get the indentation for the following lines by taking the number of
+      // spaces at the beginning of the start line.
+      line = range.start.line();
+      indent = lines[line].length() - lines[line].trimLeft().length();
+
+      addText(
+        Doc.printDocToString(Doc.Align(indent, SkipPrinter.print(ctx, tree))),
+      );
+      !position = range.end;
+    };
+    addOriginalText(TextRange.createEndOfLines(lines));
+
+    result.join("");
+  }
+}
+
+module end;

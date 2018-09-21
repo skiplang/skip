@@ -1,0 +1,5 @@
+fun no(): void {
+  m: readonly ?Int = Some(42);
+  _: ?Int = if (true) m else None();
+  void
+}

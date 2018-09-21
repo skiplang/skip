@@ -1,0 +1,16 @@
+trait Z
+trait Y extends Z
+
+base class MyBase<+T> {
+  fun compare<U: Y>[T: U](U): void;
+}
+
+class Child<+T>() extends MyBase<T> {
+  fun compare<U: Y>[T: U](U): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

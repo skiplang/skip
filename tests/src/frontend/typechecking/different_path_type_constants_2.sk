@@ -1,0 +1,23 @@
+base class X
+
+base class TCClass<T> {
+  type C1: X;
+  deferred fun get(): T;
+}
+
+base class TCClass2 extends TCClass<this::C1>
+
+base class P1<T1, T2: TCClass<T1>> {
+  type Tbody: TCClass2;
+  deferred fun foo(): T1 {
+    this.bar().get()
+  }
+
+  deferred fun bar(): T2;
+}
+
+base class P2 extends P1<this::Tbody::C1, this::Tbody>
+
+fun main(): void {
+  print_string("Pass")
+}

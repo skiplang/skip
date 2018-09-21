@@ -1,0 +1,14 @@
+base class B {
+  const s: String;
+  deferred static fun m(): () ~> String {
+    () ~> static::s
+  }
+}
+
+class C() extends B {
+  const s: String = "Pass\n";
+}
+
+fun main(): void {
+  print_raw(C::m()())
+}

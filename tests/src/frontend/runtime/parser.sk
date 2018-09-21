@@ -1,0 +1,49 @@
+base class ParserResult<In: Show, Out> {
+  children =
+  | Failed(In, String)
+  | Done(In, Out)
+
+  fun map<NewOut>(transform: Out -> NewOut): ParserResult<In, NewOut>
+  | Failed(unconsumed, msg) -> Failed(unconsumed, msg)
+  | Done(unconsumed, result) -> Done(unconsumed, transform(result))
+}
+
+class Parser<In: Show, Out: frozen>(fn: In ~> ParserResult<In, Out>) {
+  fun parse(input: In): ParserResult<In, Out> {
+    this.fn(input)
+  }
+
+  fun map<NewOut: frozen>(transform: Out ~> NewOut): Parser<In, NewOut> {
+    Parser(input ~> this.parse(input).map(transform))
+  }
+
+  fun and<Other: frozen>(other: Parser<In, Other>): Parser<In, (Out, Other)> {
+    Parser(input ~> {
+      this.parse(input) match {
+      | Done(intermediate, first_res) ->
+        other.parse(intermediate).map(second_res -> (first_res, second_res))
+      | Failed(_, msg) -> Failed(input, msg)
+      }
+    })
+  }
+
+  fun then<NewOut: frozen>(next: Parser<In, NewOut>): Parser<In, NewOut> {
+    this.and(next).map(tup ~> tup.i1)
+  }
+
+  fun sepBy(separator: Parser<In, Out>): Parser<In, Out> {
+    separator.then(this)
+  }
+}
+
+fun takeWhile(): Parser<String, String> {
+  Parser(input ~> Done(input, ""))
+}
+
+fun decimal(): Parser<String, Int> {
+  takeWhile().map(s ~> s.toInt())
+}
+
+fun main(): void {
+  print_string("Pass")
+}

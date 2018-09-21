@@ -1,0 +1,1250 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Lower;
+
+// WebAssembly does not currently support computed gotos, so we use
+// a IntSwitch instead.
+private const kCanUseComputedGoto: Bool = kConfig.optConfig.goto &&
+  !targetIsWasm();
+
+private const kArrayMetadataByteSize: Int = 4 + 4 + vtableByteSize;
+
+// Finds the bit index of the first gap between 'layout' entries.
+//
+// We search for these so we can ensure that all bits in an object's
+// allocated storage are zeroed out. This is necessary because interning
+// compares raw bits, without knowing which are garbage padding.
+// TODO: If we somehow knew this object was not destined for interning,
+// we could leave some bits uninitialized.
+private fun findNextGap(
+  startBitOffset: Int,
+  layout: Array<LayoutSlot>,
+  index: Int,
+): Int {
+  if (index >= layout.size()) {
+    startBitOffset
+  } else {
+    l = layout[index];
+    if (startBitOffset < l.bitOffset) {
+      startBitOffset
+    } else {
+      findNextGap(
+        max(startBitOffset, l.bitOffset + l.typ.bitSize),
+        layout,
+        index + 1,
+      )
+    }
+  }
+}
+
+// Is the given instruction definitely known to be all zero bits?
+private fun isZeroBits(instr: Instr): Bool {
+  instr.constantInteger() match {
+  | Some(x) -> x == 0
+  | None() ->
+    instr match {
+    | ConstantFloat{value} -> value.toBits() == 0
+    | ConstantPointer{value} -> value == 0
+    | _ -> false
+    }
+  }
+}
+
+// Return an integer type big enough to hold numValues distinct values.
+fun bigEnoughIntType(numValues: Int): Tclass {
+  if (numValues <= 1.shl(8)) {
+    tInt8
+  } else if (numValues <= 1.shl(16)) {
+    tInt16
+  } else if (numValues <= 1.shl(32)) {
+    tInt32
+  } else {
+    tInt
+  }
+}
+
+mutable private class .Lower{
+  // VTable entries requested by various instructions.
+  vtableRequests: mutable UnorderedSet<VTable.VTableRequest>,
+
+  // Classes which will need a vtable to be emitted. These must
+  // be concrete. Entries in VTableRequests are treated as if they were in
+  // here too, so no need to add them.
+  classesNeedingVTables: mutable UnorderedSet<SClassID>,
+
+  // Calls deleted as unreachable.
+  unreachableCalls: mutable UnorderedSet<InstrID> = mutable UnorderedSet[],
+} extends Rewrite {
+  // Lower certain higher-level ops. No inlining allowed after this.
+  static fun run(
+    f: Function,
+    vtableRequests: mutable UnorderedSet<VTable.VTableRequest>,
+    classesNeedingVTables: mutable UnorderedSet<SClassID>,
+    env: GlobalEnv,
+  ): (Function, PassResult) {
+    d = mutable static{
+      optinfo => OptimizerInfo::make(f),
+      env,
+      vtableRequests,
+      classesNeedingVTables,
+      pos => f.pos,
+    };
+    d.go("lower", true)
+  }
+
+  private mutable fun lowerNopFreeze(frz: Freeze): void {
+    optinfo = this.optinfo;
+    pos = frz.pos;
+
+    pos.invariant(frz.nop, "Only handles no-op freezes.");
+
+    value = optinfo.getInstr(frz.value);
+
+    if (!value.typ.isDeepFrozen()) {
+      vtablePointer = this.emitLoadVTable(frz.value, pos, tIntPtr);
+
+      vtable = this.emitZeroExtend{typ => tInt, pos, value => vtablePointer.id};
+
+      doneSetFlagBlock = BlockID::none;
+
+      if (value.typ.mightBeInConstMemory(this.env)) {
+        // If the value we are no-op freezing is readonly, it might actually
+        // be already frozen and stored in read-only memory, in which case
+        // setting the kFrozenMask flag again would SEGV. So we check to
+        // see if the flag is already set before setting it.
+        //
+        // OTOH if the value is known to be mutable, we skip the check overhead.
+
+        flag = this.emitIntAnd{
+          rhs => this.constantInt(VTable.kFrozenMask).id,
+          pos,
+          lhs => vtable.id,
+        };
+
+        predicate = this.emitIntCmpNe{
+          rhs => this.constantInt(0).id,
+          pos,
+          lhs => flag.id,
+        };
+
+        setFlagBlock = optinfo.idToBlock.allocID();
+        !doneSetFlagBlock = optinfo.idToBlock.allocID();
+
+        _ = this.emitIf{
+          ifTrue => BlockSuccessor(doneSetFlagBlock),
+          ifFalse => BlockSuccessor(setFlagBlock),
+          predicate => predicate.id,
+          pos,
+        };
+
+        this.startNewBlock(setFlagBlock);
+      };
+
+      withFlagSet = this.emitIntOr{
+        rhs => this.constantInt(VTable.kFrozenMask).id,
+        pos => frz.pos,
+        lhs => vtable.id,
+      };
+
+      storeValue = if (tIntPtr == tInt) {
+        withFlagSet
+      } else {
+        this.emitTruncate{value => withFlagSet.id, pos, typ => tIntPtr}
+      };
+
+      // Write back the vtable with the flag set.
+      _ = this.emitObstackInit{
+        addrByteAlignment => vtableByteSize,
+        pos,
+        value => storeValue.id,
+        addr => frz.value,
+        bitOffset => vtableByteSize * -8,
+      };
+
+      if (doneSetFlagBlock != BlockID::none) {
+        _ = this.emitJump{target => BlockSuccessor(doneSetFlagBlock), pos};
+
+        this.startNewBlock(doneSetFlagBlock)
+      }
+    };
+
+    optinfo.idToInstr.set(frz.id, value)
+  }
+
+  private mutable fun lowerGetField(gf: GetField): void {
+    obj = this.getInstr(gf.obj);
+    classType = obj.typ.exampleSClass(this.env);
+    bitOffset = classType.getLayoutSlot(gf.field, gf.pos).bitOffset;
+
+    // Create a raw memory load.
+    _ = this.emitInstr(
+      Load{
+        id => gf.id,
+        typ => gf.typ,
+        pos => gf.pos,
+        addr => gf.obj,
+        addrByteAlignment => 8,
+        bitOffset,
+        canCSE => (obj.typ.isDeepFrozen() ||
+          !classType.getField(gf.field, gf.pos).isAssignable),
+      },
+    )
+  }
+
+  private mutable fun lowerSetField(sf: SetField): void {
+    pos = sf.pos;
+    obj = this.getInstr(sf.obj);
+    classType = obj.typ.exampleSClass(this.env);
+    bitOffset = classType.getLayoutSlot(sf.field, pos).bitOffset;
+
+    // Create a raw memory store.
+    _ = this.emitInstr(
+      ObstackStore{
+        id => sf.id,
+        typ => tVoid,
+        pos,
+        addr => sf.obj,
+        bitOffset,
+        addrByteAlignment => 8,
+        value => sf.value,
+      },
+    )
+  }
+
+  private mutable fun lowerArrayAlloc(
+    make: Stmt,
+    size: Instr,
+    willMemcpyOver: Bool = false,
+  ): (Stmt, Instr, ArraySlotInfo, Bool) {
+    pos = make.pos;
+    env = this.env;
+
+    sc = make.typ.exampleSClass(env);
+    slotInfo = sc.getArraySlotInfo(pos);
+
+    // We are definitely allocating a multiple of this many entries.
+    // 1 obviously means we have no information.
+    knownSizeMultiple = 1;
+
+    (numBytes, numContentsBytes) = size.constantInteger() match {
+    | Some(n) ->
+      // Compile-time constant size, figure out byte size now.
+      !knownSizeMultiple = n;
+      contentsBytes = n * (slotInfo.bitSize / 8);
+      (
+        this.constantInt(kArrayMetadataByteSize + contentsBytes),
+        this.constantInt(contentsBytes),
+      )
+    | None() ->
+      // Runtime computed size
+      metadataOverhead = this.constantInt(kArrayMetadataByteSize);
+
+      if (slotInfo.bitSize == 0) {
+        // Vector of void takes no space for the entries.
+        !knownSizeMultiple = 0;
+        (metadataOverhead, this.constantInt(0))
+      } else {
+        contentsBytes = if (slotInfo.bitSize == 8) {
+          size
+        } else {
+          this.emitIntMul{
+            rhs => this.constantInt(slotInfo.bitSize / 8).id,
+            pos,
+            lhs => size.id,
+          }
+        };
+
+        (
+          this.emitIntAdd{
+            rhs => metadataOverhead.id,
+            pos,
+            lhs => contentsBytes.id,
+          },
+          contentsBytes,
+        )
+      }
+    };
+
+    // Do we need to zero out memory? We are conservative here to ensure
+    // that we don't GC a halfway-initialized Array containing
+    // garbage pointers.
+    zero = knownSizeMultiple != 0 && !willMemcpyOver;
+
+    mem = this.emitObstackAlloc{
+      zero,
+      typ => tNonGCPointer,
+      pos,
+      byteSize => this.emitTruncate{
+        value => numBytes.id,
+        typ => tIntPtr,
+        pos,
+      }.id,
+    };
+
+    // If there might be a few bytes of garbage at the end of the array's
+    // raw storage rounded up to 8 bytes, e.g. we are allocating an array of
+    // N bytes, then we need to zero out the tail. The array might be empty,
+    // in which case this will clobber space reserved for the vtable, but
+    // that's OK since we haven't stored the vtable yet.
+    bs = slotInfo.bitSize * knownSizeMultiple;
+    totalBitSizeAlignment = bs.and(-bs);
+    if (!zero && knownSizeMultiple != 0 && totalBitSizeAlignment < 64) {
+      // Figure out how much of the tail we need to zero, trying
+      // to do an aligned 32-bit store if we can.
+      (storeBitSize, storeAlign, zeroType) = totalBitSizeAlignment match {
+      | 16 -> (64, 2, tInt)
+      | 32 -> (32, 4, tInt32)
+      | _ -> (64, 1, tInt)
+      };
+
+      // Point to the end of the array.
+      end = this.emitBytePointerAdd{
+        typ => tNonGCPointer,
+        pos,
+        addr => mem.id,
+        offset => numBytes.id,
+      };
+
+      _ = this.emitObstackInit{
+        addrByteAlignment => storeAlign,
+        pos,
+        value => this.constantTypedInt(zeroType, 0).id,
+        addr => end.id,
+        bitOffset => -storeBitSize,
+      }
+    };
+
+    size32 = this.emitTruncate{value => size.id, typ => tInt32, pos};
+
+    // Store the size.
+    _ = this.emitObstackInit{
+      addrByteAlignment => 4,
+      pos,
+      value => size32.id,
+      addr => mem.id,
+      bitOffset => 32,
+    };
+
+    // Get the VTable pointer.
+    vtable = this.constantVTable(sc.id, make.typ.isDeepFrozen());
+    this.classesNeedingVTables.insert(sc.id);
+
+    // Store the vtable.
+    _ = this.emitObstackInit{
+      addrByteAlignment => 8,
+      pos,
+      value => vtable.id,
+      addr => mem.id,
+      bitOffset => 64,
+    };
+
+    // Compute the normal object pointer.
+    add = this.emitBytePointerAdd{
+      typ => tNonGCPointer,
+      pos,
+      addr => mem.id,
+      offset => this.constantInt(kArrayMetadataByteSize).id,
+    };
+
+    result = this.emitInstr(
+      Cast{
+        id => make.id,
+        typ => make.typ, // TODO: Change to mutable?
+        pos,
+        value => add.id,
+      },
+    );
+
+    (result, numContentsBytes, slotInfo, zero)
+  }
+
+  private mutable fun lowerArrayClone(v: ArrayClone): void {
+    pos = v.pos;
+
+    sizeID = this.iid();
+    size = ArraySize{id => sizeID, typ => tInt, pos, value => v.value};
+
+    this.lowerArraySize(size);
+
+    (mem, numBytes, _, _) = this.lowerArrayAlloc(
+      v,
+      this.getInstr(sizeID),
+      true,
+    );
+
+    // call wrapper for llvm.memcpy intrinsic
+    _ = this.emitNamedCall{
+      args => Array[
+        mem.id,
+        v.value,
+        numBytes.id, // bytes to copy
+        // alignment = vtableByteSize
+        // volatile = false
+      ],
+      typ => tVoid,
+      pos,
+      canThrow => false,
+      allocAmount => AllocNothing(),
+      name => "SKIP_llvm_memcpy",
+    }
+  }
+
+  private mutable fun lowerArrayNew(v: ArrayNew): void {
+    // Allocate the storage.
+    (vec, _numBytes, slotInfo, zeroed) = this.lowerArrayAlloc(
+      v,
+      this.constantInt(v.size),
+    );
+
+    if (!slotInfo.types.isEmpty()) {
+      // Assign to tuple slots in order of increasing bit offset.
+      // It looks prettier and may peephole more easily (?)
+      order = slotInfo.bitOffsets
+        .mapWithIndex((i, o) -> (o, i))
+        .sortedBy(x ~> Orderable.create(x, (a, b) ~> a.compare(b)));
+
+      // Loop through and assign the elements.
+
+      // TODO: With effort we could avoid the need to memset to zero.
+      // by widening appropriate stores to zero out any padding.
+
+      for (vectorIndex in Range(0, v.size)) {
+        for (offsetAndTupleIndex in order) {
+          (_, tupleIndex) = offsetAndTupleIndex;
+
+          argIndex = (vectorIndex * slotInfo.types.size()) + tupleIndex;
+
+          value = v.args[argIndex];
+
+          if (!zeroed || !isZeroBits(this.getInstr(value))) {
+            _ = this.emitArrayUnsafeSet{
+              index => this.constantInt(vectorIndex).id,
+              pos => v.pos,
+              value,
+              obj => vec.id,
+              tupleIndex,
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private mutable fun loadInvariantUInt32(
+    load: SimpleUnaryStmt,
+    byteOffset: Int,
+  ): void {
+    // Load 32-bit size from the metadata (12 bytes before the pointer).
+    i32 = this.emitLoad{
+      typ => tInt32,
+      addrByteAlignment => 4,
+      pos => load.pos,
+      canCSE => true, // Will never change
+      addr => load.value,
+      bitOffset => 8 * byteOffset,
+    };
+
+    // Widen from Int32 to Int.
+    _ = this.emitInstr(
+      ZeroExtend{
+        id => load.id,
+        typ => load.typ,
+        pos => load.pos,
+        value => i32.id,
+      },
+    )
+  }
+
+  private mutable fun lowerArraySize(vs: ArraySize): void {
+    this.loadInvariantUInt32(vs, -(vtableByteSize + 4))
+  }
+
+  private mutable fun lowerStringHash(sh: StringHash): Bool {
+    if (UTF8String::useShortStrings()) {
+      // We do not currently inline this case.
+      false
+    } else {
+      // All strings are LongString, so we can just load the hash.
+      this.loadInvariantUInt32(sh, -4);
+      true
+    }
+  }
+
+  private mutable fun lowerCallFunction(call: CallFunction): void {
+    _ = this.emitInstr(
+      RawCall{
+        id => call.id,
+        typ => call.typ,
+        pos => call.pos,
+        code => this.constantFun(call.name).id,
+        args => call.args,
+        returns => call.returns,
+      },
+    )
+  }
+
+  private mutable fun lowerInvokeFunction(call: InvokeFunction): void {
+    _ = this.emitInstr(
+      RawInvoke{
+        id => call.id,
+        typ => call.typ,
+        pos => call.pos,
+        code => this.constantFun(call.name).id,
+        args => call.args,
+        returns => call.returns,
+        successors => call.successors,
+      },
+    )
+  }
+
+  private mutable fun lowerObject(make: Object, sc: SClass): void {
+    pos = make.pos;
+    layout = sc.getLayout();
+
+    // The bit size is determined by the end of the last field.
+    numFieldBits = layout.maybeLast().maybe(0, f ->
+      f.bitOffset + f.typ.bitSize
+    );
+
+    // Every object has a vtable, and round sizes up to an 8 byte multiple.
+    numBytes = roundUp(vtableByteSize * 8 + numFieldBits, 64) / 8;
+
+    mem = this.emitObstackAlloc{
+      // We carefully zero struct padding ourselves, so we don't
+      // need the allocator to do it for us.
+      zero => false,
+      typ => tNonGCPointer,
+      pos,
+      byteSize => this.constantTypedInt(tIntPtr, numBytes).id,
+      pinned => make.pinned,
+    };
+
+    // Get the VTable pointer.
+    vtable = this.constantVTable(sc.id, make.typ.isDeepFrozen());
+    this.classesNeedingVTables.insert(sc.id);
+
+    // Store the vtable.
+    _ = this.emitObstackInit{
+      addrByteAlignment => 8,
+      pos,
+      value => vtable.id,
+      addr => mem.id,
+      bitOffset => 0,
+    };
+
+    // Compute the normal object pointer, which is 8 bytes into the storage.
+    add = this.emitBytePointerAdd{
+      typ => tNonGCPointer,
+      pos,
+      addr => mem.id,
+      offset => this.constantInt(vtableByteSize).id,
+    };
+
+    obj = this.emitInstr(
+      Cast{
+        id => make.id,
+        typ => make.typ, // TODO: Change to mutable?
+        pos,
+        value => add.id,
+      },
+    );
+
+    if (layout.size() != sc.fields.size()) {
+      sc.pos.die(
+        `Layout mismatch for ${sc}: ${layout.size()} != ` + sc.fields.size(),
+      )
+    };
+
+    // All words up to this bit index have been fully initialized.
+    // Always a multiple of 64.
+    initSize = 0;
+
+    // Index of next upcoming bit not covered by any layout entry.
+    nextGap = findNextGap(0, layout, 0);
+
+    // Walk through and set all the fields.
+    //
+    // TODO: We could do some store-combining optimizations here, esp. when
+    // bitfields are involved, but we need to learn if LLVM already does
+    // everything we want.
+    layout.eachWithIndex((index, l) -> {
+      first = l.bitOffset;
+      last = first + l.typ.bitSize - 1;
+
+      // Zero any uninitialized bits preceding this field, or following in
+      // the same 64-bit word.
+      while (nextGap.and(-64) <= last.and(-64)) {
+        _ = this.emitObstackInit{
+          addrByteAlignment => 8,
+          pos,
+          value => this.constantInt(0).id,
+          addr => obj.id,
+          bitOffset => initSize,
+        };
+
+        !initSize = initSize + 64;
+        !nextGap = findNextGap(initSize, layout, index + 1);
+      };
+
+      // Store the field.
+      _ = this.emitObstackInit{
+        addrByteAlignment => 8,
+        pos,
+        value => make.args[sc.getFieldIndex(l.name, pos)],
+        addr => obj.id,
+        bitOffset => first,
+      };
+
+      !initSize = max(initSize, (last + 1).and(-64));
+    })
+  }
+
+  private mutable fun makeVTableRequest(
+    requestsBuf: mutable Vector<(SClassID, Constant)>,
+    name: String,
+  ): VTable.VTableRequestID {
+    if (requestsBuf.isEmpty()) {
+      this.pos.die("Attempt to create empty vtable layout request")
+    };
+
+    // Uniquify and sort by class to put in canonical order for de-duping.
+    seen = UnorderedMap::mcreate(requestsBuf.size());
+    rbuf2 = mutable Vector[];
+    for (kv in requestsBuf) {
+      (k, v) = kv;
+      if (seen.maybeSet(k, v)) {
+        rbuf2.push(kv)
+      } else {
+        // If this fires we are asking the same class to put two different
+        // things in the same slot.
+        invariant(seen[k] == v, "Asking for contradictory vtable entries.")
+      }
+    };
+    rbuf2.sortBy(a ~> a.i0);
+    requests = rbuf2.toArray();
+
+    if (requests.isEmpty()) {
+      this.pos.die("Attempt to create empty vtable layout request")
+    };
+
+    request = VTable.VTableRequest(
+      requests,
+      name,
+      VTable.VTableRequestID(this.vtableRequests.size()),
+    );
+
+    // Find the canonical request.
+    if (!this.vtableRequests.maybeInsert(request)) {
+      !request = this.vtableRequests[request]
+    };
+
+    request.id
+  }
+
+  private mutable fun emitLoadVTable(
+    obj: InstrID,
+    pos: Pos,
+    typ: Type = tNonGCPointer,
+  ): Instr {
+    this.emitLoad{
+      typ,
+      addrByteAlignment => vtableByteSize,
+      pos,
+      canCSE => true,
+      addr => obj,
+      bitOffset => vtableByteSize * -8,
+    }
+  }
+
+  // Lower a TypeSwitch. There are three code generation strategies we try,
+  // in order from best to worst:
+  //
+  // 1) If all successors go to the same block, and the only difference
+  //    is Constant block args (as when a "match" maps a bunch of types
+  //    to "true" or "false"), then just load the value from the vtable
+  //    and unconditionally jump to the target block.
+  //
+  // 2) If there are only two distinct successors, e.g. for Some and None,
+  //    store a Bool in each vtable indicating which one to branch to, and
+  //    generate an "if" that dispatches on that value ("useBool == true").
+  //
+  // 3) Else, emit a code label in each vtable for the target block and emit
+  //    an indirect jump that branches to it.  ("useBool == false")
+  //    (or, if the target does not support computed gotos, generate an
+  //    Int and switch on it).
+  private mutable fun lowerTypeSwitch(switch: TypeSwitch): void {
+    // Identify all unique successors from this type switch.
+    // become the successors for the IndirectJump or If, if we create one.
+    uniqueSuccessorsBuf = mutable Vector[];
+    successorsSeen = mutable UnorderedMap[];
+    successorsMap = switch.successors.map(succ -> {
+      index = successorsSeen.getOrAdd(succ, () -> uniqueSuccessorsBuf.size());
+      if (index == uniqueSuccessorsBuf.size()) {
+        uniqueSuccessorsBuf.push(succ)
+      };
+      index
+    });
+
+    uniqueSuccessors = uniqueSuccessorsBuf.toArray();
+
+    if (!this.tryLowerTypeSwitchToLoad(switch, uniqueSuccessors)) {
+      this.lowerTypeSwitchToBranch(switch, uniqueSuccessors, successorsMap)
+    }
+  }
+
+  // Attempt to use lowerTypeSwitch strategy (1), returning true iff successful.
+  private mutable fun tryLowerTypeSwitchToLoad(
+    switch: TypeSwitch,
+    uniqueSuccessors: Array<BlockSuccessor>,
+  ): Bool {
+    optinfo = this.optinfo;
+    pos = switch.pos;
+
+    targetID = uniqueSuccessors[0].target;
+
+    if (!uniqueSuccessors.all(succ -> succ.target == targetID)) {
+      false
+    } else {
+      // Always branching to the same block. Can we turn this into a load
+      // (or many...) followed by a Jump? We can if each outgoing block
+      // argument is either (1) identical across all successors, meaning the
+      // Jump can pass it too, or (2) a compile-time constant we can store in
+      // the vtable and load later.
+      args1 = uniqueSuccessors[0].args;
+
+      needToLoad = mutable Vector[];
+      ok = true;
+
+      args1.eachWithIndex((i, arg) -> {
+        if (ok && uniqueSuccessors.any(s -> s.args[i] != arg)) {
+          // Not every successor is being passed the same argument value.
+          // So check to see if they are all constants we can stash in
+          // a vtable.
+          if (
+            uniqueSuccessors.all(s ->
+              optinfo.getInstr(s.args[i]) match {
+              | ConstantBool _
+              | ConstantFloat _
+              | ConstantImage _
+              | ConstantInt _
+              | ConstantString _
+              | ConstantStruct _ ->
+                true
+              | _ -> false
+              }
+            )
+          ) {
+            needToLoad.push(i)
+          } else {
+            !ok = false
+          }
+        }
+      });
+
+      if (ok) {
+        vtable = if (needToLoad.isEmpty()) {
+          InstrID::none
+        } else {
+          this.emitLoadVTable(switch.value, pos).id
+        };
+
+        // Default to passing the same args as the first successor. We'll
+        // replace those that vary by successor with vtable loads below.
+        newArgs = Array::mcreateFromItems(args1);
+
+        requests = mutable Vector<(SClassID, Constant)>[];
+
+        target = optinfo.getBlock(targetID);
+
+        for (i in needToLoad) {
+          requests.clear();
+
+          _ = this.getInstr(switch.value).typ.forEachConcreteSubtype(
+            this.env,
+            sc -> {
+              if (!sc.kind.isKClass()) {
+                pos.die(
+                  "Attempting runtime TypeSwitch on value class " +
+                    sc +
+                    "; this should have been " +
+                    "optimized away.",
+                )
+              };
+
+              // Figure out which successor handles this.
+              tsSucc = Control.findTypeSwitchSuccessor(
+                sc,
+                switch.cases,
+                this.env,
+              );
+
+              // Figure out what constant to store in the vtable.
+              val = optinfo.getInstr(switch.successors[tsSucc].args[i]);
+              constant = val match {
+              | c @ Constant _ -> c
+              | _ -> pos.die(val.toString() + " should be a constant.")
+              };
+
+              requests.push((sc.id, constant));
+
+              true
+            },
+          );
+
+          requestID = this.makeVTableRequest(
+            requests,
+            "typeswitch.load." + switch.id + "." + i,
+          );
+
+          load = this.emitLoadVTableEntry{
+            vtable,
+            typ => target.params[i].typ,
+            pos,
+            offset => requestID,
+          };
+
+          newArgs.set(i, load.id)
+        };
+
+        _ = this.emitInstr(
+          Jump{
+            id => switch.id,
+            typ => tVoid,
+            pos,
+            successors => Array[BlockSuccessor(targetID, freeze(newArgs))],
+          },
+        )
+      };
+
+      ok
+    }
+  }
+
+  // Handle lowerTypeSwitch strategies (2) and (3).
+  private mutable fun lowerTypeSwitchToBranch(
+    switch: TypeSwitch,
+    uniqueSuccessors: Array<BlockSuccessor>,
+    successorsMap: Array<Int>,
+  ): void {
+    optinfo = this.optinfo;
+    pos = switch.pos;
+
+    useBool = uniqueSuccessors.size() == 2;
+
+    intSwitchIndexType = bigEnoughIntType(uniqueSuccessors.size());
+
+    requests = mutable Vector[];
+
+    // Create a tag that will uniquely identify the IndirectJump so
+    // AsmOutput can find it later.
+    tag = ("typeswitch." + optinfo.f.id.id + "." + switch.id.id);
+
+    switchValueType = this.getInstr(switch.value).typ;
+    _ = switchValueType.forEachConcreteSubtype(this.env, sc -> {
+      if (!sc.kind.isKClass()) {
+        pos.die(
+          "Attempting runtime TypeSwitch on value class " +
+            sc +
+            "; this should have been " +
+            "optimized away.",
+        )
+      };
+
+      // Figure out which successor handles this.
+      tsSucc = Control.findTypeSwitchSuccessor(sc, switch.cases, this.env);
+
+      succIndex = successorsMap[tsSucc];
+
+      val = if (useBool) {
+        // Stick a bool in the VTable.
+        ConstantBool{id => InstrID::none, typ => tBool, value => succIndex == 0}
+      } else if (kCanUseComputedGoto) {
+        // Put a code label in the VTable.
+        ConstantCodeLabel{
+          id => InstrID::none,
+          typ => tNonGCPointer,
+          function => optinfo.f.id,
+          tag,
+          case => succIndex,
+        }
+      } else {
+        ConstantInt{
+          id => InstrID::none,
+          typ => intSwitchIndexType,
+          value => succIndex,
+        }
+      };
+
+      requests.push((sc.id, val));
+
+      true
+    });
+
+    if (requests.isEmpty()) {
+      _ = this.emitInstr(
+        Unreachable{
+          id => switch.id,
+          typ => tVoid,
+          pos,
+          why => (`TypeSwitch on value of type ${switchValueType} which ` +
+            `has no concrete subtypes created by this program`),
+        },
+      );
+
+      return void
+    };
+
+    requestID = this.makeVTableRequest(requests, tag);
+
+    vtable = this.emitLoadVTable(switch.value, pos);
+
+    if (useBool) {
+      predicate = this.emitLoadVTableEntry{
+        vtable => vtable.id,
+        typ => tBool,
+        pos,
+        offset => requestID,
+      }.id;
+
+      _ = this.emitIf{
+        pos,
+        predicate,
+        ifTrue => uniqueSuccessors[0],
+        ifFalse => uniqueSuccessors[1],
+      }
+    } else if (kCanUseComputedGoto) {
+      label = this.emitLoadVTableEntry{
+        vtable => vtable.id,
+        typ => tNonGCPointer,
+        pos,
+        offset => requestID,
+      }.id;
+
+      _ = this.emitIndirectJump{label, pos, tag, successors => uniqueSuccessors}
+    } else {
+      rawIndex = this.emitLoadVTableEntry{
+        vtable => vtable.id,
+        typ => intSwitchIndexType,
+        pos,
+        offset => requestID,
+      };
+
+      index = this.emitZeroExtend{typ => tInt, pos, value => rawIndex.id};
+
+      unreachable = this.optinfo.idToBlock.allocID();
+
+      _ = this.emitIntSwitch{
+        pos,
+        value => index.id,
+        cases => Array::fillBy(uniqueSuccessors.size(), id),
+        successors => Array[BlockSuccessor(unreachable)].concat(
+          uniqueSuccessors,
+        ),
+      };
+
+      // We know we will never hit the default case, since we only
+      // put actual uniqueSuccessors indices in the match table. So
+      // we can tell LLVM the "default" case (first successor) is unreachable.
+      this.startNewBlock(unreachable);
+
+      this.emitUnreachable{
+        why => "Impossible switch case found in vtable entry for TypeSwitch.",
+        pos,
+      }
+    }
+  }
+
+  private mutable fun lowerTupleExtract(te: TupleExtract): Bool {
+    // If lowerCallMethod deleted a call as unreachable during lowering,
+    // just make an unused zero for its value.
+    if (this.unreachableCalls.contains(te.obj)) {
+      this.optinfo.idToInstr.set(te.id, this.constantZero(te.typ));
+      true
+    } else {
+      false
+    }
+  }
+
+  private mutable fun lowerCallMethod(call: CallMethodBase): void {
+    optinfo = this.optinfo;
+    pos = call.pos;
+
+    // Find all unique final types on which this method called,
+    // and constrain them all to agree on using the same vtable slot.
+    requests = mutable Vector<(SClassID, Constant)>[];
+
+    _ = optinfo.allMethodImplementations(call, this.env, (sc, code, _, _) -> {
+      if (!sc.kind.isKClass()) {
+        pos.die(
+          "Attempting indirect method call on value class " +
+            sc +
+            "; this should have been " +
+            "devirtualized already.",
+        )
+      };
+
+      requests.push(
+        (
+          sc.id,
+          ConstantFun{id => InstrID::none, typ => tNonGCPointer, value => code},
+        ),
+      );
+
+      true
+    });
+
+    if (requests.isEmpty()) {
+      // This is a call on a base class that has no concrete subclasses.
+      // This can never happen at runtime, so this code is unreachable.
+      msg = (
+        pos.toString() +
+        ": Executed call to base class method " +
+        this.getInstr(call.obj()).typ +
+        "::" +
+        call.method +
+        ", but that type appears to have no concrete " +
+        "subclasses created by this program, so it should " +
+        "be impossible for there to exist an instance on " +
+        "which to call this method"
+      );
+
+      _ = this.emitInstr(
+        NamedCall{
+          id => call.id,
+          typ => tVoid,
+          pos => call.pos,
+          name => "SKIP_unreachableMethodCall",
+          args => Array[this.constantString(msg).id, call.obj()],
+          canThrow => false,
+          allocAmount => AllocNothing(),
+        },
+      );
+      this.emitUnreachable{
+        why => "SKIP_unreachableMethodCall returned",
+        pos => call.pos,
+      };
+
+      if (call.typ.maybeGetScalarType(this.env).isSome()) {
+        optinfo.idToInstr.set(call.id, this.constantZero(call.typ))
+      };
+      this.unreachableCalls.add(call.id)
+    } else {
+      requestID = this.makeVTableRequest(requests, call.method);
+
+      // Emit a lower-level method call sequence.
+      vtable = this.emitLoadVTable(call.obj(), pos);
+
+      // Load the code pointer. We don't actually know the byte offset yet.
+      code = this.emitLoadVTableEntry{
+        vtable => vtable.id,
+        typ => tNonGCPointer,
+        pos,
+        offset => requestID,
+      }.id;
+
+      _ = call match {
+      | c @ CallMethod _ ->
+        this.emitInstr(
+          RawCall{
+            id => c.id,
+            typ => c.typ,
+            pos,
+            code,
+            args => call.args,
+            returns => c.returns,
+          },
+        )
+      | c @ InvokeMethod _ ->
+        this.emitInstr(
+          RawInvoke{
+            id => c.id,
+            typ => c.typ,
+            pos,
+            code,
+            args => call.args,
+            returns => c.returns,
+            successors => c.successors,
+          },
+        )
+      }
+    }
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    pos = instr.pos;
+
+    instr match {
+    | x @ CallFunction _ ->
+      this.lowerCallFunction(x);
+      true
+    | x @ InvokeFunction _ ->
+      this.lowerInvokeFunction(x);
+      true
+    | x @ CallMethodBase _ ->
+      this.lowerCallMethod(x);
+      true
+    | x @ Freeze{nop} if (nop) ->
+      this.lowerNopFreeze(x);
+      true
+    | x @ GetField _ ->
+      this.lowerGetField(x);
+      true
+    | x @ SetField _ ->
+      this.lowerSetField(x);
+      true
+    | make @ Object _ ->
+      t = make.typ.exampleSClass(this.env);
+      if (t.kind.isValueClass()) {
+        false
+      } else {
+        this.lowerObject(make, t);
+        true
+      }
+    | x @ StringHash _ -> this.lowerStringHash(x)
+    | Suspend _ ->
+      this.emitUnreachable{why => "Suspend not written yet", pos};
+      true
+    | x @ TupleExtract _ -> this.lowerTupleExtract(x)
+    | x @ TypeSwitch _ ->
+      this.lowerTypeSwitch(x);
+      true
+    | x @ ArrayAlloc _ ->
+      _ = this.lowerArrayAlloc(x, this.getInstr(x.size));
+      true
+    | x @ ArrayClone _ ->
+      this.lowerArrayClone(x);
+      true
+    | x @ ArrayNew _ ->
+      this.lowerArrayNew(x);
+      true
+    | x @ ArraySize _ ->
+      this.lowerArraySize(x);
+      true
+    | w @ With _ ->
+      // Clone the object, but keep the same ID as the old "with".
+      mem = this.emitInstr(
+        ObstackShallowClone{id => w.id, typ => w.typ, pos, value => w.obj},
+      );
+
+      // Set all the fields the user specified.
+      for (a in w.fieldAssignments) {
+        (field, value) = a;
+        this.lowerSetField(
+          SetField{
+            id => this.iid(),
+            typ => tVoid,
+            pos,
+            obj => mem.id,
+            field,
+            value,
+          },
+        )
+      };
+
+      true
+    | _ -> false
+    }
+  }
+}
+
+// When we dump out a StaticImage for an object we will need its vtable.
+// So any ConstantObject or ConstantObject
+private fun requestVTablesForConstants(
+  stack: mutable Vector<Constant>,
+  classesNeedingVTables: mutable UnorderedSet<SClassID>,
+  seen: mutable UnorderedSet<Constant>,
+  env: GlobalEnv,
+): void {
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | c @ ConstantImage{typ, values} ->
+      if (seen.maybeInsert(c)) {
+        sc = typ.exampleSClass(env);
+        sc.kind match {
+        | KClass() -> classesNeedingVTables.insert(sc.id)
+        | KValue() -> void
+        | KBase() -> sc.die("Cannot create singleton of " + sc)
+        };
+
+        // A ConstantObject might point to another ConstantObject, which
+        // will also need a vtable, etc.
+        stack.extend(values)
+      }
+    | c @ ConstantStruct{values} ->
+      if (seen.maybeInsert(c)) {
+        for (v in values) stack.push(v.value)
+      }
+    | _ -> void
+    }
+  }
+}
+
+fun lowerFunctions(env: GlobalEnv): GlobalEnv {
+  classesNeedingVTables = mutable UnorderedSet[];
+  vtableRequests = mutable UnorderedSet[];
+  constantsSeen = mutable UnorderedSet[];
+  stack = mutable Vector[];
+  newFuns = env.sfuns.clone();
+
+  rng = Random::mcreate(
+    env.sfuns.reduce((h, f) -> Hashable.combine(h, f.name.hash()), 0),
+  );
+
+  runPass = (name: String, f: Function, pass: Function -> Function) -> {
+    f2 = pass(f);
+    if (kConfig.verbose) {
+      print_error(`Finished ${name} pass for ${f2}.\n`);
+      f2.dump(env);
+    };
+    f2
+  };
+
+  for (f in env.sfuns) {
+    if (f.hasImplementation()) {
+      if (kConfig.verbose) {
+        print_error(`\nAbout to run lower passes for ${f}.\n`);
+        f.dump(env);
+      };
+      f2 = runPass("Lower", f, f -> {
+        Lower::run(f, vtableRequests, classesNeedingVTables, env).i0
+      });
+
+      // Run a few more passes right now.
+      f3 = runPass("LowerLocalGC", f2, f2 -> {
+        LowerLocalGC::run(f2, env, rng).i0
+      });
+      f4 = runPass("Alloc", f3, f3 -> {
+        Alloc::run(f3, env).i0
+      });
+
+      // Scavenge the final result for any constants needing vtables.
+      stack.extend(f4.constants);
+      requestVTablesForConstants(
+        stack,
+        classesNeedingVTables,
+        constantsSeen,
+        env,
+      );
+
+      // Insert trampoline blocks to make LLVM phi nodes happy
+      // (this must be the last transformation we do).
+      f5 = runPass("trampoline", f4, f4 -> {
+        AsmOutput.maybeInsertTrampolineBlocks(f4)
+      });
+      newFuns.set(f5.id, f5)
+    }
+  };
+
+  vtableInfo = VTable.populateVTables(
+    vtableRequests,
+    classesNeedingVTables,
+    env,
+  );
+
+  env with {sfuns => freeze(newFuns), vtables => Some(vtableInfo)}
+}

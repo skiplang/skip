@@ -1,0 +1,15 @@
+File "./visibility/invalid/protected3.sk", line 12, characters 5-11:
+Cannot access foo
+10 | class Z() {
+11 |   protected fun bar(x: X): void {
+12 |     x.foo()
+   |     ^^^^^^^
+13 |   }
+
+File "./visibility/invalid/protected3.sk", line 5, characters 3-11:
+It was declared as protected
+3 | }
+4 | class X() {
+5 |   protected fun foo(): void {
+  |   ^^^^^^^^^
+6 |     this.foo()

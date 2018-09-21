@@ -1,0 +1,326 @@
+File "./typechecking/invalid/multiple_errors.sk", line 4, characters 23-23:
+Invalid default value
+2 | const c2: String = 0;
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+  |                       ^
+5 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 4, characters 23-23:
+The type: Int
+2 | const c2: String = 0;
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+  |                       ^
+5 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 4, characters 14-19:
+Is not a subtype of: String
+2 | const c2: String = 0;
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+  |              ^^^^^^
+5 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 5, characters 13-18:
+Invalid type
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+  |             ^^^^^^
+6 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 5, characters 22-22:
+The type: Int
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+  |                      ^
+6 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 5, characters 13-18:
+Is not a subtype of: String
+3 |
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+  |             ^^^^^^
+6 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 6, characters 13-18:
+Invalid type
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+6 |   const c2: String = 0;
+  |             ^^^^^^
+7 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 6, characters 22-22:
+The type: Int
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+6 |   const c2: String = 0;
+  |                      ^
+7 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 6, characters 13-18:
+Is not a subtype of: String
+4 | class C1{p1: String = 0, p2: String = 1} {
+5 |   const c1: String = 0;
+6 |   const c2: String = 0;
+  |             ^^^^^^
+7 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 8, characters 5-5:
+The value returned from the function is incompatible with the return type 'String'
+ 6 |   const c2: String = 0;
+ 7 |   fun m1(): String {
+ 8 |     0;
+   |     ^
+ 9 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 8, characters 5-5:
+The type: Int
+ 6 |   const c2: String = 0;
+ 7 |   fun m1(): String {
+ 8 |     0;
+   |     ^
+ 9 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 7, characters 13-18:
+Is not a subtype of: String
+5 |   const c1: String = 0;
+6 |   const c2: String = 0;
+7 |   fun m1(): String {
+  |             ^^^^^^
+8 |     0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 11, characters 5-5:
+The value returned from the function is incompatible with the return type 'String'
+ 9 |   }
+10 |   fun m2(): String {
+11 |     0;
+   |     ^
+12 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 11, characters 5-5:
+The type: Int
+ 9 |   }
+10 |   fun m2(): String {
+11 |     0;
+   |     ^
+12 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 10, characters 13-18:
+Is not a subtype of: String
+ 8 |     0;
+ 9 |   }
+10 |   fun m2(): String {
+   |             ^^^^^^
+11 |     0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 15, characters 23-23:
+Invalid default value
+13 | }
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+   |                       ^
+16 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 15, characters 23-23:
+The type: Int
+13 | }
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+   |                       ^
+16 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 15, characters 14-19:
+Is not a subtype of: String
+13 | }
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+   |              ^^^^^^
+16 |   const c1: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 16, characters 13-18:
+Invalid type
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+   |             ^^^^^^
+17 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 16, characters 22-22:
+The type: Int
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+   |                      ^
+17 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 16, characters 13-18:
+Is not a subtype of: String
+14 |
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+   |             ^^^^^^
+17 |   const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 17, characters 13-18:
+Invalid type
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+17 |   const c2: String = 0;
+   |             ^^^^^^
+18 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 17, characters 22-22:
+The type: Int
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+17 |   const c2: String = 0;
+   |                      ^
+18 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 17, characters 13-18:
+Is not a subtype of: String
+15 | class C2{p1: String = 0, p2: String = 1} {
+16 |   const c1: String = 0;
+17 |   const c2: String = 0;
+   |             ^^^^^^
+18 |   fun m1(): String {
+
+File "./typechecking/invalid/multiple_errors.sk", line 19, characters 5-5:
+The value returned from the function is incompatible with the return type 'String'
+17 |   const c2: String = 0;
+18 |   fun m1(): String {
+19 |     0;
+   |     ^
+20 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 19, characters 5-5:
+The type: Int
+17 |   const c2: String = 0;
+18 |   fun m1(): String {
+19 |     0;
+   |     ^
+20 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 18, characters 13-18:
+Is not a subtype of: String
+16 |   const c1: String = 0;
+17 |   const c2: String = 0;
+18 |   fun m1(): String {
+   |             ^^^^^^
+19 |     0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 22, characters 5-5:
+The value returned from the function is incompatible with the return type 'String'
+20 |   }
+21 |   fun m2(): String {
+22 |     0;
+   |     ^
+23 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 22, characters 5-5:
+The type: Int
+20 |   }
+21 |   fun m2(): String {
+22 |     0;
+   |     ^
+23 |   }
+
+File "./typechecking/invalid/multiple_errors.sk", line 21, characters 13-18:
+Is not a subtype of: String
+19 |     0;
+20 |   }
+21 |   fun m2(): String {
+   |             ^^^^^^
+22 |     0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 1, characters 11-16:
+Invalid type
+1 | const c1: String = 0;
+  |           ^^^^^^
+2 | const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 1, characters 20-20:
+The type: Int
+1 | const c1: String = 0;
+  |                    ^
+2 | const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 1, characters 11-16:
+Is not a subtype of: String
+1 | const c1: String = 0;
+  |           ^^^^^^
+2 | const c2: String = 0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 2, characters 11-16:
+Invalid type
+1 | const c1: String = 0;
+2 | const c2: String = 0;
+  |           ^^^^^^
+3 |
+
+File "./typechecking/invalid/multiple_errors.sk", line 2, characters 20-20:
+The type: Int
+1 | const c1: String = 0;
+2 | const c2: String = 0;
+  |                    ^
+3 |
+
+File "./typechecking/invalid/multiple_errors.sk", line 2, characters 11-16:
+Is not a subtype of: String
+1 | const c1: String = 0;
+2 | const c2: String = 0;
+  |           ^^^^^^
+3 |
+
+File "./typechecking/invalid/multiple_errors.sk", line 27, characters 3-3:
+The value returned from the function is incompatible with the return type 'String'
+25 |
+26 | fun f1(): String {
+27 |   0;
+   |   ^
+28 | }
+
+File "./typechecking/invalid/multiple_errors.sk", line 27, characters 3-3:
+The type: Int
+25 |
+26 | fun f1(): String {
+27 |   0;
+   |   ^
+28 | }
+
+File "./typechecking/invalid/multiple_errors.sk", line 26, characters 11-16:
+Is not a subtype of: String
+24 | }
+25 |
+26 | fun f1(): String {
+   |           ^^^^^^
+27 |   0;
+
+File "./typechecking/invalid/multiple_errors.sk", line 30, characters 3-3:
+The value returned from the function is incompatible with the return type 'String'
+28 | }
+29 | fun f2(): String {
+30 |   0;
+   |   ^
+31 | }
+
+File "./typechecking/invalid/multiple_errors.sk", line 30, characters 3-3:
+The type: Int
+28 | }
+29 | fun f2(): String {
+30 |   0;
+   |   ^
+31 | }
+
+File "./typechecking/invalid/multiple_errors.sk", line 29, characters 11-16:
+Is not a subtype of: String
+27 |   0;
+28 | }
+29 | fun f2(): String {
+   |           ^^^^^^
+30 |   0;

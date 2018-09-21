@@ -1,0 +1,7 @@
+class Foo<T>(x: T, y: T) {
+  fun matcher(): T {
+    this match {
+    | Foo _ -> _
+    }
+  }
+}

@@ -1,0 +1,9 @@
+fun shouldWork(v: void): String {
+  v match {
+  | void -> "Pass\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldWork(void))
+}

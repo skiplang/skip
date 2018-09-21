@@ -1,0 +1,162 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Range;
+
+class .Range(start: Int, end: Int) extends Sequence<Int> uses Equality, Show {
+  static fun create{start: Int, length: Int}: this {
+    invariant(start >= 0, "Invalid start. Negative ranges are not allowed");
+    invariant(length >= 0, "Invalid length. Negative ranges are not allowed");
+
+    static(start, start + length)
+  }
+
+  static fun empty(position: Int): this {
+    invariant(position >= 0, "Negative ranges are not allowed");
+
+    static(position, 0)
+  }
+
+  fun intersection(other: this): ?this {
+    start = max(this.start, other.start);
+    end = min(this.end, other.end);
+
+    if (start >= end) None() else Some(Range(start, end))
+  }
+
+  /// Returns a range which covers all positions in and between each input range
+  fun union(other: this): this {
+    start = min(this.start, other.start);
+    end = max(this.end, other.end);
+
+    Range(start, end)
+  }
+
+  fun inRange(pos: Int): Bool {
+    pos >= this.start && pos < this.end
+  }
+
+  fun offset(off: Int): this {
+    Range(this.start + off, this.end + off)
+  }
+
+  fun size(): Int {
+    max(0, this.end - this.start)
+  }
+
+  fun toString(): String {
+    `[${this.start}, ${this.end})`
+  }
+
+  fun each(f: Int -> void): void {
+    this.foldl((_, pos) -> f(pos), void)
+  }
+
+  async fun genIter(f: Int ~> ^void): ^void {
+    await this.genFoldl((_, pos) ~> f(pos), void)
+  }
+
+  private async fun genFoldlLoop<R: frozen>(
+    pos: Int,
+    f: (R, Int) ~> ^R,
+    state: R,
+  ): ^R {
+    if (pos < this.end) {
+      await this.genFoldlLoop(pos + 1, f, await f(state, pos))
+    } else {
+      state
+    }
+  }
+
+  async fun genFoldl<R: frozen>(f: (R, Int) ~> ^R, init: R): ^R {
+    await this.genFoldlLoop(this.start, f, init)
+  }
+
+  private fun foldlLoop<R>(pos: Int, f: (R, Int) -> R, state: R): R {
+    if (pos < this.end) this.foldlLoop(pos + 1, f, f(state, pos)) else state
+  }
+
+  fun foldl<R>(f: (R, Int) -> R, init: R): R {
+    this.foldlLoop(this.start, f, init)
+  }
+
+  fun values(): mutable Iterator<Int> {
+    mutable RangeIterator(this.start, this.end)
+  }
+
+  fun reversedValues(): mutable Iterator<Int> {
+    mutable RangeReverseIterator(this.start, this.end)
+  }
+
+  fun sumInt(): Int {
+    this.reduce((acc, i) ~> acc + i, 0)
+  }
+}
+
+private mutable class RangeIterator(
+  private mutable current: Int,
+  private mutable end: Int,
+) extends Iterator<Int> {
+  readonly fun sizeHint(): ?Int {
+    size = max(this.end - this.current, 0);
+    Some(size)
+  }
+
+  mutable fun next(): ?Int {
+    i = this.current;
+    if (i >= this.end) {
+      None()
+    } else {
+      this.!current = i + 1;
+      Some(i)
+    }
+  }
+
+  mutable fun drop(n: Int): mutable Iterator<Int> {
+    invariant(n >= 0, "Called RangeIterator::drop with negative number");
+    this.!current = min(this.current + n, this.end);
+    this
+  }
+
+  mutable fun take(n: Int): mutable Iterator<Int> {
+    invariant(n >= 0, "Called RangeIterator::take with negative number");
+    this.!end = min(this.current + n, this.end);
+    this
+  }
+}
+
+private mutable class RangeReverseIterator(
+  private mutable start: Int,
+  private mutable current: Int,
+) extends Iterator<Int> {
+  readonly fun sizeHint(): ?Int {
+    Some(this.current - this.start)
+  }
+
+  mutable fun next(): ?Int {
+    if (this.start >= this.current) {
+      None()
+    } else {
+      this.!current = this.current - 1;
+      Some(this.current)
+    }
+  }
+
+  mutable fun drop(n: Int): mutable Iterator<Int> {
+    invariant(n >= 0, "Called RangeReverseIterator::drop with negative number");
+    this.!current = max(this.start, this.current - n);
+    this
+  }
+
+  mutable fun take(n: Int): mutable Iterator<Int> {
+    invariant(n >= 0, "Called RangeReverseIterator::take with negative number");
+    this.!start = max(this.start, this.current - n);
+    this
+  }
+}
+
+module end;

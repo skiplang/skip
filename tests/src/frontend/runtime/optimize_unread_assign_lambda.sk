@@ -1,0 +1,7 @@
+fun main(): void {
+  s = "Pass";
+  lam = () -> s;
+  x = s;
+  !s = "\n";
+  print_raw(x + lam())
+}

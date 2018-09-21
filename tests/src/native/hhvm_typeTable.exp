@@ -1,0 +1,55 @@
+Class(name => 'Class1', kind => copy object,
+  fields => [
+    Field(name => 'a0', typ => Bool)
+    Field(name => 'a1', typ => ?Bool)
+    Field(name => 'b0', typ => Int64)
+    Field(name => 'b1', typ => ?Int64)
+    Field(name => 'c0', typ => Float64)
+    Field(name => 'c1', typ => ?Float64)
+    Field(name => 'd0', typ => String)
+    Field(name => 'd1', typ => ?String)
+    Field(name => 'e0', typ => Test1.Copy(object))
+    Field(name => 'e1', typ => ?Test1.Copy(object))
+    Field(name => 'e2', typ => ?Test1.Copy(object))
+    Field(name => 'f0', typ => Test1.Proxy(object))
+    Field(name => 'f1', typ => ?Test1.Proxy(object))
+    Field(name => 'g0', typ => Test1.Base(object))
+    Field(name => 'g1', typ => ?Test1.Base(object))
+    Field(name => 'h0', typ => Vec<Int64>)
+    Field(name => 'h1', typ => ?array<>)
+    Field(name => 'i0', typ => Dict<Int64, Int64>)
+    Field(name => 'i1', typ => ?array<>)
+    Field(name => 'j0', typ => Keyset<Int64>)
+    Field(name => 'j1', typ => ?array<>)
+    Field(name => 'k0', typ => Test1.CopyShape(shape))
+    Field(name => 'k1', typ => ?array<>)
+    Field(name => 'l0', typ => Tuple<Int64, String, Float64>)
+    Field(name => 'l1', typ => ?array<>)
+    Field(name => 'm0', typ => Mixed)
+    Field(name => 'm1', typ => Mixed)
+    Field(name => 'n0', typ => Mixed)
+    Field(name => 'n1', typ => Mixed)
+    Field(name => 'o0', typ => array<>)
+    Field(name => 'o1', typ => ?array<>)
+    Field(name => 'p0', typ => Test1.EmptyCopy(object))
+    Field(name => 'p1', typ => ?Test1.EmptyCopy(object))
+])
+Class(name => 'Test1.Base', kind => base)
+Class(name => 'Test1.Copy', kind => copy object,
+  fields => [
+    Field(name => 'a', typ => Int64)
+    Field(name => 'b', typ => Int64)
+])
+Class(name => 'Test1.CopyShape', kind => copy shape,
+  fields => [
+    Field(name => 'a', typ => Int64)
+    Field(name => 'b', typ => Int64)
+])
+Class(name => 'Test1.EmptyCopy', kind => copy object,
+  fields => [
+])
+Class(name => 'Test1.Proxy', kind => proxy object,
+  fields => [
+    Field(name => 'a', typ => Int64)
+    Field(name => 'b', typ => Int64)
+])

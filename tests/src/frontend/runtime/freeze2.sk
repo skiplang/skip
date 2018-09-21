@@ -1,0 +1,19 @@
+mutable class A(mutable a: Int)
+
+fun main(): void {
+  orig = mutable A(0);
+
+  // Make an immutable copy.
+  copy: A = freeze(orig);
+
+  // "0", as expected.
+  copyBefore = copy.a.toString();
+
+  // Change 'orig'. Shouldn't affect 'copy'.
+  orig.!a = 1;
+
+  // "1" -- oops, a frozen object changed.
+  copyAfter = copy.a.toString();
+
+  print_raw(copyBefore + "." + copyAfter + "\n")
+}

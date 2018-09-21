@@ -1,0 +1,13 @@
+File "./syntax/invalid/const_pattern3.sk", line 5, characters 5-9:
+Ineligible constant used in pattern:
+3 | fun shouldFail(x: Float): String {
+4 |   x match {
+5 |   | MyNan -> "You shouldn't be seeing this\n"
+  |     ^^^^^
+6 |   | _ -> "Pass\n"
+
+File "./syntax/invalid/const_pattern3.sk", line 1, characters 22-30:
+Constant must be initialized to a literal or static object expression, or a static reference to another such constant.
+1 | const MyNan: Float = 0.0 / 0.0;
+  |                      ^^^^^^^^^
+2 |

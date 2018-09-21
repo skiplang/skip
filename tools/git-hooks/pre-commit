@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Ensure that tests/runtime and src/runtime match
+diff -X .gitignore --brief -r tests/runtime src/runtime > /dev/null
+if [ $? -ne 0 ]; then
+    echo ERROR: Mismatch between tests/runtime and src/runtime:
+    diff -X .gitignore --brief -r tests/runtime src/runtime
+    exit 1
+fi
+
+exit 0

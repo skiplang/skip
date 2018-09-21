@@ -1,0 +1,63 @@
+File "./syntax/invalid/did_you_mean_synonym.sk", line 9, characters 3-12:
+The field filter is undefined. Did you mean where?
+ 7 |
+ 8 | fun f(a: A): String {
+ 9 |   a.filter()
+   |   ^^^^^^^^^^
+10 | }
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 8, characters 10-10:
+For the expression of type A
+ 6 | }
+ 7 |
+ 8 | fun f(a: A): String {
+   |          ^
+ 9 |   a.filter()
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 13, characters 3-11:
+The field filtr is undefined. Did you mean where?
+11 |
+12 | fun f2(a: A): String {
+13 |   a.filtr() // mistyped synonyms are also matched
+   |   ^^^^^^^^^
+14 | }
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 12, characters 11-11:
+For the expression of type A
+10 | }
+11 |
+12 | fun f2(a: A): String {
+   |           ^
+13 |   a.filtr() // mistyped synonyms are also matched
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 24, characters 3-11:
+The field items is undefined. Did you mean entries or item?
+22 |
+23 | fun g(b: B): String {
+24 |   b.items() // matches both synonyms and other fields/methods
+   |   ^^^^^^^^^
+25 | }
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 23, characters 10-10:
+For the expression of type B
+21 | }
+22 |
+23 | fun g(b: B): String {
+   |          ^
+24 |   b.items() // matches both synonyms and other fields/methods
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 35, characters 3-10:
+The field new is undefined. Did you mean create?
+33 |
+34 | fun h(): C {
+35 |   C::new();
+   |   ^^^^^^^^
+36 | }
+
+File "./syntax/invalid/did_you_mean_synonym.sk", line 35, characters 3-3:
+For the expression of type Concrete<C>
+33 |
+34 | fun h(): C {
+35 |   C::new();
+   |   ^
+36 | }

@@ -1,0 +1,4 @@
+trait X{x: String}
+trait Y(y: String)
+
+class C uses X, Y

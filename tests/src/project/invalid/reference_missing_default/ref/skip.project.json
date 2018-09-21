@@ -1,0 +1,13 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "def1": {
+      "sources": [],
+      "kind": "Library"
+    },
+    "def2": {
+      "sources": [],
+      "kind": "Library"
+    }
+  }
+}

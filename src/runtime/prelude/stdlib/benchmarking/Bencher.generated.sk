@@ -1,0 +1,119 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Bencher;
+
+extension class BenchmarkStats {
+  const meta: BenchmarkStatsMetaClass = BenchmarkStatsMetaClass();
+}
+
+class BenchmarkStatsMetaClass()
+  extends MetaClass<BenchmarkStats>
+  uses Serialization.Serializer<BenchmarkStats> {
+  fun description(): String {
+    `BenchmarkStats`
+  }
+
+  fun expectedType(): String {
+    this.description()
+  }
+
+  fun serialize(
+    _value: BenchmarkStats,
+    writer: mutable Serialization.Writer,
+  ): void {
+    record = writer.writeRecord(
+      Array["average", "median", "standardDeviation", "min", "max", "samples"],
+    );
+    record.writeItem("average", _value.average, Int::meta);
+    record.writeItem("median", _value.median, Int::meta);
+    record.writeItem("standardDeviation", _value.standardDeviation, Int::meta);
+    record.writeItem("min", _value.min, Int::meta);
+    record.writeItem("max", _value.max, Int::meta);
+    record.writeItem("samples", _value.samples, Array::meta(Int::meta));
+    record.end();
+  }
+
+  fun deserialize(reader: mutable Serialization.Reader): BenchmarkStats {
+    record = reader.readRecord(
+      Array["average", "median", "standardDeviation", "min", "max", "samples"],
+    );
+    tempMaybe0: ?Int = None();
+    tempMaybe1: ?Int = None();
+    tempMaybe2: ?Int = None();
+    tempMaybe3: ?Int = None();
+    tempMaybe4: ?Int = None();
+    tempMaybe5: ?Array<Int> = None();
+    loop {
+      record.readKey() match {
+      | Some("average") -> !tempMaybe0 = Some(record.readValue(Int::meta))
+      | Some("median") -> !tempMaybe1 = Some(record.readValue(Int::meta))
+      | Some("standardDeviation") ->
+        !tempMaybe2 = Some(record.readValue(Int::meta))
+      | Some("min") -> !tempMaybe3 = Some(record.readValue(Int::meta))
+      | Some("max") -> !tempMaybe4 = Some(record.readValue(Int::meta))
+      | Some("samples") ->
+        !tempMaybe5 = Some(record.readValue(Array::meta(Int::meta)))
+      | None() -> break void
+      | Some(string) ->
+        throw Serialization.FieldNotInClassError(
+          string,
+          Array[
+            "average",
+            "max",
+            "median",
+            "min",
+            "samples",
+            "standardDeviation",
+          ],
+        )
+      };
+    };
+    record.end();
+    (
+      tempMaybe0,
+      tempMaybe1,
+      tempMaybe2,
+      tempMaybe3,
+      tempMaybe4,
+      tempMaybe5,
+    ) match {
+    | (
+      Some(temp0),
+      Some(temp1),
+      Some(temp2),
+      Some(temp3),
+      Some(temp4),
+      Some(temp5),
+    ) ->
+      BenchmarkStats{
+        average => temp0,
+        median => temp1,
+        standardDeviation => temp2,
+        min => temp3,
+        max => temp4,
+        samples => temp5,
+      }
+    | (None(), _, _, _, _, _) ->
+      throw Serialization.RecordMissingFieldError("BenchmarkStats", "average")
+    | (_, None(), _, _, _, _) ->
+      throw Serialization.RecordMissingFieldError("BenchmarkStats", "median")
+    | (_, _, None(), _, _, _) ->
+      throw Serialization.RecordMissingFieldError(
+        "BenchmarkStats",
+        "standardDeviation",
+      )
+    | (_, _, _, None(), _, _) ->
+      throw Serialization.RecordMissingFieldError("BenchmarkStats", "min")
+    | (_, _, _, _, None(), _) ->
+      throw Serialization.RecordMissingFieldError("BenchmarkStats", "max")
+    | (_, _, _, _, _, None()) ->
+      throw Serialization.RecordMissingFieldError("BenchmarkStats", "samples")
+    }
+  }
+}
+module end;

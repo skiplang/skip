@@ -1,0 +1,19 @@
+class StrExn(x: String) extends Exception {
+  fun getMessage(): String {
+    this.x
+  }
+}
+
+fun foo(): String {
+  throw StrExn("Pass\n")
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      foo() + throw StrExn("Fail")
+    } catch {
+    | StrExn(s) -> s
+    },
+  )
+}

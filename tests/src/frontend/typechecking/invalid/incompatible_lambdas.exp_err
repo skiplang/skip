@@ -1,0 +1,31 @@
+File "./typechecking/invalid/incompatible_lambdas.sk", line 5, characters 7-9:
+Invalid override for the field 'foldl' on child 'Foo' for parent 'MyIterable'
+3 | }
+4 |
+5 | class Foo<T>() uses MyIterable<T> {
+  |       ^^^
+6 |   fun foldl<R>(_: (R, T) ~> R, init: R): R {
+
+File "./typechecking/invalid/incompatible_lambdas.sk", line 2, characters 16-26:
+The type: ((R, T) -> R)
+1 | trait MyIterable<+T> {
+2 |   fun foldl<R>((R, T) -> R, R): R;
+  |                ^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/incompatible_lambdas.sk", line 6, characters 19-29:
+Is not a subtype of: ((_, T) ~> _)
+4 |
+5 | class Foo<T>() uses MyIterable<T> {
+6 |   fun foldl<R>(_: (R, T) ~> R, init: R): R {
+  |                   ^^^^^^^^^^^
+7 |     init
+
+File "./typechecking/invalid/incompatible_lambdas.sk", line 6, characters 19-29:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: ((R, T) -> R)
+4 |
+5 | class Foo<T>() uses MyIterable<T> {
+6 |   fun foldl<R>(_: (R, T) ~> R, init: R): R {
+  |                   ^^^^^^^^^^^
+7 |     init

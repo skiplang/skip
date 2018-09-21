@@ -1,0 +1,19 @@
+fun main(): void {
+  print_raw(
+    "" +
+      "".length() +
+      "\n" +
+      "x".length() +
+      "\n" +
+      "xy".length() +
+      "\n" +
+      "\u1234".length() +
+      "\n" +
+      "x\u1234".length() +
+      "\n" +
+      "\u1234x".length() +
+      "\n" +
+      "\U0010FFFF".length() +
+      "\n",
+  )
+}

@@ -1,0 +1,166 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Used by the language server protocol's JSON serialization.
+
+// Adds a toJson() method on values which are 'Jsonable'.
+// Jsonable values include:
+//  - primitives (Bool, Int, String, Float)
+//  - ?Jsonable
+//  - Vector<Jsonable>
+//  - Map<String, Jsonable>
+//  - Result<Jsonable, Jsonable>
+trait Jsonable {
+  fun toJson(): JSON.Value;
+}
+
+// A value which serializes to a JSON.Object.
+//
+// In addition to being Jsonable, can also be asked for its fields.
+//
+// Fields whose value is JSON.Null() will be filtered out of the resulting
+// JSON.Object().
+//
+// Values include:
+//  - Result<JsonableObject, JsonableObject> - either value
+//  - Tuple<JsonableObject> - unions fields of all constituents
+trait JsonableObject extends Jsonable {
+  overridable fun toJson(): JSON.Value {
+    JSON.Object(this.toJsonFields())
+  }
+
+  macro overridable fun toJsonFields(): Map<String, JSON.Value> {
+    fields = mutable Map<String, JSON.Value>[];
+    #forEachField (#field, #fieldName) {
+      this.#field.toJson() match {
+      | JSON.Null() -> void
+      | value -> fields.set(#fieldName, value)
+      }
+    };
+    freeze(fields)
+  }
+}
+
+fun toJson<T: Jsonable>(value: T): JSON.Value {
+  value.toJson()
+}
+
+extension base class Option uses Jsonable[T: Jsonable] {
+  fun toJson[T: Jsonable](): JSON.Value {
+    this.map(toJson).default(JSON.Null())
+  }
+}
+
+extension class Vector uses Jsonable[T: Jsonable] {
+  fun toJson[T: Jsonable](): JSON.Array {
+    JSON.Array(this.map(toJson).collect(Vector))
+  }
+}
+
+extension class Bool uses Jsonable {
+  fun toJson(): JSON.Bool {
+    JSON.Bool(this)
+  }
+}
+
+extension class Int uses Jsonable {
+  fun toJson(): JSON.IntNumber {
+    JSON.IntNumber(this)
+  }
+}
+
+extension class Float uses Jsonable {
+  fun toJson(): JSON.FloatNumber {
+    JSON.FloatNumber(this)
+  }
+}
+
+extension class String uses Jsonable {
+  fun toJson(): JSON.String {
+    JSON.String(this)
+  }
+}
+
+module Tuple;
+
+// Tuples define unions of fields
+extension class .Tuple2 uses
+  JsonableObject[T0: JsonableObject, T1: JsonableObject],
+{
+  fun toJsonFields[T0: JsonableObject, T1: JsonableObject](): Map<
+    String,
+    JSON.Value,
+  > {
+    fields = this.i0.toJsonFields().clone();
+    fields.extend(this.i1.toJsonFields());
+    freeze(fields)
+  }
+}
+
+extension class .Tuple3 uses
+  JsonableObject[T0: JsonableObject, T1: JsonableObject, T2: JsonableObject],
+{
+  fun toJsonFields[
+    T0: JsonableObject,
+    T1: JsonableObject,
+    T2: JsonableObject,
+  ](): Map<String, JSON.Value> {
+    fields = this.i0.toJsonFields().clone();
+    fields.extend(this.i1.toJsonFields());
+    fields.extend(this.i2.toJsonFields());
+    freeze(fields)
+  }
+}
+
+module end;
+
+// Result defines one of alternates
+extension base class Result uses
+  Jsonable[T: Jsonable, E: Jsonable],
+  JsonableObject[T: JsonableObject, E: JsonableObject],
+{
+  fun toJson[T: Jsonable, E: Jsonable](): JSON.Value {
+    this match {
+    | Success(value) -> value.toJson()
+    | Failure(value) -> value.toJson()
+    }
+  }
+
+  fun toJsonFields[T: JsonableObject, E: JsonableObject](): Map<
+    String,
+    JSON.Value,
+  > {
+    this match {
+    | Success(value) -> value.toJsonFields()
+    | Failure(value) -> value.toJsonFields()
+    }
+  }
+}
+
+module JSON;
+
+extension base class Value uses Jsonable {
+  fun toJson(): JSON.Value {
+    this
+  }
+}
+
+module end;
+
+/* TODO: T30255747
+extension class Map uses Jsonable[K: String, V: ?JSON.Value] {
+  fun toJson[K: String, V: ?JSON.Value](): JSON.Object {
+    JSON.Object(
+      Map::createFromIterator(
+        this.items()
+          .filter(item -> item.i1.isSome())
+          .map(item -> (item.i0, item.i1.fromSome())),
+      ),
+    )
+  }
+}
+*/

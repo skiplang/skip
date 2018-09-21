@@ -1,0 +1,5 @@
+fun main(): void {
+  s = "Pass\n";
+  s1 = s;
+  print_raw(s1)
+}

@@ -1,0 +1,7 @@
+class C() {
+  static frozen fun m(): String { "Fail" }
+}
+
+fun main(): String {
+  C::m()
+}

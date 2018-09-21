@@ -1,0 +1,8 @@
+class Foo<T: frozen>() {
+  static fun create(): Foo<T> {
+    Foo()
+  }
+  static fun special<T: nonNullable>(): Foo<T> {
+    static::create()
+  }
+}

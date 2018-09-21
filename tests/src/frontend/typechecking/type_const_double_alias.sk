@@ -1,0 +1,12 @@
+class Foo() {
+  type T1 = Int;
+  type T2 = this::T1;
+}
+
+base class Bar {
+  fun baz(): Foo::T2;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

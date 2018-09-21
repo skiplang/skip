@@ -1,0 +1,17 @@
+trait Z
+trait X extends Z
+
+class HasX() uses X
+class Dup<T, U>(T, U) uses X[T: Z, U: Z]
+
+base class BTricky<T> uses X[T: X]
+class Tricky<T>() extends BTricky<Dup<T, T>>
+
+base class BNo<T> {
+  fun abs[T: Z](): void;
+}
+class C<T>() extends BNo<Tricky<T>>
+
+fun boom(c: C<HasX>): void {
+  c.abs()
+}

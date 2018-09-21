@@ -1,0 +1,23 @@
+File "./typechecking/invalid/pattern_nested_class.sk", line 11, characters 9-9:
+Invalid pattern
+ 9 |   print_raw(
+10 |     d match {
+11 |     | D(X()) -> "Fail"
+   |         ^
+12 |     },
+
+File "./typechecking/invalid/pattern_nested_class.sk", line 5, characters 12-12:
+The type: C
+3 | class C(x: Int)
+4 |
+5 | class D(y: C)
+  |            ^
+6 |
+
+File "./typechecking/invalid/pattern_nested_class.sk", line 11, characters 9-11:
+Does not share a common super type with: X
+ 9 |   print_raw(
+10 |     d match {
+11 |     | D(X()) -> "Fail"
+   |         ^^^
+12 |     },

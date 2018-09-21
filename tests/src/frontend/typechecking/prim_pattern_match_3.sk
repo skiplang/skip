@@ -1,0 +1,12 @@
+class Foo() {
+  type T = Array<Int>;
+  fun matcher(x: this::T): String {
+    x match {
+    | this::T _ -> "Pass\n"
+    }
+  }
+}
+
+fun main(): void {
+  print_raw(Foo().matcher(Array[112, 42]))
+}

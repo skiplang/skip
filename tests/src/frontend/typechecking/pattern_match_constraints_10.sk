@@ -1,0 +1,18 @@
+base class A
+base class C extends A
+
+// Note that <T> here is essential for the repro, removing <T> would make
+// all the problems go away
+class C1<T>() extends C
+class C2() extends C
+
+fun a(): A {
+  C1()
+}
+
+fun main(): void {
+  a() match {
+  | A _ -> void
+  };
+  print_string("Pass")
+}

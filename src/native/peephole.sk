@@ -1,0 +1,2001 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Peephole;
+
+// Next block to peephole.
+mutable private class PeepholeWork(
+  block: Block,
+
+  // Global Value Number table for what values dominate entry to the block.
+  // This table keeps the canonical version of each Instr as we walk down
+  // the dominator tree. It can also maps Instrs to their know value, e.g.
+  // inside "if (x == 3) { ... }" x could be known to be 3, etc.
+  gvn: mutable UnorderedMap<Instr, Instr>,
+)
+
+mutable class .Peephole{
+  mutable gvn: mutable UnorderedMap<Instr, Instr> = UnorderedMap::mcreate(0),
+  private mutable modifiesMemory: Array<Bool> = Array[],
+  // This is a cache of the last store for a given Block, used specifically
+  // to accelerate Freeze peepholes.
+  mutable lastUpcomingStoreKnownForBlock: BlockID = BlockID::none,
+  mutable lastUpcomingStoreInBlock: InstrID = InstrID::none,
+} extends Rewrite {
+  // Simplifies Instrs, including constant folding and global value numbering.
+  //
+  // Returns the resulting function and a bool saying whether it changed.
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    d = mutable static{optinfo => OptimizerInfo::make(f), env, pos => f.pos};
+    d.go("peephole", true)
+  }
+
+  private mutable fun peephole(x: Instr): Instr {
+    x match {
+    | v @ BlockParam _ -> peepholeBlockParam(v, this)
+    | v @ BoolBinOp _ -> peepholeBoolBinOp(v, this)
+    | v @ BytePointerAdd _ -> peepholeBytePointerAdd(v, this)
+    | v @ CallFunction _ -> peepholeCallFunction(v, this)
+    | v @ CallMethodBase _ -> peepholeCallMethod(v, this)
+    | v @ Cast _ -> peepholeCast(v, this)
+    | v @ FloatBinOp _ -> peepholeFloatBinOp(v, this)
+    | v @ FloatBits _ -> peepholeFloatBits(v, this)
+    | v @ FloatToInt _ -> peepholeFloatToInt(v, this)
+    | v @ FloatToString _ -> peepholeFloatToString(v, this)
+    | v @ Freeze _ -> peepholeFreeze(v, this)
+    | v @ GetField _ -> peepholeGetField(v, this)
+    | v @ IntBinOp _ -> peepholeIntBinOp(v, this)
+    | v @ IntClz _ -> peepholeIntClz(v, this)
+    | v @ IntCtz _ -> peepholeIntCtz(v, this)
+    | v @ IntPopcount _ -> peepholeIntPopcount(v, this)
+    | v @ IntToFloat _ -> peepholeIntToFloat(v, this)
+    | v @ IntToString _ -> peepholeIntToString(v, this)
+    | v @ Intern _ -> peepholeIntern(v, this)
+    | v @ Object _ -> peepholeObject(v, this)
+    | v @ Reinterpret _ -> peepholeReinterpret(v, this)
+    | v @ SignExtend _ -> peepholeSignExtend(v, this)
+    | v @ StringBinOp _ -> peepholeStringBinOp(v, this)
+    | v @ StringConcat _ -> peepholeStringConcat(v, this)
+    | v @ StringHash _ -> peepholeStringHash(v, this)
+    | v @ Truncate _ -> peepholeTruncate(v, this)
+    | v @ TupleExtract _ -> peepholeTupleExtract(v, this)
+    | v @ ArrayAlloc _ -> peepholeArrayAlloc(v, this)
+    | v @ ArrayNew _ -> peepholeArrayNew(v, this)
+    | v @ ArraySize _ -> peepholeArraySize(v, this)
+    | v @ With _ -> peepholeWith(v, this)
+    | v @ ZeroExtend _ -> peepholeZeroExtend(v, this)
+
+    // These are handled by the control flow pass.
+    | Terminator _
+
+    // TODO: Some of these could benefit from peepholes.
+    | Alloca _
+    | Constant _
+    | FunParam _
+    | GetConst _ // Handled by inliner
+    | GetCurrentAwaitable _
+    | Load _
+    | LoadVTableEntry _
+    | LocalGC _
+    | NamedCall _
+    | ObstackAlloc _
+    | ObstackNote _
+    | ObstackShallowClone _
+    | ObstackUsage _
+    | RawCallBase _
+    | SetField _
+    | Store _
+    | Suspend _
+    | ArrayClone _
+    | ArrayUnsafeGet _
+    | ArrayUnsafeSet _
+    | Yield _ ->
+      x
+    }
+  }
+
+  // Peephole one Instr until it reaches a fixed point.
+  private mutable fun peepholeToFixedPoint(instr: Instr): Instr {
+    replacement = this.peephole(instr);
+    if (replacement.id == instr.id) {
+      instr
+    } else {
+      if (!this.optinfo.idToInstr.contains(replacement.id)) {
+        this.optinfo.instrToBlock.add(replacement.id, this.nextBlockID)
+      };
+      this.peepholeToFixedPoint(replacement)
+    }
+  }
+
+  // Optimize block parameters.
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    allParams = SortedMap<Array<InstrID>, Instr>::create();
+
+    for (instr in b.params) {
+      optinfo = this.optinfo;
+
+      replacement = peepholeBlockParam(instr, this);
+
+      if (replacement.id == instr.id && b.params.size() > 1) {
+        // See if any earlier param has exactly the same inputs.
+        // If so just canonicalize to that one.
+        key = instr.inputsAsArray(optinfo);
+        !allParams = allParams.setWith(key, (instr : Instr), (old, _) -> {
+          !replacement = old;
+          old
+        })
+      };
+
+      if (replacement.id != instr.id) {
+        // This parameter is unnecessary, redirect uses of it.
+        //
+        // NOTE: This does not directly "change" this block, even if we notice
+        // an optimization. It merely allows other Instrs that read this
+        // BlockParam (possibly in different Blocks) to be optimized.
+        // Once they all stop using this BlockParam it will be eliminated
+        // by DCE, but that's not the job of this pass.
+        if (!optinfo.idToInstr.contains(replacement.id)) {
+          optinfo.f.pos.die("BlockParam cannot peephole to a new Instr.")
+        };
+        optinfo.idToInstr.set(instr.id, replacement)
+      }
+    }
+  }
+
+  // Does the given Block, or any Block reachable from that Block,
+  // modify any memory that was created before entering that Block?
+  //
+  // NOTE: This is very conservative, currently intended only to be
+  // good enough to handle common freeze() optimizations near the end
+  // of functions. It will for example, pessimistically count many cases
+  // of storing to memory allocated within a Block even though it doesn't
+  // need to.
+  mutable fun blockModifiesMemory(bid: BlockID): Bool {
+    if (this.modifiesMemory.isEmpty()) {
+      optinfo = this.optinfo;
+
+      mod = Array::mfill(optinfo.idToBlock.size(), false);
+
+      stack = mutable Vector[];
+
+      // For speed, process blocks in reverse order, since if a later block
+      // writes memory, it can quickly mark a large number of predecessors,
+      // avoiding the need to walk their Instrs at all.
+      rpo = optinfo.reversePostorder();
+      for (ri in Range(0, rpo.size())) {
+        b = rpo[rpo.size() - 1 - ri];
+
+        if (
+          !mod[b.id] &&
+          this.getBlock(b).instrs.any(i -> canModifyExistingMemory(i, optinfo))
+        ) {
+          mod.set(b.id, true);
+          stack.push(b);
+
+          while (!stack.isEmpty()) {
+            x = stack.pop();
+
+            for (pred in optinfo.getPredecessors(x)) {
+              if (!mod[pred.id]) {
+                mod.set(pred.id, true);
+                stack.push(pred)
+              }
+            }
+          };
+        }
+      };
+
+      this.!modifiesMemory = freeze(mod);
+    };
+
+    this.modifiesMemory[bid.id]
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    optinfo = this.optinfo;
+    idToInstr = optinfo.idToInstr;
+
+    if (instr.id == this.lastUpcomingStoreInBlock) {
+      this.!lastUpcomingStoreInBlock = InstrID::none
+    };
+
+    changed = false;
+
+    // Try doing a peephole.
+    keep = this.peepholeToFixedPoint(instr);
+    needAppend = if (keep.id == instr.id) {
+      true
+    } else {
+      // Tell anyone using the old instr to use the replacement instead.
+      !changed = true;
+      idToInstr.set(instr.id, keep);
+
+      // We need to append iff "keep" has not been emitted yet.
+      !idToInstr.contains(keep.id)
+    };
+
+    if (needAppend) {
+      // Only Stmts can possibly need to be appended.
+      keepStmt = keep match {
+      | s @ Stmt _ -> s
+      | _ -> instr.die("Attempt to append non-Stmt (" + keep.opname() + ")")
+      };
+
+      // Use global value numbering (CSE) to look for a dominating duplicate.
+      if (
+        canCSE(keepStmt, optinfo, this.env) &&
+        !this.gvn.maybeSet(keepStmt, keepStmt)
+      ) {
+        // We have an old one that's equal, so use it instead.
+        idToInstr.set(instr.id, this.gvn[keepStmt]);
+        !changed = true;
+      } else if (changed) {
+        _ = this.emitInstr(keepStmt)
+      }
+    };
+
+    changed
+  }
+
+  protected mutable fun optimizeAllBlocks(_inputBlocks: Array<BlockID>): void {
+    optinfo = this.optinfo;
+    f = optinfo.f;
+
+    // Seed the recursion at the entry block with no GVN table.
+    workStack = mutable Vector[];
+    workStack.push(mutable PeepholeWork(f.blocks[0], mutable UnorderedMap[]));
+
+    // Use a stack to walk in dominator tree order.
+    while (!workStack.isEmpty()) {
+      // Optimize the next block.
+      pw = workStack.pop();
+      b = pw.block;
+      oldGVN = this.gvn;
+      this.!gvn = pw.gvn;
+      this.optimizeBlock(b);
+      endGVN = this.gvn;
+      this.!gvn = oldGVN;
+      !b = this.blockBuf.last();
+
+      /*
+
+      NOTE: This optimization (saying that the dominator subtree of an
+      "if true" can assume the predicate is true, etc. allowing redundant
+      array bounds checks to be collapsed etc.) is disabled because it
+      is incorrect.
+
+      The problem is of course that join points later in the graph can
+      be reached by both the "if true" and "if false" dominator children.
+
+      One way to think about doing this correctly is to imagine putting in
+      a dummy trampoline block containing a "Jump" for each "If" successor,
+      then compute the dominator tree based on that extended graph. Anything
+      dominated by the "if true" trampoline can indeed assume the predicate
+      value is true, etc.
+
+      // Map each successor block ID to the index of its only appearance
+      // in the successors array. If there is more than one appearance,
+      // the index is set to -1.
+      successors = b.successors();
+      uniqueSuccessorIndex = Map::mcreate(successors.size());
+      successors.eachWithIndex((i, s) -> {
+        if (!uniqueSuccessorIndex.maybeSet(s.target, i)) {
+          uniqueSuccessorIndex.set(s.target, -1)
+        }
+      });
+        */
+
+      // Recurse to children.
+      domChildren = optinfo.getDominatorChildren(b.id);
+      domChildren.eachWithIndex((i, childID) -> {
+        // For efficiency allow the last child to clobber our end GVN table
+        // without cloning it.
+        childGVN = if (i + 1 == domChildren.size()) endGVN else endGVN.clone();
+
+        /*
+        // If a child is a direct successor, and appears only once
+        // in the successor list, we can update its GVN table to "know"
+        // the value of whatever conditional check got it here.
+        succIndex = uniqueSuccessorIndex.maybeGet(childID).default(-1);
+        if (succIndex >= 0) {
+          b.terminator() match {
+          | If{predicate} -> {
+              flag: Instr = this.constantBool(succIndex == 0);
+              childGVN.set(this.getInstr(predicate), flag)
+            }
+          | IntSwitch{value, cases} -> {
+              if (succIndex > 0) {
+                n: Instr = this.constantInt(cases[succIndex - 1]);
+                childGVN.set(this.getInstr(value), n)
+              }
+            }
+          | StringSwitch{value, cases} -> {
+              if (succIndex > 0) {
+                n = this.getInstr(cases[succIndex - 1]);
+                childGVN.set(this.getInstr(value), n)
+              }
+            }
+          | IndirectJump _
+          | InvokeFunction _
+          | InvokeMethod _
+          | Jump _
+          | RawInvoke _
+          | Return _
+          | Throw _
+          | TypeSwitch _
+          | Unreachable _ -> void
+          }
+        };
+          */
+
+        workStack.push(mutable PeepholeWork(this.getBlock(childID), childGVN))
+      })
+    };
+  }
+}
+
+private fun allDeepFrozen(
+  args: Array<InstrID>,
+  optinfo: mutable OptimizerInfo,
+): Bool {
+  args.all(arg -> optinfo.getInstr(arg).typ.isDeepFrozen())
+}
+
+// Adding @debug to a function prevents CSE of calls to it, and
+// untracked functions cannot CSE (for example, even if they return void
+// they might look at some external data source and decide whether to
+// throw an exception).
+private fun funCanCSE(sid: SFunctionID, env: GlobalEnv, pos: Pos): Bool {
+  f = env.getFunction(sid, pos);
+  f.funType.isTracked && !annotationsContain(f.annotations, "@debug", pos)
+}
+
+// We allow CSE of two function calls where all arguments and return
+// values are frozen, because they must produce identical results.
+// The only possible side effect is a "throw", but if it's going to
+// throw that should happen on the first call, so we don't need
+// to call again.
+//
+// We allow this to be turned off with the "@debug" annotation.  We
+// use this for helper routines that have some side effect, like
+// printing out debugging input that we don't want to optimize
+// away, but also where there is no formal guarantee how many
+// times they must be run. For example it is not legal to
+// eliminate a @debug call, but it is legal to CSE two calls to
+// a function that call a @debug function. The intent is to
+// allow users to help "debug-by-print" to see what their code is
+// doing without the heavyweight transitive implications of "important"
+// side effects like writing to an external database.
+// We will revisit this.
+private fun canCSECall(
+  call: CallBase,
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+): Bool {
+  call.typ.isDeepFrozen() &&
+    allDeepFrozen(call.args, optinfo) &&
+    (call match {
+    | CallFunctionBase{name} -> funCanCSE(name, env, call.pos)
+    | mcall @ CallMethodBase _ ->
+      // TODO: It's not clear what the rules should be for method call CSE,
+      // because some overrides may say @debug and some may not.
+      //
+      // To be honest, we don't care much about this case, so in general we
+      // allow CSE, but we allow a way for the determined user to turn it off.
+      // To avoid scanning huge numbers of subclasses here looking for @debug
+      // in any of them, if *any* do not say @debug we allow CSE, so the
+      // common check is quick.
+      //
+      // The user may expect saying @debug on the base class method should
+      // "contaminate" the subclasses, but we don't have a handy way to
+      // do that at the moment. We should revisit this later.
+      !optinfo.allMethodImplementations(mcall, env, (_, methodCodeID, _, _) ->
+        !funCanCSE(methodCodeID, env, call.pos)
+      )
+    })
+}
+
+// Can this Instr modify memory that existed before it ran?
+//
+// So, for example, this is true for a Store, but false for Call to a
+// function that only takes readonly arguments, since even though it may
+// allocate its own memory and modify that memory, it's not modifying memory
+// that was allocated before the Call ran.
+private fun canModifyExistingMemory(
+  instr: Stmt,
+  optinfo: mutable OptimizerInfo,
+): Bool {
+  instr match {
+  | Alloca _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | Cast _
+  | YieldBreak _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | GetConst _
+  | GetCurrentAwaitable _
+  | GetField _
+  | If _
+  | IndirectJump _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntCtz _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntSwitch _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | Jump _
+  | LandingPad _
+  | Load _
+  | LoadVTableEntry _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _
+  | Reinterpret _
+  | Return _
+  | SignExtend _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | StringSwitch _
+  | Throw _
+  | Truncate _
+  | TupleExtract _
+  | TypeSwitch _
+  | Unreachable _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | With _
+  | ZeroExtend _ ->
+    false
+
+  // LocalGC relocates pointers, but does not modify memory in the sense
+  // that this function is looking for, as those relocations are
+  // invisible to other optimizations.
+  | LocalGC _ -> false
+
+  // Suspend can record a continuation in the Awaitable, which is a mem write.
+  | Suspend _ -> true
+
+  | AsyncReturn _
+  | NamedCall _
+  | Store _
+  | SetField _
+  | ArrayUnsafeSet _
+  | Yield _ ->
+    true
+
+  | RawCallBase{args}
+  | CallBase{args} ->
+    // Conservatively assume that a call that takes a mutable argument
+    // might modify it.
+    args.any(arg -> optinfo.getInstr(arg).typ.isMutable())
+  }
+}
+
+private fun canCSE(
+  instr: Stmt,
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+): Bool {
+  instr match {
+  | Terminator _ -> false
+
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | Cast _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | GetConst _
+  | GetCurrentAwaitable _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCtz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | LoadVTableEntry _
+  | Reinterpret _
+  | SignExtend _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | Truncate _
+  | TupleExtract _
+  | ArraySize _
+  | ZeroExtend _ ->
+    true
+
+  | Load{canCSE} -> canCSE
+
+  | call @ CallBase _ -> canCSECall(call, optinfo, env)
+  | GetField{obj, field} ->
+    objType = optinfo.getInstr(obj).typ;
+    objType.isDeepFrozen() ||
+      {
+        sc = objType.exampleSClass(env);
+        !sc.getField(field, instr.pos).isAssignable
+      }
+  | Intern{value} -> optinfo.getInstr(value).typ.isDeepFrozen()
+  | Object _
+  | ArrayNew _ ->
+    instr.typ.isDeepFrozen()
+  | ArrayUnsafeGet{obj} -> optinfo.getInstr(obj).typ.isDeepFrozen()
+  | With{obj} -> optinfo.getInstr(obj).typ.isDeepFrozen()
+
+  | Alloca _
+  | Freeze _
+  | LocalGC _
+  | NamedCall _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _ // could CSE, if we proved no allocations between.
+  | RawCallBase _
+  | Store _
+  | SetField _
+  | Suspend _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayUnsafeSet _
+  | Yield _ ->
+    false
+  }
+}
+
+private fun peepholeBlockParam(peep: BlockParam, s: mutable Peephole): Instr {
+  // Recurse through all reachable inputs to find the non-BlockParams that
+  // might feed in. If there is only one, then that must be the value.
+
+  stack = mutable Vector<BlockParam>[];
+
+  // Set of IDs we have seen already.
+  // NOTE: For efficiency we could replace this with an array of generation
+  // counters on OptInfo such that an Instr is "marked" if its slot equals
+  // the "current" generation counter, and we clear all marks by incrementing
+  // the "current" counter value.
+  seen = mutable UnorderedSet[];
+  seen.add(peep.id);
+
+  // The first non-BlockParam value we have come across, if any.
+  someNonBlockParam = InstrID::none;
+
+  // If true, this BlockParam could yield two different values, so it cannot
+  // trivially be replaced with one of its inputs.
+  hasTwoDistinctPossibilities = false;
+
+  processBlockParam: (BlockParam -> void) = p -> {
+    p.visitInputs(
+      inputID -> {
+        if (!hasTwoDistinctPossibilities) {
+          input = s.getInstr(inputID);
+          if (seen.maybeInsert(input.id)) {
+            input match {
+            | bp @ BlockParam _ -> stack.push(bp)
+            | _ ->
+              if (someNonBlockParam.idValue() < 0) {
+                !someNonBlockParam = input.id
+              } else {
+                !hasTwoDistinctPossibilities = true
+              }
+            }
+          }
+        }
+      },
+      s.optinfo,
+    )
+  };
+
+  processBlockParam(peep);
+
+  if (hasTwoDistinctPossibilities) {
+    peep
+  } else if (seen.size() == 2) {
+    // There is only one distinct input (ignoring itself). Some use that,
+    // even if it's another BlockParam.
+    if (someNonBlockParam.idValue() >= 0) {
+      s.getInstr(someNonBlockParam)
+    } else {
+      // The only distinct input must have been another BlockParam.
+      peep.pos.invariant(stack.size() == 1, "Recursion confusion.");
+      stack[0]
+    }
+  } else {
+    // Do a deeper analysis and recursively search for all reachable
+    // inputs other than BlockParams. If there's only one we can just use it.
+    while (!hasTwoDistinctPossibilities && !stack.isEmpty()) {
+      processBlockParam(stack.pop())
+    };
+
+    if (hasTwoDistinctPossibilities) {
+      peep
+    } else {
+      // We can't have a pure cycle of just BlockParams.
+      if (someNonBlockParam.idValue() < 0) {
+        peep.pos.die(`Invalid BlockParam ${peep}`)
+      };
+      s.getInstr(someNonBlockParam)
+    }
+  }
+}
+
+private fun peepholeBoolBinOpConstConst(
+  peep: BoolBinOp,
+  _s: mutable Peephole,
+  l: Bool,
+  r: Bool,
+): Bool {
+  peep match {
+  | BoolCmpEq _ -> l == r
+  | BoolCmpNe _ -> l != r
+  | BoolCmpLt _ -> l < r
+  | BoolCmpLe _ -> l <= r
+  }
+}
+
+private fun peepholeBoolBinOpVarConst(
+  peep: BoolBinOp,
+  s: mutable Peephole,
+  r: Bool,
+): Instr {
+  peep match {
+  | BoolCmpEq _ ->
+    if (r) {
+      // x == true ==> x
+      s.getInstr(peep.lhs)
+    } else {
+      peep
+    }
+  | BoolCmpNe _ ->
+    if (!r) {
+      // x != false ==> x
+      s.getInstr(peep.lhs)
+    } else {
+      // x != true ==> x == false
+      semiclone(peep, s, BoolCmpEq, peep.lhs, s.constantBool(false).id)
+    }
+  | BoolCmpLt _ ->
+    if (!r) {
+      // x < false ==> false.
+      s.getInstr(peep.rhs)
+    } else {
+      // x < true ==> x == false
+      semiclone(peep, s, BoolCmpEq, peep.lhs, s.constantBool(false).id)
+    }
+  | BoolCmpLe _ ->
+    if (r) {
+      // x <= true ==> true
+      s.getInstr(peep.rhs)
+    } else {
+      // x <= false ==> x == false
+      semiclone(peep, s, BoolCmpEq, peep.lhs, peep.rhs)
+    }
+  }
+}
+
+private fun peepholeBoolBinOpConstVar(
+  peep: BoolBinOp,
+  s: mutable Peephole,
+  l: Bool,
+): Instr {
+  peep match {
+  | BoolCmpEq _
+  | BoolCmpNe _ ->
+    peep
+  | BoolCmpLt _ ->
+    if (l) {
+      // true < x ==> false
+      s.constantBool(false)
+    } else {
+      // false < x ==> x
+      s.getInstr(peep.rhs)
+    }
+  | BoolCmpLe _ ->
+    if (!l) {
+      // false <= x ==> true
+      s.constantBool(true)
+    } else {
+      // true <= x ==> x
+      s.getInstr(peep.rhs)
+    }
+  }
+}
+
+private fun peepholeBoolBinOp(peep: BoolBinOp, s: mutable Peephole): Instr {
+  lhs = s.getInstr(peep.lhs);
+  rhs = s.getInstr(peep.rhs);
+
+  val = lhs match {
+  | ConstantBool{value => lhsValue} ->
+    rhs match {
+    | ConstantBool{value => rhsValue} ->
+      s.constantBool(peepholeBoolBinOpConstConst(peep, s, lhsValue, rhsValue))
+    | _ -> peepholeBoolBinOpConstVar(peep, s, lhsValue)
+    }
+  | _ ->
+    rhs match {
+    | ConstantBool{value => rhsValue} ->
+      peepholeBoolBinOpVarConst(peep, s, rhsValue)
+    | _ -> peep
+    }
+  };
+
+  if (val.id != peep.id) {
+    val
+  } else {
+    peepholeBinOpDefault(peep, s, lhs, rhs)
+  }
+}
+
+private fun peepholeBytePointerAdd(
+  peep: BytePointerAdd,
+  s: mutable Peephole,
+): Instr {
+  s.getInstr(peep.offset) match {
+  | ConstantInt{value => 0} -> s.getInstr(peep.addr)
+  | _ -> peep
+  }
+}
+
+private fun peepholeCast(peep: Cast, s: mutable Peephole): Instr {
+  input = s.getInstr(peep.value);
+  if (isSubType(input.typ, peep.typ, s.env, peep.pos)) {
+    // Cast is not adding any information (i.e. remove upcast).
+    input
+  } else {
+    input match {
+    | Cast{value => value2} ->
+      // cast<T1>(cast<T2>(x)) -> cast<T1>(x).
+      peep with {id => s.iid(), value => value2}
+    | _ -> peep
+    }
+  }
+}
+
+private fun peepholeReinterpret(peep: Reinterpret, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | Reinterpret{value => value2} ->
+    // reinterpret<T1>(reinterpret<T2>(a)) -> reinterpret<T1>(a)
+    peep with {id => s.iid(), value => value2}
+  | _ -> peep
+  }
+}
+
+// Return(Freeze(x)) can do a no-op freeze on x if two conditions are met:
+//
+// (1) The containing function takes only frozen arguments and returns
+//     only frozen values.
+// (2) No store that could change the value of x happens between the
+//     Freeze and any function exit (Return, Throw, ...)
+//
+// The reasoning is that in such a function, the only possible source
+// of mutable objects is objects created inside that function itself.
+// Because it is only returning frozen objects, no mutable aliases can possibly
+// escape the function. So we can avoid a deep copy on the freeze and just
+// do a no-op freeze instead.
+private fun tryReturnNopFreeze(peep: Freeze, s: mutable Peephole): Instr {
+  if (
+    s.optinfo.f.funType.params.any(t -> !t.isDeepFrozen()) ||
+    s.optinfo.f.funType.returnType.any(t -> !t.isDeepFrozen())
+  ) {
+    peep
+  } else {
+    bid = s.optinfo.instrToBlock[peep.id];
+    b = s.getBlock(bid);
+
+    // See if there is any possibility of a memory store happening between
+    // this freeze and any function exit point.
+    if (
+      s.blockModifiesMemory(bid) &&
+      (b.successors().any(succ -> s.blockModifiesMemory(succ.target)) ||
+        {
+          // No successor block modifies memory, but the containing block
+          // does, so the question is whether any of those stores are
+          // after the current freeze. So we scan backward from the end
+          // of the block looking for stores until we hit the Freeze.
+          //
+          // To avoid O(n^2) behavior in a block with a lot of freezes,
+          // we cache the ID of the last store and clear it when we finally
+          // visit it.
+          if (s.lastUpcomingStoreKnownForBlock != bid) {
+            // No cached information available, we need to scan.
+            s.!lastUpcomingStoreKnownForBlock = bid;
+            s.!lastUpcomingStoreInBlock = InstrID::none;
+
+            i = b.instrs.size() - 1;
+
+            while ({
+              instr = b.instrs[i];
+
+              if (instr.id == peep.id) {
+                // We walked backwards to this instr (the Freeze), good enough.
+                false
+              } else if (canModifyExistingMemory(instr, s.optinfo)) {
+                // We found the last store, so record it and stop.
+                s.!lastUpcomingStoreInBlock = instr.id;
+                false
+              } else {
+                !i = i - 1;
+                i >= 0
+              }
+            }) void;
+          };
+
+          s.lastUpcomingStoreInBlock != InstrID::none
+        })
+    ) {
+      // Give up trying to make this a no-op freeze. because we aren't 100%
+      // certain that code between the Freeze and function exit won't modify
+      // the unfrozen value.
+      peep
+    } else {
+      peep with {id => s.iid(), nop => true}
+    }
+  }
+}
+
+// Checks that a ReturnTuple type only has no nonfrozen return values other
+// than the one at the given index.
+//
+// We use this for optimizing Freeze(Call(...)). If a Call that only
+// takes frozen arguments returns only one non-frozen value, which we
+// are freezing, then we know there is no possible way a mutable alias to
+// that object can escape, so we can do a no-op freeze. But if it also
+// returns a mutable value, maybe buried in that somewhere is a way to
+// modify the object we are about to freeze, so we need to deep copy.
+private fun onlyOneNonFrozen(
+  typ: Type,
+  index: Int,
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+  pos: Pos,
+): Bool {
+  optinfo.f.superpositions.all(sposn -> {
+    t = typ.typeInSuperposition(sposn);
+    sc = t.sclass(env);
+    if (!sc.isReturnTuple()) {
+      pos.die("Expected a return tuple type, not " + t)
+    };
+
+    i = -1;
+    sc.fields.all(f -> {
+      !i = i + 1;
+      i == index || f.typ.isDeepFrozen()
+    })
+  })
+}
+
+private fun tryCallNopFreeze(peep: Freeze, s: mutable Peephole): Instr {
+  inputOK = s.getInstr(peep.value) match {
+  | CallBase{args} -> allDeepFrozen(args, s.optinfo)
+  | TupleExtract{obj, index} ->
+    s.getInstr(obj) match {
+    | CallBase{args, typ} ->
+      allDeepFrozen(args, s.optinfo) &&
+        onlyOneNonFrozen(typ, index, s.optinfo, s.env, peep.pos)
+    | _ -> false
+    }
+  | _ -> false
+  };
+
+  if (inputOK && s.optinfo.instrUniquelyReferenced(peep.value)) {
+    peep with {id => s.iid(), nop => true}
+  } else {
+    peep
+  }
+}
+
+private fun peepholeFreeze(peep: Freeze, s: mutable Peephole): Instr {
+  // freeze(x) -> x, if x is already frozen
+  obj = s.getInstr(peep.value);
+  if (obj.typ.isDeepFrozen()) {
+    obj
+  } else if (peep.nop) {
+    peep
+  } else {
+    ret = tryReturnNopFreeze(peep, s);
+    if (ret.id != peep.id) {
+      ret
+    } else {
+      tryCallNopFreeze(peep, s)
+    }
+  }
+}
+
+private fun peepholeGetField(peep: GetField, s: mutable Peephole): Instr {
+  // NOTE: regpromote.sk does other GetField optimizations.
+  s.getInstr(peep.obj) match {
+  | ConstantObject{typ, values} ->
+    // Reading a field from a compile-time constant Object yields a
+    // campile-time constant.
+    sc = typ.exampleSClass(s.env);
+    c = values[sc.getFieldIndex(peep.field, peep.pos)];
+    s.getConstant(c with {id => s.iid()})
+  | _ -> peep
+  }
+}
+
+// Turn final method calls into function calls.
+private fun peepholeCallMethod(
+  peep: CallMethodBase,
+  s: mutable Peephole,
+): Instr {
+  pos = peep.pos;
+
+  // See if this method resolves to the same SFunctionID no matter what.
+  // If so, we can devirtualize it into a function call.  If some
+  // of them disagree it will have to use a vtable dispatch.
+  sid = SFunctionID::none;
+
+  superpositionMap = mutable Vector[];
+
+  _ = s.optinfo.allMethodImplementations(
+    peep,
+    s.env,
+    (_sc, methodCodeID, caller, callee) -> {
+      superpositionMap.push((caller, callee));
+      if (sid == SFunctionID::none) {
+        // First implementation we've seen, keep it.
+        !sid = methodCodeID;
+        true
+      } else if (sid == methodCodeID) {
+        // So far, so good.
+        true
+      } else {
+        // Mismatch, give up.
+        !sid = SFunctionID::none;
+        false
+      }
+    },
+  );
+
+  if (sid == SFunctionID::none) {
+    peep
+  } else {
+    mf = s.env.getFunction(sid, pos);
+    if (annotationsContain(mf.annotations, "@cpp_virtual", pos)) {
+      // We're not allowed to devirtualize this.
+      peep
+    } else {
+      SuperpositionMap<FunSuperpositionID>::maybeMake(superpositionMap) match {
+      | None() ->
+        // Different runtime types end up calling the same function, but
+        // with different Tparams in the superposition. So give up on
+        // collapsing it.
+        peep
+      | Some(smap) ->
+        peep match {
+        | CallMethod{args, blacklist, returns} ->
+          CallFunction{
+            id => s.iid(),
+            typ => peep.typ,
+            pos,
+            name => mf.id,
+            args,
+            smap,
+            blacklist,
+            returns,
+          }
+        | InvokeMethod{args, blacklist, returns, successors} ->
+          newID = s.iid();
+          InvokeFunction{
+            id => newID,
+            typ => peep.typ,
+            pos,
+            name => mf.id,
+            args,
+            smap,
+            blacklist,
+            returns,
+            // If the Invoke was passing itself as a BlockParam, it needs
+            // to pass its replacement instead.
+            successors => successors.map(succ ->
+              succ with {
+                args => succ.args.map(argID ->
+                  if (argID == peep.id) {
+                    newID
+                  } else {
+                    argID
+                  }
+                ),
+              }
+            ),
+          }
+        }
+      }
+    }
+  }
+}
+
+// Rewrite intrinsic calls into actual code
+private fun peepholeCallFunction(
+  peep: CallFunction,
+  s: mutable Peephole,
+): Instr {
+  f = s.env.getFunction(peep.name, peep.pos);
+  if (f.isNative) {
+    f.name match {
+    | "String::toIntOptionHelper" ->
+      peep.pos.invariant(
+        peep.args.size() == 1,
+        "Illegal number of args to String::toIntOptionHelper",
+      );
+      s.getInstr(peep.args[0]) match {
+      | ConstantString{value} ->
+        (valid, outValue) = (
+          value.toString().toIntOption() match {
+          | None() -> (0, 0)
+          | Some(i) -> (1, i)
+          }
+        );
+
+        args = Array[s.constantInt(valid).id, s.constantInt(outValue).id];
+        valuePair = Object{
+          id => s.iid(),
+          typ => peep.typ,
+          pos => peep.pos,
+          pinned => false,
+          prettyName => peep.prettyName,
+          args,
+        };
+
+        // HACK: Prevent the valuePair from actually being emitted, as that
+        // kind of non-scalar Object isn't allowed.
+        s.optinfo.idToInstr.insert(valuePair);
+
+        valuePair
+      | _ -> peep
+      }
+    | "String::length" ->
+      peep.pos.invariant(
+        peep.args.size() == 1,
+        "Illegal number of args to String::length",
+      );
+      s.getInstr(peep.args[0]) match {
+      | ConstantString{value} -> s.constantInt(value.countCharacters())
+      | _ -> peep
+      }
+    | _ -> peep
+    }
+  } else {
+    peep
+  }
+}
+
+private fun peepholeZeroExtend(peep: ZeroExtend, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ZeroExtend{value} ->
+    // Flatten chain of zero-extends.
+    ZeroExtend{id => s.iid(), typ => peep.typ, pos => peep.pos, value}
+  | obj ->
+    obj.constantInteger() match {
+    | Some(value) ->
+      inSize = obj.typ.getScalarType(s.env).bitSize;
+      shift = 64 - inSize;
+      s.constantTypedInt(peep.typ, value.shl(shift).ushr(shift))
+    | None() -> peep
+    }
+  }
+}
+
+private fun peepholeSignExtend(peep: SignExtend, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | SignExtend{value} ->
+    // Flatten chain of sign extends.
+    SignExtend{id => s.iid(), typ => peep.typ, pos => peep.pos, value}
+  | obj ->
+    obj.constantInteger() match {
+    | Some(value) ->
+      // "value" is already sign-extended (that's canonical form), so
+      // we just need to change the type.
+      s.constantTypedInt(peep.typ, value)
+    | None() -> peep
+    }
+  }
+}
+
+private fun peepholeTupleExtract(
+  peep: TupleExtract,
+  s: mutable Peephole,
+): Instr {
+  s.getInstr(peep.obj) match {
+  | v @ Object _ ->
+    // This is a TupleExtract from an intrinsic Function. We need
+    // to replace it with the computed value.
+    //
+    // Cast the value to the expected type. The types can
+    // mismatch somewhat due to covariant return values.
+    Cast{
+      id => s.iid(),
+      typ => peep.typ,
+      pos => peep.pos,
+      value => v.args[peep.index],
+    }
+  | _ -> peep
+  }
+}
+
+private fun peepholeTruncate(peep: Truncate, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | Truncate{value} ->
+    // Flatten chain of truncates.
+    Truncate{id => s.iid(), typ => peep.typ, pos => peep.pos, value}
+  | obj ->
+    obj.constantInteger() match {
+    | Some(value) -> s.constantTypedInt(peep.typ, value)
+    | None() -> peep
+    }
+  }
+}
+
+// Makes an object in the same general BinOp family.
+private fun semiclone(
+  peep: BinOp,
+  s: mutable Peephole,
+  typ: Concrete<BinOp>,
+  lhs: InstrID,
+  rhs: InstrID,
+): BinOp {
+  typ{
+    id => s.iid(),
+    typ => peep.typ,
+    pos => peep.pos,
+    prettyName => peep.prettyName,
+    lhs,
+    rhs,
+  }
+}
+
+private fun peepholeBinOpSame(peep: BinOp, s: mutable Peephole): Instr {
+  peep match {
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpUle _
+  | StringCmpEq _ ->
+    s.constantBool(true)
+  | FloatCmpLt _
+  | BoolCmpNe _
+  | BoolCmpLt _
+  | IntCmpNe _
+  | IntCmpLt _
+  | IntCmpUlt _ ->
+    s.constantBool(false)
+  | IntDiv _ -> s.constantInt(1)
+  | IntRem _
+  | IntSub _
+  | IntXor _
+  | StringCmp _ ->
+    s.constantInt(0)
+  | IntAnd _
+  | IntOr _ ->
+    s.getInstr(peep.lhs)
+  | FloatAdd _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | IntAdd _
+  | IntMul _
+  | IntSll _
+  | IntSra _
+  | IntSrl _ ->
+    peep
+  }
+}
+
+private fun peepholeBinOpDefault(
+  peep: BinOp,
+  s: mutable Peephole,
+  lhs: Instr,
+  rhs: Instr,
+): Instr {
+  val = if (lhs.id == rhs.id) {
+    peepholeBinOpSame(peep, s)
+  } else {
+    peep
+  };
+
+  if (val.id != peep.id || !peep.isCommutative()) {
+    val
+  } else {
+    // Canonicalize to put constant operands second (to simplify
+    // logic elsewhere) and otherwise put the smallest ID first
+    // (canonicalization helps CSE).
+    swap = rhs match {
+    | Constant _ ->
+      lhs match {
+      | Constant _ -> (lhs.id > rhs.id)
+      | _ -> false
+      }
+    | _ ->
+      lhs match {
+      | Constant _ -> true
+      | _ -> (lhs.id > rhs.id)
+      }
+    };
+
+    if (swap) {
+      peep with {id => s.iid(), lhs => rhs.id, rhs => lhs.id}
+    } else {
+      peep
+    }
+  }
+}
+
+private fun peepholeIntClz(peep: IntClz, s: mutable Peephole): Instr {
+  s.getInstr(peep.value).constantInteger() match {
+  | Some(n) -> s.constantInt(n.clz())
+  | None() -> peep
+  }
+}
+
+private fun peepholeIntCtz(peep: IntCtz, s: mutable Peephole): Instr {
+  s.getInstr(peep.value).constantInteger() match {
+  | Some(n) -> s.constantInt(n.ctz())
+  | None() -> peep
+  }
+}
+
+private fun peepholeIntPopcount(peep: IntPopcount, s: mutable Peephole): Instr {
+  s.getInstr(peep.value).constantInteger() match {
+  | Some(n) -> s.constantInt(n.popcount())
+  | None() -> peep
+  }
+}
+
+private fun peepholeIntBinOpConstConst(
+  peep: IntBinOp,
+  s: mutable Peephole,
+  l: Int,
+  r: Int,
+): Instr {
+  peep match {
+  | IntCmpEq _ -> s.constantBool(l == r)
+  | IntCmpNe _ -> s.constantBool(l != r)
+  | IntCmpLe _ -> s.constantBool(l <= r)
+  | IntCmpLt _ -> s.constantBool(l < r)
+  | IntCmpUle _ -> s.constantBool(l.ule(r))
+  | IntCmpUlt _ -> s.constantBool(l.ult(r))
+  | IntAdd _ -> s.constantInt(l + r)
+  | IntSub _ -> s.constantInt(l - r)
+  | IntMul _ -> s.constantInt(l * r)
+  // Div/Rem by zero is undefined, and will throw before being run, so we
+  // can map it to zero if we want just to get rid of it.
+  | IntDiv _ ->
+    s.constantInt(
+      if (r == 0) {
+        0
+      } else {
+        l / r
+      },
+    )
+  | IntRem _ ->
+    s.constantInt(
+      if (r == 0) {
+        0
+      } else {
+        l % r
+      },
+    )
+  | IntAnd _ -> s.constantInt(l.and(r))
+  | IntOr _ -> s.constantInt(l.or(r))
+  | IntXor _ -> s.constantInt(l.xor(r))
+  | IntSra _ -> s.constantInt(l.shr(r))
+  | IntSrl _ -> s.constantInt(l.ushr(r))
+  | IntSll _ -> s.constantInt(l.shl(r))
+  }
+}
+
+private fun peepholeIntBinOpVarConst(
+  peep: IntBinOp,
+  s: mutable Peephole,
+  r: Int,
+): Instr {
+  peep match {
+  | IntCmpEq _
+  | IntCmpNe _ ->
+    peep
+  | IntCmpLt _ ->
+    if (r == Int::min) {
+      s.constantBool(false)
+    } else {
+      // x < 5 ==> x <= 4
+      semiclone(peep, s, IntCmpLe, peep.lhs, s.constantInt(r - 1).id)
+    }
+  | IntCmpLe _ ->
+    if (r == Int::max) {
+      s.constantBool(true)
+    } else if (r == Int::min) {
+      semiclone(peep, s, IntCmpEq, peep.lhs, peep.rhs)
+    } else {
+      peep
+    }
+  | IntCmpUlt _ ->
+    if (r == 0) {
+      s.constantBool(false)
+    } else {
+      // x.ult(5) ==> x.ule(4)
+      semiclone(peep, s, IntCmpUle, peep.lhs, s.constantInt(r - 1).id)
+    }
+  | IntCmpUle _ ->
+    if (r == -1) {
+      s.constantBool(true)
+    } else if (r == 0) {
+      semiclone(peep, s, IntCmpEq, peep.lhs, peep.rhs)
+    } else {
+      peep
+    }
+  | IntSub _ -> semiclone(peep, s, IntAdd, peep.lhs, s.constantInt(-r).id)
+  | IntAdd _
+  | IntXor _ ->
+    if (r != 0) {
+      peep
+    } else {
+      s.getInstr(peep.lhs)
+    }
+  | IntSra _
+  | IntSrl _
+  | IntSll _ ->
+    shift = r.and(63);
+    if (shift == 0) {
+      s.getInstr(peep.lhs)
+    } else if (shift != r) {
+      // Mask constant shift count to 6 bits.
+      peep with {id => s.iid(), rhs => s.constantInt(shift).id}
+    } else {
+      peep
+    }
+  | IntMul _ ->
+    if (r == 0) {
+      s.getInstr(peep.rhs)
+    } else if (r == 1) {
+      s.getInstr(peep.lhs)
+    } else {
+      peep
+    }
+  | IntDiv _ ->
+    if (r == 1) {
+      s.getInstr(peep.lhs)
+    } else if (r == -1) {
+      semiclone(peep, s, IntMul, peep.lhs, peep.rhs)
+    } else {
+      peep
+    }
+  | IntRem _ ->
+    if (r != 1 && r != -1) {
+      peep
+    } else {
+      s.constantInt(0)
+    }
+  | IntAnd _ ->
+    if (r == 0) {
+      s.getInstr(peep.rhs)
+    } else if (r == -1) {
+      s.getInstr(peep.lhs)
+    } else {
+      peep
+    }
+  | IntOr _ ->
+    if (r == 0) {
+      s.getInstr(peep.lhs)
+    } else if (r == -1) {
+      s.getInstr(peep.rhs)
+    } else {
+      peep
+    }
+  }
+}
+
+private fun peepholeIntBinOpConstVar(
+  peep: IntBinOp,
+  s: mutable Peephole,
+  l: Int,
+): Instr {
+  peep match {
+  | IntCmpLt _ ->
+    if (l == Int::max) {
+      s.constantBool(false)
+    } else {
+      semiclone(peep, s, IntCmpLe, s.constantInt(l + 1).id, peep.rhs)
+    }
+  | IntCmpLe _ ->
+    if (l == Int::min) {
+      s.constantBool(true)
+    } else if (l == Int::max) {
+      semiclone(peep, s, IntCmpEq, peep.rhs, peep.lhs)
+    } else {
+      peep
+    }
+  | IntCmpUlt _ ->
+    if (l == -1) {
+      s.constantBool(false)
+    } else {
+      semiclone(peep, s, IntCmpUle, s.constantInt(l + 1).id, peep.rhs)
+    }
+  | IntCmpUle _ ->
+    if (l == 0) {
+      s.constantBool(true)
+    } else if (l == -1) {
+      semiclone(peep, s, IntCmpEq, peep.rhs, peep.lhs)
+    } else {
+      peep
+    }
+  | IntDiv _
+  | IntRem _
+  | IntSrl _
+  | IntSll _ ->
+    if (l != 0) {
+      peep
+    } else {
+      s.getInstr(peep.lhs)
+    }
+  | IntSra _ ->
+    if (l != 0 && l != -1) {
+      peep
+    } else {
+      s.getInstr(peep.lhs)
+    }
+  | IntAdd _
+  | IntAnd _
+  | IntCmpEq _
+  | IntCmpNe _
+  | IntMul _
+  | IntOr _
+  | IntSub _
+  | IntXor _ ->
+    peep
+  }
+}
+
+private fun peepholeIntBinOp(peep: IntBinOp, s: mutable Peephole): Instr {
+  lhs = s.getInstr(peep.lhs);
+  rhs = s.getInstr(peep.rhs);
+
+  val = lhs match {
+  | ConstantInt{value => lhsValue} ->
+    rhs match {
+    | ConstantInt{value => rhsValue} ->
+      peepholeIntBinOpConstConst(peep, s, lhsValue, rhsValue)
+    | _ -> peepholeIntBinOpConstVar(peep, s, lhsValue)
+    }
+  | _ ->
+    rhs match {
+    | ConstantInt{value => rhsValue} ->
+      peepholeIntBinOpVarConst(peep, s, rhsValue)
+    | _ -> peep
+    }
+  };
+
+  if (val.id != peep.id) {
+    val
+  } else {
+    peepholeBinOpDefault(peep, s, lhs, rhs)
+  }
+}
+
+private fun peepholeFloatBinOpConstConst(
+  peep: FloatBinOp,
+  s: mutable Peephole,
+  l: Float,
+  r: Float,
+): Instr {
+  peep match {
+  | FloatCmpEq _ -> s.constantBool(l == r)
+  | FloatCmpNe _ -> s.constantBool(l != r)
+  | FloatCmpLe _ -> s.constantBool(l <= r)
+  | FloatCmpLt _ -> s.constantBool(l < r)
+  | FloatAdd _ -> s.constantFloat(l + r)
+  | FloatSub _ -> s.constantFloat(l - r)
+  | FloatMul _ -> s.constantFloat(l * r)
+  | FloatDiv _ -> s.constantFloat(l / r)
+  }
+}
+
+// Note that -0.0 == 0.0, but they do not behave the same.
+private fun isMinusZero(n: Float): Bool {
+  n.toBits() == (-0.0).toBits()
+}
+
+private fun peepholeFloatBinOpVarConst(
+  peep: FloatBinOp,
+  s: mutable Peephole,
+  r: Float,
+): Instr {
+  if (r.isNaN()) {
+    peep match {
+    | FloatCmpEq _
+    | FloatCmpLe _
+    | FloatCmpLt _ ->
+      s.constantBool(false)
+    | FloatCmpNe _ -> s.constantBool(true)
+    | FloatAdd _
+    | FloatDiv _
+    | FloatMul _
+    | FloatSub _ ->
+      s.getInstr(peep.rhs)
+    }
+  } else {
+    peep match {
+    | FloatCmpLt _ ->
+      if (r != -Float::inf) {
+        peep
+      } else {
+        s.constantBool(false)
+      }
+    | FloatAdd _ ->
+      // x + 0.0 is not a no-op because -0.0 + 0.0 yields 0.0, not -0.0.
+      // But x + -0.0 is a no-op.
+      if (!isMinusZero(r)) {
+        peep
+      } else {
+        s.getInstr(peep.lhs)
+      }
+    | FloatSub _ ->
+      if (r != 0.0) {
+        peep
+      } else {
+        s.getInstr(peep.lhs)
+      }
+    | FloatMul _ ->
+      if (r != 1.0) {
+        peep
+      } else {
+        s.getInstr(peep.lhs)
+      }
+    | FloatDiv _ ->
+      if (r == 1.0) {
+        s.getInstr(peep.lhs)
+      } else if (r == -1.0) {
+        semiclone(peep, s, FloatMul, peep.lhs, peep.rhs)
+      } else {
+        peep
+      }
+    | FloatCmpEq _
+    | FloatCmpLe _
+    | FloatCmpNe _ ->
+      peep
+    }
+  }
+}
+
+private fun peepholeFloatBinOpConstVar(
+  peep: FloatBinOp,
+  s: mutable Peephole,
+  l: Float,
+): Instr {
+  if (l.isNaN()) {
+    peep match {
+    | FloatCmpEq _
+    | FloatCmpLe _
+    | FloatCmpLt _ ->
+      s.constantBool(false)
+    | FloatCmpNe _ -> s.constantBool(true)
+    | FloatAdd _
+    | FloatDiv _
+    | FloatMul _
+    | FloatSub _ ->
+      s.getInstr(peep.lhs)
+    }
+  } else {
+    peep match {
+    | FloatCmpLt _ ->
+      if (l != Float::inf) {
+        peep
+      } else {
+        s.constantBool(false)
+      }
+    | FloatCmpEq _
+    | FloatCmpLe _
+    | FloatCmpNe _
+    | FloatAdd _
+    | FloatDiv _
+    | FloatMul _
+    | FloatSub _ ->
+      peep
+    }
+  }
+}
+
+private fun peepholeFloatBinOp(peep: FloatBinOp, s: mutable Peephole): Instr {
+  lhs = s.getInstr(peep.lhs);
+  rhs = s.getInstr(peep.rhs);
+
+  val = lhs match {
+  | ConstantFloat{value => lhsValue} ->
+    rhs match {
+    | ConstantFloat{value => rhsValue} ->
+      peepholeFloatBinOpConstConst(peep, s, lhsValue, rhsValue)
+    | _ -> peepholeFloatBinOpConstVar(peep, s, lhsValue)
+    }
+  | _ ->
+    rhs match {
+    | ConstantFloat{value => rhsValue} ->
+      peepholeFloatBinOpVarConst(peep, s, rhsValue)
+    | _ -> peep
+    }
+  };
+
+  if (val.id != peep.id) {
+    val
+  } else {
+    peepholeBinOpDefault(peep, s, lhs, rhs)
+  }
+}
+
+private fun peepholeStringBinOp(peep: StringBinOp, s: mutable Peephole): Instr {
+  lhs = s.getInstr(peep.lhs);
+  rhs = s.getInstr(peep.rhs);
+
+  // TODO: StringCmp(x, y) == 0 should turn into StringCmpEq(x, y) etc.
+  // because it is much faster. But only if the StringCmp result is not
+  // used again for some more complex comparison.
+  val = lhs match {
+  | ConstantString{value => lhsValue} ->
+    rhs match {
+    | ConstantString{value => rhsValue} ->
+      peep match {
+      | StringCmp _ ->
+        s.constantInt(
+          lhsValue.compare(rhsValue) match {
+          | EQ() -> 0
+          | LT() -> -1
+          | GT() -> 1
+          },
+        )
+      | StringCmpEq _ -> s.constantBool(lhsValue == rhsValue)
+      }
+    | _ -> peep
+    }
+  | _ -> peep
+  };
+
+  if (val.id != peep.id) {
+    val
+  } else {
+    peepholeBinOpDefault(peep, s, lhs, rhs)
+  }
+}
+
+private fun peepholeStringHash(peep: StringHash, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantString{value} ->
+    s.constantInt(
+      value match {
+      | x @ ShortUTF8String _ -> x.bits()
+      | x @ LongUTF8String _ ->
+        if (targetIsWasm()) {
+          x.runtimeHash
+        } else {
+          // bytesize | hash<<32
+          x.runtimeHash.shl(32).or(value.utf8.size())
+        }
+      },
+    )
+  | _ -> peep
+  }
+}
+
+private fun peepholeArrayAlloc(peep: ArrayAlloc, s: mutable Peephole): Instr {
+  // Turn ArrayAlloc of empty array (either 0-sized or containing only "void")
+  // into "ArrayNew", which can create a compile-time constant.
+  pos = peep.pos;
+  s.getInstr(peep.size).constantInteger() match {
+  | Some(n) ->
+    if (
+      n == 0 ||
+      {
+        sc = peep.typ.exampleSClass(s.env);
+        sc.getArraySlotInfo(pos).types.isEmpty()
+      }
+    ) {
+      ArrayNew{id => s.iid(), typ => peep.typ, pos, args => Array[], size => n}
+    } else {
+      peep
+    }
+  | _ -> peep
+  }
+}
+
+// If an object of peep's type with state from 'args' could itself be
+// a compile-time Constant, returns the Constants for its args.
+//
+// This includes all stateless objects and all frozen objects and vectors
+// where every argument is itself a Constant.
+private fun allConstantArgs(
+  peep: Stmt,
+  args: Array<InstrID>,
+  s: mutable Peephole,
+): ?Array<Constant> {
+  sc = peep.typ.exampleSClass(s.env);
+  if (
+    sc.kind.isKClass() &&
+    (args.isEmpty() ||
+      (peep.typ.isDeepFrozen() &&
+        args.all(arg -> s.getInstr(arg).isConstant())))
+  ) {
+    Some(
+      args.map(arg -> {
+        s.getInstr(arg) match {
+        | c @ Constant _ -> c
+        | _ -> peep.die("Expected constant")
+        }
+      }),
+    )
+  } else {
+    None()
+  }
+}
+
+private fun peepholeArrayNew(peep: ArrayNew, s: mutable Peephole): Instr {
+  allConstantArgs(peep, peep.args, s) match {
+  | None() -> peep
+  | Some(args) -> s.constantArray(peep.typ, args, peep.size)
+  }
+}
+
+private fun peepholeArraySize(peep: ArraySize, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ArrayAlloc{size} -> s.getInstr(size)
+  | ConstantArray{size}
+  | ArrayNew{size} ->
+    s.constantInt(size)
+  | _ -> peep
+  }
+}
+
+private fun peepholeFloatBits(peep: FloatBits, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantFloat{value} -> s.constantInt(value.toBits())
+  | _ -> peep
+  }
+}
+
+private fun peepholeFloatToInt(peep: FloatToInt, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantFloat{value} -> s.constantInt(value.toInt())
+  | _ -> peep
+  }
+}
+
+private fun peepholeStringConcat(
+  peep: StringConcat,
+  s: mutable Peephole,
+): Instr {
+  args = peep.args;
+  args.size() match {
+  | 0 -> s.constantString("")
+  | 1 -> s.getInstr(args[0])
+  | _ ->
+    if (targetIsWasm()) {
+      // WASM doesn't bother with runtime functions for different lengths.
+      peep
+    } else {
+      buf = mutable Vector<InstrID>[];
+      changed = false;
+
+      for (arg in args) {
+        s.getInstr(arg) match {
+        | ConstantString{value} ->
+          if (value.utf8.isEmpty()) {
+            // Drop any empty string constants.
+            !changed = true
+          } else if (buf.isEmpty()) {
+            buf.push(arg)
+          } else {
+            s.getInstr(buf.last()) match {
+            | ConstantString{value => value2} ->
+              // Concatenate adjacent string constants now.
+              concat = s.constantUTF8String(value2 + value);
+              buf.set(buf.size() - 1, concat.id);
+              !changed = true
+            | _ -> buf.push(arg)
+            }
+          }
+        | StringConcat{args => args2} ->
+          // (a + "foo") + "bar" -> a + "foo" + "bar".
+          if (
+            s.optinfo.instrUniquelyReferenced(arg) ||
+            (!buf.isEmpty() &&
+              s.getInstr(buf[buf.size() - 1]).isConstant() &&
+              args2.size() <= 2 &&
+              s.getInstr(args2[0]).isConstant())
+          ) {
+            // Combine nested StringConcats into a bigger one.
+            //
+            // It's hard to know when this is a good idea in all
+            // cases, due to common subexpressions -- would you
+            // rather do part of a strcat outside a loop? So we only
+            // absorb another StringConcat when this is the only use,
+            // or if it starts with a constant String that will fold away.
+            args2.each(buf.push);
+            !changed = true
+          } else {
+            // NOTE: Even if not uniquely referenced, if args2.size() == 2
+            // and args2[1] is a string constant that will merge with
+            // one of ours, we would be better off doing it.
+            // But we don't know what our upcoming string is yet.
+            buf.push(arg)
+          }
+        | _ -> buf.push(arg)
+        }
+      };
+
+      if (changed) {
+        peep with {id => s.iid(), args => buf.toArray()}
+      } else {
+        peep.pos.invariant(buf.size() == args.size(), "strcat error");
+        peep
+      }
+    }
+  }
+}
+
+private fun peepholeFloatToString(
+  peep: FloatToString,
+  s: mutable Peephole,
+): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantFloat{value} -> s.constantString(value.toString())
+  | _ -> peep
+  }
+}
+
+private fun peepholeIntToFloat(peep: IntToFloat, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantInt{value} -> s.constantFloat(value.toFloat())
+  | _ -> peep
+  }
+}
+
+private fun peepholeIntToString(peep: IntToString, s: mutable Peephole): Instr {
+  s.getInstr(peep.value) match {
+  | ConstantInt{value} -> s.constantString(value.toString())
+  | _ -> peep
+  }
+}
+
+private fun peepholeIntern(peep: Intern, s: mutable Peephole): Instr {
+  // intern(intern(x)) -> intern(x).
+  s.optinfo.getInstr(peep.value) match {
+  | x @ Intern _ -> x
+  | _ -> peep
+  }
+}
+
+private fun peepholeObject(peep: Object, s: mutable Peephole): Instr {
+  allConstantArgs(peep, peep.args, s) match {
+  | None() -> peep
+  | Some(constArgs) -> s.constantObject(peep.typ, constArgs)
+  }
+}
+
+private fun peepholeWith(peep: With, _s: mutable Peephole): Instr {
+  peep
+  /* TODO: Repair this for the Tsuperposition era.
+
+  optinfo = s.optinfo;
+
+  objType = optinfo.getInstr(peep.obj).typ;
+  if (peep.fieldAssignments.isEmpty() && objType.isDeepFrozen()) {
+    // When changing no fields on a frozen object, just use that object.
+    peep
+  } else {
+    typ = typeForAllCallers(objType, s.optinfo.f);
+  } else {
+    pos = peep.pos;
+    cd = s.env.getSClass(typ.generic, typ.targs, pos);
+
+    if (cd.kind.isFinal()) {
+      replaceMap = SortedMap::createFromItems(peep.fieldAssignments);
+
+      // We can make a whole new object. Figure out what its fields are
+      // going to be: If a field name is specified to "with", use that,
+      // else fall back to reading that same field from the old object.
+      numUsed = 0;
+      fields = cd.fields.map(field -> {
+        replaceMap.maybeGet(field.name) match {
+        | Some(v) -> { !numUsed = numUsed + 1; v }
+        | None() -> {
+            s.emitInstr(
+              GetField{
+                id => s.iid(),
+                typ => field.typ,
+                pos,
+                obj => peep.obj,
+                field => field.name
+              }
+            ).id
+          }
+        }
+      });
+      if (numUsed != peep.fieldAssignments.size()) {
+        pos.die("Some field name passed to 'with' was not used!")
+      };
+
+      Object{
+        id => s.iid(),
+        typ => peep.typ,
+        pos,
+        prettyName => peep.prettyName,
+        args => fields
+      }
+    } else {
+      peep
+    }
+  }
+    */
+}

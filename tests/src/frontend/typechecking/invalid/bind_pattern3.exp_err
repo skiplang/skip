@@ -1,0 +1,7 @@
+File "./typechecking/invalid/bind_pattern3.sk", line 4, characters 3-11:
+Invalid LValue
+2 |
+3 | fun main(): String {
+4 |   Foo(x, y) = mutable Foo(42, "Pass\n");
+  |   ^^^^^^^^^
+5 |   y

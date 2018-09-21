@@ -1,0 +1,31 @@
+// doing this match correctly depends on recognizing that a match column
+// is saturated w.r.t. the incoming value, in the sense that the column
+// contains a type constructor for every concrete class of the value's
+// type. Saturation lets us prune wildcard patterns from subproblems,
+// which is necessary to avoid pathological sub-subproblems which are
+// unsaturated but lack defaults.
+//
+// Here, column 2 is saturated, which means that the top-level partition
+// of the pattern matrix is complete with only two branches (Some, None).
+// Subproblems under both of these branches will cover the "4" case.
+// A third (default) cell in the top-level partition would be unreachable,
+// and would require special handling of the column 1 subproblem ("Base"
+// with no default).
+
+fun new(): ?Int {
+  Some(5)
+}
+
+fun main(): void {
+  s = "Hello Skip!\n";
+  x = new();
+  print_raw(
+    (s, x) match {
+    | ("Concrete", None()) -> "1"
+    | ("Concrete", Some _) -> "2"
+    | (_, Some _) -> "Pass\n"
+    | ("Base", _) -> "4"
+    | (_, None()) -> "5"
+    },
+  )
+}

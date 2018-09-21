@@ -1,0 +1,41 @@
+mutable class C{mutable x: Int} {}
+
+// inserts SKIP_Obstack_note_inl() and SKIP_Obstack_collect0()
+@no_inline
+@gc
+fun f1(x: Int, y: Int, z: Int): void {
+  _ = if (x < 0) {
+    y
+  } else {
+    z
+  };
+  void
+}
+
+// gc inserted, x is mutable within function. calls SKIP_Obstack_note_inl
+// and SKIP_Obstack_collect1()
+@no_inline
+@gc
+fun f2(_x: mutable C): void {
+  void
+}
+
+@no_inline
+@gc
+fun f3(x: Int): (Bool, Array<Int>) {
+  (true, Array[x])
+}
+
+@no_inline
+@gc
+fun f4(x: Int): (Bool, Array<Int>, Array<Bool>) {
+  (true, Array[x], Array[x != 0])
+}
+
+fun main(): void {
+  f1(0, 1, 2);
+  f2(mutable C{x => 0});
+  v3 = f3(3);
+  v4 = f4(4);
+  print_raw("gcpass test " + v3.i1[0] + " " + v4.i1[0] + "\n")
+}

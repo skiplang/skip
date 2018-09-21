@@ -1,0 +1,12 @@
+base class Foo {
+  children =
+  | A()
+  | B()
+  | C()
+
+  fun bar(): void
+  | A _ -> void
+  | B
+  | C _ ->
+    void
+}

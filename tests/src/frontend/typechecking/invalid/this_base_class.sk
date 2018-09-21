@@ -1,0 +1,16 @@
+base class MyBase {
+  fun foo(this): this;
+  fun foo_myself(): this {
+    this.foo(this)
+  }
+}
+
+class A() extends MyBase {
+  fun foo(_: this): this {
+    this
+  }
+}
+
+fun test<T: MyBase>(x: T): T {
+  x.foo(x)
+}

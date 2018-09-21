@@ -1,0 +1,14 @@
+class X()
+
+class C(x: Int)
+
+class D(y: C)
+
+fun main(): void {
+  d = D(C(42));
+  print_raw(
+    d match {
+    | D(X()) -> "Fail"
+    },
+  )
+}

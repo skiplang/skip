@@ -1,0 +1,22 @@
+File "./typechecking/invalid/typed_lambda.sk", line 3, characters 9-10:
+Invalid argument
+1 | fun main(): void {
+2 |   f = (x: String) -> x;
+3 |   _ = f(42);
+  |         ^^
+4 |   print_raw("FAIL")
+
+File "./typechecking/invalid/typed_lambda.sk", line 3, characters 9-10:
+The type: Int
+1 | fun main(): void {
+2 |   f = (x: String) -> x;
+3 |   _ = f(42);
+  |         ^^
+4 |   print_raw("FAIL")
+
+File "./typechecking/invalid/typed_lambda.sk", line 2, characters 11-16:
+Is not a subtype of: String
+1 | fun main(): void {
+2 |   f = (x: String) -> x;
+  |           ^^^^^^
+3 |   _ = f(42);

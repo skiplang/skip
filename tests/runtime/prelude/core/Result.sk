@@ -1,0 +1,124 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Represents the result of a computation that may succeed or fail.
+// Success(T) represents the result of a successful computation and
+// Failure(E) represents the result of a failed computation.
+//
+// A Result encodes the possibility of failure and requires the developer
+// to explicitly handle the failure case. This can be useful for APIs that
+// can be reasonably expected to fail at runtime, such as when the failure is
+// due to specific runtime values as opposed to a bug in the calling code.
+//
+// Example:
+// ```
+// result = computeSomething();
+// result match {
+// | Success(success) -> /* use success */
+// | Failure(error) -> /* log error and fallback...*/
+// };
+// ```
+//
+base class Result<+T, +E> {
+  children =
+  | Failure(error: E)
+  | Success(value: T)
+
+  // # Creating a Result
+
+  // Execute the given function, returning as follows:
+  // - If the function completes, returns Success() with the return value
+  // - If it throws, returns Failure() with the exception
+  static fun guard(f: () -> T): Result<T, Exception> {
+    try {
+      Success(f())
+    } catch {
+    | exn -> Failure(exn)
+    }
+  }
+
+  // # Composition
+
+  // For Success() values, returns a new result with the results of applying
+  // the mapping function to the contained value. Returns Failure values as-is.
+  fun map<T2>(f: T -> T2): Result<T2, E>
+  | Failure(error) -> Failure(error)
+  | Success(value) -> Success(f(value))
+
+  // For Success() values, returns the result of applying the mapping function
+  // to the contained value. Returns Failure values as-is.
+  fun flatMap<T2, E2>[E: E2](f: T -> Result<T2, E2>): Result<T2, E2>
+  | Failure(error) -> Failure(error)
+  | Success(value) -> f(value)
+
+  // # Introspection
+
+  // Returns true if this is a Success()
+  fun isSuccess(): Bool
+  | Success _ -> true
+  | _ -> false
+
+  // Returns true if this is a Failure()
+  fun isFailure(): Bool
+  | Failure _ -> true
+  | _ -> false
+
+  // Returns the value if thhis is a Success(), otherwise throws.
+  fun fromSuccess(message: String = "fromSuccess() called on Failure"): T
+  | Success(value) -> value
+  | _ -> invariant_violation(message)
+
+  // Returns the error if this is a Failure(), otherwise throws.
+  // with the given message.
+  fun fromFailure(message: String = "fromFailure() called on Success"): E
+  | Failure(error) -> error
+  | _ -> invariant_violation(message)
+
+  // # Transforming to Different Types
+
+  // Returns Some(value) if this is a Success(), otherwise None()
+  fun maybeSuccess(): ?T
+  | Success(value) -> Some(value)
+  | _ -> None()
+
+  fun maybeFailure(): ?E
+  | Failure(error) -> Some(error)
+  | _ -> None()
+
+  // # Trait Implementations
+
+  fun ==<T2: Equality, E2: Equality>[T: T2, E: E2](
+    other: Result<T2, E2>,
+  ): Bool {
+    (this, other) match {
+    | (Success(value1), Success(value2)) -> value1 == value2
+    | (Failure(error1), Failure(error2)) -> error1 == error2
+    | _ -> false
+    }
+  }
+
+  fun !=<T2: Equality, E2: Equality>[T: T2, E: E2](
+    other: Result<T2, E2>,
+  ): Bool {
+    !(this == other)
+  }
+
+  // Failure() is less than Success().
+  fun compare<T2: Orderable, E2: Orderable>[T: T2, E: E2](
+    other: Result<T2, E2>,
+  ): Order
+  | Failure(error1) ->
+    other match {
+    | Failure(error2) -> compare(error1, error2)
+    | _ -> LT()
+    }
+  | Success(value1) ->
+    other match {
+    | Success(value2) -> compare(value1, value2)
+    | _ -> GT()
+    }
+}

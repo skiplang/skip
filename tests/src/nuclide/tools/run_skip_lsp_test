@@ -1,0 +1,36 @@
+#!/bin/bash -e
+
+# Runs a single skip_lsp test
+#
+# Usage: run_skip_lsp_test test_script_json test_source_path skip_lsp_path
+
+TOOLS_DIR=$(dirname "${0}")
+
+test_script_json=$1
+test_source_path=$2
+skip_lsp_path=$3
+
+if [ -z "$skip_lsp_path" ]; then
+    echo "Usage: run_skip_lsp_test test_script_json test_source_path skip_lsp_path"
+    exit 2
+fi
+
+# Copy test_source_path to a temporary dir
+TMPDIR=${BINARY_DIR}/tmp
+mkdir -p "${TMPDIR}"
+TMP_SOURCE_DIR=$(mktemp -d "${TMPDIR}/skip_lsp_test.XXXXXXXXXX")
+cp -R "$test_source_path"/* "$TMP_SOURCE_DIR"
+
+if [ "$UPDATE_BASELINE" == 1 ]; then
+  update_baseline=--update
+fi
+
+# Run the test
+# TODO: Debugging
+echo "$TOOLS_DIR/run_lsp_script.sh" $update_baseline "$test_script_json" "$TMP_SOURCE_DIR" "$skip_lsp_path"
+"$TOOLS_DIR/run_lsp_script.sh" $update_baseline "$test_script_json" "$TMP_SOURCE_DIR" "$skip_lsp_path"
+
+# Clean up after ourselves.
+if [ -z "$KEEP_TEMP" ]; then
+    rm -rf "${TMP_SOURCE_DIR}"
+fi

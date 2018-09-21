@@ -1,0 +1,17 @@
+base class Foo<T: Show> {
+  children =
+  | Zero()
+  | One(t: T)
+
+  static fun empty(): Foo<T> {
+    Zero()
+  }
+
+  fun destroy(): String
+  | Zero() -> "Pass\n"
+  | One(t) -> t.toString()
+}
+
+fun main(): void {
+  print_raw(Foo::empty().destroy())
+}

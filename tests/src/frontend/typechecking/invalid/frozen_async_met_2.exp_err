@@ -1,0 +1,13 @@
+File "./typechecking/invalid/frozen_async_met_2.sk", line 2, characters 3-7:
+async methods cannot take mutable inputs. This method much be marked 'frozen' to make 'this' frozen
+1 | mutable class Foo(mutable v: Foo) {
+2 |   async mutable fun no(): ^void {
+  |   ^^^^^
+3 |     void
+
+File "./typechecking/invalid/frozen_async_met_2.sk", line 2, characters 9-15:
+this was not 'frozen' because of the type at this position
+1 | mutable class Foo(mutable v: Foo) {
+2 |   async mutable fun no(): ^void {
+  |         ^^^^^^^
+3 |     void

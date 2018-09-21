@@ -1,0 +1,30 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module TokenKind;
+
+base class TokenKind uses Orderable, Show, Hashable {}
+
+class ERROR() extends TokenKind {
+  fun toString(): String {
+    "<ERROR>"
+  }
+}
+
+class BEGINNING_OF_FILE() extends TokenKind {
+  fun toString(): String {
+    "begining of file"
+  }
+}
+
+class END_OF_FILE() extends TokenKind {
+  fun toString(): String {
+    "end of file"
+  }
+}
+
+module end;

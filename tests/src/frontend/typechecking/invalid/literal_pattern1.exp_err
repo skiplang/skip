@@ -1,0 +1,21 @@
+File "./typechecking/invalid/literal_pattern1.sk", line 3, characters 5-8:
+Invalid literal pattern
+1 | fun matcher(value: Int): Int {
+2 |   value match {
+3 |   | true ->
+  |     ^^^^
+4 |     42 // type error
+
+File "./typechecking/invalid/literal_pattern1.sk", line 1, characters 20-22:
+The type: Int
+1 | fun matcher(value: Int): Int {
+  |                    ^^^
+2 |   value match {
+
+File "./typechecking/invalid/literal_pattern1.sk", line 3, characters 5-8:
+Does not share a common super type with: Bool
+1 | fun matcher(value: Int): Int {
+2 |   value match {
+3 |   | true ->
+  |     ^^^^
+4 |     42 // type error

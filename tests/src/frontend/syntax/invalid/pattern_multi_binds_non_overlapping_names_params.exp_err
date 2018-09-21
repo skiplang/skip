@@ -1,0 +1,15 @@
+File "./syntax/invalid/pattern_multi_binds_non_overlapping_names_params.sk", line 9, characters 5-13:
+Found non-overlapping variable in or pattern.
+ 7 | fun shouldFail(): String {
+ 8 |   (A{x => true} : C) match {
+ 9 |   | A{x => t}
+   |     ^^^^^^^^^
+10 |   | B{y => x} ->
+
+File "./syntax/invalid/pattern_multi_binds_non_overlapping_names_params.sk", line 10, characters 12-12:
+This pattern has non-overlapping variable: x
+ 8 |   (A{x => true} : C) match {
+ 9 |   | A{x => t}
+10 |   | B{y => x} ->
+   |            ^
+11 |     "Fail\n"

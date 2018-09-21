@@ -1,0 +1,32 @@
+File "./typechecking/invalid/constraint_override2.sk", line 14, characters 3-7:
+Constraint not satisfied
+12 |
+13 | fun asFoo<T: Test.MixedScalar>(): Foo<T> {
+14 |   Bar()
+   |   ^^^^^
+15 | }
+
+File "./typechecking/invalid/constraint_override2.sk", line 13, characters 39-39:
+The type: T
+11 | }
+12 |
+13 | fun asFoo<T: Test.MixedScalar>(): Foo<T> {
+   |                                       ^
+14 |   Bar()
+
+File "./typechecking/invalid/constraint_override2.sk", line 5, characters 14-29:
+Is not a subtype of: Test.MixedString
+3 | }
+4 |
+5 | class Bar<T: Test.MixedString>() extends Foo<T> {
+  |              ^^^^^^^^^^^^^^^^
+6 |   fun brokenfun(x: T): T {
+
+File "./typechecking/invalid/constraint_override2.sk", line 5, characters 14-29:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Test.MixedScalar
+3 | }
+4 |
+5 | class Bar<T: Test.MixedString>() extends Foo<T> {
+  |              ^^^^^^^^^^^^^^^^
+6 |   fun brokenfun(x: T): T {

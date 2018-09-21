@@ -1,0 +1,5 @@
+mutable class Foo(mutable v: Foo) {
+  async mutable fun no(): ^void {
+    void
+  }
+}

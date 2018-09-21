@@ -1,0 +1,25 @@
+mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+  deferred static fun new(x: T): this {
+    static(x)
+  }
+
+  fun get(): Int {
+    this.v.value
+  }
+}
+mutable class C extends P<mutable Ref<Int>>
+
+class MutableInsideImmutable() extends Exception {
+  fun getMessage(): String {
+    ""
+  }
+}
+
+fun bad(): void {
+  ref = mutable Ref(0);
+  c: C = C::new(ref);
+  x1 = c.get();
+  ref.set(42);
+  x2 = c.get();
+  if (x1 != x2) throw MutableInsideImmutable()
+}

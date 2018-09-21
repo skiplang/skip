@@ -1,0 +1,11 @@
+base class P<T>
+class C1<T1, T2>() extends P<T2>
+class C2<T>() extends P<mutable Vector<Int>>
+class C3<T>() extends P<T>
+
+fun main(): void {
+  _: P<mutable Vector<Int>> = C1<Int, mutable Vector<Int>>();
+  _: P<mutable Vector<Int>> = C2<mutable Vector<Int>>();
+  _: P<mutable Vector<Int>> = C3<mutable Vector<Int>>();
+  print_string("Pass")
+}

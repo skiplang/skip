@@ -1,0 +1,164 @@
+File "./typechecking/invalid/matches_types.sk", line 21, characters 13-16:
+The following pattern is unused:
+ | NC _
+19 |
+20 | fun matchesClass(): Bool {
+21 |   PC(42) is NC _;
+   |             ^^^^
+22 | }
+
+File "./typechecking/invalid/matches_types.sk", line 21, characters 13-16:
+In particular, we encountered this sub-pattern
+ | NC _
+But expected one of
+ | PC(_)
+In that position.
+19 |
+20 | fun matchesClass(): Bool {
+21 |   PC(42) is NC _;
+   |             ^^^^
+22 | }
+
+File "./typechecking/invalid/matches_types.sk", line 9, characters 15-21:
+Invalid literal pattern
+ 7 |
+ 8 | fun matchesConst(): Bool {
+ 9 |   (40 + 2) is "Hello";
+   |               ^^^^^^^
+10 | }
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 33-35:
+The type: Int
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |                                 ^^^
+22 |     this.plusImpl(other.toInt())
+
+File "./typechecking/invalid/matches_types.sk", line 9, characters 15-21:
+Does not share a common super type with: String
+ 7 |
+ 8 | fun matchesConst(): Bool {
+ 9 |   (40 + 2) is "Hello";
+   |               ^^^^^^^
+10 | }
+
+File "./typechecking/invalid/matches_types.sk", line 25, characters 49-54:
+Invalid literal pattern
+23 |
+24 | fun matchesNamedArgs(): Bool {
+25 |   (NC{s => "Hello", b => false} : B) is NC{b => "Fail"};
+   |                                                 ^^^^^^
+26 | }
+
+File "./typechecking/invalid/matches_types.sk", line 6, characters 24-27:
+The type: Bool
+4 |
+5 | class PC(i: Int) extends B {}
+6 | class NC{s: String, b: Bool} extends B {}
+  |                        ^^^^
+7 |
+
+File "./typechecking/invalid/matches_types.sk", line 25, characters 49-54:
+Does not share a common super type with: String
+23 |
+24 | fun matchesNamedArgs(): Bool {
+25 |   (NC{s => "Hello", b => false} : B) is NC{b => "Fail"};
+   |                                                 ^^^^^^
+26 | }
+
+File "./typechecking/invalid/matches_types.sk", line 33, characters 13-15:
+Invalid literal pattern
+31 |
+32 | fun matchesNegativeLiteral(): Bool {
+33 |   (true) is -12;
+   |             ^^^
+34 | }
+
+File "./typechecking/invalid/matches_types.sk", line 33, characters 3-8:
+The type: Bool
+31 |
+32 | fun matchesNegativeLiteral(): Bool {
+33 |   (true) is -12;
+   |   ^^^^^^
+34 | }
+
+File "./typechecking/invalid/matches_types.sk", line 33, characters 13-15:
+Does not share a common super type with: Int
+31 |
+32 | fun matchesNegativeLiteral(): Bool {
+33 |   (true) is -12;
+   |             ^^^
+34 | }
+
+File "./typechecking/invalid/matches_types.sk", line 17, characters 15-23:
+Invalid literal pattern
+15 |
+16 | fun matchesParen(): Bool {
+17 |   (40 + 2) is ("Hello");
+   |               ^^^^^^^^^
+18 | }
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 33-35:
+The type: Int
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |                                 ^^^
+22 |     this.plusImpl(other.toInt())
+
+File "./typechecking/invalid/matches_types.sk", line 17, characters 15-23:
+Does not share a common super type with: String
+15 |
+16 | fun matchesParen(): Bool {
+17 |   (40 + 2) is ("Hello");
+   |               ^^^^^^^^^
+18 | }
+
+File "./typechecking/invalid/matches_types.sk", line 29, characters 22-26:
+Invalid literal pattern
+27 |
+28 | fun matchesPositionalArgs(): Bool {
+29 |   (PC(42) : B) is PC(false);
+   |                      ^^^^^
+30 | }
+
+File "./typechecking/invalid/matches_types.sk", line 5, characters 13-15:
+The type: Int
+3 | base class B
+4 |
+5 | class PC(i: Int) extends B {}
+  |             ^^^
+6 | class NC{s: String, b: Bool} extends B {}
+
+File "./typechecking/invalid/matches_types.sk", line 29, characters 22-26:
+Does not share a common super type with: Bool
+27 |
+28 | fun matchesPositionalArgs(): Bool {
+29 |   (PC(42) : B) is PC(false);
+   |                      ^^^^^
+30 | }
+
+File "./typechecking/invalid/matches_types.sk", line 13, characters 32-36:
+Invalid literal pattern
+11 |
+12 | fun matchesTuple(): Bool {
+13 |   (40 + 2, !true, "Hello") is (false, 42, _);
+   |                                ^^^^^
+14 | }
+
+File "../../runtime/prelude/core/primitives/Int.sk", line 21, characters 33-35:
+The type: Int
+19 |   private native fun neImpl(other: Int): Bool;
+20 |
+21 |   fun +<I: Integral>(other: I): Int {
+   |                                 ^^^
+22 |     this.plusImpl(other.toInt())
+
+File "./typechecking/invalid/matches_types.sk", line 13, characters 32-36:
+Does not share a common super type with: Bool
+11 |
+12 | fun matchesTuple(): Bool {
+13 |   (40 + 2, !true, "Hello") is (false, 42, _);
+   |                                ^^^^^
+14 | }

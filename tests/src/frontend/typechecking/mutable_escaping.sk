@@ -1,0 +1,18 @@
+mutable class X<T>(mutable value: T) {
+  readonly fun foo(): Foo<T> {
+    Foo(this.value)
+  }
+}
+
+class Foo<T>(T)
+mutable class Bar(mutable dummy: String = "")
+
+fun test(): void {
+  x = mutable X(mutable Bar());
+  _ = x.foo();
+  void
+}
+
+fun main(): void {
+  print_string("Pass")
+}

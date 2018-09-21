@@ -1,0 +1,9 @@
+trait MyTC {
+  fun foo(): this {
+    if (true) this else this
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

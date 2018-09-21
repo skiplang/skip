@@ -1,0 +1,6 @@
+File "./syntax/invalid/mistake_let.sk", line 2, characters 7-11:
+Unexpected 'let'. Variables are declared without a leading keyword: 'myint = ...'
+1 | fun main(): String {
+2 |   let myint = 10;
+  |       ^^^^^
+3 | }

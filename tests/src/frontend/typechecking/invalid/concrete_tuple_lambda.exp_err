@@ -1,0 +1,22 @@
+File "./typechecking/invalid/concrete_tuple_lambda.sk", line 4, characters 7-17:
+Incompatible vector values
+2 |   t = (42, 42);
+3 |   f = () -> 42;
+4 |   _ = Array[t, f]
+  |       ^^^^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/concrete_tuple_lambda.sk", line 3, characters 7-14:
+The type: (() -> _)
+1 | fun foo(): void {
+2 |   t = (42, 42);
+3 |   f = () -> 42;
+  |       ^^^^^^^^
+4 |   _ = Array[t, f]
+
+File "./typechecking/invalid/concrete_tuple_lambda.sk", line 2, characters 7-14:
+Does not share a common super type with: (Int, Int)
+1 | fun foo(): void {
+2 |   t = (42, 42);
+  |       ^^^^^^^^
+3 |   f = () -> 42;

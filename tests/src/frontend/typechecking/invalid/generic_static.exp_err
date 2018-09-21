@@ -1,0 +1,26 @@
+File "./typechecking/invalid/generic_static.sk", line 2, characters 45-47:
+Constraint not satisfied
+1 | base class Foo<Tv: nonNullable> {
+2 |   static fun doesnt_have_constraint<Tv_>(_: Foo<Tv_>): void {
+  |                                             ^^^
+3 |     void
+
+File "./typechecking/invalid/generic_static.sk", line 2, characters 49-51:
+The type: Tv_
+1 | base class Foo<Tv: nonNullable> {
+2 |   static fun doesnt_have_constraint<Tv_>(_: Foo<Tv_>): void {
+  |                                                 ^^^
+3 |     void
+
+File "./typechecking/invalid/generic_static.sk", line 1, characters 20-30:
+Is not a subtype of: nonNullable
+1 | base class Foo<Tv: nonNullable> {
+  |                    ^^^^^^^^^^^
+2 |   static fun doesnt_have_constraint<Tv_>(_: Foo<Tv_>): void {
+
+File "./typechecking/invalid/generic_static.sk", line 1, characters 20-30:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Tv_
+1 | base class Foo<Tv: nonNullable> {
+  |                    ^^^^^^^^^^^
+2 |   static fun doesnt_have_constraint<Tv_>(_: Foo<Tv_>): void {

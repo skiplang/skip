@@ -1,0 +1,8 @@
+fun foo(x: _): String {
+  _ = x;
+  ""
+}
+
+fun main(): void {
+  print_raw(foo(42))
+}

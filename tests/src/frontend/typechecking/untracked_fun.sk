@@ -1,0 +1,8 @@
+// global functions can be untracked
+untracked fun f(): String {
+  "OK\n"
+}
+
+untracked fun main(): void {
+  print_raw(f())
+}

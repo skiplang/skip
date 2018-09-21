@@ -1,0 +1,4 @@
+fun main(): void {
+  str_of_tid(child) == str_of_tid(parent) ||
+    is_child(env, class_set, child, parent)
+}

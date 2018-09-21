@@ -1,0 +1,61 @@
+File "./typechecking/invalid/bad_default_value_class.sk", line 7, characters 18-20:
+Invalid default value
+5 | }
+6 |
+7 | class No1{x: L = R()}
+  |                  ^^^
+8 | mutable base class No2{x: mutable L = L()}
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 7, characters 18-20:
+The type: R
+5 | }
+6 |
+7 | class No1{x: L = R()}
+  |                  ^^^
+8 | mutable base class No2{x: mutable L = L()}
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 7, characters 14-14:
+Is not a subtype of: L
+5 | }
+6 |
+7 | class No1{x: L = R()}
+  |              ^
+8 | mutable base class No2{x: mutable L = L()}
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 7, characters 14-14:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+5 | }
+6 |
+7 | class No1{x: L = R()}
+  |              ^
+8 | mutable base class No2{x: mutable L = L()}
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 8, characters 39-41:
+Invalid default value
+ 6 |
+ 7 | class No1{x: L = R()}
+ 8 | mutable base class No2{x: mutable L = L()}
+   |                                       ^^^
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 8, characters 39-41:
+The type: L
+ 6 |
+ 7 | class No1{x: L = R()}
+ 8 | mutable base class No2{x: mutable L = L()}
+   |                                       ^^^
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 8, characters 27-35:
+Is not a subtype of: mutable L
+ 6 |
+ 7 | class No1{x: L = R()}
+ 8 | mutable base class No2{x: mutable L = L()}
+   |                           ^^^^^^^^^
+
+File "./typechecking/invalid/bad_default_value_class.sk", line 8, characters 27-35:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly L
+ 6 |
+ 7 | class No1{x: L = R()}
+ 8 | mutable base class No2{x: mutable L = L()}
+   |                           ^^^^^^^^^

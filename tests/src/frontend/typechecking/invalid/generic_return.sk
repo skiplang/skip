@@ -1,0 +1,5 @@
+class Foo(x: Int)
+
+fun foo<T: Foo>(): T {
+  Foo(42)
+}

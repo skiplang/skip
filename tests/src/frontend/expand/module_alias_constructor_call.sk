@@ -1,0 +1,13 @@
+module alias I = M;
+
+module M;
+class C{f1: Bool, f2: Bool}
+module end;
+
+const n: M.C = M.C{f1 => false, f2 => false};
+
+const j: I.C = I.C{f1 => false, f2 => false};
+
+fun main(): void {
+  print_string("Pass")
+}

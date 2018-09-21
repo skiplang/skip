@@ -1,0 +1,13 @@
+File "./visibility/invalid/private_abstract_1.sk", line 2, characters 15-17:
+Private methods in base classes must be defined for that class since they are only visible for that class
+1 | base class Foo {
+2 |   private fun bar(): void;
+  |               ^^^
+3 | }
+
+File "./visibility/invalid/private_abstract_1.sk", line 2, characters 3-9:
+Declared private here
+1 | base class Foo {
+2 |   private fun bar(): void;
+  |   ^^^^^^^
+3 | }

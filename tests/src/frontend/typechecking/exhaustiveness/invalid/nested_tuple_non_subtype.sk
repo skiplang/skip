@@ -1,0 +1,40 @@
+base class B {
+  children =
+  | C{}
+  | D()
+}
+
+fun test(): String {
+  e = (1, true, 42.0, 'C', "Pass", C{});
+  ((e match {
+  | (0, _, _, _, _, _) -> false
+  | (1, _, _, _, _, _) -> true
+  | (Int _, _, _, _, _, _) -> true
+  }) &&
+    (e match {
+    | (_, false, _, _, _, _) -> false
+    | (_, true, _, _, _, _) -> true
+    }) &&
+    (e match {
+    | (_, _, 1.0, _, _, _) -> false
+    | (_, _, 42.0, _, _, _) -> true
+    | (_, _, Float _, _, _, _) -> true
+    }) &&
+    (e match {
+    | (_, _, _, 'X', _, _) -> false
+    | (_, _, _, 'C', _, _) -> true
+    | (_, _, _, Char _, _, _) -> true
+    }) &&
+    (e match {
+    | (_, _, _, _, "Fail", _) -> false
+    | (_, _, _, _, "Pass", _) -> true
+    | (_, _, _, _, String _, _) -> true
+    }) &&
+    (e match {
+    | (_, _, _, _, _, D()) -> false
+    | (_, _, _, _, _, C{}) -> true
+    })) match {
+  | true -> "Fail\n"
+  | false -> "Boom\n"
+  }
+}

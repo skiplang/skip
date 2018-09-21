@@ -1,0 +1,2 @@
+class A(Int)
+extension class A{x: Int}

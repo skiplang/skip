@@ -1,0 +1,21 @@
+fun main(): void {
+  print_raw(
+    try {
+      Moo().expectBaz()
+    } catch {
+    | _ -> "Pass\n"
+    },
+  )
+}
+
+base class Foo {
+  fun expectBaz(): String
+  | Baz() -> "Pass\n"
+  | _ -> invariant_violation("expectBaz called on non-Baz")
+}
+
+base class Bar extends Foo
+
+class Baz() extends Bar
+
+class Moo() extends Foo

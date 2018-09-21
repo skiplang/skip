@@ -1,0 +1,11 @@
+mutable class Foo(x: mutable Array<Int>, s: String)
+
+fun main(): void {
+  v = mutable Array[1];
+  f = mutable Foo(v, "Pass\n");
+  print_raw(
+    f match {
+    | Foo(_, s) -> s
+    },
+  )
+}

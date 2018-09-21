@@ -1,0 +1,8 @@
+fun a_no(): String {
+  _ = if (true) L() else R();
+  "FAIL"
+}
+
+base class P<+T>
+class L() extends P<L>
+class R() extends P<R>

@@ -1,0 +1,6 @@
+File "./syntax/invalid/mistake_const.sk", line 2, characters 3-7:
+Unexpected 'const'. Variables are declared without a leading keyword: 'myint = ...'
+1 | fun main(): String {
+2 |   const myint = 10;
+  |   ^^^^^
+3 | }

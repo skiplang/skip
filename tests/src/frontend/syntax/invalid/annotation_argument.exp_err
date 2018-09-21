@@ -1,0 +1,5 @@
+File "./syntax/invalid/annotation_argument.sk", line 1, characters 8-9:
+Annotation arguments must be string literals
+1 | @annot(42)
+  |        ^^
+2 | fun main(): void {

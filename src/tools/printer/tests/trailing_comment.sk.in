@@ -1,0 +1,5 @@
+fun main(): void {
+  ref.value match {
+  | Some(x) -> x // boom, ref contains a None
+  };
+}

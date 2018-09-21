@@ -1,0 +1,8 @@
+class Foo{log: List<String>}
+
+fun main(): void {
+  mf = Foo{log => List[]};
+  f = freeze(mf); // noop, mf isn't mutable
+  s = f.log.concat(List["Pass\n"]);
+  print_raw(s.join("\n"))
+}

@@ -1,0 +1,2 @@
+base class Foo final {f: Int}
+base class Bar{f2: Int} extends Foo

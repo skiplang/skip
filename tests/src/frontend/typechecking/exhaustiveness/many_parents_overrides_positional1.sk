@@ -1,0 +1,23 @@
+base class Top
+base class P1(p1: Int) extends Top
+base class P2(p2: Int) extends Top
+base class P3(p3: Int) extends Top
+base class P4(p4: Int) extends Top
+
+base class SP1(sp1: Bool) extends P1
+base class SP2(sp2: String) extends P2
+base class SP3(sp3: Int) extends P3
+base class SP4(sp4: Char) extends P4
+
+class Join(String) extends SP1, SP2, SP3, SP4
+
+fun myMatch(x: Top): String {
+  x match {
+  | P1 _ -> "Pass\n"
+  }
+}
+
+fun main(): void {
+  x = Join("a", true, 1, "b", 2, 3, 4, 'c', 5);
+  print_raw(myMatch(x))
+}

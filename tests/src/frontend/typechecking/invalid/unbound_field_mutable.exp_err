@@ -1,0 +1,15 @@
+File "./typechecking/invalid/unbound_field_mutable.sk", line 8, characters 3-5:
+The field z is undefined. Did you mean x or y?
+ 6 |
+ 7 | fun test(a: mutable A): void {
+ 8 |   a.z
+   |   ^^^
+ 9 | }
+
+File "./typechecking/invalid/unbound_field_mutable.sk", line 7, characters 13-21:
+For the expression of type mutable A
+5 | }
+6 |
+7 | fun test(a: mutable A): void {
+  |             ^^^^^^^^^
+8 |   a.z

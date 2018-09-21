@@ -1,0 +1,6 @@
+value class FilePosition{
+  filename: String,
+  position: Position,
+}  uses Orderable, Hashable, Show {
+  fun line(): Int { this.position.line(); }
+}

@@ -1,0 +1,6 @@
+File "./syntax/invalid/static_frozen_method.sk", line 2, characters 3-15:
+Invalid modifiers. Methods cannot be both 'frozen' and 'static'
+1 | class C() {
+2 |   static frozen fun m(): String { "Fail" }
+  |   ^^^^^^^^^^^^^
+3 | }

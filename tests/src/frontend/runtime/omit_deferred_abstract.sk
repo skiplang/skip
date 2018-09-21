@@ -1,0 +1,24 @@
+// abstract and deferred static methods are omitted
+// from front end output. Back ends shouldn't see
+// bodiless methods.
+//
+base class Foo {
+  type MyType;
+  deferred static async fun f(): ^this::MyType;
+  fun a(): void;
+}
+
+class Bar() extends Foo {
+  type MyType = Int;
+  static async fun f(): ^this::MyType {
+    37
+  }
+  fun a(): void {
+    void
+  }
+}
+
+fun main(): void {
+  _ = Bar::f();
+  print_string("Pass")
+}

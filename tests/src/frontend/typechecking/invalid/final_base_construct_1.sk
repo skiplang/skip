@@ -1,0 +1,7 @@
+base class B final ()
+
+fun main(): void {
+  b = B;
+  _ = b();
+  print_raw("FAIL")
+}

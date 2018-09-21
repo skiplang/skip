@@ -1,0 +1,5 @@
+base base class C() {}
+
+fun main(): String {
+  "Fail"
+}

@@ -1,0 +1,11 @@
+const ref: mutable Ref<Int> = mutable Ref(0);
+const awaitable: Vector<^Int> = Vector[
+  async {
+    100
+  },
+];
+
+class Tester() {
+  const func: () -> Int = () -> 100;
+  const nest: readonly Vector<Int> = Vector[100];
+}

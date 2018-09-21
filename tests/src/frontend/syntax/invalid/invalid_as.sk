@@ -1,0 +1,4 @@
+fun main(): void {
+  x: ?Int = Some(0);
+  print_string((x as None).toString())
+}

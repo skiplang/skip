@@ -1,0 +1,47 @@
+File "./typechecking/invalid/foreach_items.sk", line 4, characters 13-21:
+The field values is undefined
+2 |
+3 | fun no1(): void {
+4 |   for (_ in MyClass()) void
+  |             ^^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/foreach_items.sk", line 4, characters 13-21:
+For the expression of type MyClass
+2 |
+3 | fun no1(): void {
+4 |   for (_ in MyClass()) void
+  |             ^^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/foreach_items.sk", line 8, characters 18-26:
+The field items is undefined
+ 6 |
+ 7 | fun no2(): void {
+ 8 |   for (_ => _ in MyClass()) void
+   |                  ^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/foreach_items.sk", line 8, characters 18-26:
+For the expression of type MyClass
+ 6 |
+ 7 | fun no2(): void {
+ 8 |   for (_ => _ in MyClass()) void
+   |                  ^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/foreach_items.sk", line 12, characters 21-29:
+The field values is undefined
+10 |
+11 | fun no3(): void {
+12 |   for ((_, _, _) in MyClass()) void
+   |                     ^^^^^^^^^
+13 | }
+
+File "./typechecking/invalid/foreach_items.sk", line 12, characters 21-29:
+For the expression of type MyClass
+10 |
+11 | fun no3(): void {
+12 |   for ((_, _, _) in MyClass()) void
+   |                     ^^^^^^^^^
+13 | }

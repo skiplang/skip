@@ -1,0 +1,4 @@
+File "./typechecking/invalid/value_class_2.sk", line 1, characters 1-5:
+Base classes cannot be declared as value classes
+1 | value base class Foo
+  | ^^^^^

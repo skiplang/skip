@@ -1,0 +1,112 @@
+--- test_varray1_bool
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[true, false]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 2
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 1)
+a[1]: false
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 2)
+a[2]: true
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[true, false, true, null, true, false, false]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 1)
+b[1]: None()
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 2)
+b[2]: Some(false)
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 3)
+b[3]: Some(true)
+--- test_varray1_int
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1, 2, 3]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 3
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 10)
+a[10]: 42
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[42, null]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 15)
+b[15]: None()
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 20)
+b[20]: Some(43)
+--- test_varray1_float
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1.5, 2.5, 3.5]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 3
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 15)
+a[15]: 1.25
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[null, 1.5]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 0)
+b[0]: None()
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 1)
+b[1]: Some(1.25)
+--- test_varray1_string
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>["short", "really long string"]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 2
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 20)
+a[20]: "short"
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 21)
+a[21]: "this is a long string"
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[null, "short", "really long string"]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 19)
+b[19]: None()
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 21)
+b[21]: Some(short)
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 23)
+b[23]: Some(this is a long string)
+--- test_varray1_object1
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[object<HhvmObject1>]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 1
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 30)
+a[30]: <HhvmObject1:object<HhvmObject1>>
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[null, object<HhvmObject1>]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 19)
+b[19]: None()
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 30)
+b[30]: Some(<HhvmObject1:object<HhvmObject1>>)
+--- test_varray1_object2
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[object<HhvmObject2a>, object<HhvmObject2b>]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 2
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 40)
+a[40]: <HhvmObject2a:object<HhvmObject2a>>
+--- test_varray1_hharray
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1]
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[array<HH_varray>]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 1
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1, 2]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 45)
+a[45]: HH_varray<>#array<HH_varray>
+--- test_varray1_mixed
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[3, 2.5]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 2
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 50)
+a[50]: HH.Int(23)
+--- test_varray1_array
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1, 2, 3]
+array<HH_varray>]
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+a.size() = 1
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1, 2]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 45)
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+SKIP::Vector::HH_varray::size(array<HH_varray>)
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 0)
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 1)
+a[45]: Array[13, 14]
+--- test_varray1_map
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[HH_darray::internalCreate()
+HH_darray::internalSet(array<darray>, 1, 3)
+HH_darray::internalSet(array<darray>, 2, 2)
+HH_darray::internalSet(array<darray>, 3, 1)
+array<darray>]
+SKIP_HhvmInterop_createArrayFromFixedVector<HH_varray>[1, 2]
+SKIP::Vector::HH_varray::get<HH.Mixed>(array<HH_varray>, 1)
+HH_darray::iterBegin(array<HH_varray>)
+HH_darray::iterEnd(array<HH_varray>)
+HH_darray::iterGetKey(array<HH_varray>, 0)
+HH_darray::iterGetValue(array<HH_varray>, 0)
+HH_darray::iterAdvance(array<HH_varray>, 0)
+HH_darray::iterGetKey(array<HH_varray>, 1)
+HH_darray::iterGetValue(array<HH_varray>, 1)
+HH_darray::iterAdvance(array<HH_varray>, 1)
+a[1]: Map{11 => 100, 21 => 101}

@@ -1,0 +1,7 @@
+module X;
+
+extension base class .X<T>
+
+module end;
+
+base class X

@@ -1,0 +1,6 @@
+File "./syntax/invalid/did_you_mean_sort.sk", line 2, characters 13-16:
+Unbound variable: name
+1 | fun main(): void {
+2 |   print_raw(name.hash())
+  |             ^^^^
+3 | }

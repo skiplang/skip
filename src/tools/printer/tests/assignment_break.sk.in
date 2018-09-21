@@ -1,0 +1,4 @@
+fun main(): void {
+  isIfCondition = ctx.parents.getNth(1) matches ParseTree.LongIfExpressionTree _ ||
+    ctx.parents.getNth(1) matches ParseTree.IfClauseTree _
+}

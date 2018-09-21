@@ -1,0 +1,21 @@
+fun main(): void {
+  _: TInt = x;
+  //  _ : TInt = Y;
+  _ = Foo();
+  _ = BarChild();
+  print_raw(pass())
+}
+
+module M;
+
+type .TInt = Int;
+const .x: Int = 42;
+const .Y: Int = 0;
+class .Foo()
+base class Bar {
+  children =
+  | .BarChild()
+}
+fun .pass(): String {
+  "Pass\n"
+}

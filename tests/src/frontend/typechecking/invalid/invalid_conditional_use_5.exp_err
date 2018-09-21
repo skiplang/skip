@@ -1,0 +1,23 @@
+File "./typechecking/invalid/invalid_conditional_use_5.sk", line 17, characters 3-7:
+Constraint not satisfied
+15 |
+16 | fun no<T>(c: C<T>): Int {
+17 |   use_x(c)
+   |   ^^^^^
+18 | }
+
+File "./typechecking/invalid/invalid_conditional_use_5.sk", line 16, characters 14-14:
+The type: C<T>
+14 | }
+15 |
+16 | fun no<T>(c: C<T>): Int {
+   |              ^
+17 |   use_x(c)
+
+File "./typechecking/invalid/invalid_conditional_use_5.sk", line 12, characters 14-14:
+Is not a subtype of: X
+10 | }
+11 |
+12 | fun use_x<T: X>(t: T): Int {
+   |              ^
+13 |   t.getVal()

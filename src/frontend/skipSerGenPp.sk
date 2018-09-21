@@ -1,0 +1,568 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Pretty printer used only for debugging. (That's why it looks so ugly ;-)) */
+/*****************************************************************************/ module alias A = SkipAst;
+
+module SkipSerGenPp;
+
+fun definition(o: mutable BufferedPrinter.Out, x: A.Definition): void {
+  x match {
+  | A.DModule(_, n) -> module_(o, n)
+
+  | A.DClass(c) -> class_def(o, c)
+
+  | A.DType(tdef) -> type_alias_def(o, tdef)
+
+  | _ -> void
+  }
+}
+
+fun module_(o: mutable BufferedPrinter.Out, mname: A.Name): void {
+  o.out("module ");
+  BufferedPrinter.name(o, mname);
+  o.out(";");
+  o.newline()
+}
+
+fun emit_encode_class_params(
+  o: mutable BufferedPrinter.Out,
+  x: A.MaybeClassParams,
+): void {
+  x match {
+  | A.NoParams()
+  | A.NativeConstruct _ ->
+    void
+
+  | A.HasParams(cp) -> emit_encode_class_params_(o, cp.params)
+  }
+}
+
+fun emit_encode_class_params_(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<A.Parameter>,
+): void {
+  x match {
+  | Positional(_paraml) -> o.out("TODO: positional class params")
+
+  | Named(param_map) ->
+    values = param_map.values() |> List::createFromIterator;
+    BufferedPrinter.list(emit_param_encode, o, values)
+  }
+}
+
+fun emit_decode_class_params(
+  o: mutable BufferedPrinter.Out,
+  x: A.MaybeClassParams,
+): void {
+  x match {
+  | A.NoParams()
+  | A.NativeConstruct _ ->
+    void
+
+  | A.HasParams(cp) -> emit_decode_class_params_(o, cp.params)
+  }
+}
+
+fun emit_decode_class_params_(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<A.Parameter>,
+): void {
+  x match {
+  | Positional(_paraml) -> o.out("TODO: positional class params")
+
+  | Named(param_map) ->
+    values = param_map.values() |> List::createFromIterator;
+    BufferedPrinter.list(emit_param_decode, o, values)
+  }
+}
+
+fun name_str(p: A.Name): String {
+  (_, x) = (p);
+  x
+}
+
+fun type_name_str(x: A.Type_name): String {
+  x match {
+  | A.Tmacro(n) -> name_str(n)
+  | A.Tclass(n) -> name_str(n)
+  | A.Tmodule_class(_, x1, y) -> name_str(x1) + "." + name_str(y)
+  | A.Tparam(n, id) -> name_str(n) + "#" + id
+  }
+}
+
+fun type_args_str(x: Array<A.Type_>): String {
+  if (x.isEmpty()) "" else ("<" + type_list_str(x) + ">")
+}
+
+fun type_list_str(l: Array<A.Type_>): String {
+  l.map(type_str).join(", ")
+}
+
+fun type_array_str(a: Array<A.Type_>): String {
+  a.map(type_str).join(", ")
+}
+
+fun type_params_str(x: Parameters<A.Type_>): String {
+  x match {
+  | Positional(tyl) -> "(" + type_array_str(tyl) + ")"
+  | Named(m) -> "{" + type_map_str(m) + "}"
+  }
+}
+
+fun umap_item_str(p: (A.Name, A.Type_)): String {
+  ((_, nm), ty) = (p);
+  nm + ": " + type_str(ty)
+}
+
+fun type_map_str(m: UMap<A.Type_>): String {
+  m.items().map(umap_item_str).collect(Vector).join(", ")
+}
+
+fun type_str(t: A.Type_): String {
+  (_, ty) = (t);
+  ty match {
+  | A.Tany() -> "any"
+
+  | A.Tunder() -> "_"
+
+  | A.Tapply(n, tyl) -> type_name_str(n) + type_args_str(tyl)
+
+  | A.Ttuple(tyl) -> "(" + type_list_str(tyl) + ")"
+
+  | A.Tfun(fty_modifier, fty_params, fty_return) ->
+    Array[
+      if (fty_modifier.is_untracked) {
+        "untracked "
+      } else {
+        ""
+      },
+      type_params_str(fty_params),
+      if (fty_modifier.is_mutable) {
+        " -> "
+      } else {
+        " ~> "
+      },
+      type_str(fty_return),
+    ].join("")
+  | A.Tabstract(tn, tnl) ->
+    type_name_str(tn) + "::" + tnl.map(name_str).join("::")
+
+  | A.Tinst() -> "inst"
+
+  | A.Tthis() -> "this"
+
+  | A.Tfrozen() -> "frozen"
+
+  | A.TnonNullable() -> "nonNullable"
+
+  | A.Tmutable(ty1) -> "mutable " + type_str(ty1)
+
+  | A.Treadonly(ty1) -> "readonly " + type_str(ty1)
+
+  | A.Tawaitable(ty1) -> "^" + type_str(ty1)
+  }
+}
+
+fun tuple_name(x: Array<A.Type_>): String {
+  x.size() match {
+  | 2 -> "pair"
+
+  | 3 -> "tuple3"
+
+  | 4 -> "tuple4"
+
+  | _ -> "TODO"
+  }
+}
+
+/* Note that in the Tmodule_class case we drop the second component, so
+ *   UMap<Foo> --> umap_toJson(foo_toJson(...)))
+ *
+ * Tapply cases could be simplified a bit
+ *
+ */
+fun encoder_fun_name(ts: String): String {
+  ts.lowercase() + "_toJson"
+}
+
+fun typed_list_encoder_str(l: Array<A.Type_>): String {
+  l.map(typed_encoder_str).join(", ")
+}
+
+fun typed_encoder_str(ty: A.Type_): String {
+  ty match {
+  | (_, A.Tapply(A.Tclass((_, tstr)), tyl)) if (tyl.size() == 1) ->
+    encoder_fun_name(tstr) + "(" + typed_encoder_str(tyl[0]) + ")"
+
+  | (_, A.Tapply(A.Tmodule_class(_, (_, x), _y), tyl)) if (tyl.isEmpty()) ->
+    encoder_fun_name(x)
+
+  | (_, A.Tapply(A.Tmodule_class(_, (_, x), _y), tyl)) if (tyl.size() == 1) ->
+    encoder_fun_name(x) + "(" + typed_encoder_str(tyl[0]) + ")"
+
+  | (_, A.Ttuple(tl)) ->
+    tuple_name(tl) + "_toJson(" + typed_list_encoder_str(tl) + ")"
+
+  | _ -> encoder_fun_name(type_str(ty))
+  }
+}
+
+fun typed_encoder_call_str(vs: String, ty: A.Type_): String {
+  typed_encoder_str(ty) + "(" + vs + ")"
+}
+
+fun typed_decoder_fun_str(ty: A.Type_): String {
+  type_str(ty).lowercase() + "_fromJson"
+}
+
+fun decoder_name(ts: String): String {
+  ts.lowercase() + "_fromJson"
+}
+
+fun typed_list_decoder_str(l: Array<A.Type_>): String {
+  l.map(typed_decoder_str).join(", ")
+}
+
+fun typed_decoder_str(ty: A.Type_): String {
+  ty match {
+  | (_, A.Tapply(A.Tclass((_, tstr)), tyl)) if (tyl.size() == 1) ->
+    decoder_name(tstr) + "(" + typed_decoder_str(tyl[0]) + ")"
+
+  | (_, A.Tapply(A.Tmodule_class(_, (_, x), _y), tyl)) if (tyl.isEmpty()) ->
+    decoder_name(x)
+
+  | (_, A.Tapply(A.Tmodule_class(_, (_, x), _y), tyl)) if (tyl.size() == 1) ->
+    decoder_name(x) + "(" + typed_decoder_str(tyl[0]) + ")"
+
+  | (_, A.Ttuple(tl)) ->
+    tuple_name(tl) + "_fromJson(" + typed_list_decoder_str(tl) + ")"
+
+  | _ -> decoder_name(type_str(ty))
+  }
+}
+
+fun typed_decoder_call_str(vs: String, ty: A.Type_): String {
+  typed_decoder_str(ty) + "(" + vs + ")"
+}
+
+fun emit_param_encode(o: mutable BufferedPrinter.Out, fp: A.Parameter): void {
+  o.out("(\"");
+  BufferedPrinter.name(o, fp.name);
+  o.out("\", ");
+  o.out(typed_encoder_call_str("v." + name_str(fp.name), fp.type));
+  o.out(")")
+}
+
+fun emit_param_decoder_call(
+  o: mutable BufferedPrinter.Out,
+  fs: String,
+  ty: A.Type_,
+): void {
+  o.out(typed_decoder_call_str(fs, ty))
+}
+
+fun emit_param_decode(o: mutable BufferedPrinter.Out, fp: A.Parameter): void {
+  BufferedPrinter.name(o, fp.name);
+  o.out(" => ");
+  emit_param_decoder_call(o, "dict[\"" + name_str(fp.name) + "\"]", fp.type)
+}
+
+fun emit_encode_sig(o: mutable BufferedPrinter.Out, cnm: String): void {
+  o.out("fun ");
+  o.out(cnm.lowercase());
+  o.out("_toJson(v: ");
+  o.out(cnm);
+  o.out("): JSON.Value");
+  o.out(" {")
+}
+
+fun emit_encode_class(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  emit_encode_sig(o, cd.name.i1);
+  o.newline();
+  o.margin(() -> {
+    o.out("JSON.Object(Dict [");
+    o.margin(() -> {
+      emit_encode_class_params(o, cd.params)
+    });
+    o.out("])");
+    o.newline()
+  });
+  o.out("}");
+  o.newline()
+}
+
+fun emit_child_params(
+  o: mutable BufferedPrinter.Out,
+  x: ?A.Class_params,
+): void {
+  x match {
+  | None() -> void
+
+  | Some(cp) -> emit_child_params_(o, cp.params)
+  }
+}
+
+fun emit_child_params_(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<A.Parameter>,
+): void {
+  x match {
+  | Positional(paraml) ->
+    BufferedPrinter.array(
+      (o1: mutable BufferedPrinter.Out, s: String) -> o1.out(s),
+      o,
+      paraml.mapWithIndex((i: Int, _p: A.Parameter) -> "v" + i),
+    )
+
+  | _ -> void
+  }
+}
+
+fun emit_child_values(
+  o: mutable BufferedPrinter.Out,
+  x: ?A.Class_params,
+): void {
+  x match {
+  | None() -> void
+
+  | Some(cp) -> emit_child_values_(o, cp.params)
+  }
+}
+
+fun emit_child_values_(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<A.Parameter>,
+): void {
+  x match {
+  | Positional(paraml) if (paraml.isEmpty()) -> void
+
+  | Positional(paraml) ->
+    o.out(", (\"values\", JSON.Array(Vec [");
+    BufferedPrinter.array(
+      (o1: mutable BufferedPrinter.Out, s: String) -> o1.out(s),
+      o,
+      paraml.mapWithIndex((i: Int, fp: A.Parameter) -> {
+        typed_encoder_call_str("v" + i, fp.type)
+      }),
+    );
+    o.out("]))")
+
+  | _ -> void
+  }
+}
+
+fun emit_encode_child(o: mutable BufferedPrinter.Out, chi: A.Child): void {
+  o.out("| ");
+  o.out(chi.chi_name.i1);
+  o.out("(");
+  emit_child_params(o, chi.chi_params);
+  o.out(") -> ");
+  o.out("JSON.Object(Dict [(\"tag\", JSON.String(\"");
+  o.out(chi.chi_name.i1);
+  o.out("\"))");
+  emit_child_values(o, chi.chi_params);
+  o.out("])");
+  o.newline()
+}
+
+fun emit_encode_children(o: mutable BufferedPrinter.Out, x: A.Children): void {
+  x match {
+  | List.Nil() -> void
+
+  | sk_children ->
+    for (cur1 in sk_children) {
+      emit_encode_child(o, cur1)
+    }
+  }
+}
+
+fun emit_decode_child_values(
+  o: mutable BufferedPrinter.Out,
+  chi: A.Child,
+  x: ?A.Class_params,
+): void {
+  x match {
+  | None() -> void
+
+  | Some(cp) -> emit_decode_child_values_(o, chi, cp.params)
+  }
+}
+
+fun emit_decode_child_values_(
+  o: mutable BufferedPrinter.Out,
+  _chi: A.Child,
+  x: Parameters<A.Parameter>,
+): void {
+  x match {
+  | Positional(paraml) if (paraml.isEmpty()) -> void
+  | Positional(paraml) ->
+    BufferedPrinter.array(
+      (o1: mutable BufferedPrinter.Out, s: String) -> {
+        o1.out(s)
+      },
+      o,
+      paraml.mapWithIndex((i: Int, fp: A.Parameter) -> {
+        typed_decoder_call_str(
+          "dict[\"values\"].expectVec()[" + i + "]",
+          fp.type,
+        )
+      }),
+    )
+
+  | _ -> void
+  }
+}
+
+fun emit_decode_child(o: mutable BufferedPrinter.Out, chi: A.Child): void {
+  o.out("| \"");
+  o.out(chi.chi_name.i1);
+  o.out("\" -> ");
+  o.out(chi.chi_name.i1);
+  o.out("(");
+  emit_decode_child_values(o, chi, chi.chi_params);
+  o.out(")");
+  o.newline()
+}
+
+fun emit_decode_children(o: mutable BufferedPrinter.Out, x: A.Children): void {
+  x match {
+  | List.Nil() -> void
+
+  | sk_children ->
+    for (cur1 in sk_children) {
+      emit_decode_child(o, cur1)
+    }
+  }
+}
+
+fun emit_encode_base(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  emit_encode_sig(o, cd.name.i1);
+  o.newline();
+  o.margin(() -> {
+    o.out("v match {");
+    o.newline();
+    emit_encode_children(o, cd.children_);
+    o.out("}");
+    o.newline()
+  });
+  o.out("}");
+  o.newline()
+}
+
+fun emit_decode_sig(o: mutable BufferedPrinter.Out, cnm: String): void {
+  o.out("fun ");
+  o.out(cnm.lowercase());
+  o.out("_fromJson(jv: JSON.Value): ");
+  o.out(cnm);
+  o.out(" {")
+}
+
+fun emit_decode_base(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  emit_decode_sig(o, cd.name.i1);
+  o.newline();
+  o.margin(() -> {
+    o.out("dict = jv.expectDict();");
+    o.newline();
+    o.out("dict[\"tag\"].expectString() match {");
+    o.newline();
+    emit_decode_children(o, cd.children_);
+    o.out(
+      "| _ -> invariant_violation(\"decoding " +
+        cd.name.i1 +
+        ": no match for tag\")",
+    );
+    o.newline();
+    o.out("}");
+    o.newline()
+  });
+  o.out("}");
+  o.newline()
+}
+
+fun emit_decode_class(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  emit_decode_sig(o, cd.name.i1);
+  o.newline();
+  o.margin(() -> {
+    o.out("dict = jv.expectDict();");
+    o.newline();
+    o.out(cd.name.i1);
+    o.out(" {");
+    emit_decode_class_params(o, cd.params);
+    o.out("}");
+    o.newline()
+  });
+  o.out("}");
+  o.newline()
+}
+
+fun kclass_def(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  o.newline();
+  emit_encode_class(o, cd);
+  o.newline();
+  emit_decode_class(o, cd);
+  o.newline()
+}
+
+fun kbase_def(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  o.newline();
+  emit_encode_base(o, cd);
+  o.newline();
+  emit_decode_base(o, cd);
+  o.newline()
+}
+
+fun class_def(o: mutable BufferedPrinter.Out, cd: A.Class_def): void {
+  cd.kind match {
+  | A.KClass() -> kclass_def(o, cd)
+
+  | A.KBase() -> kbase_def(o, cd)
+
+  | _ -> void
+  }
+}
+
+fun emit_encode_type_alias(
+  o: mutable BufferedPrinter.Out,
+  tas: String,
+  ty: A.Type_,
+): void {
+  emit_encode_sig(o, tas);
+  o.newline();
+  o.margin(() -> {
+    o.out(typed_encoder_call_str("v", ty))
+  });
+  o.newline();
+  o.out("}");
+  o.newline()
+}
+
+fun emit_decode_type_alias(
+  o: mutable BufferedPrinter.Out,
+  tas: String,
+  ty: A.Type_,
+): void {
+  emit_decode_sig(o, tas);
+  o.newline();
+  o.margin(() -> {
+    o.out(typed_decoder_call_str("jv", ty))
+  });
+  o.newline();
+  o.out("}");
+  o.newline()
+}
+
+fun type_alias_def(
+  o: mutable BufferedPrinter.Out,
+  tyd: A.Type_alias_def,
+): void {
+  emit_encode_type_alias(o, tyd.name.i1, tyd.body);
+  o.newline();
+  emit_decode_type_alias(o, tyd.name.i1, tyd.body);
+  o.newline()
+}

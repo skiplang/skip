@@ -1,0 +1,21 @@
+mutable class Foo(mutable x: Int) {
+  readonly fun foo(): Int {
+    this.x
+  }
+  static fun bar(): Int {
+    0
+  }
+}
+
+fun tester(x: readonly Foo): void {
+  _: () -> Int = x.foo
+}
+
+fun main(): void {
+  _: () ~> Int = Foo(0).foo;
+  _: () -> Int = Foo(0).foo;
+  _: () -> Int = (mutable Foo(0)).foo;
+  _: () ~> Int = Foo::bar;
+  _: () -> Int = Foo::bar;
+  print_string("Pass")
+}

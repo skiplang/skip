@@ -1,0 +1,450 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module RegisterPromote;
+
+// This file implements a pass that removes field loads and stores, replacing
+// field accesses with normal SSA variables. The main use cases for this are
+// converting user local variables into SSA form (user variables assigned more
+// than once start out as "LocalVariable" instances, waiting for this pass to
+// convert to SSA), and optimizing away closure-related data structures after
+// a closure is inlined.
+//
+// We do not attempt to do anything clever, such as using memory aliasing
+// information. Instead, we just handle some easy cases where an object is
+// allocated locally.
+//
+// The idea is roughly as follows:
+//
+// 1) If a locally allocated object is only used as the "obj" input to
+//    GetField and SetField, i.e. does not "escape", then we are certain
+//    what the field values are and can optimize away the GetField/SetField
+//    by propagating those values.
+//
+// 2) If the object "escapes", we can still optimize away GetField of
+//    non-assignable fields by propagating the constructor parameter for that
+//    field.
+
+// A specific field of a specific object that we hope to promote to a local
+// variable.
+private value class FlowKey(
+  obj: InstrID,
+  field: String,
+) uses Hashable, Equality {
+  fun ==(other: FlowKey): Bool {
+    this.obj == other.obj && this.field == other.field
+  }
+
+  const none: FlowKey = FlowKey(InstrID::none, "");
+}
+
+// Extra per-Block information we need temporarily during this pass.
+mutable private class FlowBlock{
+  id: BlockID,
+  values: mutable UnorderedMap<FlowKey, InstrID>,
+  params: mutable Vector<(FlowKey, BlockParam)> = mutable Vector[],
+  mutable successors: Array<BlockSuccessor> = Array[],
+  // Some successor block takes BlockParams we aren't get passing yet.
+  // This is true exactly when block is in successorsNeedUpdating.
+  mutable successorsStale: Bool = false,
+  // Did we modify this Block's successors (to pass extra BlockParams)?
+  mutable successorsChanged: Bool = false,
+} {
+  static fun make(b: Block): mutable FlowBlock {
+    // Copy over original params.
+    params = mutable Vector[];
+    for (p in b.params) params.push((FlowKey::none, p));
+    mutable FlowBlock{id => b.id, params, values => mutable UnorderedMap[]}
+  }
+}
+
+// Flags for each object allocated in this function to track how it's used
+// within the function.
+mutable private class FlowFlags{
+  // Is this an Object call?
+  mutable isLocalAlloc: Bool = false,
+
+  // Did this turn out to be an Object call with a GetField or SetField
+  // that looks like it can be optimized away?
+  mutable isOptimizable: Bool = false,
+
+  mutable isDeepFrozen: Bool = false,
+
+  // Does this pointer "escape" (we lose track of how its fields are accessed)?
+  mutable escapes: Bool = false,
+
+  // Can we optimize this even if the object pointer escapes? Note that
+  // if this is true it implicitly means canOptimizeIfDoesNotEscape is true.
+  mutable canOptimizeIfEscapes: Bool = false,
+
+  // Can we optimize this if the object pointer does not escapes?
+  mutable canOptimizeIfDoesNotEscape: Bool = false,
+
+  // Fields for the class.
+  mutable fields: Array<SField> = Array[],
+
+  // Arguments to the constructor.
+  mutable args: Array<InstrID> = Array[],
+} {
+  // TODO: Tidy up to use SClass.getFieldIndex() instead.
+  readonly fun getFieldIndex(field: String, pos: Pos): Int {
+    i = -1;
+    if (
+      !this.fields.any(f -> {
+        !i = i + 1;
+        f.name == field
+      })
+    ) {
+      pos.die("Could not find field '" + field + "'")
+    };
+    i
+  }
+}
+
+mutable class .RegisterPromote{
+  mutable currentFlowBlock: mutable FlowBlock,
+  objFlags: mutable Array<mutable FlowFlags>,
+  // TODO: This should be a mutable Vector but some kind of compiler
+  // bug prevents it.
+  flowBlocks: mutable Vector<mutable FlowBlock> = mutable Vector[],
+  successorsNeedUpdating: mutable Vector<BlockID> = mutable Vector[],
+} extends Rewrite {
+  // Promote fields to local variables.
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    optinfo = OptimizerInfo::make(f);
+
+    dummyBlock = FlowBlock::make(f.blocks[0]);
+
+    // We start out with an objFlags array all pointing to the same
+    // singleton, which must not be modified (and won't be, because its
+    // isLocalAlloc is false). We'll drop in fresh objects as needed.
+    objFlags = Array::mfill(optinfo.idToInstr.size(), mutable FlowFlags{});
+
+    d = mutable static{
+      optinfo,
+      env,
+      pos => f.pos,
+      currentFlowBlock => dummyBlock,
+      objFlags,
+    };
+
+    d.go("regpromote", false)
+  }
+
+  // Fetch the latest known value for the given FlowKey in this block.
+  // If this block does not know the value, it creates a BlockParam and
+  // demands that all predecessor blocks supply this FlowKey's value to
+  // that BlockParam. It then caches the BlockParam as this block's known
+  // value for that FlowKey.
+  private mutable fun getValue(
+    fb: mutable FlowBlock,
+    key: FlowKey,
+    template: InstrWithPos,
+    replacingGetField: Bool,
+  ): InstrID {
+    optinfo = this.optinfo;
+    values = fb.values;
+
+    values.maybeGet(key) match {
+    | Some(v) -> v
+    | None() ->
+      // We don't know the value, so we need to ask our predecessors
+      // to pass it in as a BlockParam.
+
+      // If replacing a GetField, use its same ID so dependent Instrs
+      // don't need to be rewritten.
+      id = if (replacingGetField) {
+        template.id
+      } else {
+        this.iid()
+      };
+
+      index = fb.params.size();
+      param = BlockParam{id, typ => template.typ, pos => template.pos, index};
+      fb.params.push((key, param));
+      optinfo.idToInstr.insert(param);
+      fb.values.set(key, param.id);
+
+      // Remember to update this block's predecessors to pass
+      // this extra BlockParam.
+      for (p in optinfo.getPredecessors(fb.id)) {
+        pfb = this.flowBlocks[p.id];
+        if (!pfb.successorsStale) {
+          pfb.!successorsStale = true;
+          this.successorsNeedUpdating.push(p)
+        }
+      };
+
+      param.id
+    }
+  }
+
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    this.!currentFlowBlock = this.flowBlocks[b.id.id]
+  }
+
+  private readonly fun isFieldOptimizable(
+    obj: InstrID,
+    field: String,
+    pos: Pos,
+  ): Bool {
+    p = this.objFlags[obj.id];
+    if (!p.isOptimizable) {
+      false
+    } else {
+      if (p.escapes && !p.isDeepFrozen) {
+        index = p.getFieldIndex(field, pos);
+        f = p.fields[index];
+        // Not allowed to optimize an assignable field
+        !f.isAssignable
+      } else {
+        // If the object doesn't escape or it's frozen then it doesn't matter
+        true
+      }
+    }
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    optinfo = this.optinfo;
+    objFlags = this.objFlags;
+
+    instr match {
+    | SetField{obj, field, value} ->
+      if (!this.isFieldOptimizable(obj, field, instr.pos)) {
+        false
+      } else {
+        // Remember the latest value assigned then drop the SetField.
+        key = FlowKey(obj, field);
+        this.currentFlowBlock.values.set(key, value);
+        true
+      }
+    | GetField{obj, field} ->
+      if (!this.isFieldOptimizable(obj, field, instr.pos)) {
+        false
+      } else {
+        key = FlowKey(obj, field);
+        valID = this.getValue(this.currentFlowBlock, key, instr, true);
+        if (valID == InstrID::none) {
+          // We weren't able to optimize this away.
+          false
+        } else {
+          // Remap users of the GetField to the replacement value.
+          optinfo.idToInstr.set(instr.id, this.getInstr(valID));
+          true
+        }
+      }
+    | Object{args} ->
+      p = objFlags[instr.idValue()];
+
+      if (p.isOptimizable) {
+        instr.pos.invariant(
+          args.size() == p.fields.size(),
+          "Field count mismatch.",
+        );
+
+        p.fields.eachWithIndex((i, field) -> {
+          if (this.isFieldOptimizable(instr.id, field.name, instr.pos)) {
+            key = FlowKey(instr.id, field.name);
+            this.currentFlowBlock.values.add(key, args[i])
+          }
+        })
+      };
+
+      // Don't drop object creation -- DCE will handle that if appropriate.
+      false
+    | _ -> false
+    }
+  }
+
+  mutable protected fun optimizeAllBlocks(inputBlocks: Array<BlockID>): void {
+    optinfo = this.optinfo;
+    f = optinfo.f;
+
+    if (f.superpositions.isEmpty()) {
+      f.pos.die("Cannot optimize a function with no callers.")
+    };
+
+    objFlags = this.objFlags;
+    maybeOptimizable = false;
+
+    // Record that object "x" escapes, which limits optimization opportunities.
+    noteEscape = x -> {
+      p = objFlags[x.id];
+      if (p.isLocalAlloc) {
+        p.!escapes = true
+      }
+    };
+
+    // As an optimization don't bother with certain bookkeeping until
+    // we see at least one Object.
+    seenAlloc = false;
+
+    // Scan the function to find out which, if any, Objects (and therefore
+    // their GetField/SetField) are optimizable.
+    for (blockID in inputBlocks) {
+      b = this.getBlock(blockID);
+      for (instr in b.instrs) {
+        instr match {
+        | Object{args} ->
+          !seenAlloc = true;
+
+          args.each(noteEscape);
+
+          someSClass = instr.typ.exampleSClass(this.env);
+          objFlags.set(
+            instr.idValue(),
+            mutable FlowFlags{
+              isLocalAlloc => true,
+              isDeepFrozen => instr.typ.isDeepFrozen(),
+              fields => someSClass.fields,
+              args,
+            },
+          )
+        | GetField{obj, field} ->
+          p = objFlags[obj.id];
+          if (p.isLocalAlloc) {
+            fieldIndex = p.getFieldIndex(field, instr.pos);
+            if (p.isDeepFrozen || !p.fields[fieldIndex].isAssignable) {
+              // The field is not assignable, so we can optimize away
+              // this GetField whether or not the object escapes.
+              p.!canOptimizeIfEscapes = true;
+              !maybeOptimizable = true
+            } else if (!p.escapes) {
+              p.!canOptimizeIfDoesNotEscape = true;
+              !maybeOptimizable = true
+            }
+          }
+        | SetField{obj, value} ->
+          if (seenAlloc) {
+            noteEscape(value);
+
+            p = objFlags[obj.id];
+            if (p.isLocalAlloc && !p.escapes) {
+              // This is optimzable since this SetField is deletable if
+              // the object turns out not to escape later.
+              p.!canOptimizeIfDoesNotEscape = true;
+              !maybeOptimizable = true
+            }
+          }
+        | _ ->
+          if (seenAlloc) {
+            instr.visitInputs(noteEscape, optinfo)
+          }
+        }
+      }
+    };
+
+    if (maybeOptimizable) {
+      canOptimize = false;
+
+      // Compute for each local alloc whether it can be optimized.
+      for (p in objFlags) {
+        if (
+          p.isLocalAlloc &&
+          (p.canOptimizeIfEscapes ||
+            (!p.escapes && p.canOptimizeIfDoesNotEscape))
+        ) {
+          p.!isOptimizable = true;
+          !canOptimize = true
+        }
+      };
+
+      if (canOptimize) {
+        // Fill in "flowBlocks" with a real FlowBlock for each Block and
+        // a "dummy" for any unused slots in between.
+        dummy = this.currentFlowBlock;
+        this.flowBlocks.resize(optinfo.idToBlock.size(), dummy);
+
+        for (blockID in inputBlocks) {
+          b = optinfo.getBlock(blockID);
+          this.flowBlocks.set(blockID.id, FlowBlock::make(b));
+        };
+
+        // Actually optimize the blocks.
+        for (b in inputBlocks) {
+          this.optimizeBlock(this.getBlock(b))
+        }
+      }
+    }
+  }
+
+  // We just generated a Function that eliminated some Instrs, but
+  // perhaps added some BlockParams that need to be passed in by
+  // predecessors. This creates an updated Function that finishes
+  // hooking everything up properly.
+  protected mutable fun postprocess(f: Function): Function {
+    this.optinfo.!f = f;
+
+    // Grab the latest version of each block's successors (outputs may
+    // have been replaced).
+    for (b in f.blocks) {
+      this.flowBlocks[b.id.id].!successors = b.successors()
+    };
+
+    while (!this.successorsNeedUpdating.isEmpty()) {
+      fb = this.flowBlocks[this.successorsNeedUpdating.pop().id];
+      fb.!successorsStale = false;
+
+      // Provide additional block args for any successors that need them.
+      //
+      // NOTE: I tried various ways of using dynamically growable data
+      // structures for outgoing block args, but all were defeated
+      // by type checker bugs. Still, O(n^2) behavior is unlikely.
+      fb.!successors=.map(succ -> {
+        target = this.flowBlocks[succ.target.id];
+        if (succ.args.size() == target.params.size()) {
+          succ
+        } else {
+          fb.!successorsChanged = true;
+
+          succ with {
+            args => Array::fillBy(target.params.size(), i -> {
+              if (i < succ.args.size()) {
+                succ.args[i]
+              } else {
+                (key, param) = target.params[i];
+                this.getValue(fb, key, param, false)
+              }
+            }),
+          }
+        }
+      })
+    };
+
+    f with {
+      blocks => f.blocks.map(b -> {
+        fb = this.flowBlocks[b.idValue()];
+
+        paramsChanged = (b.params.size() != fb.params.size());
+        instrsChanged = fb.successorsChanged;
+
+        if (!paramsChanged && !instrsChanged) {
+          b
+        } else {
+          b with {
+            params => if (!paramsChanged) {
+              b.params
+            } else {
+              Array::fillBy(fb.params.size(), i -> fb.params[i].i1)
+            },
+            instrs => if (!instrsChanged) {
+              b.instrs
+            } else {
+              // We may have to replace the terminator with one with updated
+              // outgoing Block arguments, and/or if we had to create any
+              // GetFields for this Block we need to jam them in near the end
+              // (so they will be after the Object they read).
+              first = b.instrs.slice(0, b.instrs.size() - 1);
+              second = Array[b.terminator() with {successors => fb.successors}];
+              first.concat(second)
+            },
+          }
+        }
+      }),
+    }
+  }
+}

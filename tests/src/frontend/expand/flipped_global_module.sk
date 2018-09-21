@@ -1,0 +1,15 @@
+module M1;
+
+class .M2()
+
+module end;
+
+module M2;
+
+class .M1()
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

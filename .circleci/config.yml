@@ -1,0 +1,360 @@
+linux_defaults: &linux_defaults
+  working_directory: ~/skip
+  docker:
+    - image: aorenste/skip-ci:5
+      user: ci
+      environment:
+        TERM: dumb
+        SKIP_TEST_LIMIT_OUTPUT: 1
+        SKIP_TEST_TIMEOUT: 1800
+        SKIP_NUM_THREADS: 4
+        SKIP_LLVM_PARALLEL: 4
+        COMMAND_PREFIX: /usr/bin/time --verbose
+  resource_class: xlarge
+  shell: /bin/bash -l -eo pipefail
+
+prevent_duplicate_jobs: &prevent_duplicate_jobs
+  name: Prevent Duplicate Jobs
+  background: true
+  command: |
+    # Prevent duplicate jobs watches for changes to the git hash
+    # and cancels the job if it changes
+    mkdir -p ~/.ssh
+    echo 'github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXYPCPy6rbTrTtw7PHkccKrpp0yVhp5HdEIcKr6pLlVDBfOLX9QUsyCOV0wzfjIJNlGEYsdlLJizHhbn2mUjvSAHQqZETYP81eFzLQNnPHt4EVVUh7VfDESU84KezmD5QlWpXLmvU31/yMf+Se8xhHTvKSCZIFImWwoG6mbUoWf9nzpIoaSjB+weqqUUmpaaasXVal72J+UX2B+2RPW3RcT0eOzQgqlJL3RKrTJvdsjE3JEAvGq3lGHSZXy28G3skua2SmVi/w4yCE6gbODqnTWlg7+wC604ydGXA8VJiS5ap43JXiUFFAaQ==' >> ~/.ssh/known_hosts
+    ${HOME}/skip/.circleci/prevent-duplicate-jobs.py
+
+system_status: &system_status
+  name: system status
+  command: |
+    lsb_release -a | grep Description
+    uname -a
+    echo
+    ulimit -a
+    echo
+    echo Versions
+    echo $(which node) - $(node --version | head -1)
+    echo $(which gcc) - $(gcc --version | head -1)
+    echo /usr/lib/llvm-6.0/bin/clang - $(/usr/lib/llvm-6.0/bin/clang --version | head -1)
+    echo $(which cmake) - $(cmake --version | head -1)
+    echo $(which ninja) - $(ninja --version | head -1)
+    echo
+    echo Processor Count: $(nproc)
+    free -h
+    echo
+    df -m
+    echo
+    echo Environment
+    echo ------------------------------------------------
+    env | sort
+
+version: 2
+jobs:
+  build:
+    <<: *linux_defaults
+    steps:
+      - checkout
+      - run:
+          name: post checkout
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
+            mkdir -p ~/skip/build
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          # 151MB
+          name: configure
+          working_directory: ~/skip/build
+          command: |
+            cmake ..
+
+      - run:
+          name: Check Runtimes
+          command: ${HOME}/skip/tools/check_runtime_file ${HOME}/skip/src/runtime ${HOME}/skip/tests/runtime
+
+      # Build the external dependencies separate from the rest of the
+      # tests because they tend to spin up parallel jobs which cause
+      # us to exceed the memory limit.
+      - run:
+          name: compile third-party
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -j 8 jemalloc_sub folly_sub gtest_main icu4c pcre_sub
+      - run:
+          name: compile runtimes
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -j 8 skip_runtime.lkg.dep skip_runtime.src.dep skip_runtime.tests.dep
+      - run:
+          name: compile skip_to_llvm executables
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -j 4 grammar skip_check skip_outline skip_test skip_to_js skip_to_llvm skip_printer
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - skip/[^.]*
+            - skip/.gitignore
+            - skip/.circleci
+            - skip/.clang-format
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  test_js:
+    <<: *linux_defaults
+    steps:
+      - attach_workspace:
+          at: ~/
+          paths:
+            - skip/[^.]*
+            - skip/.circleci
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: test_js
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -k 0 -j 8 test_js
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  test_native:
+    <<: *linux_defaults
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: test_native
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -k 0 -j 8 test_native
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  update_lkg_test_native:
+    <<: *linux_defaults
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: update_lkg_test_native
+          working_directory: ~/skip/build
+          command: |
+            ${COMMAND_PREFIX} ninja -k 0 -j 8 update_lkg
+            ${COMMAND_PREFIX} ninja -k 0 -j 8 all test_native
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  test_benchmark:
+    <<: *linux_defaults
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: test_benchmark
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -k 0 -j 1 test_benchmark
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  all_and_test:
+    <<: *linux_defaults
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          <<: *system_status
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: compile all
+          working_directory: ~/skip/build
+          command: ${COMMAND_PREFIX} ninja -j 8 all
+      - run:
+          name: verify test_compiler == test_js + test_native
+          working_directory: ~/skip/build
+          command: |-
+              ${COMMAND_PREFIX} test $(
+                ninja -t query tests/test_compiler |
+                sed -n '/input/,/outputs/{//!p}' |
+                tr -d ' ' |
+                tr '\n' ';'
+              ) == 'tests/test_js;tests/test_native;'
+      - run:
+          name: ninja test (minus test_compiler)
+          working_directory: ~/skip/build
+          command: |-
+              ${COMMAND_PREFIX} ninja -t query test |
+              sed -n '/input/,/outputs/{//!p}' |
+              grep -v '^    tests/test_compiler$' |
+              xargs ninja
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /home/ci/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+  test_mac:
+    working_directory: ~/skip
+    macos:
+      xcode: "9.3.0"
+    environment:
+      TERM: dumb
+      SKIP_TEST_LIMIT_OUTPUT: 1
+      SKIP_TEST_TIMEOUT: 1800
+      SKIP_NUM_THREADS: 4
+      SKIP_LLVM_PARALLEL: 4
+    steps:
+      - checkout
+      - run:
+          name: post checkout
+          command: |
+            git submodule sync
+            git submodule update --init --recursive
+            mkdir -p ~/skip/build
+      - run:
+          name: system status
+          command: |
+            uname -a
+            echo
+            ulimit -a
+            echo
+            echo Versions
+            echo $(which node) - $(node --version | head -1)
+            echo $(which gcc) - $(gcc --version | head -1)
+            echo $(which clang) - $(clang --version | head -1)
+            echo $(which cmake) - $(cmake --version | head -1)
+            echo $(which ninja) - $(ninja --version | head -1)
+            echo $(which brew) - $(brew --version | head -1)
+            echo
+            echo Processor Count: $(sysctl -n hw.ncpu)
+            vm_stat
+            echo
+            df -g
+            echo
+            echo Environment
+            echo ------------------------------------------------
+            env | sort
+      - run:
+          <<: *prevent_duplicate_jobs
+      - run:
+          name: install prerequisites
+          command: |
+            for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc node autoconf automake pkg-config libtool; do
+            brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
+            done
+      - run:
+          name: configure
+          working_directory: ~/skip/build
+          command: |
+            cmake ..
+      - run:
+          name: compile runtimes
+          working_directory: ~/skip/build
+          command: ninja skip_runtime.lkg.dep skip_runtime.src.dep skip_runtime.tests.dep
+      - run:
+          name: smoke test
+          command: |
+            ulimit -c 0
+            ninja -C build -k 0 mac_smoke_test
+      - run:
+          name: analyze test results
+          when: always
+          environment:
+            CIRCLE_TEST_REPORTS: /Users/distiller/skip/results
+          command: |
+            ${HOME}/skip/.circleci/collect-test-results
+            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
+      - store_test_results:
+          path: results
+      - store_artifacts:
+          path: results
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build
+      - test_js:
+          requires:
+            - build
+      - update_lkg_test_native:
+          requires:
+            - build
+      - test_native:
+          requires:
+            - build
+      - test_benchmark:
+          requires:
+            - build
+      - all_and_test:
+          requires:
+            - build
+      - test_mac

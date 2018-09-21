@@ -1,0 +1,6 @@
+File "./syntax/invalid/when_clause_after_paren.sk", line 2, characters 13-13:
+Unexpected when clause. It must be declared right before the '(' that starts the arguments list.
+1 | class X<T>() {
+2 |   fun a<U>()[T: Show]: String {
+  |             ^
+3 |     ""

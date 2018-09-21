@@ -1,0 +1,5187 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// The Skip parser.
+//
+// Each function which parses a production is prefixed with a comment
+// which describes the production being parsed in a BNF like notation.
+// 'ninja grammar' extracts and validates the grammar comments into
+// 'build/bin/grammar.txt'. Please keep the grammar comments up to date.
+//
+// A comment defining a non-terminal grammar production includes the
+// non-terminal followed by a colon.
+// Subsequent lines define possible expansions of the non-terminal.
+// Definition lines are indented, and include a list of non-terminals and
+// tokens each separated by exactly 2 spaces. In a definition line
+// terms may include an '-opt' suffix to indicate that a term is optional.
+// Terms may include a '-list' suffix to indicate that indicates a term may
+// be repeated 1 or more times.
+// The suffix '-list-opt' indicates a term which may be repeated 0 or more times.
+//
+// Check the 'Parsing entry rules' and 'Terminals' at the end of grammar.txt
+// to verify updates to grammar comments.
+module SkipParser;
+
+type ParseTree = ParseTree.ParseTree;
+
+// Includes all Skip language specific parsing rules.
+mutable class SkipParser{
+  lazy: Bool,
+  tokenLexer: mutable SkipLexer.SkipCoreLexer,
+  templateLexer: mutable SkipLexer.TemplateLexer,
+} extends Parser.Parser {
+  static fun create(source: String, lazy: Bool): mutable this {
+    lexingPosition = Lexer.LexingPosition::create(source);
+    static::createFromPosition(lexingPosition) with {lazy};
+  }
+
+  static fun createFromPosition(
+    lexingPosition: mutable Lexer.LexingPosition,
+  ): mutable this {
+    tokenLexer = SkipLexer.SkipCoreLexer::createFromPosition(lexingPosition);
+    templateLexer = SkipLexer.TemplateLexer::createFromPosition(
+      lexingPosition.clone(),
+    );
+    mutable static{
+      lazy => false,
+      position => Parser.ParsePosition::create(tokenLexer),
+      tokenLexer,
+      templateLexer,
+    };
+  }
+
+  mutable fun createPeekParser(): mutable this {
+    mutable static{
+      lazy => this.lazy,
+      position => this.position.clone(),
+      tokenLexer => this.tokenLexer,
+      templateLexer => this.templateLexer,
+    };
+  }
+
+  mutable fun eatTypeIdentifier(): ParseTree.TokenTree {
+    this.peek() match {
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      this.tokenResult()
+    | _ -> this.eatTree(TokenKind.TYPE_IDENTIFIER())
+    }
+  }
+
+  mutable fun reportInvalidId(tree: ParseTree): void {
+    if (isUnderscoreTree(tree)) {
+      this.addErrorAtTree(
+        tree,
+        errorUnderscoreAsIdentifier,
+        "Cannot use '_' as a name",
+      );
+    }
+  }
+
+  static fun expectedErrorMessage(
+    expected: TokenKind.TokenKind,
+    actual: TokenKind.TokenKind,
+    didYouMean: String = "",
+  ): String {
+    `Expected '${expected}'. Found '${actual}'.${didYouMean}`;
+  }
+
+  // Report an error when the next token is not the expected kind.
+  // Does not change position.
+  mutable fun reportUnexpectedToken(
+    token: Token.Token,
+    expected: TokenKind.TokenKind,
+    openDelimiterOpt: ?ParseTree = None(),
+  ): void {
+    // Ideally, this message would only be reported when a lambdaArrow(-> or ~>)
+    // is valid; without that this code will over report the new message. That
+    // said, there's no great way to restrict this message to that case without
+    // significant work on error recovery in the parser (T19256329) so its
+    // still worth doing this without that work.
+    didYouMean = if (token.kind == TokenKind.FAT_ARROW()) {
+      " If your intention is to write a lambda function, " +
+        "you should use '->' for a mutable lambda function " +
+        "or '~>' for an immutable one."
+    } else {
+      ""
+    };
+
+    relatedMessages = openDelimiterOpt match {
+    | Some(ParseTree.TokenTree{range, token => openToken}) ->
+      List[(range, ` For opening '${openToken.value}'`)]
+    | _ -> List[]
+    };
+
+    fix = if (expected.isSimple()) {
+      Some(
+        SkipError.Fix{
+          oldRange => TextRange.empty(this.peekToken().range.start),
+          newText => expected.toString(),
+        },
+      );
+    } else {
+      None();
+    };
+
+    this.addErrorAtCurrent(
+      errorExpectedToken,
+      static::expectedErrorMessage(expected, token.kind, didYouMean),
+      relatedMessages,
+      fix,
+    );
+  }
+
+  // Possibly empty, may include trailing comma.
+  mutable fun parseCommaSeparatedList(
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    this.parseSeparatedOptListOpt(TokenKind.COMMA(), peekElement, parseElement);
+  }
+
+  // Possibly empty, may include trailing comma.
+  mutable fun parseDelimitedCommaSeparatedList(
+    startKind: TokenKind.TokenKind,
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+    endKind: TokenKind.TokenKind,
+  ): ParseTree.ParseTreeList {
+    this.parseDelimitedList(
+      startKind,
+      parser ->
+        parser.parseSeparatedOptListOpt(
+          TokenKind.COMMA(),
+          peekElement,
+          parseElement,
+        ),
+      endKind,
+    );
+  }
+
+  // 3.1 Declaration
+  mutable fun peekDeclaration(): Bool {
+    this.peek() match {
+    | TokenKind.MODULE() ->
+      !this.peekPredefinedNameOffset(PredefinedName.end, 1)
+    | _ -> this.peekModuleMember()
+    }
+  }
+
+  // module-member:
+  //    function
+  //    class-declaration
+  //    trait-declaration
+  //    global-constant
+  //    type-alias
+  mutable fun parseModuleMember(): ParseTree {
+    invariant(this.peekModuleMember(), "Expected module member");
+    modifiers = this.parseDeclarationModifiers();
+    this.peek() match {
+    | TokenKind.FUN() -> this.parseFunction(modifiers)
+    | TokenKind.CLASS() -> this.parseClass(modifiers)
+    | TokenKind.TRAIT() -> this.parseTrait(modifiers)
+    | TokenKind.CONST() -> this.parseGlobalConstant(modifiers)
+    | _ ->
+      if (this.peekPredefinedName(PredefinedName.type)) {
+        this.parseGlobalTypeAliasDeclaration(modifiers);
+      } else {
+        this.errorResult(
+          errorExpectedFunClassConst,
+          "Expected 'fun', 'class' or 'const'.",
+        );
+      }
+    }
+  }
+
+  // declaration:
+  //    module
+  //    module-member
+  mutable fun parseDeclaration(): ParseTree {
+    this.peek() match {
+    | TokenKind.MODULE() -> this.parseModule()
+    | _ -> this.parseModuleMember()
+    }
+  }
+
+  mutable fun parseDeclarationList(): ParseTree {
+    this.parseList(
+      parser -> parser.peekDeclaration(),
+      parser -> parser.parseDeclaration(),
+    )
+  }
+
+  // 12.2 Module Declarations
+  mutable fun peekModuleMember(): Bool {
+    this.peek() match {
+    // common declaration modifiers
+    | TokenKind.NATIVE()
+    | TokenKind.PRIVATE()
+    // function declarations
+    | TokenKind.ASYNC()
+    | TokenKind.UNTRACKED()
+    | TokenKind.MEMOIZED()
+    | TokenKind.FUN()
+    // global constant
+    | TokenKind.CONST()
+    // classes
+    | TokenKind.CLASS()
+    | TokenKind.TRAIT()
+    | TokenKind.MUTABLE()
+    | TokenKind.AT() ->
+      true
+    // global type constant
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      this.peekPredefinedName(PredefinedName.base) ||
+        this.peekPredefinedName(PredefinedName.value) ||
+        this.peekPredefinedName(PredefinedName.extension) ||
+        this.peekPredefinedName(PredefinedName.type)
+    | _ -> false
+    }
+  }
+
+  // module-end:
+  //    module  end  ;
+  //    end-of-file
+  mutable fun parseModuleEndOpt(): ParseTree {
+    this.peek() match {
+    | TokenKind.MODULE() ->
+      start = this.mark();
+      if (this.peekPredefinedNameOffset(PredefinedName.end, 1)) {
+        moduleKeyword = this.eatTree(TokenKind.MODULE());
+        end = this.eatId();
+        semiColon = this.eatTree(TokenKind.SEMI_COLON());
+        ParseTree.ModuleEndTree{
+          range => this.createRange(start),
+          moduleKeyword,
+          end,
+          semiColon,
+        };
+      } else if (this.peekPredefinedName(PredefinedName.alias)) {
+        this.errorResult(
+          errorModuleAliasAfterDeclaration,
+          "Module alias must precede declarations",
+        );
+      } else {
+        this.errorResult(
+          errorNoNestedModules,
+          "Module declarations may not be nested.",
+        );
+      }
+    | TokenKind.END_OF_FILE() -> this.createEmptyTreeBefore()
+    | _ ->
+      this.errorResult(
+        errorModuleEndExpected,
+        "Expected 'module end;' or end of file",
+      )
+    }
+  }
+
+  mutable fun parseModuleMemberList(): ParseTree {
+    this.parseList(
+      parser -> parser.peekModuleMember(),
+      parser -> parser.parseModuleMember(),
+    )
+  }
+
+  // module:
+  //    module  type-identifier  ;  module-member-list  module-end-opt
+  mutable fun parseModule(): ParseTree {
+    invariant(this.peekKind(TokenKind.MODULE()), "Expected module");
+    start = this.mark();
+    moduleKeyword = this.eatTree(TokenKind.MODULE());
+    name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    if (
+      this.peekKind(TokenKind.OPEN_CURLY()) &&
+      name.token.kind == TokenKind.TYPE_IDENTIFIER()
+    ) {
+      this.errorResult(
+        errorModuleWithCurly,
+        "Unexpected '{'. Modules are declared with 'module " +
+          name.token.value +
+          ";' and are optionally terminated with 'module end;'",
+      );
+    } else {
+      semiColon = this.eatTree(TokenKind.SEMI_COLON());
+      declarations = this.parseModuleMemberList();
+      end = this.parseModuleEndOpt();
+      ParseTree.ModuleTree{
+        range => this.createRange(start),
+        moduleKeyword,
+        name,
+        semiColon,
+        declarations,
+        end,
+      };
+    }
+  }
+
+  // 5.1 Type Specifiers
+  // void-type:
+  //    void
+  mutable fun parseVoid(): ParseTree {
+    token = this.eatTree(TokenKind.VOID());
+    ParseTree.VoidTypeTree{range => token.range, token};
+  }
+
+  // mutable-type:
+  //    mutable  primary-type-specifier
+  mutable fun parseMutableTypeSpecifier(): ParseTree {
+    start = this.mark();
+    mutableKeyword = this.eatTree(TokenKind.MUTABLE());
+    elementType = this.parsePrimaryTypeSpecifier();
+    checkedType = this.checkParenTypes(elementType);
+    ParseTree.MutableTypeSpecifierTree{
+      range => this.createRange(start),
+      mutableKeyword,
+      elementType => checkedType,
+    };
+  }
+
+  // readonly-type:
+  //    readonly  primary-type-specifier
+  mutable fun parseReadonlyTypeSpecifier(): ParseTree {
+    start = this.mark();
+    readonlyKeyword = this.eatTree(TokenKind.READONLY());
+    elementType = this.parsePrimaryTypeSpecifier();
+    checkedType = this.checkParenTypes(elementType);
+    ParseTree.ReadonlyTypeSpecifierTree{
+      range => this.createRange(start),
+      readonlyKeyword,
+      elementType => checkedType,
+    };
+  }
+
+  // option-type:
+  //    ?  type-specifier
+  mutable fun parseOptionTypeSpecifier(): ParseTree {
+    start = this.mark();
+    question = this.eatTree(TokenKind.QUESTION());
+    elementType = this.parseTypeSpecifier();
+    ParseTree.OptionTypeSpecifierTree{
+      range => this.createRange(start),
+      question,
+      elementType,
+    };
+  }
+
+  // reactive-type:
+  //    ^  type-specifier
+  mutable fun parseReactTypeSpecifier(): ParseTree {
+    start = this.mark();
+    caret = this.eatTree(TokenKind.CARET());
+    elementType = this.parseTypeSpecifier();
+    ParseTree.AwaitableTypeSpecifierTree{
+      range => this.createRange(start),
+      caret,
+      elementType,
+    };
+  }
+
+  // relative-qualified-type-name:
+  //    type-identifier
+  //    qualified-type-name  .  type-identifier
+  //    qualified-type-name  ::  type-identifier
+  //    qualified-type-name  type-arguments-opt
+  //
+  // qualified-type-name:
+  //    relative-qualified-type-name
+  //    global-qualified-type-name
+  mutable fun parseQualifiedTypeName(): ParseTree {
+    id = this.eatTypeIdentifier();
+    name = ParseTree.TypeNameTree{range => id.range, name => id};
+    this.parseQualifiedTypeNameSuffix(name);
+  }
+
+  mutable fun parseQualifiedTypeNameSuffix(name: ParseTree): ParseTree {
+    this.peek() match {
+    | TokenKind.PERIOD() ->
+      period = this.eatTree(TokenKind.PERIOD());
+      name match {
+      | ParseTree.DottedQualifiedTypeNameTree _ ->
+        this.addErrorAtTree(
+          name,
+          errorTripleDottedType,
+          "No triple dotted type identifiers",
+        )
+      | ParseTree.TypeNameTree{
+        name => typeName,
+      } if (typeName.matchTreeKind(TokenKind.MACRO_TYPE_IDENTIFIER())) ->
+        this.addErrorAtCurrent(
+          errorNoDotOnType,
+          "'.' not permitted on type macros.",
+        )
+      | _ -> void
+      };
+      right = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+      this.parseQualifiedTypeNameSuffix(
+        ParseTree.DottedQualifiedTypeNameTree{
+          range => Parser.createRangeOfTrees(name, right),
+          left => name,
+          period,
+          right,
+        },
+      )
+    // TODO: Is this legal??
+    | TokenKind.COLON_COLON() ->
+      colonColon = this.eatTree(TokenKind.COLON_COLON());
+      right = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+      this.parseQualifiedTypeNameSuffix(
+        ParseTree.ColonColonQualifiedTypeNameTree{
+          range => Parser.createRangeOfTrees(name, right),
+          left => name,
+          colonColon,
+          right,
+        },
+      )
+    // TODO: Why are type args only on the last name?
+    | TokenKind.OPEN_ANGLE() -> this.parseGenericTypeArgumentList(name)
+    | _ -> name
+    }
+  }
+
+  // global-qualified-type-name:
+  //    .  qualified-type-name
+  mutable fun parseGlobalQualifiedTypeName(): ParseTree {
+    start = this.mark();
+    period = this.eatTree(TokenKind.PERIOD());
+    name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    this.parseQualifiedTypeNameSuffix(
+      ParseTree.GlobalQualifiedTypeNameTree{
+        range => this.createRange(start),
+        period,
+        name => ParseTree.TypeNameTree{range => name.range, name},
+      },
+    )
+  }
+
+  mutable fun checkCommonLowerCaseTypeMistake(): void {
+    if (this.peekKind(TokenKind.NONTYPE_IDENTIFIER())) {
+      static::commonLowerCaseTypeMistake(this.peekToken().value) match {
+      | Some(correctType) ->
+        this.addErrorAtCurrent(
+          errorLowercaseTypeSpecifier,
+          "Type specifier expected. Types start with an uppercase letter, did you mean '" +
+            correctType +
+            "'?",
+        )
+      | None() ->
+        this.addErrorAtCurrent(
+          errorLowercaseTypeSpecifier,
+          "Type specifier expected. Types start with an uppercase letter.",
+        )
+      }
+    }
+  }
+
+  static fun commonLowerCaseTypeMistake(str: String): ?String {
+    // This is not ideal that we hardcode the list of primitives here, but there
+    // is no official source of truth yet for them. If you are removing the char
+    // type, move all the char alias under the string list :)
+    str match {
+    | "bool" | "boolean" -> Some("Bool")
+    | "char" | "chr" -> Some("Char")
+    | "string" | "str" -> Some("String")
+    | "int" | "integer" -> Some("Int")
+    | "float" | "number" | "double" -> Some("Float")
+    | _ -> None()
+    }
+  }
+
+  // type-arguments:
+  //    <  type-specifier-comma-list  >
+  mutable fun parseTypeArgumentList(): ParseTree {
+    this.parseDelimitedList(
+      TokenKind.OPEN_ANGLE(),
+      parser -> {
+        result = parser.parseCommaSeparatedList(
+          parser -> parser.peekTypeSpecifier(),
+          parser -> parser.parseTypeSpecifier(),
+        );
+        parser.checkCommonLowerCaseTypeMistake();
+        result;
+      },
+      TokenKind.CLOSE_ANGLE(),
+    );
+  }
+
+  mutable fun parseTypeArgumentListOpt(): ParseTree {
+    // Use peekParse here, as the places where type-arguments-opt appear are ambiguous with relational expressions
+    if (this.peekParse(parser -> parser.parseTypeArgumentList())) {
+      this.parseTypeArgumentList()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  mutable fun parseGenericTypeArgumentList(name: ParseTree): ParseTree {
+    arguments = this.parseTypeArgumentList();
+    ParseTree.GenericTypeNameTree{
+      range => Parser.createRangeOfTreeAndCurrent(name, this),
+      name,
+      arguments,
+    };
+  }
+
+  // positional-lambda-type-parameter:
+  //    parameter-name-colon-opt  type-specifier
+  mutable fun peekPositionalLambdaTypeParameter(): Bool {
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER()) || this.peekTypeSpecifier()
+  }
+
+  mutable fun parsePositionalLambdaTypeParameter(): ParseTree {
+    start = this.mark();
+    nameColon = this.parseParameterNameColonOpt();
+    typeSpecifier = this.parseTypeSpecifier();
+    ParseTree.LambdaParameterTypeTree{
+      range => this.createRange(start),
+      nameColon,
+      typeSpecifier,
+    };
+  }
+
+  // parenthesized-type:
+  //    (  positional-lambda-type-parameter  )
+  //
+  // tuple-type:
+  //    (  positional-lambda-type-parameter  ,  positional-lambda-type-parameter-comma-list  )
+  //
+  // Parses as a paren list of lambda-type-parameter. Verifies no names after we know
+  // that the result is not used as a lambda type parameter list.
+  mutable fun parseTupleType(): ParseTree {
+    start = this.mark();
+    elements = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekPositionalLambdaTypeParameter(),
+      parser -> parser.parsePositionalLambdaTypeParameter(),
+      TokenKind.CLOSE_PAREN(),
+    );
+    ParseTree.TupleTypeSpecifierTree{
+      range => this.createRange(start),
+      elements,
+    };
+  }
+
+  // 5.17 Type Constants
+  mutable fun peekNonTypeIdentifierAsType(): Bool {
+    this.peekPredefinedName(PredefinedName.inst) ||
+      this.peekPredefinedName(PredefinedName.underscore)
+  }
+
+  mutable fun peekTypeSpecifier(): Bool {
+    this.peek() match {
+    // qualified-type-name
+    | TokenKind.PERIOD()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER()
+    // tuple-type, paren type, lambda-type-specifier
+    | TokenKind.OPEN_PAREN()
+    // lambda with named parameters
+    | TokenKind.OPEN_CURLY()
+    // mutable
+    | TokenKind.MUTABLE()
+    // readonly
+    | TokenKind.READONLY()
+    // option-type
+    | TokenKind.QUESTION()
+    // reactive type
+    | TokenKind.CARET()
+    // void
+    | TokenKind.VOID()
+    // this
+    | TokenKind.THIS()
+    // untracked lambda
+    | TokenKind.UNTRACKED() ->
+      true
+    // inst
+    | TokenKind.NONTYPE_IDENTIFIER() -> this.peekNonTypeIdentifierAsType()
+    | _ -> false
+    }
+  }
+
+  mutable fun parseUntrackedLambdaTypeSpecifier(): ParseTree {
+    start = this.mark();
+    modifierOpt = this.tokenResult();
+    typeSpecifier = this.parseTypeSpecifier();
+    // TODO: error on duplicate untracked
+    typeSpecifier match {
+    | ParseTree.LambdaTypeSpecifierTree{arguments, arrow, returnType} ->
+      ParseTree.LambdaTypeSpecifierTree{
+        range => this.createRange(start),
+        modifierOpt,
+        arguments,
+        arrow,
+        returnType,
+      }
+    | _ ->
+      this.addErrorAtCurrent(
+        errorLambdaTypeExpected,
+        "Lambda type specifier expected",
+      );
+      typeSpecifier
+    }
+  }
+
+  mutable fun parseLambdaTypeSuffix(arguments: ParseTree): ParseTree {
+    modifierOpt = ParseTree.EmptyTree{
+      range => TextRange.empty(arguments.range.start),
+    };
+    arrow = this.parseLambdaArrow();
+    returnType = this.parseTypeSpecifier();
+    ParseTree.LambdaTypeSpecifierTree{
+      range => Parser.createRangeOfTreeAndCurrent(modifierOpt, this),
+      modifierOpt,
+      arguments,
+      arrow,
+      returnType,
+    };
+  }
+
+  // inst-type:
+  //    inst
+  mutable fun parseInstType(): ParseTree {
+    start = this.mark();
+    token = this.eatId();
+    ParseTree.InstTypeTree{range => this.createRange(start), token};
+  }
+
+  // underscore-type:
+  //    _
+  mutable fun parseUnderscoreType(): ParseTree {
+    token = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    ParseTree.UnderscoreTypeTree{range => token.range, token};
+  }
+
+  // lambda-type-named-parameters:
+  //    {  lambda-type-named-parameter-comma-list  }
+  //
+  // lambda-type-named-parameter:
+  //    non-type-identifier  colon-type-specifier
+  mutable fun parseNamedLambdaTypeParameters(): ParseTree {
+    start = this.mark();
+    parameters = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_CURLY(),
+      parser -> parser.peekNamedNonCtorParameter(),
+      parser -> parser.parseNamedNonCtorParameter(),
+      TokenKind.CLOSE_CURLY(),
+    );
+    for (defaultValue in getNamedParametersDefaultValues(parameters)) {
+      this.addErrorAtTree(
+        defaultValue,
+        errorNoLambdaParamDefaultValue,
+        "Lambda parameters may not have a default value",
+      )
+    };
+    ParseTree.NamedParametersTree{range => this.createRange(start), parameters};
+  }
+
+  mutable fun parseLambdaTypeWithNamedParameters(): ParseTree {
+    parameters = this.parseNamedLambdaTypeParameters();
+    this.parseLambdaTypeSuffix(parameters);
+  }
+
+  // Note: tuple & parenthesized-type elements are parsed with an expanded grammar
+  // to include positional-lambda-type-parameter.
+  //
+  // primary-type-specifier:
+  //    class-type-specifier
+  //    tuple-type
+  //    parenthesized-type
+  //    option-type
+  //    reactive-type
+  //    void-type
+  //    this-type
+  //    mutable-type
+  //    readonly-type
+  //    inst-type
+  //    underscore-type
+  //
+  // Also parses lambda types with named parameter lists.
+  mutable fun parsePrimaryTypeSpecifier(): ParseTree {
+    this.peek() match {
+    // qualified-type-name
+    | TokenKind.PERIOD() -> this.parseGlobalQualifiedTypeName()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      this.parseQualifiedTypeName()
+    // tuple-type, paren type, lambda-type-specifier
+    | TokenKind.OPEN_PAREN() -> this.parseTupleType()
+    // lambda with named parameters
+    | TokenKind.OPEN_CURLY() -> this.parseLambdaTypeWithNamedParameters()
+    // option-type
+    | TokenKind.QUESTION() -> this.parseOptionTypeSpecifier()
+    // react type
+    | TokenKind.CARET() -> this.parseReactTypeSpecifier()
+    // void
+    | TokenKind.VOID() -> this.parseVoid()
+    // this
+    | TokenKind.THIS() -> this.parseThisPrefixedTypeSpecifier()
+    // mutable
+    | TokenKind.MUTABLE() -> this.parseMutableTypeSpecifier()
+    | TokenKind.READONLY() -> this.parseReadonlyTypeSpecifier()
+    // inst
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      if (this.peekPredefinedName(PredefinedName.inst)) {
+        this.parseInstType();
+      } else if (this.peekPredefinedName(PredefinedName.underscore)) {
+        this.parseUnderscoreType();
+      } else {
+        this.checkCommonLowerCaseTypeMistake();
+        this.errorResult(errorTypeSpecifierExpected, "Type specifier expected");
+      }
+    | TokenKind.UNTRACKED() -> this.parseUntrackedLambdaTypeSpecifier()
+    | _ ->
+      this.errorResult(errorTypeSpecifierExpected, "Type specifier expected")
+    }
+  }
+
+  // this-type:
+  //    this
+  mutable fun parseThisPrefixedTypeSpecifier(): ParseTree {
+    start = this.mark();
+    token = this.tokenResult();
+    // TODO: This permits this<T1><T2>...
+    this.parseQualifiedTypeNameSuffix(
+      ParseTree.ThisTypeTree{range => this.createRange(start), token},
+    );
+  }
+
+  // colon-type-specifier:
+  //    :  type-specifier
+  mutable fun parseColonTypeSpecifierOpt(): ParseTree {
+    if (this.peekKind(TokenKind.COLON())) {
+      this.parseColonTypeSpecifier()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  mutable fun parseColonTypeSpecifier(): ParseTree {
+    colon = this.eatTree(TokenKind.COLON());
+    typeSpecifier = this.parseTypeSpecifier();
+    ParseTree.ColonTypeSpecifierTree{
+      range => Parser.createRangeOfTrees(colon, typeSpecifier),
+      colon,
+      typeSpecifier,
+    };
+  }
+
+  mutable fun checkAndConvertParenType(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.LambdaParameterTypeTree{nameColon, typeSpecifier} ->
+      if (!nameColon.isEmpty()) {
+        this.addErrorAtTree(
+          nameColon,
+          errorTypeSpecifierExpected,
+          "Type specifier expected",
+        );
+      };
+      typeSpecifier
+    | _ ->
+      invariant_violation(
+        "Unexpected tree in paren type: " + tree.toDebugString(),
+      )
+    }
+  }
+
+  mutable fun checkParenTypes(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.ParenTypeSpecifierTree{element} ->
+      this.checkAndConvertParenType(element)
+    | ParseTree.TupleTypeSpecifierTree{range, elements} ->
+      checkedElements = elements.asList().map(t ->
+        this.checkAndConvertParenType(t)
+      );
+      if (checkedElements.size() == 1) {
+        ParseTree.ParenTypeSpecifierTree{
+          range,
+          openParen => checkedElements.startDelimiter,
+          element => checkedElements.elements[0],
+          closeParen => checkedElements.endDelimiter,
+        };
+      } else {
+        if (checkedElements.size() == 0) {
+          this.addErrorAtTree(
+            tree,
+            errorEmptyTupleType,
+            "Tuple types may not be empty. Did you mean 'void'?",
+          );
+        };
+        ParseTree.TupleTypeSpecifierTree{range, elements => checkedElements};
+      }
+    | _ -> tree
+    }
+  }
+
+  // lambda-type-specifier:
+  //    lambda-parameter-types  arrow  type-specifier
+  //
+  // type-specifier:
+  //    primary-type-specifier
+  //    lambda-type-specifier
+  //
+  // lambda-parameter-types:
+  //    primary-type-specifier
+  //    lambda-type-named-parameters
+  mutable fun parseTypeSpecifier(): ParseTree {
+    primary = this.parsePrimaryTypeSpecifier();
+    if (this.peekLambdaArrow()) {
+      this.parseLambdaTypeSuffix(primary);
+    } else {
+      this.checkParenTypes(primary);
+    }
+  }
+
+  // type-initializer:
+  //    =  type-specifier
+  mutable fun parseTypeInitializer(): ParseTree {
+    equal = this.eatTree(TokenKind.EQUAL());
+    typeSpecifier = this.parseTypeSpecifier();
+    ParseTree.TypeInitializerTree{
+      range => Parser.createRangeOfTrees(equal, typeSpecifier),
+      equal,
+      typeSpecifier,
+    };
+  }
+
+  // type-alias:
+  //    type  type-name  type-parameters-opt  type-initializer  ;
+  mutable fun parseGlobalTypeAliasDeclaration(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[Keywords.kw_private],
+      "type alias",
+    );
+    invariant(this.peekPredefinedName(PredefinedName.type));
+    typeKeyword = this.eatId();
+    name = this.parseGlobalTypeIdentifier();
+    typeParameters = this.parseTypeParametersOpt();
+    initializer = this.parseTypeInitializer();
+    semiColon = this.eatTree(TokenKind.SEMI_COLON());
+    ParseTree.TypeAliasDeclarationTree{
+      range => createRangeOfModifiers(modifiers, semiColon),
+      modifiers,
+      typeKeyword,
+      name,
+      typeParameters,
+      initializer,
+      semiColon,
+    };
+  }
+
+  // annotation:
+  //    @  non-type-identifier  positional-arguments-opt
+  mutable fun peekAnnotation(): Bool {
+    this.peekKind(TokenKind.AT())
+  }
+
+  // TODO grammar should support funcall exprs with literal args
+  // for annotations, and the AST should store them as such. This
+  // will require beefing up downstream handling quite a bit. For now,
+  // we continue to store annos as simple strings and allow a single
+  // string argument in the grammar, and print a normalized version
+  // of the expr to a string.
+  mutable fun parseAnnotation(): ParseTree {
+    start = this.mark();
+    at = this.eatTree(TokenKind.AT());
+    name = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    arguments = if (this.peekKind(TokenKind.OPEN_PAREN())) {
+      this.parseAnnotationArguments();
+    } else {
+      this.createEmptyTreeBefore();
+    };
+    ParseTree.AnnotationTree{
+      range => this.createRange(start),
+      at,
+      name,
+      arguments,
+    };
+  }
+
+  mutable fun parseAnnotationArguments(): ParseTree {
+    arguments = this.parsePositionalArguments() as ParseTree.PositionalArgumentsTree _;
+    arguments.arguments.getList().each(this.checkAnnotationArgument);
+    arguments
+  }
+
+  mutable fun checkAnnotationArgument(argument: ParseTree): void {
+    if (!argument.matchTreeKind(TokenKind.STRING_LITERAL())) {
+      this.addErrorAtTree(
+        argument,
+        errorInvalidAnnotationArgument,
+        "Annotation arguments must be string literals",
+      );
+    }
+  }
+
+  mutable fun parseModifier(): ParseTree {
+    if (this.peekAnnotation()) {
+      this.parseAnnotation()
+    } else {
+      this.tokenResult()
+    }
+  }
+
+  // Parses a sequence of modifieres.
+  // Reports errors on duplicates.
+  mutable fun parseModifierList(peekElement: mutable this -> Bool): ParseTree {
+    modifiers = this.parseList(peekElement, parser -> parser.parseModifier());
+    _ = tokenModifiers(modifiers).foldl(
+      (map, modifier) -> {
+        kind = modifier.getTokenString();
+        if (map.containsKey(kind)) {
+          this.addErrorAtTree(
+            modifier,
+            errorDuplicateModifier,
+            "Duplicate modifier '" + kind + "'",
+          );
+          map;
+        } else {
+          map.add(kind, modifier);
+        }
+      },
+      SortedMap[],
+    );
+    modifiers;
+  }
+
+  mutable fun validateModifiers(
+    tree: ParseTree,
+    validModifiers: List<String>,
+    location: String,
+  ): void {
+    for (modifier in tokenModifiers(tree)) {
+      modifierString = modifier.getTokenString();
+      if (!validModifiers.contains(modifierString)) {
+        this.addErrorAtTree(
+          modifier,
+          errorInvalidModifier,
+          "Invalid modifier '" + modifierString + "' on " + location,
+        );
+      }
+    };
+  }
+
+  mutable fun peekDeclarationModifier(): Bool {
+    this.peek() match {
+    | TokenKind.NATIVE()
+    | TokenKind.PRIVATE()
+    | TokenKind.ASYNC()
+    | TokenKind.UNTRACKED()
+    | TokenKind.MEMOIZED()
+    | TokenKind.DEFERRED()
+    | TokenKind.MUTABLE()
+    | TokenKind.AT() ->
+      true
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      this.peekPredefinedName(PredefinedName.base) ||
+        this.peekPredefinedName(PredefinedName.value) ||
+        this.peekPredefinedName(PredefinedName.extension) ||
+        (this.peekPredefinedName(PredefinedName.type) &&
+          !this.peekKindOffset(TokenKind.TYPE_IDENTIFIER(), 1) &&
+          !this.peekKindOffset(TokenKind.PERIOD(), 1))
+    | _ -> false
+    }
+  }
+
+  mutable fun parseDeclarationModifiers(): ParseTree {
+    this.parseModifierList(parser -> parser.peekDeclarationModifier())
+  }
+
+  // 7.2 Global Constants
+  // initializer:
+  //    =  expression
+  mutable fun parseInitializer(): ParseTree {
+    equal = this.eatTree(TokenKind.EQUAL());
+    value = this.parseExpression();
+    ParseTree.InitializerTree{
+      range => Parser.createRangeOfTrees(equal, value),
+      equal,
+      value,
+    };
+  }
+
+  // non-type-identifier
+  mutable fun eatId(): ParseTree {
+    result = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    this.reportInvalidId(result);
+    result;
+  }
+
+  // global-non-type-identifier:
+  //   non-type-identifier
+  //   .  non-type-identifier
+  mutable fun parseGlobalId(): ParseTree {
+    if (this.peekKind(TokenKind.PERIOD())) {
+      start = this.mark();
+      period = this.eatTree(TokenKind.PERIOD());
+      name = this.eatId();
+      ParseTree.GlobalQualifiedTypeNameTree{
+        range => this.createRange(start),
+        period,
+        name => ParseTree.TypeNameTree{range => name.range, name},
+      };
+    } else {
+      this.eatId();
+    }
+  }
+
+  // type-name:
+  //   type-identifier
+  //   .  type-identifier
+  mutable fun peekGlobalTypeIdentifier(): Bool {
+    this.peek() match {
+    | TokenKind.PERIOD() -> this.peekKindOffset(TokenKind.TYPE_IDENTIFIER(), 1)
+    | TokenKind.TYPE_IDENTIFIER() -> true
+    | _ -> false
+    }
+  }
+
+  mutable fun parseGlobalTypeIdentifier(): ParseTree {
+    result = if (this.peekKind(TokenKind.PERIOD())) {
+      start = this.mark();
+      period = this.eatTree(TokenKind.PERIOD());
+      name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+      ParseTree.GlobalQualifiedTypeNameTree{
+        range => this.createRange(start),
+        period,
+        name => ParseTree.TypeNameTree{range => name.range, name},
+      };
+    } else {
+      this.eatTree(TokenKind.TYPE_IDENTIFIER())
+    };
+    if (
+      this.peekKind(TokenKind.PERIOD()) &&
+      this.peekKindOffset(TokenKind.TYPE_IDENTIFIER(), 1)
+    ) {
+      this.addErrorAtCurrent(
+        errorDeclareOutsideModule,
+        "Unexpected '.'. If you want to declare something that belongs in a " +
+          "module, you need to first open the module with " +
+          `'module ${this.peekTokenOffset(-1).value};'`,
+      );
+    };
+    result
+  }
+
+  // global-const-id:
+  //    global-non-type-identifier
+  //    type-name
+  mutable fun parseGlobalConstId(): ParseTree {
+    if (this.peekGlobalTypeIdentifier()) {
+      this.parseGlobalTypeIdentifier()
+    } else {
+      this.parseGlobalId()
+    }
+  }
+
+  // const-id:
+  //    non-type-identifier
+  //    type-identifier
+  mutable fun eatConstId(): ParseTree {
+    if (this.peekKind(TokenKind.TYPE_IDENTIFIER())) {
+      this.eatTree(TokenKind.TYPE_IDENTIFIER())
+    } else {
+      this.eatId()
+    }
+  }
+
+  // global-constant:
+  //    global-constant-modifiers  const  global-const-id  colon-type-specifier  default-value-opt  ;
+  //
+  // global-constant-modifier:
+  //    annotation
+  //    private
+  //    native
+  mutable fun parseGlobalConstant(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[Keywords.kw_private, Keywords.kw_native],
+      "constant",
+    );
+    constKeyword = this.eatTree(TokenKind.CONST());
+    name = this.parseGlobalConstId();
+
+    if (!this.peekKind(TokenKind.COLON())) {
+      typeFromToken = if (
+        this.peekKind(TokenKind.EQUAL()) &&
+        this.peekKindOffset(TokenKind.SEMI_COLON(), 2)
+      ) {
+        this.peekOffset(1) match {
+        | TokenKind.CHAR_LITERAL() -> Some("Char")
+        | TokenKind.STRING_LITERAL() -> Some("String")
+        | TokenKind.INTEGER_LITERAL() -> Some("Int")
+        | TokenKind.FLOAT_LITERAL() -> Some("Float")
+        | TokenKind.TRUE()
+        | TokenKind.FALSE() ->
+          Some("Bool")
+        | _ -> None()
+        }
+      } else {
+        None()
+      };
+      fix = typeFromToken.map(ty ->
+        SkipError.Fix{
+          oldRange => TextRange.empty(this.peekTokenOffset(-1).range.end),
+          newText => ": " + ty,
+        }
+      );
+
+      this.errorResult(
+        errorMissingTypeConstant,
+        "Missing constant type annotation. " +
+          `': ${typeFromToken.default("ConstType")} ='`,
+        List[],
+        fix,
+      );
+    } else {
+      colon = this.eatTree(TokenKind.COLON());
+      typeSpecifier = this.parseTypeSpecifier();
+      initializer = this.parseDefaultValueOpt();
+      semiColon = this.eatTree(TokenKind.SEMI_COLON());
+      ParseTree.GlobalConstantTree{
+        range => createRangeOfModifiers(modifiers, semiColon),
+        modifiers,
+        constKeyword,
+        name,
+        colon,
+        typeSpecifier,
+        initializer,
+        semiColon,
+      };
+    }
+  }
+
+  mutable fun checkInvalidPublic(): void {
+    if (this.peekPredefinedName(PredefinedName.public)) {
+      this.addErrorAtCurrent(
+        errorInvalidPublic,
+        "Unexpected 'public'. Everything is public by default. If you want to make it private, wrap it inside of a module ('module Name; ...') and use the 'private' keyword.",
+      );
+    }
+  }
+
+  mutable fun checkInvalidPublicMethod(): void {
+    if (this.peekPredefinedName(PredefinedName.public)) {
+      this.addErrorAtCurrent(
+        errorInvalidPublic,
+        "Unexpected 'public'. Methods are public by default. Use 'protected' or 'private' to change the visibility",
+      );
+    }
+  }
+
+  mutable fun checkFunTypo(): void {
+    if (
+      this.peekPredefinedName(PredefinedName.fn) ||
+      this.peekPredefinedName(PredefinedName.func) ||
+      this.peekPredefinedName(PredefinedName.function)
+    ) {
+      this.addErrorAtCurrent(
+        errorFunTypo,
+        "'" +
+          this.peekToken().value +
+          "' is not a valid keyword, did you mean 'fun' instead?",
+      );
+    }
+  }
+
+  mutable fun checkClassMemberMissingFun(): void {
+    if (
+      this.peekKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+      this.peekKindOffset(TokenKind.OPEN_PAREN(), 1)
+    ) {
+      this.addErrorAtCurrent(
+        errorExpectedClassMemberMissingFun,
+        "Expected class member. Did you mean 'fun " +
+          this.peekToken().value +
+          "('?",
+      );
+    }
+  }
+
+  // 9.2 Class Declarations
+  // class-body:
+  //    {  class-member-list  }
+  mutable fun parseClassBody(): ParseTree {
+    this.parseDelimitedList(
+      TokenKind.OPEN_CURLY(),
+      parser -> {
+        result = parser.parseList(
+          parser -> parser.peekClassMember(),
+          parser -> parser.parseClassMember(),
+        );
+        parser.checkFunTypo();
+        parser.checkClassMemberMissingFun();
+        parser.checkInvalidPublicMethod();
+        result;
+      },
+      TokenKind.CLOSE_CURLY(),
+    );
+  }
+
+  mutable fun parseClassBodyOpt(): ParseTree {
+    if (this.peekKind(TokenKind.OPEN_CURLY())) {
+      this.parseClassBody()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  mutable fun peekExtendsUses(): Bool {
+    this.peekKind(TokenKind.EXTENDS()) || this.peekKind(TokenKind.USES())
+  }
+
+  mutable fun peekClassSpecifier(): Bool {
+    this.peek() match {
+    | TokenKind.PERIOD()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      true
+    | _ -> false
+    }
+  }
+
+  // class-type-specifier:
+  //    qualified-type-name
+  mutable fun parseClassSpecifier(): ParseTree {
+    this.peek() match {
+    | TokenKind.PERIOD() -> this.parseGlobalQualifiedTypeName()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      this.parseQualifiedTypeName()
+    | _ ->
+      this.errorResult(errorExpectedClassSpecfier, "Class specifier expected")
+    }
+  }
+
+  // conditional-class-type-specifier:
+  //    qualified-type-name  when-parameters-opt
+  mutable fun parseConditionalClassSpecifier(): ParseTree {
+    start = this.mark();
+    typeName = this.peek() match {
+    | TokenKind.PERIOD() -> this.parseGlobalQualifiedTypeName()
+    | TokenKind.TYPE_IDENTIFIER() -> this.parseQualifiedTypeName()
+    | _ ->
+      this.errorResult(errorExpectedClassSpecfier, "Class specifier expected")
+    };
+    conditions = this.parseWhenParameters();
+    ParseTree.ConditionalUseTree{
+      range => this.createRange(start),
+      typeName,
+      conditions,
+    }
+  }
+
+  mutable fun parseClassSpecifierList(): ParseTree {
+    this.parseSeparatedOptList(
+      TokenKind.COMMA(),
+      parser -> parser.peekClassSpecifier(),
+      parser -> parser.parseClassSpecifier(),
+    )
+  }
+
+  mutable fun parseConditionalClassSpecifierList(): ParseTree {
+    this.parseSeparatedOptList(
+      TokenKind.COMMA(),
+      parser -> parser.peekClassSpecifier(),
+      parser -> parser.parseConditionalClassSpecifier(),
+    )
+  }
+
+  // extends-clause:
+  //    extends  class-type-specifier-comma-list
+  //
+  // uses-clause:
+  //    uses  conditional-class-type-specifier-comma-list
+  mutable fun parseExtendsOrUses(): ParseTree {
+    start = this.mark();
+    this.peek() match {
+    | TokenKind.EXTENDS() ->
+      extendsKeyword = this.eatTree(TokenKind.EXTENDS());
+      baseTypes = this.parseClassSpecifierList();
+      ParseTree.ExtendsTree{
+        range => this.createRange(start),
+        extendsKeyword,
+        baseTypes,
+      }
+    | TokenKind.USES() ->
+      usesKeyword = this.eatTree(TokenKind.USES());
+      typeClasses = this.parseConditionalClassSpecifierList();
+      ParseTree.UsesTree{
+        range => this.createRange(start),
+        usesKeyword,
+        typeClasses,
+      }
+    | _ -> invariant_violation("Expected extends or use")
+    }
+  }
+
+  // extends-uses-clauses:
+  //    extends-clause
+  //    uses-clause
+  //    extends-clause  uses-clause
+  //    uses-clause  extends-clause
+  mutable fun parseExtendsUsesClause(): ParseTree {
+    this.parseListBefore(
+      parser -> parser.peekExtendsUses(),
+      parser -> parser.parseExtendsOrUses(),
+    );
+  }
+
+  mutable fun parseOverridableOpt(): ParseTree {
+    if (this.peekKind(TokenKind.OVERRIDABLE())) {
+      this.tokenResult()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  // class-declaration:
+  //    class-declaration-modifiers  class  type-name  constructor-declaration-opt  extends-uses-clauses  class-body-opt
+  //
+  // class-declaration-modifier:
+  //    mutable
+  //    annotation
+  //    private
+  //    native
+  //    value
+  //    base
+  mutable fun parseClass(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[
+        Keywords.kw_mutable,
+        Keywords.kw_private,
+        Keywords.kw_native,
+        PredefinedName.value,
+        PredefinedName.base,
+        PredefinedName.extension,
+      ],
+      "class",
+    );
+    classKeyword = this.eatTree(TokenKind.CLASS());
+    name = this.parseGlobalTypeIdentifier();
+    typeParameters = this.parseTypeParametersOpt();
+    constructor = this.parseConstructorDeclarationOpt();
+    extendsUses = this.parseExtendsUsesClause();
+    body = this.parseClassBodyOpt();
+    ParseTree.ClassDeclarationTree{
+      range => createRangeOfModifiers(modifiers, body),
+      modifiers,
+      classKeyword,
+      name,
+      typeParameters,
+      constructor,
+      extendsUses,
+      body,
+    };
+  }
+
+  // trait-declaration:
+  //    trait-declaration-modifiers  trait  type-name  constructor-declaration-opt  extends-uses-clauses  class-body-opt
+  //
+  // trait-declaration-modifier:
+  //    annotation
+  //    private
+  //    native
+  //    modifiers
+  mutable fun parseTrait(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[
+        Keywords.kw_private,
+        Keywords.kw_native,
+        PredefinedName.extension,
+      ],
+      "trait",
+    );
+    traitKeyword = this.eatTree(TokenKind.TRAIT());
+    name = this.parseGlobalTypeIdentifier();
+    typeParameters = this.parseTypeParametersOpt();
+    constructor = this.parseConstructorDeclarationOpt();
+    extendsUses = this.parseExtendsUsesClause();
+    body = this.parseClassBodyOpt();
+    ParseTree.TraitDeclarationTree{
+      range => createRangeOfModifiers(modifiers, body),
+      modifiers,
+      traitKeyword,
+      name,
+      typeParameters,
+      constructor,
+      extendsUses,
+      body,
+    };
+  }
+
+  // 9.8 Constructors
+  // constructor-declaration:
+  //    constructor-modifiers  constructor-parameters
+  //
+  // constructor-modifier:
+  //   private
+  //   protected
+  //   final
+  //
+  // constructor-parameters:
+  //    constructor-positional-parameters
+  //    constructor-named-parameters
+  mutable fun parseConstructorDeclarationOpt(): ParseTree {
+    if (this.peekClassBody()) {
+      modifiers = this.parseModifierList(parser ->
+        parser.peekConstructorModifier()
+      );
+      this.checkNoModifiersOnClassBody(modifiers);
+      this.createEmptyTreeBefore();
+    } else if (this.peekModifiedConstructorParameters()) {
+      modifiers = this.parseModifierList(parser ->
+        parser.peekConstructorModifier()
+      );
+      parameters = this.parseConstructorParameters();
+      ParseTree.ClassConstructorDeclarationTree{
+        range => createRangeOfModifiers(modifiers, parameters),
+        modifiers,
+        parameters,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  mutable fun peekConstructorModifier(): Bool {
+    this.peek() match {
+    | TokenKind.FINAL()
+    | TokenKind.PRIVATE()
+    | TokenKind.PROTECTED() ->
+      true
+    | _ -> false
+    }
+  }
+
+  mutable fun checkNoModifiersOnClassBody(modifiers: ParseTree): void {
+    if (!modifiers.isEmptyList()) {
+      this.addErrorAtTree(
+        modifiers,
+        errorModifiersOnClassBody,
+        "Class bodies cannot have modifiers. If you are attempting to apply the modifiers to the constructor, try adding an explicit constructor declaration",
+      );
+    }
+  }
+
+  // Differentiates between constructor parameters and class body.
+  mutable fun peekClassBody(): Bool {
+    peekParser = this.createPeekParser();
+    _ = peekParser.parseModifierList(parser ->
+      parser.peekConstructorModifier()
+    );
+    peekParser.peek() match {
+    | TokenKind.OPEN_CURLY() ->
+      _ = peekParser.advance();
+      peekParser.peekClassMember() &&
+        !peekParser.peekParse(parser -> parser.parseNamedCtorParameter())
+    | _ -> false
+    }
+  }
+
+  mutable fun peekModifiedConstructorParameters(): Bool {
+    peekParser = this.createPeekParser();
+    _ = peekParser.parseModifierList(parser ->
+      parser.peekConstructorModifier()
+    );
+    peekParser.peekConstructorParameters();
+  }
+
+  mutable fun peekConstructorParameters(): Bool {
+    this.peek() match {
+    | TokenKind.OPEN_PAREN()
+    // Class body checked before in parseConstructorDeclarationOpt
+    | TokenKind.OPEN_CURLY() ->
+      true
+    | _ -> false
+    }
+  }
+
+  mutable fun parseConstructorParameters(): ParseTree {
+    this.peek() match {
+    | TokenKind.OPEN_PAREN() -> this.parsePositionalParameters(true)
+    | TokenKind.OPEN_CURLY() -> this.parseNamedParameters(true)
+    // Class body checked before in parseConstructorDeclarationOpt
+    | _ -> invariant_violation("Expected { or ( for constructor: ")
+    }
+  }
+
+  mutable fun parseChildrenConstructorOpt(): ParseTree {
+    if (this.peekConstructorParameters()) {
+      modifiers = this.createEmptyList();
+      parameters = this.parseConstructorParameters();
+      ParseTree.ClassConstructorDeclarationTree{
+        range => createRangeOfModifiers(modifiers, parameters),
+        modifiers,
+        parameters,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // 9.3 Class Members
+  mutable fun peekClassMember(): Bool {
+    this.peek() match {
+    // children
+    | TokenKind.CHILDREN()
+    // constant
+    | TokenKind.CONST()
+    // method declarations
+    | TokenKind.FUN()
+    // common declaration modifiers
+    | TokenKind.AT()
+    | TokenKind.OVERRIDABLE()
+    | TokenKind.PRIVATE()
+    | TokenKind.PROTECTED()
+    // function declarations
+    | TokenKind.NATIVE()
+    | TokenKind.ASYNC()
+    | TokenKind.MACRO()
+    | TokenKind.MEMOIZED()
+    | TokenKind.MUTABLE()
+    | TokenKind.STATIC()
+    // TODO: Make these contextual
+    | TokenKind.DEFERRED()
+    | TokenKind.FROZEN()
+    | TokenKind.READONLY()
+    | TokenKind.UNTRACKED() ->
+      true
+    // type constant
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      this.peekPredefinedName(PredefinedName.type)
+    | _ -> false
+    }
+  }
+
+  mutable fun peekClassMemberModifier(): Bool {
+    this.peek() match {
+    // common declaration modifiers
+    | TokenKind.OVERRIDABLE()
+    | TokenKind.PRIVATE()
+    | TokenKind.PROTECTED()
+    // function declarations
+    | TokenKind.NATIVE()
+    | TokenKind.ASYNC()
+    | TokenKind.MACRO()
+    | TokenKind.MEMOIZED()
+    | TokenKind.MUTABLE()
+    | TokenKind.STATIC()
+    // annotations
+    | TokenKind.AT()
+    // TODO: Make these contextual
+    | TokenKind.DEFERRED()
+    | TokenKind.FROZEN()
+    | TokenKind.READONLY()
+    | TokenKind.UNTRACKED() ->
+      true
+    | _ -> false
+    }
+  }
+
+  mutable fun parseClassMemberModifiers(): ParseTree {
+    this.parseModifierList(parser -> parser.peekClassMemberModifier())
+  }
+
+  // class-member:
+  //    children-declaration
+  //    type-constant-declaration
+  //    class-constant-declaration
+  //    method-declaration
+  mutable fun parseClassMember(): ParseTree {
+    modifiers = this.parseClassMemberModifiers();
+    this.peek() match {
+    | TokenKind.CHILDREN() -> this.parseChildClasses(modifiers)
+    | TokenKind.CONST() -> this.parseConstant(modifiers)
+    | TokenKind.FUN() -> this.parseMethodDeclaration(modifiers)
+    | _ ->
+      if (this.peekPredefinedName(PredefinedName.type)) {
+        this.parseTypeConstant(modifiers);
+      } else {
+        this.checkFunTypo();
+        this.checkClassMemberMissingFun();
+        this.checkInvalidPublicMethod();
+        this.errorResult(errorExpectedClassMember, "Expected class member");
+      }
+    }
+  }
+
+  // 9.4 Child classes
+  // child-class:
+  //    annotation-list-opt  type-identifier  constructor-parameters-opt
+  mutable fun parseChildClass(): ParseTree {
+    start = this.mark();
+    annotations = this.parseList(
+      parser -> parser.peekAnnotation(),
+      parser -> parser.parseAnnotation(),
+    );
+    name = this.parseGlobalTypeIdentifier();
+    constructor = this.parseChildrenConstructorOpt();
+    ParseTree.ChildClassTree{
+      range => this.createRange(start),
+      annotations,
+      name,
+      constructor,
+    };
+  }
+
+  // children-declaration:
+  //    children  =  |-opt  child-class-list
+  //
+  // child-class-list:
+  //    child-class
+  //    child-class-list  |  child-class
+  mutable fun parseChildClasses(modifiers: ParseTree): ParseTree {
+    if (!modifiers.isEmptyList()) {
+      this.addErrorAtTree(
+        modifiers,
+        errorNoModifiersOnChildren,
+        "Modifiers are not permitted on 'children'",
+      );
+    };
+    childrenKeyword = this.eatTree(TokenKind.CHILDREN());
+    equal = this.eatTree(TokenKind.EQUAL());
+    bar = this.eatTreeOpt(TokenKind.BAR());
+    childClasses = this.parseSeparatedList(TokenKind.BAR(), parser ->
+      parser.parseChildClass()
+    );
+    ParseTree.ChildrenTree{
+      range => createRangeOfModifiers(modifiers, childClasses),
+      childrenKeyword,
+      equal,
+      bar,
+      childClasses,
+    };
+  }
+
+  // 9.5 Constants
+
+  // from-clause:
+  //    from  class-type-specifier
+  mutable fun parseFrom(): ParseTree {
+    invariant(this.peekPredefinedName(PredefinedName.from), "Expected 'from'");
+    start = this.mark();
+    from = this.eatId();
+    name = this.parseQualifiedTypeName();
+    ParseTree.FromTree{range => this.createRange(start), from, name};
+  }
+
+  // constant-initializer:
+  //    =  expression
+  mutable fun parseConstantValue(): ParseTree {
+    if (this.peekKind(TokenKind.EQUAL())) {
+      this.parseInitializer()
+    } else {
+      // abstract constants
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  // class-constant-declaration:
+  //    class-constant-declaration-modifiers  const  const-id  from-clause  ;
+  //    class-constant-declaration-modifiers  const  const-id  colon-type-specifier  constant-initializer  ;
+  //
+  // class-constant-declaration-modifier:
+  //    annotation
+  //    native
+  //    overridable
+  //    deferred
+  //    protected
+  //    private
+  mutable fun parseConstant(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[
+        Keywords.kw_native,
+        Keywords.kw_overridable,
+        Keywords.kw_deferred,
+        Keywords.kw_protected,
+        Keywords.kw_private,
+      ],
+      "class constant",
+    );
+    constKeyword = this.eatTree(TokenKind.CONST());
+    name = this.eatConstId();
+    if (this.peekPredefinedName(PredefinedName.from)) {
+      colonTypeSpecifier = this.createEmptyTreeBefore();
+      value = this.parseFrom();
+      semiColon = this.eatTree(TokenKind.SEMI_COLON());
+      ParseTree.ConstantTree{
+        range => createRangeOfModifiers(modifiers, semiColon),
+        modifiers,
+        constKeyword,
+        name,
+        colonTypeSpecifier,
+        value,
+        semiColon,
+      };
+    } else {
+      colonTypeSpecifier = this.parseColonTypeSpecifier();
+      value = this.parseConstantValue();
+      semiColon = this.eatTree(TokenKind.SEMI_COLON());
+      ParseTree.ConstantTree{
+        range => createRangeOfModifiers(modifiers, semiColon),
+        modifiers,
+        constKeyword,
+        name,
+        colonTypeSpecifier,
+        value,
+        semiColon,
+      };
+    }
+  }
+
+  // 9.9 Type Constants
+  // type-constant-value:
+  //    type-initializer
+  //    default  type-specifier
+  mutable fun parseTypeConstantValue(hasConstraint: Bool): ParseTree {
+    if (this.peekKind(TokenKind.EQUAL())) {
+      initializer = this.parseTypeInitializer();
+      if (hasConstraint) {
+        this.addErrorAtTree(
+          initializer,
+          errorNoInitializerWithTypeConstantContraint,
+          "Type constant initializer not permitted on a type constant with a constraint. Did you mean to use a 'default' clause instead?",
+        );
+      };
+      initializer;
+    } else if (this.peekPredefinedName(PredefinedName.default)) {
+      start = this.mark();
+      defaultKeyword = this.eatId();
+      typeSpecifier = this.parseTypeSpecifier();
+      ParseTree.DefaultTypeConstantValueTree{
+        range => this.createRange(start),
+        defaultKeyword,
+        typeSpecifier,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // type-constant-declaration:
+  //    type  type-identifier  type-parameters-opt  type-constant-constraint-clause-opt  type-constant-value-opt  ;
+  mutable fun parseTypeConstant(modifiers: ParseTree): ParseTree {
+    if (!modifiers.isEmptyList()) {
+      this.addErrorAtTree(
+        modifiers,
+        errorNoModifiersOnTypeConstant,
+        "Modifiers are not permitted on 'type constant'",
+      );
+    };
+    invariant(this.peekPredefinedName(PredefinedName.type));
+    typeKeyword = this.eatId();
+    name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    typeParameters = this.parseTypeParametersOpt();
+    colonConstraint = this.parseTypeConstantConstraintClauseOpt();
+    value = this.parseTypeConstantValue(
+      colonConstraint is ParseTree.ColonTypeConstraintTree _,
+    );
+    semiColon = this.eatTree(TokenKind.SEMI_COLON());
+    ParseTree.TypeConstantTree{
+      range => createRangeOfModifiers(modifiers, semiColon),
+      modifiers,
+      typeKeyword,
+      name,
+      typeParameters,
+      colonConstraint,
+      value,
+      semiColon,
+    };
+  }
+
+  // 9.7 Methods
+  // when-parameters:
+  //    [  when-type-clause-list  ]
+  mutable fun parseWhenParameters(): ParseTree {
+    if (this.peekKind(TokenKind.OPEN_SQUARE())) {
+      start = this.mark();
+      typeParameters = this.parseDelimitedList(
+        TokenKind.OPEN_SQUARE(),
+        parser -> {
+          result = parser.parseCommaSeparatedList(
+            parser -> parser.peekWhenTypeClause(),
+            parser -> parser.parseWhenTypeClause(),
+          );
+          if (result.getList().isEmpty()) {
+            this.addErrorAtCurrent(
+              errorExpectedTypeParameter,
+              "Expected a list of types and constraints",
+            );
+          };
+          result;
+        },
+        TokenKind.CLOSE_SQUARE(),
+      );
+      ParseTree.WhenParametersTree{
+        range => this.createRange(start),
+        elements => typeParameters,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // method-body:
+  //    ;
+  //    pattern-branch-list
+  //    block
+  mutable fun parseMethodBody(): ParseTree {
+    this.peek() match {
+    | TokenKind.SEMI_COLON() -> this.tokenResult()
+    | TokenKind.BAR() -> this.parsePatternBranchList()
+    | TokenKind.OPEN_CURLY() -> this.parseLazyBlock()
+    | _ -> this.errorResult(errorExpectedMethodBody, "Expected method body")
+    }
+  }
+
+  mutable fun checkModifierExclusive(
+    modifiers: ParseTree,
+    kinds: Vector<TokenKind.TokenKind>,
+    code: Int,
+    msg: String,
+  ): void {
+    kind: ?TokenKind.TokenKind = None();
+    for (cur in kinds) {
+      has_cur = modifiers.hasModifier(cur);
+      kind match {
+      | _ if (!has_cur) -> void
+      | None() -> !kind = Some(cur)
+      | Some(other) ->
+        this.addErrorAtTree(modifiers, code, msg + `'${cur}' and '${other}'`)
+      }
+    }
+  }
+
+  mutable fun checkMissingReturnType(): void {
+    if (this.peekKind(TokenKind.OPEN_CURLY())) {
+      this.addErrorAtCurrent(
+        errorMissingReturnType,
+        "Missing return type annotation. '): ReturnType {'",
+      );
+    }
+  }
+
+  mutable fun checkWhenParametersAfterParameters(): void {
+    if (
+      this.peekKind(TokenKind.OPEN_SQUARE()) &&
+      this.peekParse(parser -> parser.parseWhenParameters())
+    ) {
+      this.addErrorAtCurrent(
+        errorWhenParametersAfterParameters,
+        "Unexpected when clause. It must be declared right before the '(' that starts the arguments list.",
+      );
+    }
+  }
+
+  mutable fun checkTypeParametersAfterWhenParameters(): void {
+    if (
+      this.peekKind(TokenKind.OPEN_ANGLE()) &&
+      this.peekParse(parser -> parser.parseTypeParametersOpt())
+    ) {
+      this.addErrorAtCurrent(
+        errorTypeParametersAfterWhenParameters,
+        "Unexpected type parameter declaration. It must be declared right after the name of the function.",
+      );
+    }
+  }
+
+  // method-declaration:
+  //    method-declaration-modifiers  fun  method-name  from-clause  ;
+  //    method-declaration-modifiers  fun  method-name  type-parameters-opt
+  //        when-parameters-opt  parameters-specifier  colon-type-specifier
+  //        method-body
+  //
+  // method-declaration-modifier:
+  //    annotation
+  //    memoized
+  //    async
+  //    static
+  //    macro
+  //    mutable
+  //    frozen
+  //    readonly
+  //    overridable
+  //    native
+  //    deferred
+  //    untracked
+  //    protected
+  //    private
+  mutable fun parseMethodDeclaration(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[
+        Keywords.kw_memoized,
+        Keywords.kw_async,
+        Keywords.kw_static,
+        Keywords.kw_macro,
+        Keywords.kw_mutable,
+        Keywords.kw_readonly,
+        Keywords.kw_frozen,
+        Keywords.kw_overridable,
+        Keywords.kw_native,
+        Keywords.kw_deferred,
+        Keywords.kw_untracked,
+        Keywords.kw_protected,
+        Keywords.kw_private,
+      ],
+      "method",
+    );
+    this.checkModifierExclusive(
+      modifiers,
+      Vector[
+        TokenKind.STATIC(),
+        TokenKind.FROZEN(),
+        TokenKind.MUTABLE(),
+        TokenKind.READONLY(),
+      ],
+      errorExclusiveMethodModifiers,
+      "Invalid modifiers. Methods cannot be both ",
+    );
+    funKeyword = this.eatTree(TokenKind.FUN());
+    name = this.eatMethodName();
+    if (this.peekPredefinedName(PredefinedName.from)) {
+      empty = this.createEmptyTreeBefore();
+      fromClause = this.parseFrom();
+      semiColon = this.eatTree(TokenKind.SEMI_COLON());
+      ParseTree.MethodDeclarationTree{
+        range => createRangeOfModifiers(modifiers, semiColon),
+        modifiers,
+        funKeyword,
+        name,
+        typeParameters => empty,
+        whenParameters => empty,
+        parameters => empty,
+        colon => empty,
+        returnType => empty,
+        body => fromClause,
+        semiColon,
+      };
+    } else {
+      typeParameters = this.parseTypeParametersOpt();
+      whenParameters = this.parseWhenParameters();
+      this.checkTypeParametersAfterWhenParameters();
+      parameters = this.parseParametersSpecifier();
+      this.checkMissingReturnType();
+      this.checkWhenParametersAfterParameters();
+      colon = this.eatTree(TokenKind.COLON());
+      returnType = this.parseTypeSpecifier();
+      body = this.parseMethodBody();
+      semiColon = this.createEmptyTreeBefore();
+      ParseTree.MethodDeclarationTree{
+        range => createRangeOfModifiers(modifiers, body),
+        modifiers,
+        funKeyword,
+        name,
+        typeParameters,
+        whenParameters,
+        parameters,
+        colon,
+        returnType,
+        body,
+        semiColon,
+      };
+    }
+  }
+
+  // 8.3 Function Declaration
+  // method-name:
+  //    non-type-identifier
+  //    ||
+  //    &&
+  //    ==
+  //    !=
+  //    <=
+  //    <
+  //    >=
+  //    >
+  //    +
+  //    -
+  //    *
+  //    /
+  //    %
+  //    !
+  mutable fun eatMethodName(): ParseTree {
+    name = this.tokenResult();
+    if (name.token.kind.isValidMethodName()) {
+      this.reportInvalidId(name);
+    } else {
+      this.addErrorAtTree(
+        name,
+        errorExpectedFunctionName,
+        "Expected function name",
+      );
+    };
+    name;
+  }
+
+  // 10.2 Type Parameters
+  mutable fun peekTypeParameter(): Bool {
+    this.peek() match {
+    | TokenKind.PLUS()
+    | TokenKind.MINUS()
+    | TokenKind.STAR()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      true
+    | _ -> false
+    }
+  }
+
+  mutable fun peekWhenTypeClause(): Bool {
+    this.peekPredefinedName(PredefinedName.nonNullable) ||
+      this.peekKind(TokenKind.FROZEN()) ||
+      this.peekTypeSpecifier()
+  }
+
+  // variance:
+  //    +
+  //    -
+  //    *
+  mutable fun parseVariance(): ParseTree {
+    if (
+      this.peekKind(TokenKind.PLUS()) ||
+      this.peekKind(TokenKind.MINUS()) ||
+      this.peekKind(TokenKind.STAR())
+    ) {
+      this.tokenResult()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  // type-constraint:
+  //    nonNullable
+  //    frozen
+  //    class-type-specifier
+  mutable fun parseTypeConstraint(): ParseTree {
+    if (this.peekPredefinedName(PredefinedName.nonNullable)) {
+      token = this.tokenResult();
+      ParseTree.NonNullableTypeTree{range => token.range, token};
+    } else if (this.peekKind(TokenKind.FROZEN())) {
+      start = this.mark();
+      token = this.eatTree(TokenKind.FROZEN());
+      ParseTree.FrozenTypeTree{range => this.createRange(start), token};
+    } else {
+      // TODO: This is too general ... should be parseClassTypeSpecifier?
+      this.parseTypeSpecifier();
+    }
+  }
+
+  // type-constant-constraint-clause:
+  //    :  type-constraint
+  mutable fun parseTypeConstantConstraintClauseOpt(): ParseTree {
+    if (this.peekKind(TokenKind.COLON())) {
+      colon = this.eatTree(TokenKind.COLON());
+      constraint = this.parseTypeConstraint();
+      ParseTree.ColonTypeConstraintTree{
+        range => Parser.createRangeOfTrees(colon, constraint),
+        colon,
+        constraint,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // type-parameter-constraint-clause:
+  //    :  type-parameter-constraint-list
+  //
+  // type-parameter-constraint-list:
+  //    type-constraint
+  //    type-parameter-constraint-list  &  type-constraint
+  mutable fun parseTypeParameterConstraintClause(): ParseTree {
+    colon = this.eatTree(TokenKind.COLON());
+    constraints = this.parseSeparatedList(TokenKind.AMPERSAND(), parser ->
+      parser.parseTypeConstraint()
+    );
+    ParseTree.ColonTypeParameterConstraintsTree{
+      range => Parser.createRangeOfTrees(colon, constraints),
+      colon,
+      constraints,
+    };
+  }
+
+  mutable fun parseTypeParameterConstraintClauseOpt(): ParseTree {
+    if (this.peekKind(TokenKind.COLON())) {
+      this.parseTypeParameterConstraintClause();
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // type-parameter:
+  //    variance-opt  non-type-identifier  type-parameter-constraint-clause-opt
+  mutable fun parseTypeParameter(): ParseTree {
+    variance = this.parseVariance();
+    name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    constraints = this.parseTypeParameterConstraintClauseOpt();
+    ParseTree.TypeParameterTree{
+      range => Parser.createRangeOfTreeAndCurrent(variance, this),
+      variance,
+      name,
+      constraints,
+    };
+  }
+
+  // when-type-clause:
+  //    type-constraint  type-parameter-constraint-clause
+  mutable fun parseWhenTypeClause(): ParseTree {
+    subtype = this.parseTypeConstraint();
+    supertypes = this.parseTypeParameterConstraintClause();
+    ParseTree.WhenTypeClauseTree{
+      range => Parser.createRangeOfTreeAndCurrent(subtype, this),
+      subtype,
+      supertypes,
+    };
+  }
+
+  // type-parameters:
+  //    <  type-parameter-comma-list  >
+  mutable fun parseTypeParametersOpt(): ParseTree {
+    if (this.peekKind(TokenKind.OPEN_ANGLE())) {
+      start = this.mark();
+      typeParameters = this.parseDelimitedList(
+        TokenKind.OPEN_ANGLE(),
+        parser -> {
+          result = parser.parseCommaSeparatedList(
+            parser -> parser.peekTypeParameter(),
+            parser -> parser.parseTypeParameter(),
+          );
+          if (result.getList().isEmpty()) {
+            this.addErrorAtCurrent(
+              errorExpectedTypeParameter,
+              "Expected Type Parameter",
+            );
+          };
+          result;
+        },
+        TokenKind.CLOSE_ANGLE(),
+      );
+      ParseTree.TypeParametersTree{
+        range => this.createRange(start),
+        elements => typeParameters,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // 8 Functions
+  mutable fun peekPositionalNonCtorParameter(): Bool {
+    this.peek() match {
+    | TokenKind.NONTYPE_IDENTIFIER() -> true
+    | _ -> this.peekTypeSpecifier()
+    }
+  }
+
+  mutable fun peekPositionalCtorParameter(): Bool {
+    this.peek() match {
+    | TokenKind.AT()
+    | TokenKind.PROTECTED()
+    | TokenKind.PRIVATE()
+    | TokenKind.DEFERRED() ->
+      true
+    | _ -> this.peekPositionalNonCtorParameter()
+    }
+  }
+
+  mutable fun peekParameterName(): Bool {
+    // TODO: Consider making 'inst' a keyword to avoid this ambiguity
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+      (!this.peekNonTypeIdentifierAsType() ||
+        this.peekKindOffset(TokenKind.COLON(), 1))
+  }
+
+  // parameter-name-colon:
+  //    _  :
+  //    non-type-identifier  :
+  mutable fun parseParameterNameColonOpt(): ParseTree {
+    if (this.peekParameterName()) {
+      // '_' is allowed as a Positional parameter
+      name = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+      colon = this.eatTree(TokenKind.COLON());
+      ParseTree.ParameterNameColonTree{
+        range => Parser.createRangeOfTrees(name, colon),
+        name,
+        colon,
+      };
+    } else {
+      this.createEmptyTreeAfter();
+    }
+  }
+
+  mutable fun peekParameterModifier(): Bool {
+    this.peek() match {
+    | TokenKind.AT()
+    | TokenKind.PRIVATE()
+    | TokenKind.PROTECTED()
+    | TokenKind.DEFERRED()
+    | TokenKind.MUTABLE() ->
+      true
+    | _ -> false
+    }
+  }
+
+  mutable fun parseParameterModifiers(): ParseTree {
+    this.parseModifierList(parser -> parser.peekParameterModifier())
+  }
+
+  // modified-parameter-name-colon:
+  //    constructor-parameter-modifiers  _  :
+  //    constructor-parameter-modifiers  non-type-identifier  :
+  //
+  // Returns modifiers followed by parameter name.
+  mutable fun parseModifiedParameterNameColonOpt(): (ParseTree, ParseTree) {
+    // This may consume a 'mutable' modifier from an unnamed parameter
+    beforeModifiers = this.mark();
+    modifiers = this.parseParameterModifiers();
+    if (this.peekParameterName()) {
+      name = this.parseParameterNameColonOpt();
+      (modifiers, name);
+    } else {
+      modifierList = modifiers.getList();
+      modifierList.size() match {
+      | 0 ->
+        // No name or modifiers
+        (modifiers, this.createEmptyTreeAfter())
+      | 1 if (modifierList.first().matchTreeKind(TokenKind.MUTABLE())) -> // A single mutable modifier
+        // The mutable modifier must live on the type, so discard it ...
+        this.!position = beforeModifiers;
+        (
+          Parser.createEmptyParseTreeList(this.createRangeAfter()),
+          this.createEmptyTreeAfter(),
+        )
+      | _ ->
+        // this will report an error.
+        name = this.parseParameterNameColonOpt();
+        (modifiers, name)
+      }
+    }
+  }
+
+  // constructor-positional-parameter:
+  //    modified-parameter-name-colon  type-specifier  default-value-opt
+  //
+  // positional-parameter:
+  //    parameter-name-colon-opt  type-specifier  default-value-opt
+  //
+  // constructor-parameter-modifier:
+  //    annotation
+  //    private
+  //    protected
+  //    deferred
+  mutable fun parsePositionalParameter(isCtor: Bool): ParseTree {
+    (modifiers, nameColon) = if (isCtor) {
+      this.parseModifiedParameterNameColonOpt();
+    } else {
+      modifierRange = this.createRangeAfter();
+      unmodifiedName = this.parseParameterNameColonOpt();
+      (Parser.createEmptyParseTreeList(modifierRange), unmodifiedName);
+    };
+    typeSpecifier = this.parseTypeSpecifier();
+    defaultValue = this.parseDefaultValueOpt();
+    ParseTree.PositionalParameterTree{
+      range => createRangeOfModifiers(modifiers, defaultValue),
+      modifiers,
+      nameColon,
+      typeSpecifier,
+      defaultValue,
+    };
+  }
+
+  mutable fun parseCtorPositionalParameter(): ParseTree {
+    this.parsePositionalParameter(true)
+  }
+
+  mutable fun parsePositionalNonCtorParameter(): ParseTree {
+    this.parsePositionalParameter(false)
+  }
+
+  // constructor-positional-parameters:
+  //    (  constructor-positional-parameter-comma-list-opt  )
+  //
+  // positional-parameters:
+  //    (  positional-parameter-comma-list-opt  )
+  mutable fun parsePositionalParameters(isCtor: Bool): ParseTree {
+    start = this.mark();
+    parameters = if (isCtor) {
+      this.parseDelimitedCommaSeparatedList(
+        TokenKind.OPEN_PAREN(),
+        parser -> parser.peekPositionalCtorParameter(),
+        parser -> parser.parseCtorPositionalParameter(),
+        TokenKind.CLOSE_PAREN(),
+      );
+    } else {
+      this.parseDelimitedCommaSeparatedList(
+        TokenKind.OPEN_PAREN(),
+        parser -> parser.peekPositionalNonCtorParameter(),
+        parser -> parser.parsePositionalNonCtorParameter(),
+        TokenKind.CLOSE_PAREN(),
+      );
+    };
+    ParseTree.PositionalParametersTree{
+      range => this.createRange(start),
+      parameters,
+    };
+  }
+
+  mutable fun peekNamedNonCtorParameter(): Bool {
+    this.peek() match {
+    | TokenKind.NONTYPE_IDENTIFIER() -> true
+    | _ -> false
+    }
+  }
+
+  mutable fun peekNamedCtorParameter(): Bool {
+    this.peek() match {
+    | TokenKind.PROTECTED()
+    | TokenKind.PRIVATE()
+    | TokenKind.DEFERRED()
+    | TokenKind.MUTABLE()
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      true
+    | _ -> false
+    }
+  }
+
+  // default-value:
+  //    initializer
+  mutable fun parseDefaultValueOpt(): ParseTree {
+    if (this.peekKind(TokenKind.EQUAL())) {
+      this.parseInitializer()
+    } else {
+      this.createEmptyTreeBefore()
+    }
+  }
+
+  // constructor-named-parameter:
+  //    constructor-parameter-modifiers  named-parameter
+  //
+  // named-parameter:
+  //    non-type-identifier  colon-type-specifier  default-value-opt
+  mutable fun parseNamedParameter(isCtor: Bool): ParseTree {
+    modifiers = if (isCtor) {
+      this.parseParameterModifiers();
+    } else {
+      Parser.createEmptyParseTreeList(this.createRangeAfter());
+    };
+    name = this.eatId();
+    colon = this.eatTree(TokenKind.COLON());
+    typeSpecifier = this.parseTypeSpecifier();
+    defaultValue = this.parseDefaultValueOpt();
+    ParseTree.NamedParameterTree{
+      range => createRangeOfModifiers(modifiers, defaultValue),
+      modifiers,
+      name,
+      colon,
+      typeSpecifier,
+      defaultValue,
+    };
+  }
+
+  mutable fun parseNamedCtorParameter(): ParseTree {
+    this.parseNamedParameter(true)
+  }
+
+  mutable fun parseNamedNonCtorParameter(): ParseTree {
+    this.parseNamedParameter(false)
+  }
+
+  // constructor-named-parameters:
+  //    {  constructor-named-parameter-comma-list-opt  }
+  //
+  // named-parameters:
+  //    {  named-parameter-comma-list-opt  }
+  mutable fun parseNamedParameters(isCtor: Bool): ParseTree {
+    start = this.mark();
+    parameters = if (isCtor) {
+      this.parseDelimitedCommaSeparatedList(
+        TokenKind.OPEN_CURLY(),
+        parser -> parser.peekNamedCtorParameter(),
+        parser -> parser.parseNamedCtorParameter(),
+        TokenKind.CLOSE_CURLY(),
+      );
+    } else {
+      this.parseDelimitedCommaSeparatedList(
+        TokenKind.OPEN_CURLY(),
+        parser -> parser.peekNamedNonCtorParameter(),
+        parser -> parser.parseNamedNonCtorParameter(),
+        TokenKind.CLOSE_CURLY(),
+      );
+    };
+    ParseTree.NamedParametersTree{range => this.createRange(start), parameters};
+  }
+
+  // Used in Functions & methods only
+  //
+  // parameters-specifier:
+  //    positional-parameters
+  //    named-parameters
+  mutable fun parseParametersSpecifier(): ParseTree {
+    this.peek() match {
+    | TokenKind.OPEN_PAREN() -> this.parsePositionalParameters(false)
+    | TokenKind.OPEN_CURLY() -> this.parseNamedParameters(false)
+    | _ -> this.errorResult(errorExpectedParameters, "Expected parameters")
+    }
+  }
+
+  // function-body:
+  //    ;
+  //    block
+  mutable fun parseFunctionBody(): ParseTree {
+    if (this.peekKind(TokenKind.SEMI_COLON())) {
+      this.tokenResult()
+    } else {
+      this.parseLazyBlock()
+    }
+  }
+
+  // function:
+  //    function-modifiers  fun  global-non-type-identifier  type-parameters-opt
+  //        parameters-specifier  colon-type-specifier  function-body
+  //
+  // function-modifier:
+  //    annotation
+  //    native
+  //    memoized
+  //    async
+  //    untracked
+  //    private
+  mutable fun parseFunction(modifiers: ParseTree): ParseTree {
+    this.validateModifiers(
+      modifiers,
+      List<String>[
+        Keywords.kw_native,
+        Keywords.kw_memoized,
+        Keywords.kw_async,
+        Keywords.kw_untracked,
+        Keywords.kw_private,
+      ],
+      "function",
+    );
+    funKeyword = this.eatTree(TokenKind.FUN());
+    name = this.parseGlobalId();
+    typeParameters = this.parseTypeParametersOpt();
+    parameters = this.parseParametersSpecifier();
+    this.checkMissingReturnType();
+    colon = this.eatTree(TokenKind.COLON());
+    returnType = this.parseTypeSpecifier();
+    body = this.parseFunctionBody();
+    ParseTree.FunctionDeclarationTree{
+      range => createRangeOfModifiers(modifiers, body),
+      modifiers,
+      funKeyword,
+      name,
+      typeParameters,
+      parameters,
+      colon,
+      returnType,
+      body,
+    };
+  }
+
+  // 6 Expressions
+  // expression-sequence:
+  //    expression  ;-opt
+  //    binding-expression-list  ;  expression  ;-opt
+  //
+  // binding-expression-list:
+  //    binding-expression
+  //    binding-expression-list  ;  binding-expression
+  mutable fun parseExpressionSequence(): ParseTree {
+    // TODO: Last element must be an Expression, not a binding/compound-binding expression
+    this.parseSeparatedOptList(
+      TokenKind.SEMI_COLON(),
+      parser -> parser.peekExpression(),
+      parser -> parser.parseBindingExpression(),
+    )
+  }
+
+  // This logic tries to figure out if we missed a `|`.
+  // This function is only used in error message generation and never during a
+  // parse of a valid program.
+  mutable fun peekParseLikelyPatternBranch(): ParseTree {
+    _ = this.parseSeparatedList(TokenKind.BAR(), parser ->
+      parser.parsePattern()
+    );
+
+    // Stripped down parseIfClauseOpt
+    if (this.peek() == TokenKind.IF()) {
+      _ = this.parseIfClause();
+    };
+    this.eatTree(TokenKind.ARROW());
+  }
+
+  mutable fun eatBlockCloseCurly(
+    openCurly: ParseTree,
+    includeTrailingTrivia: Bool,
+  ): ParseTree {
+    // Note that close curly cannot start an expression
+    if (this.peekKind(TokenKind.CLOSE_CURLY())) {
+      this.eatTree(TokenKind.CLOSE_CURLY(), None(), includeTrailingTrivia);
+    } else {
+      this.eatCloseCurlyErrorMessage(openCurly);
+    }
+  }
+
+  mutable fun eatPatternBranchBlockCloseCurly(openCurly: ParseTree): ParseTree {
+    // Note that close curly cannot start an expression
+    if (this.peekKind(TokenKind.CLOSE_CURLY())) {
+      this.eatTree(TokenKind.CLOSE_CURLY());
+    } else if (
+      this.peekParse(parser -> {
+        _ = parser.eatTree(TokenKind.COMMA());
+        _ = parser.eatTreeOpt(TokenKind.BAR());
+        parser.peekParseLikelyPatternBranch()
+      })
+    ) {
+      this.errorResult(
+        errorCommaPatternList,
+        "Unexpected ','. Pattern branches are separated by '|'",
+      );
+    } else if (
+      this.peekParse(parser -> parser.peekParseLikelyPatternBranch())
+    ) {
+      this.errorResult(
+        errorMissingBar,
+        "Unexpected expression. Pattern branches are separated by '|'",
+      );
+    } else {
+      this.eatCloseCurlyErrorMessage(openCurly);
+    }
+  }
+
+  mutable fun isVarLetVal(): Bool {
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+      (this.peekPredefinedNameOffset(PredefinedName.var, -1) ||
+        this.peekPredefinedNameOffset(PredefinedName.let, -1) ||
+        this.peekPredefinedNameOffset(PredefinedName.val, -1))
+  }
+
+  mutable fun eatCloseCurlyErrorMessage(openCurly: ParseTree): ParseTree {
+    if (this.peekKind(TokenKind.QUESTION())) {
+      this.errorResult(
+        errorNoTernary,
+        "Unexpected '?' token. If you are trying to write a ternary 'cond ? a : b', you should use an 'if' expression instead: 'if (cond) a else b'.",
+      )
+    } else if (this.isVarLetVal()) {
+      name = this.peek() match {
+      | TokenKind.NONTYPE_IDENTIFIER() -> this.peekToken().value
+      | _ -> "name"
+      };
+      this.errorResult(
+        errorVariableDeclarationPrefix,
+        "Unexpected '" +
+          this.peekTokenOffset(-1).value +
+          "'. Variables are declared without a leading keyword: '" +
+          name +
+          " = ...'",
+      )
+    } else if (this.peekExpression()) {
+      if (this.peekPredefinedNameOffset(PredefinedName.match, -1)) {
+        this.errorResult(
+          errorMatchBeforeExpression,
+          "Unexpected expression. 'match' must come after the expression: 'expression match {'",
+        )
+      } else {
+        this.errorResult(
+          errorMissingSemiColon,
+          "Missing semi-colon before expression in expression sequence. All expressions in an expression sequence must be separated by a ';'.",
+        )
+      }
+    } else {
+      // Generic error message if all the heuristics have failed...
+      this.eatTree(TokenKind.CLOSE_CURLY(), Some(openCurly));
+    }
+  }
+
+  // block:
+  //    {  expression-sequence  }
+  mutable fun parseBlock(includeTrailingTrivia: Bool = true): ParseTree {
+    start = this.mark();
+    openCurly = this.eatTree(TokenKind.OPEN_CURLY());
+    expressions = this.parseExpressionSequence();
+    closeCurly = this.eatBlockCloseCurly(openCurly, includeTrailingTrivia);
+    ParseTree.BlockTree{
+      range => this.createRange(start),
+      openCurly,
+      expressions,
+      closeCurly,
+    };
+  }
+
+  // Same as block, but done lazily when the option is turned on
+  // block:
+  //    {  expression-sequence  }
+  mutable fun parseLazyBlock(): ParseTree {
+    if (this.lazy) {
+      start = this.mark();
+      state = this.position.position.saveState();
+      range = this.createRange(start);
+      builder = () ~> {
+        lexingPosition = Lexer.LexingPosition::createAt(state);
+        parser = static::createFromPosition(lexingPosition);
+        parser.parseBlock()
+      };
+      _ = this.parseBlock();
+      ParseTree.LazyTree{range, builder};
+    } else {
+      this.parseBlock()
+    }
+  }
+
+  // lambda-parameter:
+  //    non-type-identifier
+  //    non-type-identifier  colon-type-specifier
+  mutable fun peekLambdaParameter(): Bool {
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER())
+  }
+
+  mutable fun parseLambdaParameter(): ParseTree {
+    start = this.mark();
+    name = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    colonTypeSpecifier = this.parseColonTypeSpecifierOpt();
+    ParseTree.LambdaParameterTree{
+      range => this.createRange(start),
+      name,
+      colonTypeSpecifier,
+    };
+  }
+
+  // named-lambda-parameters:
+  //    {  lambda-parameter-comma-list  }
+  mutable fun parseNamedLambdaParameters(peeking: Bool): ParseTree {
+    start = this.mark();
+    parameters = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_CURLY(),
+      parser -> parser.peekLambdaParameter(),
+      parser -> parser.parseLambdaParameter(),
+      TokenKind.CLOSE_CURLY(),
+    );
+    if (!peeking) {
+      this.ensureIsLambdaParameters(parameters);
+    };
+    ParseTree.NamedParametersTree{range => this.createRange(start), parameters};
+  }
+
+  mutable fun parseNamedLambda(): ParseTree {
+    start = this.mark();
+    modifiers = ParseTree.EmptyTree{range => this.createRangeAfter()};
+    parameters = this.parseNamedLambdaParameters(false);
+    arrow = this.parseLambdaArrow();
+    body = this.parseBindingExpression();
+    ParseTree.LambdaExpressionTree{
+      range => this.createRange(start),
+      modifierOpt => modifiers,
+      parameters,
+      arrow,
+      body,
+    };
+  }
+
+  // Some tests if we have { n1, n2, ...} ->
+  // Used in peekParse only
+  mutable fun peekParseNamedLambdaStart(): ParseTree {
+    _parameters = this.parseNamedLambdaParameters(true);
+    this.parseLambdaArrow();
+  }
+
+  mutable fun parseBlockOrNamedLambda(): ParseTree {
+    if (this.peekParse(parser -> parser.peekParseNamedLambdaStart())) {
+      this.parseNamedLambda()
+    } else {
+      this.parseBlock()
+    }
+  }
+
+  // literal:
+  //    void
+  //    true
+  //    false
+  //    integer-literal
+  //    float-literal
+  //    string-literal
+  //    char-literal
+  //
+  // class-expression:
+  //    class
+  //
+  // static-expression:
+  //    static
+  //
+  // this-expression:
+  //    this
+  mutable fun parseLiteral(): ParseTree {
+    this.tokenResult()
+  }
+
+  // 6.4.3 If Expression
+  // condition-expression:
+  //    (  expression  )
+  mutable fun parseConditionExpression(): ParseTree {
+    if (this.peekKind(TokenKind.OPEN_PAREN())) {
+      start = this.mark();
+      (openParen, value, closeParen) = this.parseDelimited(
+        TokenKind.OPEN_PAREN(),
+        parser -> parser.parseExpression(),
+        TokenKind.CLOSE_PAREN(),
+      );
+      ParseTree.ParenExpressionTree{
+        range => this.createRange(start),
+        openParen,
+        value,
+        closeParen,
+      }
+    } else {
+      this.errorResult(
+        errorExpectedConditionalExpression,
+        "Expected '(' but encountered " +
+          "'" +
+          this.peekToken().value +
+          "'" +
+          " at the start of a conditional expression." +
+          " Conditional expressions must be parenthesized.",
+      )
+    }
+  }
+
+  // else-branch:
+  //    else  binding-expression
+  mutable fun parseElseBranch(): ParseTree {
+    if (this.peekKind(TokenKind.ELSE())) {
+      elseKeyword = this.eatTree(TokenKind.ELSE());
+      value = this.parseBindingExpression();
+      ParseTree.ElseBranchTree{
+        range => Parser.createRangeOfTrees(elseKeyword, value),
+        elseKeyword,
+        value,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // if-expression:
+  //    if  condition-expression  binding-expression  else-branch-opt
+  mutable fun parseIfExpression(): ParseTree {
+    start = this.mark();
+    ifKeyword = this.eatTree(TokenKind.IF());
+    ifControl = this.parseConditionExpression();
+    trueBranch = this.parseBindingExpression();
+    falseBranch = this.parseElseBranch();
+    ParseTree.IfExpressionTree{
+      range => this.createRange(start),
+      ifKeyword,
+      ifControl,
+      trueBranch,
+      falseBranch,
+    };
+  }
+
+  // 6.4.5 Throw Expressions
+  // throw-expression:
+  //    throw  expression
+  mutable fun parseThrowExpression(): ParseTree {
+    start = this.mark();
+    throwKeyword = this.eatTree(TokenKind.THROW());
+    value = this.parseExpression();
+    ParseTree.ThrowExpressionTree{
+      range => this.createRange(start),
+      throwKeyword,
+      value,
+    };
+  }
+
+  // 6.4.6 Try Expression
+  mutable fun parseCatchClause(): ParseTree {
+    start = this.mark();
+    catchKeyword = this.eatTree(TokenKind.CATCH());
+    if (this.peekKind(TokenKind.OPEN_PAREN())) {
+      this.errorResult(
+        errorMalformedCatch,
+        "Expected '{'. Catch uses the same syntax as pattern matching: 'catch { MyException() -> value }'",
+      );
+    } else {
+      branches = this.parsePatternBranchBlock();
+      ParseTree.CatchClauseTree{
+        range => this.createRange(start),
+        catchKeyword,
+        branches,
+      };
+    }
+  }
+
+  // try-expression:
+  //    try  block  catch  pattern-branch-block
+  mutable fun parseTryExpression(): ParseTree {
+    start = this.mark();
+    tryKeyword = this.eatTree(TokenKind.TRY());
+    body = this.parseBlock();
+    catchClause = this.parseCatchClause();
+    ParseTree.TryExpressionTree{
+      range => this.createRange(start),
+      tryKeyword,
+      body,
+      catchClause,
+    };
+  }
+
+  // arrow:
+  //    ~>
+  //    ->
+  mutable fun peekLambdaArrow(): Bool {
+    this.peekKind(TokenKind.ARROW()) || this.peekKind(TokenKind.TILDE_ARROW())
+  }
+
+  mutable fun parseLambdaArrow(): ParseTree {
+    if (this.peekLambdaArrow()) {
+      this.tokenResult()
+    } else {
+      this.errorResult(errorArrowExpected, "Arrow expected")
+    }
+  }
+
+  mutable fun ensureIsLambdaParameter(
+    parameter: ParseTree,
+    expectTypeAnnotation: Bool,
+  ): void {
+    parameter match {
+    | ParseTree.LambdaParameterTree{name, colonTypeSpecifier} ->
+      if (name.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER())) {
+        hasType = !colonTypeSpecifier.isEmpty();
+        if (hasType && !expectTypeAnnotation) {
+          this.addErrorAtTree(
+            colonTypeSpecifier,
+            errorUnexpectedLambdaParameterType,
+            "Expected untyped lambda parameter. Lambda parameters must be consistent in including type annotations.",
+          )
+        } else if (!hasType && expectTypeAnnotation) {
+          this.addErrorAtTree(
+            name,
+            errorExpectedLambdaParameterType,
+            "Expected typed lambda parameter. Lambda parameters must be consistent in including type annotations.",
+          );
+        }
+      } else {
+        this.addErrorAtTree(
+          name,
+          errorInvalidLambdaParameter,
+          "Invalid lambda parameter",
+        );
+      }
+    | _ -> invariant_violation("unexpected lambda parameter")
+    }
+  }
+
+  // Lambda parameter names are parsed as expression or lvalue. Check that they are in fact names.
+  // Also ensure that the list is consistent in either having, or not having type annotations.
+  mutable fun ensureIsLambdaParameters(parameters: ParseTree): void {
+    parameterList = parameters.getList();
+    hasTypes =
+      parameterList.isEmpty() ||
+      (parameterList.first() match {
+      | ParseTree.LambdaParameterTree{colonTypeSpecifier} ->
+        !colonTypeSpecifier.isEmpty()
+      | _ -> invariant_violation("expected lambda-parameter")
+      });
+    for (parameter in parameterList) {
+      this.ensureIsLambdaParameter(parameter, hasTypes)
+    };
+  }
+
+  mutable fun parseExpressionLValueOrLambdaParameter(): ParseTree {
+    start = this.mark();
+    expression = this.parseExpressionOrLValue();
+    colonTypeSpecifier = this.parseColonTypeSpecifierOpt();
+    ParseTree.LambdaParameterTree{
+      range => this.createRange(start),
+      name => expression,
+      colonTypeSpecifier,
+    };
+  }
+
+  // paren-expression:
+  //    (  expression  )
+  //
+  // type-annotated-expression:
+  //    (  expression  colon-type-specifier  )
+  //
+  // tuple-expression:
+  //    (  expression-comma-list  ,  expression  )
+  //
+  // Note: Also handles positional-lambda-parameter lists.
+  mutable fun parseParenExpression(): ParseTree {
+    startToken = this.peekToken();
+    start = this.mark();
+    parameters = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekExpression(),
+      parser -> parser.parseExpressionLValueOrLambdaParameter(),
+      TokenKind.CLOSE_PAREN(),
+    );
+    if (this.peekLambdaArrow()) {
+      this.ensureIsLambdaParameters(parameters);
+      this.parseLambdaExpressionSuffix(parameters, startToken)
+    } else {
+      listValues = parameters.getList();
+      listValues.size() match {
+      | 0 ->
+        this.addError(
+          SyntaxError.create(
+            errorMissingExpression,
+            Parser.createRangeBeforeTree(parameters.endDelimiter),
+            "Expression expected",
+          ),
+        );
+        ParseTree.ParenExpressionTree{
+          range => this.createRange(start),
+          openParen => parameters.startDelimiter,
+          value => parameters,
+          closeParen => parameters.endDelimiter,
+        }
+      | 1 ->
+        if (!parameters.separators.isEmpty()) {
+          this.addErrorAtTree(
+            parameters.separators[0],
+            errorExpectedToken,
+            static::expectedErrorMessage(
+              TokenKind.CLOSE_PAREN(),
+              parameters.separators[0].getTokenKind(),
+            ),
+          );
+        };
+        listValues.first() match {
+        | ParseTree.LambdaParameterTree{
+          name => expression,
+          colonTypeSpecifier,
+        } ->
+          this.ensureIsExpression(expression);
+          if (colonTypeSpecifier.isEmpty()) {
+            ParseTree.ParenExpressionTree{
+              range => this.createRange(start),
+              openParen => parameters.startDelimiter,
+              value => expression,
+              closeParen => parameters.endDelimiter,
+            };
+          } else {
+            colonTypeSpecifierTree = colonTypeSpecifier as ParseTree.ColonTypeSpecifierTree _;
+            ParseTree.TypeAnnotatedExpressionTree{
+              range => this.createRange(start),
+              openParen => parameters.startDelimiter,
+              value => expression,
+              colon => colonTypeSpecifierTree.colon,
+              typeSpecifier => colonTypeSpecifierTree.typeSpecifier,
+              closeParen => parameters.endDelimiter,
+            };
+          }
+        | _ -> invariant_violation("Expected lambda parameter")
+        }
+      | _ ->
+        elements = parameters.asList().map(lambdaParameter -> {
+          lambdaParameter match {
+          | ParseTree.LambdaParameterTree{name, colonTypeSpecifier} ->
+            if (!colonTypeSpecifier.isEmpty()) {
+              this.addErrorAtTree(
+                colonTypeSpecifier,
+                errorTypeSpecifierInTuple,
+                "Type specifier not permitted on tuple elemement",
+              );
+            };
+            name
+          | _ -> invariant_violation("expected lambda parameter")
+          }
+        });
+        ParseTree.TupleExpressionTree{
+          range => this.createRange(start),
+          values => elements,
+        }
+      }
+    }
+  }
+
+  // lambda-expression:
+  //    untracked-opt  lambda-parameters  arrow  binding-expression
+  //
+  // lambda-parameters:
+  //    non-type-identifier
+  //    positional-lambda-parameters
+  //    named-lambda-parameters
+  //
+  // positional-lambda-parameters:
+  //    (  lambda-parameter-comma-list-opt  )
+  mutable fun parseLambdaExpressionSuffix(
+    parameters: ParseTree,
+    startToken: Token.Token,
+  ): ParseTree {
+    if (this.peekLambdaArrow()) {
+      arrow = this.parseLambdaArrow();
+      body = this.parseBindingExpression();
+      modifierOpt = ParseTree.EmptyTree{
+        range => Parser.createRangeAfterToken(startToken),
+      };
+      ParseTree.LambdaExpressionTree{
+        range => createRangeOfModifiers(modifierOpt, body),
+        modifierOpt,
+        parameters,
+        arrow,
+        body,
+      };
+    } else {
+      parameters;
+    }
+  }
+
+  mutable fun parseUntrackedLambda(): ParseTree {
+    start = this.mark();
+    modifierOpt = this.tokenResult();
+    expression = this.parsePrimaryExpression();
+    // TODO: error on duplicate untracked
+    expression match {
+    | ParseTree.LambdaExpressionTree{parameters, arrow, body} ->
+      ParseTree.LambdaExpressionTree{
+        range => this.createRange(start),
+        modifierOpt,
+        parameters,
+        arrow,
+        body,
+      }
+    | _ ->
+      this.addErrorAtCurrent(errorLambdaExpected, "Lambda expected");
+      expression
+    }
+  }
+
+  // type-name-expression:
+  //    type-identifier  type-arguments-opt
+  //    macro-type-identifier  type-arguments-opt
+  mutable fun parseTypeNameExpression(): ParseTree {
+    start = this.mark();
+    name = this.parseLiteral();
+    typeArguments = this.parseTypeArgumentListOpt();
+    ParseTree.GenericTypeNameTree{
+      range => this.createRange(start),
+      name,
+      arguments => typeArguments,
+    };
+  }
+
+  // primary-expression:
+  //    block
+  //    if-expression
+  //    lambda-expression
+  //    throw-expression
+  //    try-expression
+  //    global-qualified-name-expression
+  //    non-type-identifier
+  //    macro-non-type-identifier
+  //    type-name-expression
+  //    literal
+  //    this-expression
+  //    static-expression
+  //    class-expression
+  //    paren-expression
+  //    type-annotated-expression
+  //    tuple-expression
+  //    template-literal-expression
+  //    do-loop-expression
+  //    foreach-loop-expression
+  //    infinite-loop-expression
+  //    while-loop-expression
+  //    yield-expression
+  //    return-expression
+  //    yield-break-expression
+  //    continue
+  //    break-expression
+  mutable fun parsePrimaryExpression(): ParseTree {
+    this.peek() match {
+    | TokenKind.OPEN_CURLY() -> this.parseBlockOrNamedLambda()
+    | TokenKind.IF() -> this.parseIfExpression()
+    | TokenKind.THROW() -> this.parseThrowExpression()
+    | TokenKind.TRY() -> this.parseTryExpression()
+    | TokenKind.PERIOD() -> this.parseGlobalNameStart()
+    | TokenKind.MACRO_NONTYPE_IDENTIFIER()
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      startToken = this.peekToken();
+      identifier = this.parseLiteral();
+      if (this.peekLambdaArrow()) {
+        this.parseLambdaExpressionSuffix(identifier, startToken)
+      } else {
+        identifier
+      }
+    | TokenKind.TYPE_IDENTIFIER() -> this.parseTypeNameExpression()
+    | TokenKind.TRUE() -> this.parseLiteral()
+    | TokenKind.FALSE() -> this.parseLiteral()
+    | TokenKind.STRING_LITERAL() -> this.parseLiteral()
+    | TokenKind.CHAR_LITERAL() -> this.parseLiteral()
+    | TokenKind.INTEGER_LITERAL() -> this.parseLiteral()
+    | TokenKind.FLOAT_LITERAL() -> this.parseLiteral()
+    | TokenKind.VOID() -> this.parseLiteral()
+    | TokenKind.THIS() -> this.parseLiteral()
+    | TokenKind.STATIC() -> this.parseLiteral()
+    | TokenKind.OPEN_PAREN() -> this.parseParenExpression()
+    | TokenKind.UNTRACKED() -> this.parseUntrackedLambda()
+    | TokenKind.CLASS() -> this.parseLiteral()
+    | TokenKind.BACK_TICK() -> this.parseTemplateLiteralExpression()
+    | TokenKind.DO() -> this.parseDoLoopExpression()
+    | TokenKind.FOR() -> this.parseForEachLoopExpression()
+    | TokenKind.LOOP() -> this.parseInfiniteLoopExpression()
+    | TokenKind.WHILE() -> this.parseWhileLoopExpression()
+    | TokenKind.CONTINUE() -> this.tokenResult()
+    | TokenKind.BREAK() -> this.parseBreakExpression()
+    | TokenKind.YIELD() -> this.parseYield()
+    | TokenKind.RETURN() -> this.parseReturnExpression()
+    | TokenKind.CONST() ->
+      name = this.peekOffset(1) match {
+      | TokenKind.NONTYPE_IDENTIFIER() -> this.peekTokenOffset(1).value
+      | _ -> "name"
+      };
+      this.errorResultAdvance(
+        errorVariableDeclarationPrefix,
+        "Unexpected 'const'. Variables are declared without a leading keyword: '" +
+          name +
+          " = ...'",
+      )
+    | TokenKind.CLOSE_CURLY() ->
+      this.errorResultAdvance(
+        errorEmptyCurly,
+        "'{}' is not a valid expression. Did you mean '{ void }'?",
+      )
+    | TokenKind.OPEN_SQUARE() ->
+      this.errorResultAdvance(
+        errorUnprefixedVector,
+        "Unexpected '['. Collection initializers require the collection type. For example: 'Vector['",
+      )
+    | _ ->
+      this.errorResultAdvance(errorExpectedExpression, "Expected expression")
+    }
+  }
+
+  // template-literal-expression:
+  //    `  template-literal-element-list-opt  `
+  //
+  // template-literal-element:
+  //    template-literal-string-element
+  //    template-literal-expression-element
+  //
+  // template-literal-string-element:
+  //    string-literal-element-list
+  //
+  // NOTE: template-literal-string-element is a lexical production, not a grammatical
+  // production.
+  //
+  // template-literal-expression-element:
+  //    $  block
+  //
+  // NOTE: There must be no trivia between the '$' and the '{' of the block in
+  // template-literal-expression-element.
+  mutable fun parseTemplateLiteralExpression(): ParseTree {
+    elements = this.parseDelimitedList(
+      TokenKind.BACK_TICK(),
+      parser -> {
+        // Switch lexers after the leading "`" so that leading trivia is consumed.
+        this.setLexer(this.templateLexer);
+        list = parser.parseList(
+          parser -> parser.peekTemplateLiteralElement(),
+          parser -> parser.parseTemplateLiteralElement(),
+        );
+        this.setLexer(this.tokenLexer);
+        list;
+      },
+      TokenKind.BACK_TICK(),
+    );
+
+    ParseTree.TemplateLiteralExpressionTree{range => elements.range, elements};
+  }
+
+  mutable fun peekTemplateLiteralElement(): Bool {
+    this.peek() match {
+    | TokenKind.BACK_TICK()
+    | TokenKind.END_OF_FILE()
+    | TokenKind.ERROR() ->
+      false
+    | TokenKind.TEMPLATE_LITERAL_STRING()
+    | TokenKind.TEMPLATE_LITERAL_EXPRESSION_START() ->
+      true
+    | _ -> invariant_violation("Unexpected TokenKind from TemplateLexer")
+    }
+  }
+
+  mutable fun parseTemplateLiteralElement(): ParseTree {
+    this.peek() match {
+    | TokenKind.TEMPLATE_LITERAL_STRING() -> this.tokenResult()
+    | TokenKind.TEMPLATE_LITERAL_EXPRESSION_START() ->
+      dollar = this.tokenResult();
+      this.setLexer(this.tokenLexer);
+      expression = this.parseBlock(false);
+      this.setLexer(this.templateLexer);
+      ParseTree.TemplateLiteralExpressionElementTree{
+        range => Parser.createRangeOfTrees(dollar, expression),
+        dollar,
+        expression,
+      }
+    | _ -> invariant_violation("Expected template-literal-element")
+    }
+  }
+
+  // global-qualified-name-expression:
+  //    .  non-type-identifier
+  mutable fun parseGlobalNameStart(): ParseTree {
+    this.parseMemberSelection(
+      ParseTree.GlobalExpressionTree{range => this.createRangeAfter()},
+    )
+  }
+
+  // 6.5 Postfix Expression
+  // with-expression:
+  //    pipe-expression
+  //    with-expression  with  named-arguments
+  mutable fun parseWith(value: ParseTree): ParseTree {
+    this.ensureIsExpression(value);
+    withKeyword = this.eatId();
+    arguments = this.parseNamedArguments();
+    ParseTree.WithExpressionTree{
+      range => Parser.createRangeOfTreeAndCurrent(value, this),
+      value,
+      withKeyword,
+      arguments,
+    };
+  }
+
+  mutable fun reportBindingsInIsAsPattern(
+    tree: ParseTree,
+    action: String,
+  ): void {
+    tree match {
+    | ParseTree.ConstPatternTree _ -> void
+    | ParseTree.NamePatternTree{
+      name,
+    } if (name.getId() != PredefinedName.underscore) ->
+      this.addErrorAtTree(
+        tree,
+        errorNoNamePatternInIsAs,
+        `name pattern not permitted in '${action}' expression. Did you mean '_', a wildcard pattern, to match any value?`,
+      )
+    | ParseTree.VoidPatternTree _ -> void
+    | ParseTree.TokenTree _ -> void
+    | ParseTree.TuplePatternTree{elements} ->
+      elements.getList().each((x) ->
+        this.reportBindingsInIsAsPattern(x, action)
+      )
+    | ParseTree.ParenPatternTree{pattern} ->
+      this.reportBindingsInIsAsPattern(pattern, action)
+    | ParseTree.ClassPatternTree{arguments => classArguments} ->
+      classArguments match {
+      | ParseTree.PositionalPatternArgumentsTree{arguments} ->
+        arguments.getList().each((x) ->
+          this.reportBindingsInIsAsPattern(x, action)
+        )
+      | ParseTree.NamedPatternArgumentsTree{arguments} ->
+        for (argument in arguments.getList()) {
+          pattern = (argument as ParseTree.NamedArgumentPatternTree _).pattern;
+          if (pattern.isEmpty()) {
+            this.addErrorAtTree(
+              (argument as ParseTree.NamedArgumentPatternTree _).name,
+              errorNamedArgumentInIsAs,
+              // TODO: Use Formatter to change message to actual class name
+              `name pattern not permitted in '${action}' expression. Did you mean 'ClassName _', to match any arguments?`,
+            );
+          } else {
+            this.reportBindingsInIsAsPattern(
+              (pattern as ParseTree.NamedArgumentValuePatternTree _).pattern,
+              action,
+            );
+          }
+        }
+      | ParseTree.TokenTree _ ->
+        // ClassName _
+        void
+      | _ -> // unexpected class pattern argument, must have reported a syntax error
+        void
+      }
+    | ParseTree.AtPatternTree{identifier} ->
+      this.addErrorAtTree(
+        identifier,
+        errorNoAsClauseInIsAs,
+        `'@' pattern not permitted in '${action}' expression.`,
+      )
+
+    | ParseTree.NegativeLiteralPatternTree _ -> void
+    | _ -> // unexpected pattern. Must have reported an error already.
+      void
+    };
+  }
+
+  mutable fun parseIsSuffix(value: ParseTree): ParseTree {
+    this.ensureIsExpression(value);
+    invariant(this.peekPredefinedName(PredefinedName.is), "Expected 'is'");
+    is = this.eatId();
+    if (this.peekKind(TokenKind.OPEN_CURLY())) {
+      this.addErrorAtCurrent(
+        errorIsAsWithCurly,
+        "Expected pattern after 'is'. Did you mean 'match' or to remove the '{}'s?",
+      );
+    };
+    pattern = this.parsePattern();
+    this.reportBindingsInIsAsPattern(pattern, PredefinedName.is);
+    ParseTree.IsExpressionTree{
+      range => Parser.createRangeOfTreeAndCurrent(value, this),
+      value,
+      is,
+      pattern,
+    };
+  }
+
+  mutable fun parseAsSuffix(value: ParseTree): ParseTree {
+    this.ensureIsExpression(value);
+    invariant(this.peekKind(TokenKind.AS()), "Expected 'as'");
+    asKeyword = this.eatTree(TokenKind.AS());
+    if (this.peekKind(TokenKind.OPEN_CURLY())) {
+      this.addErrorAtCurrent(
+        errorIsAsWithCurly,
+        "Expected pattern after 'as'. Did you mean 'match' or to remove the '{}'s?",
+      );
+    };
+    pattern = this.parsePattern();
+    this.reportBindingsInIsAsPattern(pattern, TokenKind.AS().toString());
+    ParseTree.AsExpressionTree{
+      range => Parser.createRangeOfTreeAndCurrent(value, this),
+      value,
+      asKeyword,
+      pattern,
+    };
+  }
+
+  mutable fun parseMatchSuffix(value: ParseTree): ParseTree {
+    this.ensureIsExpression(value);
+    invariant(
+      this.peekPredefinedName(PredefinedName.match),
+      "Expected 'match'",
+    );
+    match = this.eatId();
+    branches = this.parsePatternBranchBlock();
+    ParseTree.MatchExpressionTree{
+      range => Parser.createRangeOfTreeAndCurrent(value, this),
+      value,
+      match,
+      branches,
+    };
+  }
+
+  // positional-arguments:
+  //    (  expression-comma-list-opt  )
+  mutable fun parsePositionalArguments(): ParseTree {
+    start = this.mark();
+    value = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekExpression(),
+      parser -> parser.parseExpression(),
+      TokenKind.CLOSE_PAREN(),
+    );
+    ParseTree.PositionalArgumentsTree{
+      range => this.createRange(start),
+      arguments => value,
+    };
+  }
+
+  // map-element:
+  //    expression  =>  expression
+  mutable fun parseMapElementOrExpression(): ParseTree {
+    start = this.mark();
+    keyOrExpr = this.parseExpression();
+    if (this.peekKind(TokenKind.FAT_ARROW())) {
+      fatArrow = this.eatTree(TokenKind.FAT_ARROW());
+      value = this.parseExpression();
+      ParseTree.MapElementTree{
+        range => this.createRange(start),
+        key => keyOrExpr,
+        fatArrow,
+        value,
+      };
+    } else {
+      keyOrExpr;
+    }
+  }
+
+  mutable fun ensureConsistentCallArrayItem(
+    item: ParseTree,
+    expectMapElement: Bool,
+  ): void {
+    (expectMapElement, item) match {
+    | (true, ParseTree.MapElementTree _) -> void
+    | (false, ParseTree.MapElementTree _) ->
+      this.addErrorAtTree(
+        item,
+        errorUnexpectedMapElement,
+        "Expected an expression, found map element (key => value)",
+      )
+    | (true, _) ->
+      this.addErrorAtTree(
+        item,
+        errorExpectedMapElement,
+        "Expected a map element (key => value), found an expression",
+      )
+    | (false, _) -> void
+    }
+  }
+
+  mutable fun ensureConsistentCallArrayItems(
+    expectMapElement: Bool,
+    argumentList: Array<ParseTree>,
+  ): void {
+    for (arg in argumentList) {
+      this.ensureConsistentCallArrayItem(arg, expectMapElement)
+    }
+  }
+
+  // call-array-expression:
+  //    postfix-expression  [  expression  ]
+  //
+  // collection-literal-expression:
+  //    qualified-type-name  [  expression-comma-list-opt  ]
+  //    qualified-type-name  [  map-element-comma-list-opt  ]
+  //
+  // Note: in collection literal expressions, type arguments (if present)
+  // will be part of the qualified type name, not the `typeArguments` parameter.
+  // T22862922: remove typeArguments from CallArray/CallMap
+  //
+  mutable fun parseCallArray(
+    func: ParseTree,
+    typeArguments: ParseTree,
+  ): ParseTree {
+    bang = this.eatTreeOpt(TokenKind.BANG());
+    arguments = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_SQUARE(),
+      parser -> parser.peekExpression(),
+      parser -> parser.parseMapElementOrExpression(),
+      TokenKind.CLOSE_SQUARE(),
+    );
+
+    argumentList = arguments.getList();
+    isCallMap =
+      !argumentList.isEmpty() &&
+      (argumentList.first() is ParseTree.MapElementTree _);
+    this.ensureConsistentCallArrayItems(isCallMap, argumentList);
+
+    if (isCallMap) {
+      ParseTree.CallMapExpressionTree{
+        range => Parser.createRangeOfTreeAndCurrent(func, this),
+        func,
+        typeArguments,
+        bang,
+        arguments,
+      };
+    } else {
+      ParseTree.CallArrayExpressionTree{
+        range => Parser.createRangeOfTreeAndCurrent(func, this),
+        func,
+        typeArguments,
+        bang,
+        arguments,
+      };
+    }
+  }
+
+  // call-expression:
+  //    postfix-expression  type-arguments-opt  positional-arguments
+  mutable fun parsePositionalCall(
+    func: ParseTree,
+    typeArguments: ParseTree,
+  ): ParseTree {
+    this.ensureIsExpression(func);
+    arguments = this.parsePositionalArguments();
+    ParseTree.CallExpressionTree{
+      range => Parser.createRangeOfTrees(func, arguments),
+      func,
+      typeArguments,
+      arguments,
+    };
+  }
+
+  mutable fun peekNamedArgument(): Bool {
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER())
+  }
+
+  // named-argument-value:
+  //    =>  expression
+  mutable fun parseNamedArgumentValueOpt(): ParseTree {
+    if (this.peekKind(TokenKind.FAT_ARROW())) {
+      fatArrow = this.eatTree(TokenKind.FAT_ARROW());
+      value = this.parseExpression();
+      ParseTree.NamedArgumentValueTree{
+        range => Parser.createRangeOfTrees(fatArrow, value),
+        fatArrow,
+        value,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // named-argument:
+  //    non-type-identifier  named-argument-value-opt
+  mutable fun parseNamedArgument(): ParseTree {
+    start = this.mark();
+    name = this.tokenResult();
+    value = this.parseNamedArgumentValueOpt();
+    ParseTree.NamedArgumentTree{range => this.createRange(start), name, value};
+  }
+
+  // named-arguments:
+  //    {  named-argument-comma-list-opt  }
+  mutable fun parseNamedArguments(): ParseTree {
+    start = this.mark();
+    value = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_CURLY(),
+      parser -> parser.peekNamedArgument(),
+      parser -> parser.parseNamedArgument(),
+      TokenKind.CLOSE_CURLY(),
+    );
+    ParseTree.NamedArgumentsTree{
+      range => this.createRange(start),
+      arguments => value,
+    };
+  }
+
+  // named-arguments-call-expression:
+  //    postfix-expression  type-arguments-opt  named-arguments
+  mutable fun parseNamedCall(
+    func: ParseTree,
+    typeArguments: ParseTree,
+  ): ParseTree {
+    this.ensureIsExpression(func);
+    arguments = this.parseNamedArguments();
+    ParseTree.CallExpressionTree{
+      range => Parser.createRangeOfTrees(func, arguments),
+      func,
+      typeArguments,
+      arguments,
+    };
+  }
+
+  // member-selection-expression:
+  //    postfix-expression  .  non-type-identifier
+  //    postfix-expression  ::  non-type-identifier
+  //    postfix-expression  ::  type-identifier
+  // TODO: LHS of :: should not be postfix-expression
+  mutable fun parseMemberSelection(object: ParseTree): ParseTree {
+    operator = this.tokenResult();
+    if (
+      operator.matchTreeKind(TokenKind.PERIOD()) &&
+      object.isMacroTypeIdentifierExpression()
+    ) {
+      this.addErrorAtTree(
+        operator,
+        errorNoDotOnType,
+        "'.' not permitted on type macros.",
+      );
+    };
+    bang = this.eatTreeOpt(TokenKind.BANG());
+    afterBang = this.mark();
+    hadBang = !bang.isEmpty();
+    if (
+      this.peekKind(TokenKind.TYPE_IDENTIFIER()) ||
+      this.peekKind(TokenKind.MACRO_NONTYPE_IDENTIFIER()) ||
+      this.peekKind(TokenKind.NONTYPE_IDENTIFIER())
+    ) {
+      name = this.tokenResult();
+      this.reportInvalidId(name);
+      member = if (hadBang) {
+        ParseTree.UnaryExpressionTree{
+          range => Parser.createRangeOfTrees(bang, name),
+          operator => bang,
+          operand => name,
+        };
+      } else {
+        name;
+      };
+      ParseTree.MemberSelectionExpressionTree{
+        range => Parser.createRangeOfTrees(object, member),
+        object,
+        operator,
+        member,
+      };
+    } else {
+      tree = ParseTree.MemberSelectionExpressionTree{
+        range => Parser.createRangeOfTrees(object, operator),
+        object,
+        operator,
+        member => afterBang.createEmptyTreeBefore(),
+      };
+      if (this.peekKind(TokenKind.STRING_LITERAL())) {
+        this.addErrorAtCurrent(
+          errorDotConcatenation,
+          "Unexpected string literal. If you meant to concatenate strings, you should use the '+' operator instead.",
+        );
+      } else {
+        this.addErrorAtCurrent(errorExpectedIdentifier, "Expected identifier");
+      };
+      tree;
+    }
+  }
+
+  // compound-binding:
+  //    lvalue  =.  postfix-expresion-suffix
+  // TODO: postfix-expression-suffix needs a definition
+  mutable fun parseCompoundBinding(left: ParseTree): ParseTree {
+    this.ensureExpressionIsLValue(left);
+    operator = this.tokenResult();
+
+    // An identifier must always follow =.
+    this.expect(TokenKind.NONTYPE_IDENTIFIER());
+
+    right = this.parseExpression();
+    ParseTree.CompoundBindingExpressionTree{
+      range => Parser.createRangeOfTrees(left, right),
+      left,
+      operator,
+      right,
+    };
+  }
+
+  mutable fun reportInvalidLValue(tree: ParseTree): void {
+    this.addErrorAtTree(tree, errorInvalidLValue, "Invalid LValue");
+  }
+
+  mutable fun ensureLValueAssign(
+    leadingBang: Bool,
+    expression: ParseTree,
+  ): void {
+    expression match {
+    | ParseTree.UnaryExpressionTree{operator, operand} ->
+      if (!operator.matchTreeKind(TokenKind.BANG())) {
+        this.reportInvalidLValue(operator);
+      } else if (leadingBang) {
+        this.addErrorAtTree(
+          expression,
+          errorDuplicateBangInLValue,
+          "Multiple '!'s in LValue",
+        );
+      } else {
+        this.ensureLValueAssign(true, operand);
+      }
+    | ParseTree.TokenTree{token} ->
+      if (
+        !(token.kind == TokenKind.NONTYPE_IDENTIFIER() ||
+          token.kind == TokenKind.THIS())
+      ) {
+        this.reportInvalidLValue(expression);
+      } else {
+        if (!leadingBang) {
+          this.addErrorAtTree(expression, errorExpectedBang, "Expected !");
+        }
+      }
+    | ParseTree.BinaryExpressionTree{operator} ->
+      this.reportInvalidLValue(operator)
+    | ParseTree.MemberSelectionExpressionTree{object, operator, member} ->
+      if (operator.matchTreeKind(TokenKind.COLON_COLON())) {
+        this.reportInvalidLValue(operator);
+      } else {
+        if (member.isBang()) {
+          if (leadingBang) {
+            this.addErrorAtTree(
+              member,
+              errorDuplicateBangInLValue,
+              "Multiple '!'s in LValue",
+            );
+          } else {
+            this.ensureIsExpression(object);
+          }
+        } else {
+          this.ensureLValueAssign(leadingBang, object);
+        }
+      }
+    | ParseTree.CallArrayExpressionTree{func, typeArguments, bang, arguments} ->
+      isBang = !bang.isEmpty();
+      if (!typeArguments.isEmpty()) {
+        this.addErrorAtTree(
+          typeArguments,
+          errorTypeArgumentsInLValue,
+          "Type arguments not permitted in LValue",
+        );
+      } else if (isBang) {
+        if (leadingBang) {
+          this.addErrorAtTree(
+            bang,
+            errorDuplicateBangInLValue,
+            "Multiple '!'s in LValue",
+          );
+        } else {
+          this.addErrorAtTree(
+            arguments,
+            errorLValueArraySetNotAtEnd,
+            "Collection set ![] must terminate an LValue",
+          );
+        }
+      } else {
+        this.ensureLValueAssign(leadingBang, func);
+      }
+    | ParseTree.ParenExpressionTree _ ->
+      this.addErrorAtTree(
+        expression,
+        errorOneElementTuple,
+        "A tuple must have at least two elements",
+      )
+    | _ -> this.reportInvalidLValue(expression)
+    }
+  }
+
+  // LValue Grammar
+  //
+  // lvalue:
+  //    lvalue-bind
+  //    lvalue-assign
+  //    lvalue-tuple
+  //    lvalue-collection-set
+  //    lvalue-collection-append
+  //
+  // lvalue-bind:
+  //    non-type-identifier
+  //
+  // lvalue-tuple:
+  //    (  lvalue-comma-list  )
+  //
+  // lvalue-collection-set:
+  //    expression  !  [  expression  ]
+  //
+  // lvalue-collection-append:
+  //    expression  !  [  ]
+  //
+  // lvalue-assign-no-collection-append:
+  //    !  non-type-identifier
+  //    expression  .  !  non-type-identifier
+  //    lvalue-assign-no-collection-append  .  non-type-identifier
+  //    lvalue-assign-collection-set
+  //    lvalue-assign-collection-append
+  //
+  // lvalue-assign-collection-set:
+  //    lvalue-assign-no-collection-append  [  expression  ]
+  //
+  // lvalue-assign-collection-append:
+  //    lvalue-assign-no-collection-append  [  ]
+  //
+  // lvalue-assign:
+  //    lvalue-assign-no-collection-append
+  //    lvalue-assign-collection-append
+  //
+  mutable fun ensureExpressionIsLValue(expression: ParseTree): void {
+    expression match {
+    | ParseTree.TokenTree{token} ->
+      if (token.kind != TokenKind.NONTYPE_IDENTIFIER()) {
+        this.reportInvalidLValue(expression);
+      }
+    | ParseTree.TupleExpressionTree{values} ->
+      for (e in values.getList()) this.ensureExpressionIsLValue(e)
+    | ParseTree.CallArrayExpressionTree{func, typeArguments, bang} ->
+      isBang = !bang.isEmpty();
+      if (isBang) {
+        if (!typeArguments.isEmpty()) {
+          this.addErrorAtTree(
+            typeArguments,
+            errorTypeArgumentsInLValue,
+            "Type arguments not permitted in LValue",
+          );
+        } else {
+          this.ensureIsExpression(func);
+        }
+      } else {
+        this.ensureLValueAssign(false, expression);
+      }
+    | _ -> this.ensureLValueAssign(false, expression)
+    }
+  }
+
+  // simple-binding:
+  //    lvalue  =  expression
+  mutable fun parseSimpleBinding(left: ParseTree): ParseTree {
+    this.ensureExpressionIsLValue(left);
+    colonTypeSpecifier = this.parseColonTypeSpecifierOpt();
+    if (!colonTypeSpecifier.isEmpty() && !isBindLValue(left)) {
+      this.addErrorAtTree(
+        colonTypeSpecifier,
+        errorTypeSpecifierOnNonBindLValue,
+        "Type specifier not allowed on non-bind lvalue",
+      );
+    };
+    equal = this.eatTree(TokenKind.EQUAL());
+    right = this.parseExpression();
+    ParseTree.SimpleBindingExpressionTree{
+      range => Parser.createRangeOfTrees(left, right),
+      left,
+      colonTypeSpecifier,
+      equal,
+      right,
+    };
+  }
+
+  mutable fun reportExpectedArguments(): ParseTree {
+    this.errorResult(
+      errorExpectedArguments,
+      "Expected '(', '{' for call with type arguments",
+    );
+  }
+
+  mutable fun parsePossibleTypeArgumentsCallSuffix(func: ParseTree): ParseTree {
+    // NOTE: This production is ambiguous with the '<' infix operator.
+    // Consider-
+    //  f < this > (a)
+    // Which could be parsed as a call with type args *or* as a sequence of relational operators.
+    // In these cases we prefer the call as relational operators are rarely chained this way.
+    typeArguments = this.parseTypeArgumentListOpt();
+    if (!typeArguments.isEmpty()) {
+      this.peek() match {
+      | TokenKind.BANG() ->
+        if (this.peekKindOffset(TokenKind.OPEN_SQUARE(), 1)) {
+          this.parsePostfixSuffix(this.parseCallArray(func, typeArguments));
+        } else {
+          this.reportExpectedArguments();
+        }
+      | TokenKind.OPEN_SQUARE() ->
+        this.parsePostfixSuffix(this.parseCallArray(func, typeArguments))
+      | TokenKind.OPEN_PAREN() ->
+        this.parsePostfixSuffix(this.parsePositionalCall(func, typeArguments))
+      | TokenKind.OPEN_CURLY() ->
+        this.parsePostfixSuffix(this.parseNamedCall(func, typeArguments))
+      | _ -> this.reportExpectedArguments()
+      }
+    } else {
+      func;
+    }
+  }
+
+  // postfix-expression:
+  //    primary-expression
+  //    call-expression
+  //    collection-literal-expression
+  //    call-array-expression
+  //    named-arguments-call-expression
+  //    member-selection-expression
+  mutable fun parsePostfixSuffix(value: ParseTree): ParseTree {
+    this.peek() match {
+    | TokenKind.OPEN_ANGLE() -> this.parsePossibleTypeArgumentsCallSuffix(value)
+    | TokenKind.BANG() ->
+      if (this.peekKindOffset(TokenKind.OPEN_SQUARE(), 1)) {
+        this.parsePostfixSuffix(
+          this.parseCallArray(value, this.createEmptyTreeBefore()),
+        );
+      } else {
+        value;
+      }
+    | TokenKind.OPEN_SQUARE() ->
+      this.parsePostfixSuffix(
+        this.parseCallArray(value, this.createEmptyTreeBefore()),
+      )
+    | TokenKind.OPEN_PAREN() ->
+      this.parsePostfixSuffix(
+        this.parsePositionalCall(value, this.createEmptyTreeBefore()),
+      )
+    | TokenKind.OPEN_CURLY() ->
+      this.parsePostfixSuffix(
+        this.parseNamedCall(value, this.createEmptyTreeBefore()),
+      )
+    | TokenKind.PERIOD() ->
+      this.parsePostfixSuffix(this.parseMemberSelection(value))
+    | TokenKind.COLON_COLON() ->
+      this.parsePostfixSuffix(this.parseMemberSelection(value))
+    | _ -> value
+    }
+  }
+
+  mutable fun parsePostfixExpression(): ParseTree {
+    this.parsePostfixSuffix(this.parsePrimaryExpression());
+  }
+
+  // 6.6 Unary Expression
+  // unary-expression:
+  //    postfix-expression
+  //    !  unary-expression
+  //    -  unary-expression
+  //    await  unary-expression
+  //    async  unary-expression
+  //    mutable  unary-expression
+  mutable fun peekUnaryOperator(): Bool {
+    this.peek().isUnaryOperator();
+  }
+
+  mutable fun parseUnaryExpression(): ParseTree {
+    if (this.peekUnaryOperator()) {
+      start = this.mark();
+      operator = this.tokenResult();
+      operand = this.parseUnaryExpression();
+      ParseTree.UnaryExpressionTree{
+        range => this.createRange(start),
+        operator,
+        operand,
+      };
+    } else {
+      this.parsePostfixExpression();
+    }
+  }
+
+  mutable fun parseMatchingSuffix(value: ParseTree): ParseTree {
+    if (this.peekPredefinedName(PredefinedName.match)) {
+      this.parseMatchingSuffix(this.parseMatchSuffix(value));
+    } else if (this.peekPredefinedName(PredefinedName.is)) {
+      this.parseMatchingSuffix(this.parseIsSuffix(value));
+    } else if (this.peekKind(TokenKind.AS())) {
+      this.parseMatchingSuffix(this.parseAsSuffix(value));
+    } else {
+      value;
+    }
+  }
+
+  // matching-expression:
+  //    unary-expression
+  //    matching-expression  is  pattern
+  //    matching-expression  match  pattern-branch-block
+  mutable fun parseMatchingExpression(): ParseTree {
+    this.parseMatchingSuffix(this.parseUnaryExpression());
+  }
+
+  mutable fun parseBinaryOperatorSuffix(
+    isOperator: TokenKind.TokenKind -> Bool,
+    parseElement: mutable SkipParser -> ParseTree,
+    left: ParseTree,
+  ): ParseTree {
+    if (isOperator(this.peek())) {
+      operator = this.tokenResult();
+      right = parseElement(this);
+      this.parseBinaryOperatorSuffix(
+        isOperator,
+        parseElement,
+        ParseTree.BinaryExpressionTree{
+          range => Parser.createRangeOfTrees(left, right),
+          left,
+          operator,
+          right,
+        },
+      );
+    } else {
+      left;
+    }
+  }
+
+  // NOTE: When modifying callers of this function, keep
+  // TokenKind.precedence() in sync.
+  mutable fun parseBinaryOperator(
+    isOperator: TokenKind.TokenKind -> Bool,
+    parseElement: mutable SkipParser -> ParseTree,
+  ): ParseTree {
+    left = parseElement(this);
+    this.parseBinaryOperatorSuffix(isOperator, parseElement, left);
+  }
+
+  // 6.7 multiplicative:  *  /  %
+  // multiplicative-expression:
+  //    matching-expression
+  //    multiplicative-expression  *  matching-expression
+  //    multiplicative-expression  /  matching-expression
+  //    multiplicative-expression  %  matching-expression
+  mutable fun parseMultiplicativeExpression(): ParseTree {
+    this.parseBinaryOperator(isMultiplicativeOperator, parser ->
+      parser.parseMatchingExpression()
+    )
+  }
+
+  // 6.8 additive:  +  -
+  // additive-expression:
+  //    multiplicative-expression
+  //    additive-expression  +  multiplicative-expression
+  //    additive-expression  -  multiplicative-expression
+  mutable fun parseAdditiveExpression(): ParseTree {
+    this.parseBinaryOperator(isAdditiveOperator, parser ->
+      parser.parseMultiplicativeExpression()
+    )
+  }
+
+  // 6.10 relational:  <  >  <=  >=
+  // relational-expression:
+  //    additive-expression
+  //    relational-expression  <  additive-expression
+  //    relational-expression  >  additive-expression
+  //    relational-expression  <=  additive-expression
+  //    relational-expression  >=  additive-expression
+  mutable fun parseRelationalExpression(): ParseTree {
+    this.parseBinaryOperator(isRelationalOperator, parser ->
+      parser.parseAdditiveExpression()
+    )
+  }
+
+  // 6.11 equality:  ==  !=
+  // equality-expression:
+  //    relational-expression
+  //    equality-expression  ==  relational-expression
+  //    equality-expression  !=  relational-expression
+  mutable fun parseEqualityExpression(): ParseTree {
+    this.parseBinaryOperator(isEqualityOperator, parser ->
+      parser.parseRelationalExpression()
+    )
+  }
+
+  // 6.15 logical and:  &&
+  // logical-and-expression:
+  //    equality-expression
+  //    logical-and-expression  &&  equality-expression
+  // logical-or-expression:
+  //    logical-and-expression
+  //    logical-or-expression  &&  logical-and-expression
+  mutable fun parseLogicalAndExpression(): ParseTree {
+    this.parseBinaryOperator(isLogicalAndOperator, parser ->
+      parser.parseEqualityExpression()
+    )
+  }
+
+  // 6.16 logical or:  ||
+  mutable fun parseLogicalOrExpression(): ParseTree {
+    this.parseBinaryOperator(isLogicalOrOperator, parser ->
+      parser.parseLogicalAndExpression()
+    )
+  }
+
+  // TODO section number for pipe operator
+  // X.XX pipe operator:  |>
+  // pipe-expression:
+  //    logical-or-expression
+  //    pipe-expression  |>  logical-or-expression
+  mutable fun parsePipeExpression(): ParseTree {
+    this.parseBinaryOperator(isPipeOperator, parser ->
+      parser.parseLogicalOrExpression()
+    )
+  }
+
+  // 6.3.1 Pattern Branch
+  mutable fun peekNamePattern(): Bool {
+    this.peekKind(TokenKind.NONTYPE_IDENTIFIER())
+  }
+
+  mutable fun peekPattern(): Bool {
+    this.peek() match {
+    | TokenKind.VOID()
+    | TokenKind.TRUE()
+    | TokenKind.FALSE()
+    | TokenKind.STRING_LITERAL()
+    | TokenKind.CHAR_LITERAL()
+    | TokenKind.MINUS()
+    | TokenKind.INTEGER_LITERAL()
+    | TokenKind.FLOAT_LITERAL()
+    | TokenKind.NONTYPE_IDENTIFIER()
+    | TokenKind.OPEN_PAREN()
+    | TokenKind.THIS()
+    | TokenKind.PERIOD()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      true
+    | _ -> false
+    }
+  }
+
+  // name-pattern:
+  //    non-type-identifier
+  mutable fun parseNamePattern(): ParseTree {
+    start = this.mark();
+    name = this.tokenResult();
+    ParseTree.NamePatternTree{range => this.createRange(start), name};
+  }
+
+  // paren-pattern:
+  //    (  pattern  )
+  //
+  // tuple-pattern:
+  //    (  pattern-comma-list  ,  pattern  )
+  mutable fun parseTuplePattern(): ParseTree {
+    start = this.mark();
+    elements = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekPattern(),
+      parser -> parser.parsePattern(),
+      TokenKind.CLOSE_PAREN(),
+    );
+    listElements = elements.getList();
+    if (listElements.size() == 1) {
+      ParseTree.ParenPatternTree{
+        range => this.createRange(start),
+        openParen => elements.startDelimiter,
+        pattern => listElements.first(),
+        closeParen => elements.endDelimiter,
+      };
+    } else {
+      ParseTree.TuplePatternTree{range => this.createRange(start), elements};
+    }
+  }
+
+  // positional-arguments-pattern:
+  //    (  pattern-comma-list-opt  )
+  mutable fun parsePositionalArgumentsPattern(): ParseTree {
+    start = this.mark();
+    arguments = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekPattern(),
+      parser -> parser.parsePattern(),
+      TokenKind.CLOSE_PAREN(),
+    );
+    ParseTree.PositionalPatternArgumentsTree{
+      range => this.createRange(start),
+      arguments,
+    };
+  }
+
+  // named-argument-value-pattern:
+  //    =>  pattern
+  mutable fun parseNamedArgumentValuePatternOpt(): ParseTree {
+    if (this.peekKind(TokenKind.FAT_ARROW())) {
+      fatArrow = this.eatTree(TokenKind.FAT_ARROW());
+      pattern = this.parsePattern();
+      ParseTree.NamedArgumentValuePatternTree{
+        range => Parser.createRangeOfTrees(fatArrow, pattern),
+        fatArrow,
+        pattern,
+      };
+    } else {
+      this.createEmptyTreeBefore();
+    }
+  }
+
+  // named-argument-pattern:
+  //    non-type-identifier  named-argument-value-pattern-opt
+  mutable fun parseNamedArgumentPattern(): ParseTree {
+    start = this.mark();
+    name = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    pattern = this.parseNamedArgumentValuePatternOpt();
+    ParseTree.NamedArgumentPatternTree{
+      range => this.createRange(start),
+      name,
+      pattern,
+    };
+  }
+
+  // named-arguments-pattern:
+  //    {  named-argument-pattern-comma-list-opt  }
+  mutable fun parseNamedArgumentsPattern(): ParseTree {
+    start = this.mark();
+    elements = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_CURLY(),
+      parser -> parser.peekNamePattern(),
+      parser -> parser.parseNamedArgumentPattern(),
+      TokenKind.CLOSE_CURLY(),
+    );
+    ParseTree.NamedPatternArgumentsTree{
+      range => this.createRange(start),
+      arguments => elements,
+    };
+  }
+
+  // arguments-pattern:
+  //    positional-arguments-pattern
+  //    named-arguments-pattern
+  //    _
+  mutable fun parseArgumentsPattern(typeName: ParseTree): ParseTree {
+    this.peek() match {
+    | TokenKind.OPEN_PAREN() ->
+      arguments = this.parsePositionalArgumentsPattern();
+      ParseTree.ClassPatternTree{
+        range => Parser.createRangeOfTrees(typeName, arguments),
+        typeName,
+        arguments,
+      }
+    | TokenKind.OPEN_CURLY() ->
+      arguments = this.parseNamedArgumentsPattern();
+      ParseTree.ClassPatternTree{
+        range => Parser.createRangeOfTrees(typeName, arguments),
+        typeName,
+        arguments,
+      }
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      if (this.peekToken().value == PredefinedName.underscore) {
+        arguments = this.tokenResult();
+        ParseTree.ClassPatternTree{
+          range => Parser.createRangeOfTrees(typeName, arguments),
+          typeName,
+          arguments,
+        };
+      } else {
+        this.errorResult(
+          errorExpectedArgumentsPattern,
+          "Expected '(', '{', or '_'",
+        );
+      }
+    | _ ->
+      this.errorResult(
+        errorExpectedArgumentsPattern,
+        "Expected '(', '{', or '_'",
+      )
+    }
+  }
+
+  // class-pattern:
+  //    class-type-specifier  arguments-pattern
+  mutable fun parseClassPattern(): ParseTree {
+    typeName = this.parseClassSpecifier();
+    this.parseArgumentsPattern(typeName);
+  }
+
+  // this-prefixed-pattern:
+  //    this-prefixed-type-name  arguments-pattern
+  mutable fun parseThisPrefixedPattern(): ParseTree {
+    typeName = this.parseThisPrefixedTypeSpecifier();
+    this.parseArgumentsPattern(typeName);
+  }
+
+  // literal-pattern:
+  //    literal
+  mutable fun parseLiteralPattern(): ParseTree {
+    this.parseLiteral()
+  }
+
+  // negative-literal-pattern:
+  //    -  integer-literal
+  //    -  float-literal
+  mutable fun parseNegativeLiteralPattern(): ParseTree {
+    start = this.mark();
+    minus = this.eatTree(TokenKind.MINUS());
+    this.peek() match {
+    | TokenKind.INTEGER_LITERAL()
+    | TokenKind.FLOAT_LITERAL() ->
+      value = this.parseLiteral();
+      ParseTree.NegativeLiteralPatternTree{
+        range => this.createRange(start),
+        minus,
+        value,
+      }
+    | _ ->
+      this.errorResult(
+        errorNumericLiteralExpected,
+        "Expected integer or float literal.",
+      )
+    }
+  }
+
+  // constant-pattern:
+  //    type-identifier
+  //    .  type-identifier
+  //    constant-pattern  .  type-identifier
+  //    constant-pattern  ::  type-identifier
+  // TODO: We could also support the following unambiguously which would allow
+  // pattern matching on all symbolic constants.
+  //    .  non-type-identifier
+  //    constant-pattern  .  non-type-identifier
+  //    constant-pattern  ::  non-type-identifier
+  mutable fun parseConstPattern(): ParseTree {
+    start = this.mark();
+    root = this.peek() match {
+    | TokenKind.PERIOD() -> this.parseGlobalNameStart()
+    | _ ->
+      // Subset of parseTypeNameExpression
+      name = this.parseLiteral();
+      typeArguments = this.createEmptyTreeBefore();
+      ParseTree.GenericTypeNameTree{
+        range => this.createRange(start),
+        name,
+        arguments => typeArguments,
+      }
+    };
+
+    value = this.parseConstPatternSuffix(root);
+
+    // Report expr.!id
+    this.ensureIsExpression(value);
+
+    // value is now a valid Expression parse tree, though with a much
+    // restricted grammar
+
+    ParseTree.ConstPatternTree{range => this.createRange(start), value};
+  }
+
+  // Subset of parsePostfixSuffix
+  mutable fun parseConstPatternSuffix(value: ParseTree): ParseTree {
+    this.peek() match {
+    | TokenKind.PERIOD() ->
+      this.parseConstPatternSuffix(this.parseMemberSelection(value))
+    | TokenKind.COLON_COLON() ->
+      this.parseConstPatternSuffix(this.parseMemberSelection(value))
+    | _ -> value
+    }
+  }
+
+  mutable fun parseConstOrClassPattern(): ParseTree {
+    peekParser = this.createPeekParser();
+    _ = peekParser.parseClassSpecifier();
+    peekParser.peek() match {
+    | TokenKind.OPEN_PAREN()
+    | TokenKind.OPEN_CURLY()
+    | TokenKind.NONTYPE_IDENTIFIER() ->
+      typeName = this.parseClassSpecifier();
+      this.parseArgumentsPattern(typeName)
+    | _ -> this.parseConstPattern()
+    }
+  }
+
+  mutable fun parseVoidPattern(): ParseTree {
+    start = this.mark();
+    voidKeyword = this.eatTree(TokenKind.VOID());
+
+    ParseTree.VoidPatternTree{range => this.createRange(start), voidKeyword};
+  }
+
+  // at-pattern:
+  //    non-type-identifier at pattern
+  mutable fun parseAt(): ParseTree {
+    start = this.mark();
+    identifier = this.eatId();
+    at = this.eatTree(TokenKind.AT());
+    pattern = this.parsePattern();
+    ParseTree.AtPatternTree{
+      range => this.createRange(start),
+      identifier,
+      at,
+      pattern,
+    };
+  }
+
+  mutable fun parseNameOrAtPattern(): ParseTree {
+    invariant(this.peek() is TokenKind.NONTYPE_IDENTIFIER());
+    if (this.peekOffset(1) is TokenKind.AT()) {
+      this.parseAt()
+    } else {
+      this.parseNamePattern()
+    }
+  }
+
+  // pattern:
+  //    literal-pattern
+  //    negative-literal-pattern
+  //    constant-pattern
+  //    name-pattern
+  //    paren-pattern
+  //    tuple-pattern
+  //    class-pattern
+  //    this-prefixed-pattern
+  //    as-pattern
+  //    at-pattern
+  mutable fun parsePattern(): ParseTree {
+    pattern = this.peek() match {
+    | TokenKind.VOID() -> this.parseVoidPattern()
+    | TokenKind.TRUE() -> this.parseLiteralPattern()
+    | TokenKind.FALSE() -> this.parseLiteralPattern()
+    | TokenKind.STRING_LITERAL() -> this.parseLiteralPattern()
+    | TokenKind.CHAR_LITERAL() -> this.parseLiteralPattern()
+    | TokenKind.MINUS() -> this.parseNegativeLiteralPattern()
+    | TokenKind.INTEGER_LITERAL() -> this.parseLiteralPattern()
+    | TokenKind.FLOAT_LITERAL() -> this.parseLiteralPattern()
+    | TokenKind.NONTYPE_IDENTIFIER() -> this.parseNameOrAtPattern()
+    | TokenKind.OPEN_PAREN() -> this.parseTuplePattern()
+    | TokenKind.PERIOD()
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      this.parseConstOrClassPattern()
+    | TokenKind.THIS() -> this.parseThisPrefixedPattern()
+    | _ -> this.errorResult(errorPatternExpected, "Pattern expected")
+    };
+    pattern
+  }
+
+  // if-clause:
+  //    if  condition-expression
+  mutable fun parseIfClause(): ParseTree {
+    ifKeyword = this.eatTree(TokenKind.IF());
+    expression = this.parseConditionExpression();
+    ParseTree.IfClauseTree{
+      range => Parser.createRangeOfTrees(ifKeyword, expression),
+      ifKeyword,
+      expression,
+    };
+  }
+
+  mutable fun parseIfClauseOpt(): ParseTree {
+    if (this.peek() == TokenKind.IF()) {
+      this.parseIfClause();
+    } else {
+      this.createEmptyTreeAfter();
+    };
+  }
+
+  // pattern-branch:
+  //    pattern-list  if-clause-opt  ->  expression-sequence
+  //
+  // pattern-list:
+  //    pattern
+  //    pattern-list  |  pattern
+  mutable fun parsePatternBranch(): ParseTree {
+    start = this.mark();
+    patterns = this.parseSeparatedList(TokenKind.BAR(), parser ->
+      parser.parsePattern()
+    );
+
+    if (
+      this.peekPredefinedName(PredefinedName.when) ||
+      this.peekPredefinedName(PredefinedName.where) ||
+      this.peekPredefinedName(PredefinedName.guard)
+    ) {
+      this.errorResult(
+        errorInvalidPatternCondition,
+        "Expected 'if' or '->' but encountered " +
+          "'" +
+          this.peekToken().value +
+          "'." +
+          " Perhaps you meant to use 'if'",
+      );
+    } else {
+      ifClause = this.parseIfClauseOpt();
+      arrow = this.eatTree(TokenKind.ARROW());
+      value = this.parseExpressionSequence();
+      ParseTree.PatternBranchTree{
+        range => this.createRange(start),
+        patterns,
+        ifClause,
+        arrow,
+        value,
+      };
+    }
+  }
+
+  mutable fun peekPatternBranch(): Bool {
+    this.peekKind(TokenKind.BAR())
+  }
+
+  // pattern-branch-list:
+  //    |-opt  pattern-branch-bar-list
+  //
+  // pattern-branch-bar-list:
+  //    pattern-branch
+  //    pattern-branch-bar-list  |  pattern-branch
+  mutable fun parsePatternBranchList(): ParseTree {
+    bar = this.eatTreeOpt(TokenKind.BAR());
+    branches = this.parseSeparatedList(TokenKind.BAR(), parser ->
+      parser.parsePatternBranch()
+    );
+    ParseTree.PatternBranchListTree{
+      range => Parser.createRangeOfTrees(bar, branches),
+      bar,
+      branches,
+    };
+  }
+
+  // pattern-branch-block:
+  //    {  pattern-branch-list  }
+  mutable fun parsePatternBranchBlock(): ParseTree {
+    openCurly = this.eatTree(TokenKind.OPEN_CURLY());
+    branches = this.parsePatternBranchList();
+    // Note that pattern branch lists always end in an expression sequence
+    closeCurly = this.eatPatternBranchBlockCloseCurly(openCurly);
+    ParseTree.PatternBranchBlockTree{
+      range => Parser.createRangeOfTrees(openCurly, closeCurly),
+      openCurly,
+      branches,
+      closeCurly,
+    };
+  }
+
+  mutable fun peekExpression(): Bool {
+    this.peek() match {
+    | TokenKind.OPEN_CURLY()
+    | TokenKind.IF()
+    | TokenKind.THROW()
+    | TokenKind.TRY()
+    | TokenKind.PERIOD()
+    | TokenKind.NONTYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER()
+    | TokenKind.MACRO_NONTYPE_IDENTIFIER()
+    | TokenKind.TRUE()
+    | TokenKind.FALSE()
+    | TokenKind.STRING_LITERAL()
+    | TokenKind.CHAR_LITERAL()
+    | TokenKind.INTEGER_LITERAL()
+    | TokenKind.FLOAT_LITERAL()
+    | TokenKind.VOID()
+    | TokenKind.THIS()
+    | TokenKind.OPEN_PAREN()
+    | TokenKind.BANG()
+    | TokenKind.MINUS()
+    | TokenKind.RETURN()
+    | TokenKind.AWAIT()
+    | TokenKind.BACK_TICK()
+    | TokenKind.DO()
+    | TokenKind.LOOP()
+    | TokenKind.FOR()
+    | TokenKind.WHILE()
+    | TokenKind.BREAK()
+    | TokenKind.CONTINUE()
+    | TokenKind.YIELD()
+    | TokenKind.FOREACH_FIELD() ->
+      true
+    // async, untracked, mutable, static and class can start a declaration, so must disambiguate after functions
+    // which have pattern branch lists as bodies
+    | TokenKind.MUTABLE()
+    | TokenKind.UNTRACKED()
+    | TokenKind.ASYNC() ->
+      peekParser = this.createPeekParser();
+      _ = peekParser.advance();
+      peekParser.peekExpression()
+    | TokenKind.CLASS()
+    | TokenKind.TRAIT()
+    | TokenKind.STATIC() ->
+      peekParser = this.createPeekParser();
+      _ = peekParser.advance();
+      !peekParser.peekClassMember()
+    | _ -> false
+    }
+  }
+
+  // Parses an expression with no leading newline/comment
+  // expression:
+  //    statement-expression
+  mutable fun parseWithExpression(): ParseTree {
+    this.parseWithSuffix(this.parsePipeExpression())
+  }
+
+  mutable fun parseWithSuffix(value: ParseTree): ParseTree {
+    if (this.peekPredefinedName(PredefinedName.with)) {
+      this.parseWithSuffix(this.parseWith(value));
+    } else {
+      value;
+    }
+  }
+
+  // statement-expression:
+  //    foreach-field-macro
+  //    with-expression
+  mutable fun parseStatementExpression(): ParseTree {
+    this.peek() match {
+    | TokenKind.FOREACH_FIELD() -> this.parseForEachFieldMacro()
+    | _ -> this.parseWithExpression()
+    }
+  }
+
+  // return-expression:
+  //    return  with-expression
+  mutable fun parseReturnExpression(): ParseTree {
+    start = this.mark();
+    returnKeyword = this.eatTree(TokenKind.RETURN());
+    value = this.parseWithExpression();
+    ParseTree.ReturnExpressionTree{
+      range => this.createRange(start),
+      returnKeyword,
+      value,
+    };
+  }
+
+  // break-expression:
+  //    break  with-expression
+  mutable fun parseBreakExpression(): ParseTree {
+    start = this.mark();
+    breakKeyword = this.eatTree(TokenKind.BREAK());
+    value = this.parseWithExpression();
+    ParseTree.BreakExpressionTree{
+      range => this.createRange(start),
+      breakKeyword,
+      value,
+    };
+  }
+
+  // yield-expression:
+  //    yield  with-expression
+  //
+  // yield-break-expression:
+  //    yield  break
+  mutable fun parseYield(): ParseTree {
+    start = this.mark();
+    yieldKeyword = this.eatTree(TokenKind.YIELD());
+    if (this.peekKind(TokenKind.BREAK())) {
+      breakKeyword = this.eatTree(TokenKind.BREAK());
+      ParseTree.YieldBreakExpressionTree{
+        range => this.createRange(start),
+        yieldKeyword,
+        breakKeyword,
+      };
+    } else {
+      value = this.parseWithExpression();
+      ParseTree.YieldExpressionTree{
+        range => this.createRange(start),
+        yieldKeyword,
+        value,
+      };
+    };
+  }
+
+  // while-loop-expression:
+  //    while  (  expression  )  binding-expression  else-branch-opt
+  mutable fun parseWhileLoopExpression(): ParseTree {
+    start = this.mark();
+    whileKeyword = this.eatTree(TokenKind.WHILE());
+    condition = this.parseConditionExpression();
+    body = this.parseBindingExpression();
+    elseOpt = this.parseElseBranch();
+    ParseTree.WhileLoopExpressionTree{
+      range => this.createRange(start),
+      whileKeyword,
+      condition,
+      body,
+      elseOpt,
+    };
+  }
+
+  // infinite-loop-expression:
+  //    loop  binding-expression
+  mutable fun parseInfiniteLoopExpression(): ParseTree {
+    start = this.mark();
+    loopKeyword = this.eatTree(TokenKind.LOOP());
+    body = this.parseBindingExpression();
+    ParseTree.InfiniteLoopExpressionTree{
+      range => this.createRange(start),
+      loopKeyword,
+      body,
+    };
+  }
+
+  // do-loop-expression:
+  //    do  binding-expression  while  (  expression  )  else-branch-opt
+  mutable fun parseDoLoopExpression(): ParseTree {
+    start = this.mark();
+    doKeyword = this.eatTree(TokenKind.DO());
+    body = this.parseBindingExpression();
+    whileKeyword = this.eatTree(TokenKind.WHILE());
+    condition = this.parseConditionExpression();
+    elseOpt = this.parseElseBranch();
+    ParseTree.DoLoopExpressionTree{
+      range => this.createRange(start),
+      doKeyword,
+      body,
+      whileKeyword,
+      condition,
+      elseOpt,
+    };
+  }
+
+  // for-each-field-macro:
+  //    #forEachField  (  macro-non-type-identifier  )  binding-expression
+  //    #forEachField  (  macro-non-type-identifier  ,  macro-non-type-identifier  )  binding-expression
+  mutable fun parseForEachFieldMacro(): ParseTree {
+    start = this.mark();
+    keyword = this.eatTree(TokenKind.FOREACH_FIELD());
+
+    arguments = this.parseDelimitedCommaSeparatedList(
+      TokenKind.OPEN_PAREN(),
+      parser -> parser.peekKind(TokenKind.MACRO_NONTYPE_IDENTIFIER()),
+      parser -> parser.eatTree(TokenKind.MACRO_NONTYPE_IDENTIFIER()),
+      TokenKind.CLOSE_PAREN(),
+    );
+    arguments.elements.size() match {
+    | 0 ->
+      this.addErrorAtTree(
+        arguments.endDelimiter,
+        errorExpectedForEachFieldArguments,
+        "Expected macro identifier.",
+      )
+    | 1
+    | 2 ->
+      void
+    | _ ->
+      this.addErrorAtTree(
+        arguments.elements[2],
+        errorTooManyForEachFieldArguments,
+        `Too many arguments to '#forEachField'. Expected 1 or 2, found ${arguments.elements.size()}`,
+      )
+    };
+    params = ParseTree.PositionalArgumentsTree{
+      range => arguments.range,
+      arguments,
+    };
+    body = this.parseBindingExpression();
+
+    ParseTree.ForEachFieldMacroTree{
+      range => this.createRange(start),
+      keyword,
+      params,
+      body,
+    }
+  }
+
+  // for-each-loop-expression:
+  //    forEach  (  for-each-value  in  expression  )  binding-expression  else-branch-opt
+  mutable fun parseForEachLoopExpression(): ParseTree {
+    start = this.mark();
+    forEachKeyword = this.eatTree(TokenKind.FOR());
+    openParen = this.eatTree(TokenKind.OPEN_PAREN());
+    // value will be one of:
+    //  - TokenTree
+    //  - ForEachKeyValueTree
+    //  - ListTree
+    value = this.parseForEachValue();
+    inKeyword = this.peek() match {
+    | TokenKind.IN() -> this.eatTree(TokenKind.IN())
+
+    | TokenKind.SEMI_COLON()
+    | TokenKind.EQUAL() ->
+      name = this.peekOffset(-1) match {
+      | TokenKind.NONTYPE_IDENTIFIER() -> this.peekTokenOffset(-1).value
+      | _ -> "name"
+      };
+      this.errorResult(
+        errorCForLoop,
+        `Unexpected '${this.peekToken().value}'. ` +
+          `'for (;;)' loops are not supported, you can use instead:\n` +
+          `  - for (${name} in collection)\n` +
+          `  - for (${name} in Range(0, 10))\n` +
+          `  - ${name} = 1; while (${name} < 10) { ...; !${name} = ${name} * 2 }`,
+      )
+    | _ ->
+      if (this.isVarLetVal()) {
+        name = this.peek() match {
+        | TokenKind.NONTYPE_IDENTIFIER() -> this.peekToken().value
+        | _ -> "name"
+        };
+        this.errorResult(
+          errorVariableLoopPrefix,
+          `Unexpected '${this.peekTokenOffset(-1).value}'. ` +
+            `Variables are declared without a leading keyword: ` +
+            `'for (${name} in ...)'`,
+        )
+      } else {
+        this.eatTree(TokenKind.IN())
+      }
+    };
+    collection = this.parseExpression();
+    closeParen = this.eatTree(TokenKind.CLOSE_PAREN());
+    body = this.parseBindingExpression();
+    elseOpt = this.parseElseBranch();
+    ParseTree.ForEachLoopExpressionTree{
+      range => this.createRange(start),
+      forEachKeyword,
+      openParen,
+      value,
+      inKeyword,
+      collection,
+      closeParen,
+      body,
+      elseOpt,
+    }
+  }
+
+  // for-each-value:
+  //    non-type-identifier
+  //    non-type-identifier  =>  non-type-identifier
+  //    (  non-type-identifier-comma-list  )
+  mutable fun parseForEachValue(): ParseTree {
+    start = this.mark();
+    this.peek() match {
+    | TokenKind.OPEN_PAREN() ->
+      this.parseDelimitedCommaSeparatedList(
+        TokenKind.OPEN_PAREN(),
+        parser -> parser.peekKind(TokenKind.NONTYPE_IDENTIFIER()),
+        parser -> parser.eatTree(TokenKind.NONTYPE_IDENTIFIER()),
+        TokenKind.CLOSE_PAREN(),
+      )
+
+    | TokenKind.SEMI_COLON() ->
+      condition = if (
+        this.peekKindOffset(TokenKind.SEMI_COLON(), 1) &&
+        this.peekKindOffset(TokenKind.CLOSE_PAREN(), 2)
+      ) {
+        "true"
+      } else {
+        "condition"
+      };
+      this.errorResult(
+        errorCForLoop,
+        `Unexpected ';'. 'for (;;)' loops are not supported, ` +
+          `you can use 'while (${condition})' instead`,
+      )
+    | TokenKind.CONST() ->
+      name = this.peekOffset(1) match {
+      | TokenKind.NONTYPE_IDENTIFIER() -> this.peekTokenOffset(1).value
+      | _ -> "name"
+      };
+      this.errorResult(
+        errorVariableLoopPrefix,
+        `Unexpected 'const'. Variables are declared without a leading keyword: ` +
+          `'for (${name} in ...)'`,
+      )
+    | _ ->
+      id = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+      if (this.peekKind(TokenKind.FAT_ARROW())) {
+        fatArrow = this.eatTree(TokenKind.FAT_ARROW());
+        value = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+        ParseTree.ForEachKeyValueTree{
+          range => this.createRange(start),
+          key => id,
+          fatArrow,
+          value,
+        }
+      } else {
+        id
+      }
+    }
+  }
+
+  // There are ambiguities between expresions and several grammar productions -
+  //    paren-expression
+  //    annotated-expression
+  //    tuple-expression
+  //    lambda-expression
+  //    lvalues
+  // Each caller of parseExpressionOrLValue should verify that the result is valid
+  // for their this.
+  mutable fun parseExpressionOrLValue(): ParseTree {
+    this.parseStatementExpression()
+  }
+
+  mutable fun parseExpression(): ParseTree {
+    expression = this.parseExpressionOrLValue();
+    this.ensureIsExpression(expression);
+    expression;
+  }
+
+  // Checks an expression parsed with parseExpressionOrLValue is in fact an Expression
+  // Specifically reports errors on -
+  //    - expr  .  !  id
+  //    - expr  !  [  ...  ]
+  //    - expr  [  ]
+  // Checks recursively within expressions
+  mutable fun ensureIsExpression(orig_expression: ParseTree): void {
+    orig_expression match {
+    | ParseTree.BlockTree _
+    | ParseTree.IfExpressionTree _
+    | ParseTree.ThrowExpressionTree _
+    | ParseTree.TryExpressionTree _
+    | ParseTree.WithExpressionTree _
+    | ParseTree.MatchExpressionTree _
+    | ParseTree.IsExpressionTree _
+    | ParseTree.AsExpressionTree _
+    | ParseTree.CallExpressionTree _
+    | ParseTree.GlobalExpressionTree _
+    | ParseTree.LambdaExpressionTree _
+    | ParseTree.ParenExpressionTree _
+    | ParseTree.TokenTree _
+    | ParseTree.GenericTypeNameTree _
+    | ParseTree.TypeAnnotatedExpressionTree _
+    | ParseTree.TemplateLiteralExpressionTree _
+    | ParseTree.ErrorTree _
+    | ParseTree.EmptyTree _
+    | ParseTree.InfiniteLoopExpressionTree _
+    | ParseTree.DoLoopExpressionTree _
+    | ParseTree.WhileLoopExpressionTree _
+    | ParseTree.ForEachLoopExpressionTree _
+    | ParseTree.BreakExpressionTree _
+    | ParseTree.ReturnExpressionTree _
+    | ParseTree.YieldExpressionTree _
+    | ParseTree.YieldBreakExpressionTree _
+    | ParseTree.ForEachFieldMacroTree _ ->
+      void
+
+    | ParseTree.CallArrayExpressionTree{func, bang} ->
+      this.ensureIsExpression(func);
+      if (!bang.isEmpty()) {
+        this.addErrorAtTree(
+          bang,
+          errorBangArrayInExpression,
+          "'![' in non-lvalue",
+        );
+      }
+    | ParseTree.CallMapExpressionTree{func, bang} ->
+      this.ensureIsExpression(func);
+      if (!bang.isEmpty()) {
+        this.addErrorAtTree(
+          bang,
+          errorBangArrayInExpression,
+          "'![' in non-lvalue",
+        )
+      }
+    | ParseTree.TupleExpressionTree{values} ->
+      for (value in values.getList()) {
+        this.ensureIsExpression(value)
+      }
+    | ParseTree.MemberSelectionExpressionTree{object, operator, member} ->
+      this.ensureIsExpression(object);
+      if (operator.matchTreeKind(TokenKind.PERIOD()) && member.isBang()) {
+        this.addErrorAtTree(
+          member,
+          errorDotBangInExpression,
+          "'.!' in non-lvalue",
+        );
+      }
+    | ParseTree.BinaryExpressionTree{left, right} ->
+      this.ensureIsExpression(left);
+      this.ensureIsExpression(right)
+    | ParseTree.UnaryExpressionTree{operand} -> this.ensureIsExpression(operand)
+    | _ ->
+      invariant_violation(
+        "Unexpected expression or lvalue tree: " +
+          orig_expression.toDebugString(),
+      )
+    }
+  }
+
+  // binding-expression:
+  //    expression
+  //    simple-binding
+  //    compound-binding
+  mutable fun parseBindingSuffix(value: ParseTree): ParseTree {
+    this.peek() match {
+    | TokenKind.COLON() -> this.parseSimpleBinding(value)
+    | TokenKind.EQUAL() -> this.parseSimpleBinding(value)
+    | TokenKind.EQUAL_DOT() -> this.parseCompoundBinding(value)
+    | _ ->
+      this.ensureIsExpression(value);
+      value
+    }
+  }
+
+  mutable fun parseBindingExpression(): ParseTree {
+    this.parseBindingSuffix(this.parseExpressionOrLValue())
+  }
+
+  // 3.1 Program Structure
+
+  // module-alias:
+  //    module  alias  type-identifier  =  type-identifier  ;
+  mutable fun peekModuleAlias(): Bool {
+    this.peekKind(TokenKind.MODULE()) &&
+      this.peekPredefinedNameOffset(PredefinedName.alias, 1)
+  }
+
+  mutable fun parseModuleAlias(): ParseTree {
+    invariant(this.peekKind(TokenKind.MODULE()), "Expected module");
+    invariant(
+      this.peekPredefinedNameOffset(PredefinedName.alias, 1),
+      "Expected alias",
+    );
+    start = this.mark();
+    moduleKeyword = this.eatTree(TokenKind.MODULE());
+    aliasKeyword = this.eatTree(TokenKind.NONTYPE_IDENTIFIER());
+    name = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    equals = this.eatTree(TokenKind.EQUAL());
+    value = this.eatTree(TokenKind.TYPE_IDENTIFIER());
+    semiColon = this.eatTree(TokenKind.SEMI_COLON());
+    ParseTree.ModuleAliasTree{
+      range => this.createRange(start),
+      moduleKeyword,
+      aliasKeyword,
+      name,
+      equals,
+      value,
+      semiColon,
+    };
+  }
+
+  // source-unit:
+  //    module-alias-list-opt  declaration-list-opt
+  mutable fun parseSourceUnit(): ParseTree {
+    start = this.mark();
+    begin = this.eatTree(TokenKind.BEGINNING_OF_FILE());
+    moduleAliases = this.parseList(
+      parser -> parser.peekModuleAlias(),
+      parser -> parser.parseModuleAlias(),
+    );
+    declarations = this.parseDeclarationList();
+    // Give specialized error below if the END_OF_FILE has not been reached.
+    end = this.eatTreeOpt(TokenKind.END_OF_FILE());
+    range = this.createRange(start);
+    invariant(
+      range.containsRange(end.range),
+      "Source unit does not contain end of file",
+    );
+    result = ParseTree.SourceUnitTree{
+      range,
+      begin,
+      moduleAliases,
+      declarations,
+      end,
+    };
+    if (!this.atEnd()) {
+      this.checkFunTypo();
+      this.checkInvalidPublic();
+      this.addErrorAtCurrent(errorExpectedDeclaration, "Expected declaration.");
+    };
+    result;
+  }
+}
+
+fun parseSource(
+  source: String,
+  isLazy: Bool,
+  filename: String = "",
+): Parser.ParseResults {
+  parser = SkipParser::create(source, isLazy);
+  tree = parser.parseSourceUnit();
+  allErrors = parser.getErrors();
+  // The current parser error recovery is not good so we only display the
+  // first error. We should remove it once we're in a good shape.
+  errors = if (allErrors.isEmpty()) {
+    Array[];
+  } else {
+    Array[allErrors[0]];
+  };
+
+  tokens = parser.getTokens();
+  if (errors.isEmpty() && !isLazy) {
+    Parser.validateParse(tokens, tree, filename);
+  };
+  Parser.ParseResults{tokens, comments => parser.getComments(), tree, errors};
+}
+
+fun getNamedParameterDefaultValue(tree: ParseTree): ParseTree {
+  tree match {
+  | ParseTree.NamedParameterTree{defaultValue} -> defaultValue
+  | _ -> invariant_violation("Expected named parameter")
+  }
+}
+
+fun getNamedParametersDefaultValues(
+  parameters: ParseTree,
+): Sequence<ParseTree> {
+  parameters.getList().map(getNamedParameterDefaultValue).filter(parameter ~>
+    !parameter.isEmpty()
+  )
+}
+
+fun tokenModifiers(tree: ParseTree): Sequence<ParseTree> {
+  tree.getList().filter(tree ~> tree.isToken())
+}
+
+fun isUnderscoreTree(tree: ParseTree): Bool {
+  tree.isToken() && tree.getTokenString() == PredefinedName.underscore;
+}
+
+fun isBindLValue(tree: ParseTree): Bool {
+  tree match {
+  | ParseTree.TokenTree _
+  | ParseTree.TupleExpressionTree _ ->
+    true
+  | _ -> false
+  }
+}
+
+fun createRangeOfModifiers(
+  modifiers: ParseTree,
+  afterTree: ParseTree,
+): TextRange {
+  TextRange.create(modifiers.range.start, afterTree.range.end)
+}
+
+fun isMultiplicativeOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isMultiplicativeOperator()
+}
+
+fun isAdditiveOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isAdditiveOperator();
+}
+
+fun isRelationalOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isRelationalOperator();
+}
+
+fun isEqualityOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isEqualityOperator();
+}
+
+fun isLogicalAndOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isLogicalAndOperator();
+}
+
+fun isLogicalOrOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isLogicalOrOperator();
+}
+
+fun isPipeOperator(kind: TokenKind.TokenKind): Bool {
+  kind.isPipeOperator();
+}
+
+const errorExpectedDeclaration: Int = 101;
+const errorNoNestedModules: Int = 102;
+const errorExpectedToken: Int = 103;
+const errorTypeSpecifierExpected: Int = 104;
+const errorExpectedFunClassConst: Int = 105;
+const errorExpectedFunctionName: Int = 106;
+const errorExpectedTypeParameter: Int = 107;
+const errorExpectedParameters: Int = 108;
+const errorExpectedClassSpecfier: Int = 109;
+const errorExpectedClassMember: Int = 110;
+const errorExpectedMethodBody: Int = 111;
+const errorExpectedIdentifier: Int = 112;
+const errorExpectedExpression: Int = 113;
+const errorExpectedBinding: Int = 114;
+const errorPatternExpected: Int = 115;
+const errorExpectedArgumentsPattern: Int = 116;
+const errorLambdaExpected: Int = 117;
+const errorNoModifiersOnGlobalConstant: Int = 118;
+const errorExpectedEndOfLValue: Int = 119;
+const errorMissingExpression: Int = 120;
+const errorTypeSpecifierOnTuple: Int = 121;
+const errorExpectedArguments: Int = 122;
+const errorTypeArgumentsInLValue: Int = 123;
+const errorLValueSetOnlyAtEnd: Int = 124;
+const errorLValueAddTooManyArguments: Int = 125;
+const errorDuplicateBangInLValue: Int = 126;
+const errorInvalidLValue: Int = 127;
+const errorModuleAliasAfterDeclaration: Int = 128;
+const errorNoLambdaParamDefaultValue: Int = 129;
+const errorNoLambdaParamModifiers: Int = 130;
+const errorUnderscoreAsIdentifier: Int = 131;
+const errorArrowExpected: Int = 132;
+const errorExpectedBang: Int = 133;
+const errorLValueArraySetNotAtEnd: Int = 134;
+const errorDotBangInExpression: Int = 135;
+const errorBangArrayInExpression: Int = 136;
+const errorLValueAppendNotAtEnd: Int = 137;
+const errorInvalidLambdaParameter: Int = 138;
+const errorNoModifiersOnChildren: Int = 139;
+const errorNoModifiersOnTypeConstant: Int = 140;
+const errorDuplicateModifier: Int = 141;
+const errorInvalidModifier: Int = 142;
+const errorExclusiveMethodModifiers: Int = 143;
+const errorBindingInMultiPatternBranch: Int = 144;
+const errorModuleEndExpected: Int = 145;
+const errorTypeSpecifierOnNonBindLValue: Int = 146;
+const errorModifiersOnClassBody: Int = 147;
+const errorUnexpectedLambdaParameterType: Int = 148;
+const errorExpectedLambdaParameterType: Int = 149;
+const errorTypeSpecifierInTuple: Int = 150;
+const errorNumericLiteralExpected: Int = 151;
+const errorMissingReturnType: Int = 152;
+const errorFunTypo: Int = 153;
+const errorExpectedClassMemberMissingFun: Int = 154;
+const errorLowercaseTypeSpecifier: Int = 155;
+const errorEmptyCurly: Int = 156;
+const errorExpectedConditionalExpression: Int = 157;
+const errorTripleDottedType: Int = 158;
+const errorMissingSemiColon: Int = 159;
+const errorTernary: Int = 160;
+const errorDotConcatenation: Int = 161;
+const errorInvalidPatternCondition: Int = 162;
+const errorUnexpectedMapElement: Int = 163;
+const errorExpectedMapElement: Int = 164;
+const errorMalformedCatch: Int = 165;
+const errorOneElementTuple: Int = 166;
+const errorUnprefixedVector: Int = 167;
+const errorVariableDeclarationPrefix: Int = 168;
+const errorWhenParametersAfterParameters: Int = 169;
+const errorTypeParametersAfterWhenParameters: Int = 170;
+const errorModuleWithCurly: Int = 171;
+const errorInvalidPublic: Int = 172;
+const errorInvalidPublicMethod: Int = 173;
+const errorMissingBar: Int = 174;
+const errorCommaPatternList: Int = 175;
+const errorNoTernary: Int = 176;
+const errorMatchBeforeExpression: Int = 177;
+const errorNoInitializerWithTypeConstantContraint: Int = 178;
+const errorNoAsClauseInIsAs: Int = 179;
+const errorNoNamePatternInIsAs: Int = 180;
+const errorNamedArgumentInIsAs: Int = 181;
+const errorIsAsWithCurly: Int = 182;
+const errorForEachValueExpected: Int = 183;
+const errorInvalidAnnotationArgument: Int = 184;
+const errorEmptyTupleType: Int = 185;
+const errorVariableLoopPrefix: Int = 186;
+const errorCForLoop: Int = 187;
+const errorMissingTypeConstant: Int = 188;
+const errorNoDotOnType: Int = 189;
+const errorDeclareOutsideModule: Int = 190;
+const errorExpectedForEachFieldArguments: Int = 191;
+const errorTooManyForEachFieldArguments: Int = 192;
+const errorLambdaTypeExpected: Int = 193;
+
+module end;

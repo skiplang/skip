@@ -1,0 +1,2 @@
+trait X<T: Equality>
+class Foo<T>() uses X<T>[T: Equality], X<T>

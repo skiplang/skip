@@ -1,0 +1,23 @@
+File "./typechecking/invalid/invalid_tparam_match_8.sk", line 9, characters 10-12:
+Invalid pattern. Constraint not satisfied when refining the type for this branch
+ 7 | fun test<V>(x: P<V>): void {
+ 8 |   x match {
+ 9 |   | Cont(L _) -> void
+   |          ^^^
+10 |   | _ -> void
+
+File "./typechecking/invalid/invalid_tparam_match_8.sk", line 9, characters 10-12:
+The type: L
+ 7 | fun test<V>(x: P<V>): void {
+ 8 |   x match {
+ 9 |   | Cont(L _) -> void
+   |          ^^^
+10 |   | _ -> void
+
+File "./typechecking/invalid/invalid_tparam_match_8.sk", line 5, characters 16-16:
+Is not a subtype of: R
+3 | class C() extends L, R
+4 | base class P<+T>
+5 | class Cont<+T: R>(T) extends P<T>
+  |                ^
+6 |

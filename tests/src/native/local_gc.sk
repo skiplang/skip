@@ -1,0 +1,168 @@
+@no_inline
+@debug
+fun generateGarbage(s: String = "", depth: Int = 10): String {
+  if (depth == 0) {
+    s
+  } else if (depth == 999999999) {
+    // Won't happen, but trick compiler into thinking there may be side effects.
+    print_string(s);
+    "q"
+  } else {
+    generateGarbage(s, depth - 1) + "." + depth
+  }
+}
+
+// Test GC with nothing live.
+@no_inline
+@debug
+fun testVoidGC(): void {
+  size1 = Debug.getMemoryFrameUsage();
+  _ = generateGarbage();
+  size2 = Debug.getMemoryFrameUsage();
+
+  assertTrue(size2 > size1);
+  localGC();
+  size3 = Debug.getMemoryFrameUsage();
+
+  assertEqual(size1, size3);
+
+  // Do one more localGC(), so the previous one didn't pop the note and
+  // make the getMemoryFrameUsage() results incorrect.
+  localGC();
+}
+
+@no_inline
+@debug
+fun testOneGC(): void {
+  size1 = Debug.getMemoryFrameUsage();
+
+  a = generateGarbage();
+  size2 = Debug.getMemoryFrameUsage();
+  assertTrue(size2 > size1);
+
+  b = generateGarbage();
+  size3 = Debug.getMemoryFrameUsage();
+  assertTrue(size3 > size2);
+
+  assertEqual(a, b);
+
+  // GC, only 'a' should survive.
+  localGC();
+  size4 = Debug.getMemoryFrameUsage();
+  assertTrue(size4 < size3);
+
+  assertEqual(a, generateGarbage());
+
+  // Finally everything is dead.
+  localGC();
+  size5 = Debug.getMemoryFrameUsage();
+  assertEqual(size5, size1);
+
+  // Do one more localGC(), so the previous one didn't pop the note and
+  // make the getMemoryFrameUsage() results incorrect.
+  localGC();
+}
+
+@no_inline
+@debug
+fun testManyGC(alwaysTrueFlag: Bool = true): void {
+  size1 = Debug.getMemoryFrameUsage();
+
+  a1 = generateGarbage("1");
+  a2 = generateGarbage("2");
+  a3 = generateGarbage("3");
+  a4 = generateGarbage("4");
+  a5 = generateGarbage("5");
+
+  size2 = Debug.getMemoryFrameUsage();
+  assertTrue(size2 > size1);
+
+  // That GC should free up some stuff, but not everything.
+  localGC();
+  size3 = Debug.getMemoryFrameUsage();
+  assertTrue(size3 > size1);
+  assertTrue(size3 <= size2); // localGC might be a nop if generateGarbage
+  // collected on exit with autogc
+
+  b1 = generateGarbage("1");
+  b2 = generateGarbage("2");
+  b3 = generateGarbage("3");
+  b4 = generateGarbage("4");
+  b5 = generateGarbage("5");
+
+  size4 = Debug.getMemoryFrameUsage();
+  assertTrue(size4 > size3);
+
+  assertEqual(a1, b1);
+  assertEqual(a2, b2);
+  assertEqual(a3, b3);
+  assertEqual(a4, b4);
+  assertEqual(a5, b5);
+
+  assertNotEqual(a1, b2);
+  assertNotEqual(a1, b3);
+  assertNotEqual(a1, b4);
+  assertNotEqual(a1, b5);
+
+  assertNotEqual(a2, b1);
+  assertNotEqual(a2, b3);
+  assertNotEqual(a2, b4);
+  assertNotEqual(a2, b5);
+
+  if (!alwaysTrueFlag) {
+    // We won't run this, but test conditional GC.
+    localGC()
+  };
+
+  assertNotEqual(a3, b1);
+  assertNotEqual(a3, b2);
+  assertNotEqual(a3, b4);
+  assertNotEqual(a3, b5);
+
+  if (alwaysTrueFlag) {
+    localGC()
+  };
+  size5 = Debug.getMemoryFrameUsage();
+  assertTrue(size5 < size4);
+
+  assertNotEqual(a4, b1);
+
+  if (alwaysTrueFlag) {
+    localGC()
+  };
+  size6 = Debug.getMemoryFrameUsage();
+  assertTrue(size6 < size5);
+
+  assertNotEqual(a4, b2);
+
+  if (alwaysTrueFlag) {
+    localGC()
+  };
+  size7 = Debug.getMemoryFrameUsage();
+  assertTrue(size7 < size6);
+
+  assertNotEqual(a4, b3);
+
+  if (alwaysTrueFlag) {
+    localGC()
+  };
+  size8 = Debug.getMemoryFrameUsage();
+  assertTrue(size8 < size7);
+
+  assertNotEqual(a4, b5);
+
+  localGC();
+  size9 = Debug.getMemoryFrameUsage();
+  assertEqual(size9, size1);
+
+  // Do one more localGC(), so the previous one didn't pop the note and
+  // make the getMemoryFrameUsage() results incorrect.
+  localGC();
+}
+
+fun main(): void {
+  testVoidGC();
+  testOneGC();
+  testManyGC();
+  print_string("Pass")
+}

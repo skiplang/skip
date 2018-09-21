@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "rfc6902": "2.3.0",
+    "vscode-jsonrpc": "3.6.2"
+  }
+}

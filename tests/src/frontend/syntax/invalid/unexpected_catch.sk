@@ -1,0 +1,4 @@
+
+fun test(): void {
+  1 catch 2
+}

@@ -1,0 +1,75 @@
+@test
+fun testFromItems(): void {
+  list = List[1, 2, 3];
+  assertTrue(list is List.Cons(1, List.Cons(2, List.Cons(3, List.Nil()))));
+  assertEqual(list.size(), 3);
+  assertEqual(Array::createFromItems(list), Array[1, 2, 3])
+}
+
+@test
+fun testEach(): void {
+  list = List[1, 2, 3];
+  vector = mutable Vector[];
+  list.each(vector.push);
+  assertEqual(vector.size(), 3);
+  assertEqual(vector[0], 1);
+  assertEqual(vector[1], 2);
+  assertEqual(vector[2], 3);
+}
+
+@test
+fun testTakeAndDrop(): void {
+  list = List[1, 2, 3, 4];
+  (a1, a2) = list.takeAndDrop(0);
+  assertTrue(a1 == List[]);
+  assertTrue(a2 == List[1, 2, 3, 4]);
+
+  (b1, b2) = list.takeAndDrop(1);
+  assertTrue(b1 == List[1]);
+  assertTrue(b2 == List[2, 3, 4]);
+
+  (c1, c2) = list.takeAndDrop(2);
+  assertTrue(c1 == List[1, 2]);
+  assertTrue(c2 == List[3, 4]);
+
+  (d1, d2) = list.takeAndDrop(3);
+  assertTrue(d1 == List[1, 2, 3]);
+  assertTrue(d2 == List[4]);
+
+  (e1, e2) = list.takeAndDrop(4);
+  assertTrue(e1 == List[1, 2, 3, 4]);
+  assertTrue(e2 == List[]);
+
+  (f1, f2) = list.takeAndDrop(100);
+  assertTrue(f1 == List[1, 2, 3, 4]);
+  assertTrue(f2 == List[]);
+}
+
+@test
+fun testPartition(): void {
+  list = List[1, 2, 3, 4];
+
+  (a1, a2) = list.partition(_ -> false);
+  assertTrue(a1 == List[]);
+  assertTrue(a2 == List[1, 2, 3, 4]);
+
+  (b1, b2) = list.partition(x -> x < 2);
+  assertTrue(b1 == List[1]);
+  assertTrue(b2 == List[2, 3, 4]);
+
+  (c1, c2) = list.partition(x -> x < 3);
+  assertTrue(c1 == List[1, 2]);
+  assertTrue(c2 == List[3, 4]);
+
+  (d1, d2) = list.partition(x -> x < 4);
+  assertTrue(d1 == List[1, 2, 3]);
+  assertTrue(d2 == List[4]);
+
+  (e1, e2) = list.partition(x -> x < 5);
+  assertTrue(e1 == List[1, 2, 3, 4]);
+  assertTrue(e2 == List[]);
+
+  (f1, f2) = list.partition(_ -> true);
+  assertTrue(f1 == List[1, 2, 3, 4]);
+  assertTrue(f2 == List[]);
+}

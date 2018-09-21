@@ -1,0 +1,15 @@
+File "./typechecking/invalid/final_base_construct_1.sk", line 5, characters 7-9:
+Possible base class instantiation
+3 | fun main(): void {
+4 |   b = B;
+5 |   _ = b();
+  |       ^^^
+6 |   print_raw("FAIL")
+
+File "./typechecking/invalid/final_base_construct_1.sk", line 5, characters 7-7:
+Cannot directly instantiate a Base<_> object as base classes do not have instances
+3 | fun main(): void {
+4 |   b = B;
+5 |   _ = b();
+  |       ^
+6 |   print_raw("FAIL")

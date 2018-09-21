@@ -1,0 +1,798 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Control;
+
+// If we jump to a block containing a single, simple-enough terminator,
+// we should just clone that terminator and replace the jump. But if it's
+// something complicated like a TypeSwitch we would rather not.
+//
+// NOTE: This can only return true for instrs that do not produce a value.
+private fun isSimpleTerminator(
+  instr: Terminator,
+  remap: InstrID -> InstrID,
+  optinfo: mutable OptimizerInfo,
+): Bool {
+  instr match {
+  | If _
+  | Jump _
+  | Return _
+  | Unreachable _
+  | YieldBreak _ ->
+    true
+
+  // Switches can be very complicated, so we don't want to clone them
+  // in general. But if the input coming from this predecessor block
+  // is a compile-time constant we know it will constant fold away so
+  // it's worth it.
+  | IntSwitch{value} -> optinfo.getInstr(remap(value)).isConstant()
+  | StringSwitch{value} -> optinfo.getInstr(remap(value)).isConstant()
+
+  | AsyncReturn _
+  | IndirectJump _
+  | InvokeFunction _
+  | InvokeMethod _
+  | LandingPad _
+  | RawInvoke _
+  | Throw _
+  | TypeSwitch _ ->
+    false
+  }
+}
+
+private fun optimizeSwitch<T: Equality & Hashable>(
+  peep: ValueSwitch<T>,
+  constantValue: ?T,
+  s: mutable Rewrite,
+): Bool {
+  succ = peep.successors;
+
+  constantValue match {
+  | Some(value) ->
+    // Which case do we jump to?
+    successorIndex = peep.cases.indexOf(value) match {
+    | Some(index) -> index + 1
+    | None() -> 0
+    };
+
+    _ = s.emitInstr(
+      Jump{
+        id => peep.id,
+        typ => tVoid,
+        pos => peep.pos,
+        prettyName => peep.prettyName,
+        successors => Array[succ[successorIndex]],
+      },
+    );
+
+    true
+  | None() ->
+    // TODO: It would be tidy to change any switch with two successors
+    // to an If. Or maybe just delete If in favor of Switch?
+
+    // Find the indices of all cases with non-default successors.
+    distinct = mutable Vector<Int>[];
+    distinct.ensureCapacity(peep.cases.size());
+    defaultSucc = succ[0];
+
+    for (i in Range(0, peep.cases.size())) {
+      if (defaultSucc != succ[i + 1]) {
+        distinct.push(i)
+      }
+    };
+
+    if (distinct.isEmpty()) {
+      // Only the default case remains.
+      _ = s.emitInstr(
+        Jump{
+          id => peep.id,
+          typ => tVoid,
+          pos => peep.pos,
+          prettyName => peep.prettyName,
+          successors => Array[defaultSucc],
+        },
+      );
+      true
+    } else if (distinct.size() != peep.cases.size()) {
+      // One or more "cases" was equal to the default, so discard it.
+      _ = s.emitInstr(
+        peep with {
+          cases => distinct.toArray().map(peep.cases.get),
+          successors => Array::fillBy(distinct.size() + 1, i -> {
+            if (i == 0) {
+              defaultSucc
+            } else {
+              succ[distinct[i - 1] + 1]
+            }
+          }),
+        },
+      );
+      true
+    } else {
+      false
+    }
+  }
+}
+
+// Return which successor an object of type sc will branch to if passed to
+// the given TypeSwitch.
+fun findTypeSwitchSuccessor(
+  sc: SClass,
+  cases: Array<GClassName>,
+  env: readonly ClassLookupEnv,
+): Int {
+  invariant(
+    sc.kind.isFinal(),
+    "Cannot find type switch successor " + "for non-final type",
+  );
+
+  case = -1;
+  if (
+    cases.any(gclass -> {
+      !case = case + 1;
+      sc.supertypes.any(super -> gclass == env.getSClass(super).gclassName)
+    })
+  ) {
+    // Found a match. Add 1 to skip default (successor 0).
+    case + 1
+  } else {
+    // No match, use default (successor 0).
+    0
+  }
+}
+
+mutable class .Control{
+  blocksChanged: mutable UnorderedSet<BlockID> = mutable UnorderedSet[],
+  blocksEmitted: mutable Array<Bool>,
+  mutable tcoLoopEntryBlock: BlockID = BlockID::none,
+} extends Rewrite {
+  // Simplifies control flow.
+  //
+  // Returns the resulting function and a bool saying whether it changed.
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    optinfo = OptimizerInfo::make(f);
+    d = mutable static{
+      optinfo,
+      env,
+      blocksEmitted => Array::mfill(optinfo.idToBlock.size(), false),
+      pos => f.pos,
+    };
+    d.go("control", true)
+  }
+
+  // When we optimize a self-tail-call into a loop, we move the old
+  // entry Block to become the loop head. The old FunParam InstrIDs get
+  // repurposed as the BlockParam IDs for the loop head. We then insert a
+  // new function entry block that simply "passes" the new FunParams as
+  // BlockParams to the loop head.
+  private mutable fun getTCOLoopEntryBlock(): BlockID {
+    if (this.tcoLoopEntryBlock == BlockID::none) {
+      optinfo = this.optinfo;
+
+      oldEntry = optinfo.f.blocks[0];
+      oldEntry.pos.invariant(
+        oldEntry.params.isEmpty(),
+        "Entry block cannot have params",
+      );
+
+      // If blockBuf is empty, we must still be emitting the entry block,
+      // which means this is a tight one-block infinite recursion.
+      tightInfiniteLoop = this.blockBuf.isEmpty();
+
+      if (!tightInfiniteLoop) {
+        // Remove the old entry block; we will prepend a new one below.
+        this.blockBuf.delete(0)
+      };
+
+      oldFunParams = this.funParams;
+      newFunParams = oldFunParams.map(fp -> fp with {id => this.iid()});
+      this.!funParams = newFunParams;
+      this.!funParamsChanged = true;
+
+      // The loop head takes BlockParams with the same IDs as the old FunParams
+      loopHeadParams = oldFunParams.mapWithIndex((index, fp) -> {
+        BlockParam{id => fp.id, typ => fp.typ, pos => fp.pos, index}
+      });
+
+      this.!tcoLoopEntryBlock = if (tightInfiniteLoop) {
+        // We are actually in the entry block right now, doing a tight
+        // infinite recursion. So just keep the block we are currently
+        // emitting as the new loop head.
+        this.!blockParams = loopHeadParams;
+        oldEntry.pos.invariant(
+          oldEntry.id == this.nextBlockID,
+          "Block ID confusion",
+        );
+        oldEntry.id
+      } else {
+        loopHead = Block{
+          id => this.newBlockID(),
+          pos => oldEntry.pos,
+          params => loopHeadParams,
+          prettyName => "tco_loop_head",
+          instrs => oldEntry.instrs,
+        };
+        optinfo.instrToBlock.recordBlock(loopHead);
+        this.blockBuf.insert(0, loopHead);
+        loopHead.id
+      };
+
+      // Create the new function entry block. It simply jumps to the loop
+      // head, passing the FunParams as BlockParams.
+      newEntry = Block{
+        id => this.newBlockID(),
+        pos => oldEntry.pos,
+        params => Array[],
+        prettyName => "entry",
+        instrs => Array[
+          Jump{
+            id => this.iid(),
+            typ => tVoid,
+            pos => oldEntry.pos,
+            successors => Array[
+              BlockSuccessor(
+                this.tcoLoopEntryBlock,
+                newFunParams.map(fp -> fp.id),
+              ),
+            ],
+          },
+        ],
+      };
+      optinfo.instrToBlock.recordBlock(newEntry);
+
+      if (!optinfo.getPredecessors(oldEntry.id).isEmpty()) {
+        // Someone was jumping to the old entry block. We need
+        // to create a new Block with the same ID that behaves
+        // like the old entry block, which means jumping to the
+        // loop head without touching its parameters.
+        legacyEntry = Block{
+          id => oldEntry.id,
+          pos => oldEntry.pos,
+          params => Array[],
+          instrs => Array[
+            Jump{
+              id => this.iid(),
+              typ => tVoid,
+              pos => oldEntry.pos,
+              successors => Array[
+                BlockSuccessor(
+                  this.tcoLoopEntryBlock,
+                  loopHeadParams.map(fp -> fp.id),
+                ),
+              ],
+            },
+          ],
+        };
+        optinfo.instrToBlock.recordBlock(legacyEntry);
+
+        this.blockBuf.insert(0, legacyEntry);
+      };
+
+      this.blockBuf.insert(0, newEntry);
+
+      this.blocksChanged.insert(this.tcoLoopEntryBlock);
+      this.blocksChanged.insert(oldEntry.id);
+      this.blocksChanged.insert(newEntry.id);
+
+      this.!anyBlockChanged = true;
+    };
+
+    this.tcoLoopEntryBlock
+  }
+
+  // If b unconditionally Returns, returns Some(returnValues), else None().
+  // This also handles the case of a Block ending with a Jump to a Return,
+  // possibly passing block parameters -- that counts as an unconditional
+  // Return too.
+  private readonly fun findReturnedValues(
+    b: Block,
+    seen: mutable UnorderedSet<BlockID>,
+  ): ?Array<InstrID> {
+    if (!seen.maybeInsert(b.id)) {
+      // Looks like an infinite loop; give up.
+      None()
+    } else {
+      b.terminator() match {
+      | Return{values} -> Some(values)
+      | Jump{successors} ->
+        // Handle a Jump. In this case we need to recursively see if
+        // the target block is an unconditional Return (with no
+        // other side effects), and remap its return value to handle
+        // any block parameters being fed in.
+        succ = successors[0];
+        target = this.getBlock(succ.target);
+        if (target.instrs.size() != 1) {
+          None()
+        } else {
+          // Remap any block parameters being passed in to find out what
+          // value is being returned from this block's perspective.
+          this.findReturnedValues(target, seen).map(values -> {
+            argMap = target.params
+              .map(bp -> bp.id)
+              .zip(succ.args)
+              .collect(UnorderedMap);
+            values.map(x -> argMap.maybeGet(x).default(x))
+          })
+        }
+      | _ -> None()
+      }
+    }
+  }
+
+  // Is this a tail call to the containing function?
+  private mutable fun isSelfTailCall(call: CallFunction): Bool {
+    if (call.name != this.optinfo.f.id) {
+      // Not a recursive call.
+      return false
+    };
+
+    // There must be no instructions other than TupleExtract between the
+    // Call and the Return/Jump.
+    block = this.getBlock(this.optinfo.instrToBlock[call.id]);
+    i = block.instrs.size() - 2;
+    loop {
+      instr = block.instrs[i];
+      if (instr.id == call.id) {
+        break void
+      };
+      instr match {
+      | TupleExtract _ -> void
+      | _ -> return false
+      };
+      !i = i - 1
+    };
+
+    // See if this Block ends with a Return (or Jump to Return etc).
+    this.findReturnedValues(block, mutable UnorderedSet[]) match {
+    | Some(retValues) ->
+      if (retValues.isEmpty()) {
+        true
+      } else if (retValues.size() == 1) {
+        retValues[0] == call.id
+      } else {
+        // Multivalue return. Ensure each value is the expected TupleExtract.
+        retIndex = -1;
+
+        retValues.all(v -> {
+          !retIndex = retIndex + 1;
+          this.getInstr(v) match {
+          | TupleExtract{obj, index} -> obj == call.id && index == retIndex
+          | _ -> false
+          }
+        })
+      }
+    | None() -> false
+    }
+  }
+
+  // Attempt to turn a self-tail-call into a loop.
+  private mutable fun optimizeCall(call: CallFunction): Bool {
+    optinfo = this.optinfo;
+
+    if (!this.isSelfTailCall(call)) {
+      false
+    } else if (
+      this.tcoLoopEntryBlock == BlockID::none &&
+      this.blocksChanged.contains(optinfo.f.blocks[0].id)
+    ) {
+      // The entry block was mutated, that's a bit complicated so don't
+      // attempt this now, we'll try again on our next fixed-point iteration.
+      false
+    } else {
+      _ = this.emitJump{
+        target => BlockSuccessor(this.getTCOLoopEntryBlock(), call.args),
+        pos => call.pos,
+      };
+      this.startNewBlock();
+
+      // Emit a dummy unreachable call just so that if we have a dead
+      // Instr later in this block using its value (Return or Jump passing
+      // a BlockParam) the IR remains legal.
+      _ = this.emitInstr(
+        call with {
+          args => call.args.map(arg ->
+            this.constantZero(this.getInstr(arg).typ).id
+          ),
+        },
+      );
+
+      true
+    }
+  }
+
+  private mutable fun optimizeJump(j: Jump): Bool {
+    optinfo = this.optinfo;
+
+    targetID = j.successors[0].target;
+    containingBlockID = optinfo.instrToBlock[j.id];
+    if (targetID == containingBlockID) {
+      // Not much we can do with an infinite loop!
+      false
+    } else if (targetID == optinfo.f.blocks[0].id) {
+      // Don't corrupt the entry block.
+      false
+    } else {
+      target = optinfo.getBlock(targetID);
+      term = target.terminator();
+
+      remap = i -> optinfo.getInstr(i).id;
+
+      if (!target.params.isEmpty()) {
+        // TODO: We should be able to optimize the case with params
+        // but it will take more effort since those params may be
+        // used by later blocks, and bypassing them may make delete the
+        // params or make them no longer dominate all uses.
+        false
+      } else if (
+        target.instrs.size() == 1 &&
+        isSimpleTerminator(term, remap, optinfo) &&
+        optinfo.getBlock(containingBlockID).instrs.size() != 1
+      ) {
+        // We are jumping to a single-instr block that is safe to clone,
+        // e.g. a jump-to-jump or jump-to-if. Cloning entire blocks is
+        // tricky but cloning a single simple terminator is easy because
+        // no other Instr inputs its (void) value.
+        //
+        // Note that this is often counterproductive when coming from a block
+        // containing only a single Jump, so we don't do it. What happens is
+        // several different jumps that should all end up in the same block
+        // end up cloning a Return. This prevents If/Switch realizing their
+        // successors are all the same because we end up with several
+        // different blocks containing a single "Return". Had we left the
+        // single-Jump block alone it would have been spliced out by everyone
+        // transferring control to it, leading to a better outcome.
+        _ = this.emitInstr(term.clone(j.id, term.typ, remap));
+        true
+      } else if (
+        optinfo.getPredecessors(targetID).size() == 1 &&
+        !this.blocksEmitted[targetID.id]
+      ) {
+        // An unconditional jump to a non-self block with one predecessor
+        // can just remove the jump and splice the blocks together.
+
+        // Clone target block instrs (needed if they reference block
+        // parameters), but leave their IDs alone. Renumbering the IDs would
+        // mean every downstream instr that read from them would need to be
+        // cloned, and that's not necessary, since we are logically just moving
+        // these instrs.
+        for (instr in target.instrs) {
+          _ = this.emitInstr(instr.replaceInputs(remap))
+        };
+
+        // Discard the instrs in the target block, which have the same
+        // IDs as the ones we just cloned, but leave it in a legal state.
+        // Dead code will kill this off as unreachable later. We borrow the
+        // replaced Jump's ID only because it's not in use now.
+        dummy = Unreachable{
+          id => j.id,
+          typ => tVoid,
+          pos => j.pos,
+          why => "Jump optimization made code unreachable",
+        };
+        optinfo.idToInstr.insert(dummy);
+        optinfo.instrToBlock.set(dummy.id, targetID);
+        optinfo.idToBlock.set(targetID, target with {instrs => Array[dummy]});
+
+        // Remove predecessors coming from the block we just gutted.
+        this.optinfo.updatePredecessors(
+          targetID,
+          term.successors,
+          dummy.successors,
+        );
+
+        true
+      } else {
+        false
+      }
+    }
+  }
+
+  private mutable fun optimizeIf(peep: If): Bool {
+    succ = peep.successors;
+    predInstr = this.getInstr(peep.predicate);
+
+    predInstr match {
+    | ConstantBool{value} ->
+      // if(true) or if(false) -> jump.
+      Some(
+        if (value) {
+          0
+        } else {
+          1
+        },
+      )
+    | _ ->
+      if (peep.allSuccessorsIdentical()) {
+        // True and false clauses are identical, so just jump to one of them.
+        Some(0)
+      } else {
+        None()
+      }
+    } match {
+    | Some(next) ->
+      _ = this.emitInstr(
+        Jump{
+          id => peep.id,
+          typ => peep.typ,
+          pos => peep.pos,
+          prettyName => peep.prettyName,
+          successors => Array[succ[next]],
+        },
+      );
+      true
+    | None() ->
+      predInstr match {
+      | BoolCmpEq{lhs, rhs} ->
+        this.getInstr(rhs) match {
+        | ConstantBool{value} ->
+          // if (!x) y else z -> if (x) z else y
+          if (!value) {
+            _ = this.emitInstr(
+              peep with {
+                predicate => lhs,
+                successors => Array[succ[1], succ[0]],
+              },
+            );
+            true
+          } else {
+            false
+          }
+        | _ -> false
+        }
+      | _ -> false
+      }
+    }
+  }
+
+  private mutable fun optimizeIntSwitch(peep: IntSwitch): Bool {
+    constantValue = this.getInstr(peep.value) match {
+    | c @ ConstantInt _ -> Some(c.value)
+    | _ -> None()
+    };
+    optimizeSwitch(peep, constantValue, this)
+  }
+
+  private mutable fun optimizeStringSwitch(peep: StringSwitch): Bool {
+    constantValue = this.getInstr(peep.value) match {
+    | c @ ConstantString _ -> Some(c.id)
+    | _ -> None()
+    };
+    optimizeSwitch(peep, constantValue, this)
+  }
+
+  // Delete unreachable TypeSwitch successors (could happen after inlining,
+  // or with "deferred" methods, etc.)
+  private mutable fun optimizeTypeSwitch(peep: TypeSwitch): Bool {
+    pos = peep.pos;
+
+    live = Array::mfill(peep.successors.size(), false);
+    pos.invariant(live.size() == peep.cases.size() + 1, "Size mismatch");
+
+    // For speed only process each generic concrete class once.
+    genericsSeen = mutable UnorderedSet[];
+
+    // For every possible type of value we might witch on, identify
+    // which case will match. Any unmatchable case can be deleted.
+    numLive = 0;
+
+    valueType = this.getInstr(peep.value).typ;
+    _ = valueType.forEachConcreteSubtype(this.env, sc -> {
+      if (genericsSeen.maybeInsert(sc.gclassName)) {
+        succIndex = findTypeSwitchSuccessor(sc, peep.cases, this.env);
+
+        if (!live[succIndex]) {
+          live.set(succIndex, true);
+          !numLive = numLive + 1
+        }
+      };
+
+      // Keep going until everything is live (if ever).
+      numLive < live.size()
+    });
+
+    if (numLive == live.size()) {
+      // Every case is live, nothing to be done.
+      false
+    } else if (numLive == 0) {
+      // We are doing a TypeSwitch on a base class with no concrete
+      // subtypes. This code can never be run at runtime (the user could
+      // not possibly have created an instance of the base class), so
+      // just delete the TypeSwitch and mark it "Unreachable".
+      _ = this.emitInstr(
+        Unreachable{
+          id => peep.id,
+          typ => tVoid,
+          pos,
+          why => (`TypeSwitch on value of type ${valueType} which has no ` +
+            `concrete subtypes created by this program`),
+        },
+      );
+      true
+    } else {
+      // Delete unreachable cases.
+      newSuccessors = mutable Vector[];
+      newCases = mutable Vector[];
+
+      // Build up surviving cases and successors, artificially keeping
+      // "default" for the moment.
+      peep.successors.eachWithIndex((i, succ) -> {
+        if (i == 0 || live[i]) {
+          newSuccessors.push(succ);
+        };
+        if (i != 0 && live[i]) {
+          newCases.push(peep.cases[i - 1])
+        }
+      });
+
+      if (!live[0]) {
+        // The default case was unreachable, so make the last normal case
+        // become the default case.
+        pos.invariant(
+          newSuccessors.size() > 1,
+          "No type switch successor is reachable.",
+        );
+        newSuccessors.set(0, newSuccessors.pop());
+        _ = newCases.pop();
+      };
+
+      _ = this.emitInstr(
+        if (newSuccessors.size() == 1) {
+          Jump{
+            id => peep.id,
+            typ => tVoid,
+            pos,
+            prettyName => peep.prettyName,
+            successors => newSuccessors.toArray(),
+          }
+        } else {
+          peep with {
+            cases => newCases.toArray(),
+            successors => newSuccessors.toArray(),
+          }
+        },
+      );
+      true
+    }
+  }
+
+  // Snap through branch-to-jump.
+  //
+  // TODO: We should someday be much more sophisticated.
+  // If we branch to a block where every instruction gets constant folded
+  // based on our block parameters, and the terminator turns into a "jump",
+  // we should clone the block and jump to the clone instead. This is even
+  // more powerful when combined with the GVN table so we know more things
+  // that are constants on this path. This way, for example, code that
+  // does "!done = true" and jumps to the top of the loop will instead
+  // break out of the loop and the loop may become a "while true", etc.
+  // This optimization is tricky though because cloning blocks can cause
+  // instrs in other blocks to be reading non-dominating inputs.
+  private mutable fun optimizeTerminator(t: Terminator): Bool {
+    optinfo = this.optinfo;
+
+    changed = false;
+    newSuccessors = t.successors.map(succ -> {
+      targetID = succ.target;
+      target = optinfo.getBlock(targetID);
+
+      // TODO: We should support snapping through jumps whose blocks
+      // take parameters, but it requires some rewriting because otherwise
+      // that block parameter may no longer dominate all uses.
+      // This is probably just be a specific case of the more general
+      // dominating problem in the TODO above.
+      if (
+        target.instrs.size() == 1 &&
+        target.params.isEmpty() &&
+        (target.instrs[0] is Jump _) &&
+        targetID != optinfo.instrToBlock[t.id] &&
+        targetID != target.successors()[0].target
+      ) {
+        !changed = true;
+
+        // Branch directly to the jump's successor. No need to remap
+        // any block params.
+        target.successors()[0]
+      } else {
+        succ
+      }
+    });
+
+    if (changed) {
+      _ = this.emitInstr(t with {successors => newSuccessors});
+      true
+    } else {
+      false
+    }
+  }
+
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    this.blocksEmitted.set(b.id.id, true)
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    // TODO: If we handled noReturn Calls somewhere else, this pass could
+    // run faster by only looking at each Block's Terminator. But we would
+    // still like noreturn propagation to happen in one of the passes that
+    // runs before inlining, since it affects inlining heuristics.
+
+    optinfo = this.optinfo;
+
+    // Don't bother if some other control flow change made this unreachable.
+    blockID = this.nextBlockID;
+    reachable = (
+      blockID != BlockID::none &&
+      (!optinfo.getPredecessors(blockID).isEmpty() ||
+        blockID == optinfo.f.blocks[0].id)
+    );
+
+    if (!reachable) {
+      false
+    } else {
+      instr match {
+      | term @ Terminator _ ->
+        if (
+          term.successors.any(succ -> this.blocksChanged.contains(succ.target))
+        ) {
+          // Keep it simple and don't try to optimize any Instr
+          // branching to a block we just changed, because if we look
+          // at its Block we'll find stale data (the pre-optimized
+          // instructions). Since something changed, the main optimize
+          // loop will run this pass again and we can try again from
+          // scratch with clean data.
+          return false
+        };
+
+        changed = term match {
+        | x @ If _ -> this.optimizeIf(x)
+        | x @ IntSwitch _ -> this.optimizeIntSwitch(x)
+        | x @ Jump _ -> this.optimizeJump(x)
+        | x @ StringSwitch _ -> this.optimizeStringSwitch(x)
+        | x @ TypeSwitch _ -> this.optimizeTypeSwitch(x)
+        | AsyncReturn _
+        | IndirectJump _
+        | InvokeFunction _
+        | InvokeMethod _
+        | LandingPad _
+        | RawInvoke _
+        | Return _
+        | Throw _
+        | Unreachable _
+        | YieldBreak _ ->
+          false
+        };
+
+        if (!changed) {
+          // Fall back to default optimizations.
+          !changed = this.optimizeTerminator(term)
+        };
+
+        if (changed) {
+          this.blocksChanged.insert(blockID);
+
+          // Repair cached predecessors, which may affect optimizations for
+          // upcoming blocks. Note that this code only works for relatively
+          // simple transformations. If you have a really complex one where
+          // this is wrong you'll need to do something else.
+          newTerminator = this.instrBuf.last() match {
+          | t @ Terminator _ -> t
+          | _ -> instr.pos.die("Transformation did not yield terminated block.")
+          };
+
+          optinfo.updatePredecessors(
+            blockID,
+            term.successors,
+            newTerminator.successors,
+          )
+        };
+
+        changed
+      | call @ CallFunction _ -> this.optimizeCall(call)
+      | _ -> false
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+File "./typechecking/exhaustiveness/invalid/nested_non_subtype2.sk", line 15, characters 5-14:
+The following pattern is unused:
+ | (Z(), H())
+13 | fun test(): String {
+14 |   (Y(), G()) match {
+15 |   | (Z(), H()) -> "Fail\n"
+   |     ^^^^^^^^^^
+16 |   }
+
+File "./typechecking/exhaustiveness/invalid/nested_non_subtype2.sk", line 15, characters 6-8:
+In particular, we encountered this sub-pattern
+ | Z()
+But expected one of
+ | Y()
+In that position.
+13 | fun test(): String {
+14 |   (Y(), G()) match {
+15 |   | (Z(), H()) -> "Fail\n"
+   |      ^^^
+16 |   }

@@ -1,0 +1,14 @@
+fun mutate(v: mutable Array<String>): void {
+  v.set(0, "Pass\n");
+  void
+}
+
+fun new_vector(): Array<String> {
+  v = mutable Array<String>["Fail\n"];
+  mutate(v);
+  freeze(v)
+}
+
+fun main(): void {
+  print_raw(new_vector()[0])
+}

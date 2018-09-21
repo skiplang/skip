@@ -1,0 +1,7 @@
+File "./typechecking/invalid/await_outside_async.sk", line 6, characters 3-11:
+Cannot await outside an async context
+4 |
+5 | fun f(): String {
+6 |   await g() // error, await within non-async fun
+  |   ^^^^^^^^^
+7 | }

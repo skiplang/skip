@@ -1,0 +1,12 @@
+File "./typechecking/exhaustiveness/invalid/when_pattern_exhaustiveness.sk", line 8, characters 3-3:
+Non-exhaustive pattern match found.
+The following are the structures of values that won't be matched:
+ | A()
+ | B()
+However some guarded (when) pattern may catch this pattern
+ 6 |
+ 7 | fun foo(x: T): String {
+ 8 |   x match {
+   |   ^^^^^^^^^
+ 9 |   | A() if (true) -> "A"
+   |   ^^^^^^^^^^^^^^^^^^^^^^

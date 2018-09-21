@@ -1,0 +1,8 @@
+Foo(0, Array[42])
+Foo(0, Array[42])
+
+Foo(0, Array[112])
+Foo(0, Array[112])
+Foo(0, Array[42])
+
+Pass

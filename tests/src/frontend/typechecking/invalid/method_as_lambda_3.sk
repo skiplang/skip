@@ -1,0 +1,9 @@
+mutable class Foo(mutable x: Int) {
+  readonly fun foo(): Int {
+    this.x
+  }
+}
+
+fun tester(x: readonly Foo): void {
+  _: () ~> Int = x.foo
+}

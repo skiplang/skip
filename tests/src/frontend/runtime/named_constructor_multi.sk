@@ -1,0 +1,9 @@
+base class A{x: String}
+base class B{y: String}
+
+class C{w: String} extends A, B
+
+fun main(): void {
+  c = C{w => "w", x => "x", y => "y\n"};
+  print_raw(c.w + c.x + c.y)
+}

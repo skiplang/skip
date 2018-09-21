@@ -1,0 +1,21 @@
+File "./typechecking/invalid/deferred_construct_1.sk", line 6, characters 3-11:
+Invalid object instantation. This constructor is deferred
+4 |
+5 | fun no(c: Concrete<B>): B {
+6 |   c(0, 100)
+  |   ^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/deferred_construct_1.sk", line 1, characters 29-36:
+It is 'deferred' because of this field
+1 | base class B final (x: Int, deferred y: this::T) {
+  |                             ^^^^^^^^
+2 |   type T;
+
+File "./typechecking/invalid/deferred_construct_1.sk", line 6, characters 3-3:
+To create an instance from this Class<_> object: it must be 'static' in an instance method. Or a Concrete<_> object in a deferred context
+4 |
+5 | fun no(c: Concrete<B>): B {
+6 |   c(0, 100)
+  |   ^
+7 | }

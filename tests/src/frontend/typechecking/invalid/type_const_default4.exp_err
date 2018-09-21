@@ -1,0 +1,15 @@
+File "./typechecking/invalid/type_const_default4.sk", line 10, characters 8-8:
+Cannot remove the constraint from this::T
+ 8 |
+ 9 | base class Baz extends Bar {
+10 |   type T;
+   |        ^
+11 | }
+
+File "./typechecking/invalid/type_const_default4.sk", line 6, characters 11-26:
+Was defined with a constraint here
+4 |
+5 | base class Bar extends Foo {
+6 |   type T: Test.MixedScalar;
+  |           ^^^^^^^^^^^^^^^^
+7 | }

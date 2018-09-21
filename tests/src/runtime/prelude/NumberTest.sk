@@ -1,0 +1,44 @@
+class Vector2<T: Number>(a: T, b: T) {
+  fun getLength(): T {
+    if (this.a < this.b) {
+      this.b - this.a
+    } else {
+      -(this.b - this.a)
+    }
+  }
+  fun toFloat(x: T): Float {
+    x.toFloat()
+  }
+  fun toInt(x: T): Int {
+    x.toInt()
+  }
+  fun fromInt(y: Int): T {
+    this.a.fromInt(y)
+  }
+  fun fromFloat(y: Float): T {
+    this.a.fromFloat(y)
+  }
+}
+
+@test
+fun testToString(): void {
+  assertEqual(Vector2(1, 5).getLength(), 4);
+  assertEqual(Vector2(5.0, 1.0).getLength(), 4.0);
+}
+
+@test
+fun testfromToIntFloat(): void {
+  // int
+  int = Vector2(0, 0);
+  assertEqual(int.fromInt(10), 10);
+  assertEqual(int.fromFloat(10.2), 10);
+  assertEqual(int.toInt(10), 10);
+  assertEqual(int.toFloat(10), 10.0);
+
+  // float
+  float = Vector2(0.0, 0.0);
+  assertEqual(float.fromInt(10), 10.0);
+  assertEqual(float.fromFloat(10.2), 10.2);
+  assertEqual(float.toInt(10.2), 10);
+  assertEqual(float.toFloat(10.2), 10.2);
+}

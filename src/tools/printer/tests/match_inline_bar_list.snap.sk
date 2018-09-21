@@ -1,0 +1,13 @@
+fun main(): void {
+  modifier match {
+  | "abstract" | "final" | "public" -> void
+
+  | "async" | "private" | "protected" | "static" ->
+    this.write(modifier);
+    this.space()
+
+  | _ ->
+    this.unexpectedAst(ast, "function modifier");
+    this.space()
+  }
+}

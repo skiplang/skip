@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
+import argparse
+import imp
+import logging
+import os
+import sys
+
+import common
+
+logger = logging.getLogger(os.path.basename(__file__))
+
+def fetchNonTestFiles(root, excludeBackendDir):
+    prelude = []
+    for path, dirs, files in os.walk(root):
+        if '__tests__' in dirs:
+            dirs.remove('__tests__')
+        # Skip the backend specific files
+        if path == common.prelude() and excludeBackendDir in dirs:
+            dirs.remove(excludeBackendDir)
+        prelude.extend(
+            os.path.join(path, f)
+            for f in files
+            if (f.endswith('.sk') and
+                not (f.startswith('.#') or '/.#' in f)))
+    return set(prelude)
+
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Print the prelude files',
+        parents=[common.commonArguments(needsBackend=True)])
+    parser.add_argument('--sep', default=' ')
+
+    args = common.parse_args(parser)
+
+    if common.getShortBackend() == 'native':
+        excludeBackendDir = "nonnative"
+    else:
+        excludeBackendDir = "native"
+
+    _prelude = fetchNonTestFiles(common.prelude(), excludeBackendDir)
+    _prelude = map(common.computeRelativePath, _prelude)
+
+    files = frozenset(_prelude)
+
+    print(args.sep.join(sorted(files)))
+
+if __name__ == '__main__':
+    rc = main()
+    sys.exit(rc)

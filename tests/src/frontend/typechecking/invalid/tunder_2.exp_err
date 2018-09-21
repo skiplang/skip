@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tunder_2.sk", line 6, characters 3-3:
+The value returned from the function is incompatible with the return type '_[1]'
+4 |
+5 | fun bar(x: _): _ {
+6 |   x
+  |   ^
+7 | }
+
+File "./typechecking/invalid/tunder_2.sk", line 5, characters 12-12:
+The type: _[0]
+3 | }
+4 |
+5 | fun bar(x: _): _ {
+  |            ^
+6 |   x
+
+File "./typechecking/invalid/tunder_2.sk", line 5, characters 16-16:
+Is not a subtype of: _[1]
+3 | }
+4 |
+5 | fun bar(x: _): _ {
+  |                ^
+6 |   x

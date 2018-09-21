@@ -1,0 +1,25 @@
+// Test our LLVM printing of float literals.
+
+@no_inline
+fun floats(): Array<Float> {
+  Array[
+    -0.0,
+    0.0,
+    -1.0,
+    1.0,
+    -99.25,
+    99.25,
+    -Float::nan,
+    Float::nan,
+    -Float::inf,
+    Float::inf,
+    -1e-100,
+    1e-100,
+    -1e100,
+    1e100,
+  ]
+}
+
+fun main(): void {
+  print_raw(floats().toString() + "\n")
+}

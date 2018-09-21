@@ -1,0 +1,794 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Persistent;
+
+// The number of elements in each leaf node, also the max size of
+// each internal node.
+const branchFactor: Int = 32;
+
+// The number of bits necessary to index into each level of the tree
+const bitsPerLevel: Int = 5;
+
+// Set to true to enable validation of the internal structure after
+// applying modifications.
+const debugEnableValidation: Bool = false;
+
+/**
+ * Represents an index within a Persistent vector
+ */
+value class Index(i: Int = 0) {
+  // Convert the index to the [0, 32) index for the level of the tree
+  // represented by shift.
+  fun child(shift: Shift): Int {
+    this.i.shr(shift.i).and(branchFactor - 1)
+  }
+
+  // Convert the index into the [0, 32) range within a leaf node
+  fun leafChild(): Int {
+    this.i.and(branchFactor - 1)
+  }
+}
+
+/**
+ * Represents the depth of a tree as the number of bits that an Index
+ * must be shifted in order to find the slot of that Index in the current
+ * depth.
+ */
+value class Shift(i: UInt8 = UInt8::min) {
+  // Decrease the shift to represent decreasing the depth of the tree
+  fun decrement(): Shift {
+    Shift(UInt8::truncate(this.i - bitsPerLevel))
+  }
+
+  // Increase the shift to represent increasing the depth of the tree
+  fun increment(): Shift {
+    Shift(UInt8::truncate(this.i + bitsPerLevel))
+  }
+}
+
+/**
+ * A mutable, growable sequence of items with *effectively* O(1) lookup/update
+ * and appending of items, implemented with a persistent bit-partitioned radix
+ * tree where each leaf node holds exactly 32 items, internal nodes hold 0..32
+ * children, and any trailing items (0..32) are held in a mutable "tail" array.
+ * Most operations are technically O(log32 n) or faster - effectively O(1).
+ *
+ * The performance of Persistent.RadixTreeVector inverts that of .Vector:
+ * - .Vector has lower overhead O(1) for individual set/get/push and other
+ *    operations, but clone and chill are O(n).
+ * - Persistent.RadixTreeVector has more constant overhead O(log32 N) for individual
+ *    operations, but clone and chill are O(1).
+ *
+ * NOTE: Adapted to Skip from the Rust "dogged" library:
+ * https://github.com/nikomatsakis/dogged/blob/master/src/lib.rs
+ */
+mutable class RadixTreeVector<+T> private {
+  private mutable rootSize: Index,
+  private mutable shift: Shift,
+  private mutable root: ?Node<T>,
+  private mutable tailSize: UInt8,
+  private mutable tail: mutable Array<RawStorage<T>>,
+}
+  extends .MutableIndexedSequence<T>
+  uses
+    IntoIterator<T>,
+    FromIterator<T>,
+    Show[T: readonly Show],
+    Hashable[T: Hashable],
+    Orderable[T: Orderable],
+    Equality[T: Equality],
+   {
+  // # Creating a RadixTreeVector
+
+  // Create a mutable RadixTreeVector with the given capacity.
+  static fun mcreate(capacity: Int = 0): mutable this {
+    invariant(
+      capacity >= 0,
+      "Persistent.RadixTreeVector::mcreate: Expected capacity to be nonnegative.",
+    );
+    mutable static{
+      rootSize => Index(),
+      shift => Shift(),
+      root => None(),
+      tailSize => UInt8::min,
+      tail => Unsafe.array_make(branchFactor),
+    }
+  }
+
+  // Create a RadixTreeVector containing the given items.
+  static fun createFromItems<I: readonly Sequence<T>>(items: I): this {
+    unsafe_chill_trust_me(static::mcreateFromItems(items))
+  }
+
+  static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
+    size = items.size(); // can't trust that each() will yield exactly this many items
+    invariant(
+      size >= 0,
+      "RadixTreeVector::mcreateFromItems: Expected items size() to be nonnegative.",
+    );
+    vec = static::mcreate(size);
+    items.each(vec.push);
+    invariant(
+      vec.size() == size,
+      "RadixTreeVector::mcreateFromItems(): Invalid sequence, expected each() to yield size() items.",
+    );
+    vec
+  }
+
+  // Create a RadixTreeVector filled with the items of an iterator.
+  static fun createFromIterator<I: mutable Iterator<T>>(items: I): this {
+    unsafe_chill_trust_me(RadixTreeVector::mcreateFromIterator(items))
+  }
+
+  static fun mcreateFromIterator<I: mutable Iterator<T>>(
+    items: I,
+  ): mutable this {
+    vec = static::mcreate();
+    items.each(vec.push);
+    vec
+  }
+
+  // # Copying a RadixTreeVector
+
+  // Returns a mutable, shallow copy of this RadixTreeVector in O(1) time.
+  // Internally this creates a new shallow reference to the immutable root node,
+  // and clones (copies) the fixed-size tail.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this {
+    invariant(
+      reserveCapacity >= 0,
+      "RadixTreeVector::clone: Expected reserveCapacity to be nonnegative.",
+    );
+    mutable static{
+      rootSize => this.rootSize,
+      shift => this.shift,
+      root => this.root,
+      tailSize => this.tailSize,
+      tail => this.tail.clone(),
+    }
+  }
+
+  // Returns an immutable, shallow copy of this RadixTreeVector in O(1) time.
+  // Internally this creates a new shallow reference to the immutable root node,
+  // and chills (copies) the fixed-size tail.
+  readonly fun chill(): this {
+    static{
+      rootSize => this.rootSize,
+      shift => this.shift,
+      root => this.root,
+      tailSize => this.tailSize,
+      tail => this.tail.chill(),
+    }
+  }
+
+  // # Sizing
+
+  readonly fun size(): Int {
+    this.rootSize.i + this.tailSize
+  }
+
+  // Remove all items from this RadixTreeVector.
+  mutable fun clear(): void {
+    tail = this.tail;
+    for (index in Range(0, this.tailSize.toInt())) {
+      Unsafe.array_set(tail, index, unsafeUninitialized());
+    };
+    this.!root = None();
+    this.!rootSize = Index();
+    this.!shift = Shift();
+    this.!tailSize = UInt8::min;
+  }
+
+  mutable fun resize(newSize: Int, value: T): void {
+    invariant(
+      newSize >= 0,
+      "RadixTreeVector.resize(): Expected size to be nonnegative.",
+    );
+    size = this.size();
+    if (newSize > size) {
+      // todo optimized bulk append of items
+      for (_ in Range(0, newSize - size)) {
+        this.push(value)
+      }
+    } else if (newSize < size) {
+      // todo optimized bulk removal from tail
+      for (_ in Range(0, size - newSize)) {
+        _ = this.pop()
+      }
+    }
+  }
+
+  // # Accessing Items
+
+  // Get the item at the given index, throws if the index is out of bounds.
+  readonly fun get(index: Int): T {
+    if (index.ult(this.rootSize.i)) {
+      this.root.fromSome()[this.shift, Index(index)]
+    } else {
+      !index = index - this.rootSize.i;
+      if (index < this.tailSize) {
+        unsafeGet(Unsafe.array_get(this.tail, index))
+      } else {
+        if (debugEnableValidation) {
+          this.assertValid(index, "get() index out of bounds");
+        };
+        throwOutOfBounds()
+      }
+    }
+  }
+
+  // Get the item at the given index as Some() or return None() if the index
+  // is out of bounds.
+  readonly fun maybeGet(index: Int): ?T {
+    // todo optimize get and maybeGet to avoid redundant bounds checks
+    if (index.uge(this.size())) {
+      None()
+    } else {
+      Some(this[index])
+    }
+  }
+
+  // # Adding/Changing/Removing Items
+
+  // Set the value at the given index. Throws if the index is out of bounds.
+  // NOTE: To add items to the end of a container use push().
+  mutable fun set(index: Int, value: T): void {
+    if (index < this.rootSize.i) {
+      this.!root = Some(
+        this.root.fromSome().set(this.shift, Index(index), value),
+      );
+    } else {
+      !index = index - this.rootSize.i;
+      if (index < this.tailSize) {
+        Unsafe.array_set(this.tail, index, unsafeMake(value))
+      } else {
+        if (debugEnableValidation) {
+          this.assertValid(index, "set() index out of bounds");
+        };
+        throwOutOfBounds()
+      }
+    }
+  }
+
+  // Add the value to the end of the container, growing the container's
+  // internal storage if necessary to make space for the item.
+  mutable fun push(value: T): void {
+    tailSize = this.tailSize;
+    tail = this.tail;
+    Unsafe.array_set(tail, tailSize.toInt(), unsafeMake(value));
+    nextTailSize = tailSize + 1;
+    if (nextTailSize == branchFactor) {
+      // pushing filled the tail, push to root
+      this.pushTail(branchFactor, unsafe_chill_trust_me(tail));
+      this.!rootSize = Index(this.rootSize.i + branchFactor);
+      this.!tailSize = UInt8::min;
+      this.!tail = Unsafe.array_make(branchFactor);
+    } else {
+      this.!tailSize = UInt8::truncate(nextTailSize);
+    };
+    if (debugEnableValidation) {
+      this.assertValid(value, "push");
+    };
+  }
+
+  // Remove the last item of the container and return it. Throws if the
+  // container is empty.
+  mutable fun pop(): T {
+    // There are three cases:
+    // 1. tail is non-empty: just pop from tail. it's okay if this leaves the
+    //    tail empty, that same state can occur after a push() that fills the
+    //    tail.
+    // 2. tail is empty and rootSize > 0: invert the pushTail operation,
+    //    promoting the rightmost leaf node to the new tail, and updating
+    //    (possibly flattening) root.
+    // 3. the vector is empty: throw out of bounds error
+    tailSize = this.tailSize;
+    if (tailSize > 0) {
+      // case 1: pop from tail
+      tail = this.tail;
+      nextTailSize = tailSize - 1;
+      this.!tailSize = UInt8::truncate(nextTailSize);
+      value = unsafeGet(Unsafe.array_get(tail, nextTailSize));
+      Unsafe.array_set(tail, nextTailSize, unsafeUninitialized());
+      if (debugEnableValidation) {
+        this.assertValid(value, "pop from tail");
+      };
+      value;
+    } else if (this.rootSize.i > 0) {
+      // case 2: promote the rightmost leaf to the tail and pop from there
+      value = this.popTail();
+      if (debugEnableValidation) {
+        this.assertValid(value, "pop and promote rightmost leaf to tail");
+      };
+      value
+    } else {
+      if (debugEnableValidation) {
+        this.assertValid(void, "out of bounds pop");
+      };
+      throwOutOfBounds()
+    }
+  }
+
+  // Remove the last item of the container and return it as Some() if
+  // non-empty, otherwise returns None().
+  mutable fun maybePop(): ?T {
+    // todo optimize pop & maybePop to avoid redundant bounds checks
+    if (this.size() > 0) {
+      Some(this.pop())
+    } else {
+      None()
+    }
+  }
+
+  // # Iterators
+
+  // Returns an Iterator that yields the range of numbers from 0 (inclusive)
+  // to the size of this vector (exclusive) - ie of `[0, size)`.
+  readonly fun keys(): mutable Iterator<Int> {
+    Range(0, this.size()).values()
+  }
+
+  // Returns an Iterator that yields the values contained in this vector.
+  readonly fun values(): mutable Iterator<T> {
+    // Snapshot all fields - appends (incl pushTail) after this won't be visible
+    root = this.root;
+    rootSize = this.rootSize;
+    shift = this.shift;
+    // todo: measure the cost of this snapshot copying overhead vs that of
+    // a RadixTreeVector-style generation field
+    tail = this.tail.chill();
+    tailSize = this.tailSize;
+
+    // iterate the root
+    root match {
+    | Some(node) ->
+      for (x in iterateNode(node, shift, rootSize)) {
+        yield x
+      }
+    | None() -> void
+    };
+
+    // iterate the tail
+    for (i in Range(0, tailSize.toInt())) {
+      yield unsafeGet(Unsafe.array_get(tail, i))
+    }
+  }
+
+  // Returns an Iterator that yields tuples of (index, value), where index
+  // is the zero-based index of the value within this vector.
+  readonly fun items(): mutable Iterator<(Int, T)> {
+    this.values().enumerated()
+  }
+
+  // # Trait Implementations
+
+  readonly fun toString[T: readonly Show](): String {
+    "Persistent.RadixTreeVector[" + this.join(", ") + "]"
+  }
+
+  readonly fun hash[T: Hashable](): Int {
+    this.reduce((acc, value) -> Hashable.combine(acc, value.hash()), -1)
+  }
+
+  readonly fun inspect(): Inspect {
+    vector = Array::fillBy(this.size(), index -> inspect(this[index]));
+    InspectVector("Persistent.RadixTreeVector", vector)
+  }
+
+  readonly fun <<U: Orderable>[T: U](other: readonly RadixTreeVector<U>): Bool {
+    this.compare(other) == LT()
+  }
+
+  readonly fun ><U: Orderable>[T: U](other: readonly RadixTreeVector<U>): Bool {
+    this.compare(other) == GT()
+  }
+
+  readonly fun <=<U: Orderable>[T: U](
+    other: readonly RadixTreeVector<U>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+
+  readonly fun >=<U: Orderable>[T: U](
+    other: readonly RadixTreeVector<U>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+
+  readonly fun ==<U: Equality>[T: U](other: readonly RadixTreeVector<U>): Bool {
+    this.size() == other.size() && static::eqLoop(this.values(), other.values())
+  }
+
+  readonly fun !=<U: Equality>[T: U](other: readonly RadixTreeVector<U>): Bool {
+    !(this == other)
+  }
+
+  readonly fun compare<U: Orderable>[T: U](
+    other: readonly RadixTreeVector<U>,
+  ): Order {
+    static::compareLoop(this.values(), other.values()) match {
+    | EQ() -> compare(this.size(), other.size())
+    | c -> c
+    }
+  }
+
+  // # Private Methods
+
+  private mutable fun pushTail(
+    tailSize: Int,
+    tail: Array<RawStorage<T>>,
+  ): void {
+    this.root match {
+    | Some(node) ->
+      // Find the total capacity of the root given the current depth
+      capacity = branchFactor.shl(this.shift.i);
+      if (this.rootSize.i + branchFactor <= capacity) {
+        // The root has enough space to fit an extra leaf without increasing depth
+        this.!root = Some(
+          node.pushTail(this.shift, this.rootSize, tailSize, tail),
+        );
+      } else {
+        // Not enough space, have to add a new layer
+        elements = Array::mfill(branchFactor, (None() : ?Node<T>));
+        elements![0] = Some(node);
+        elements![1] = Some(Node::branchLadder(this.shift, tailSize, tail));
+        this.!root = Some(Internal(unsafe_chill_trust_me(elements)));
+        this.!shift = this.shift.increment()
+      }
+    | None() -> this.!root = Some(Leaf(tail))
+    }
+  }
+
+  private mutable fun popTail(): T {
+    this.root match {
+    | Some(root) ->
+      // Find the total capacity of the root if depth was reduced by one layer
+      flattenedCapacity = branchFactor.shl(this.shift.decrement().i);
+      shift = this.shift;
+      nextRootSize = Index(this.rootSize.i - branchFactor);
+      (nextRoot, leaf) = root.popTail(shift, nextRootSize);
+      !nextRoot = if (
+        nextRoot.isSome() &&
+        nextRootSize.i <= flattenedCapacity
+      ) {
+        // If removing the rightmost leaf would fit into a tree of reduced depth
+        // then flatten
+        this.!shift = shift.decrement();
+        (nextRoot.fromSome() as Internal _).elements[0];
+      } else {
+        // Otherwise remove the leaf without flattening
+        nextRoot
+      };
+      tail = leaf.elements.clone();
+      tailSize = branchFactor - 1;
+      value = unsafeGet(Unsafe.array_get(tail, tailSize));
+      Unsafe.array_set(tail, tailSize, unsafeUninitialized());
+      this.!root = nextRoot;
+      this.!rootSize = nextRootSize;
+      this.!tail = tail;
+      this.!tailSize = UInt8::truncate(tailSize);
+      value
+    | None() ->
+      invariant_violation(
+        `Persistent.RadixTreeVector::popTail(): Expected root to be non-null`,
+      )
+    }
+  }
+
+  private static fun compareLoop<T2: Orderable>[T: T2](
+    a: mutable Iterator<T>,
+    b: mutable Iterator<T2>,
+  ): Order {
+    loop {
+      (a.next(), b.next()) match {
+      | (Some(x1), Some(x2)) ->
+        compare(x1, x2) match {
+        | EQ() -> continue
+        | c -> break c
+        }
+      | (None(), None()) -> break EQ()
+      | (Some(_), _) -> break GT()
+      | (_, Some(_)) -> break LT()
+      }
+    }
+  }
+
+  private static fun eqLoop<T2: Equality>[T: T2](
+    a: mutable Iterator<T>,
+    b: mutable Iterator<T2>,
+  ): Bool {
+    loop {
+      (a.next(), b.next()) match {
+      | (Some(x1), Some(x2)) -> if (x1 != x2) break false else continue
+      | (None(), None()) -> break true
+      | _ -> break false
+      }
+    }
+  }
+
+  private readonly fun assertValid<T2>(value: T2, msg: String = ""): void {
+    this.validate() match {
+    | Failure(reason) ->
+      debug("push");
+      debug(this);
+      debug(value);
+      debug(msg);
+      print_error_ln(reason);
+      print_stack_trace();
+      assertTrue(false)
+    | _ -> void
+    }
+  }
+
+  private readonly fun validate(): Result<void, String> {
+    if (this.tailSize >= branchFactor) {
+      return Failure(`Tail got too long ${this.tailSize}`)
+    };
+    this.root match {
+    | Some(node) ->
+      count = node.count();
+      if (count != this.rootSize.i) {
+        Failure(
+          `Node count ${count} does not match expected size ${
+            this.rootSize.i
+          }.`,
+        )
+      } else {
+        node.validate(mutable .Vector[], this.shift, this.rootSize)
+      }
+    | None() -> Success(void)
+    };
+  }
+}
+
+base class Node<+T> {
+  children =
+  | Internal(elements: Array<?Node<T>>)
+  | Leaf(elements: Array<RawStorage<T>>)
+
+  fun count(): Int
+  | Leaf(_elements) -> branchFactor
+  | Internal(elements) ->
+    count = 0;
+    for (node in elements) {
+      node match {
+      | Some(child) -> !count = count + child.count()
+      | None() -> break void
+      }
+    };
+    count
+
+  fun validate(
+    path: mutable .Vector<Int>,
+    shift: Shift,
+    len: Index,
+  ): Result<void, String>
+  | Internal(elements) ->
+    if (shift.i == 0) {
+      Failure(
+        `Encountered branch at path ${path.join(".")} but shift is ${shift.i}`,
+      )
+    } else {
+      elementsIterator = elements.values().enumerated();
+      walked = 0;
+      while (walked < len.i) {
+        elementsIterator.next() match {
+        | Some((i, element)) ->
+          element match {
+          | Some(node) ->
+            path.push(i);
+            maxInChild = branchFactor.shl(shift.i - bitsPerLevel);
+            remaining = len.i - walked;
+            childSize = min(remaining, maxInChild);
+            if (childSize == 0) {
+              return Failure(`Empty child at path ${path.join(".")}`)
+            } else {
+              node.validate(path, shift.decrement(), Index(childSize)) match {
+              | Success _ ->
+                !walked = walked + childSize;
+                if (i != path.pop()) {
+                  return Failure(`Unbalanced push/pop to path`)
+                }
+              | f @ Failure _ -> return f
+              }
+            }
+          | None() ->
+            return Failure(
+              `Encountered None() at index ${i} of path ${path.join(".")}`,
+            )
+          }
+        | None() ->
+          return Failure(`Iterator ended early at path ${path.join(".")}`)
+        }
+      };
+      Success(void)
+    }
+  | Leaf(_elements) ->
+    if (shift.i != 0) {
+      Failure(
+        `Encountered leaf at path ${path.join(".")} but shift is ${shift.i}.`,
+      )
+    } else {
+      Success(void)
+    }
+
+  static fun branchLadder<T2>(
+    shift: Shift,
+    tailSize: Int,
+    tail: Array<RawStorage<T2>>,
+  ): Node<T2> {
+    if (shift.i > 0) {
+      elements = Array::mfill(branchFactor, (None() : ?Node<T2>));
+      elements![0] = Some(
+        static::branchLadder(shift.decrement(), tailSize, tail),
+      );
+      Internal(unsafe_chill_trust_me(elements))
+    } else {
+      Leaf(tail)
+    }
+  }
+
+  fun pushTail<T2>[T: T2](
+    shift: Shift, // shift of current tree
+    index: Index, // index at which to write the new tail
+    tailSize: Int,
+    tail: Array<RawStorage<T2>>,
+  ): Node<T2>
+  | Leaf _ ->
+    invariant_violation(
+      `Node::pushTail: unexpected leaf node with shift=${shift.i}`,
+    )
+  | Internal(elements) ->
+    child = index.child(shift);
+    !shift = shift.decrement();
+    tailNode = if (shift.i == 0) {
+      // No more intermediate Internal nodes needed, make tail a leaf
+      Leaf(tail);
+    } else {
+      elements[child] match {
+      | Some(node) ->
+        // Internal node exists, continue following path down
+        node.pushTail(shift, index, tailSize, tail)
+      | None() ->
+        // No internal node, construct the intermediate structure
+        // with internal nodes until shift == 0
+        static::branchLadder(shift, tailSize, tail)
+      }
+    };
+    // build a new internal node with updated elements
+    // todo: `nextElements = elements.clone()` should work...
+    nextElements = Array::mfillBy(branchFactor, i ->
+      (Unsafe.array_get(elements, i) : ?Node<T2>)
+    );
+    nextElements![child] = Some(tailNode);
+    Internal(unsafe_chill_trust_me(nextElements))
+
+  fun popTail(
+    shift: Shift, // shift of current tree
+    index: Index, // index of the rightmost leaf
+  ): (?Node<T>, Leaf<T>)
+  | leaf @ Leaf _ -> (None(), leaf)
+  | Internal(elements) ->
+    child = index.child(shift);
+    Unsafe.array_get(elements, child) match {
+    | Some(node) ->
+      (nextNode, leaf) = node.popTail(shift.decrement(), index);
+      if (child == 0 && nextNode.isNone()) {
+        // Internal node with one child that is now null, propagate null
+        (nextNode, leaf)
+      } else {
+        nextElements = elements.clone();
+        Unsafe.array_set(nextElements, child, nextNode);
+        (Some(Internal(unsafe_chill_trust_me(nextElements))), leaf)
+      }
+    | None() ->
+      invariant_violation(
+        `Node::popTail: unexpected null node with shift=${shift.i}`,
+      )
+    }
+
+  fun get(
+    shift: Shift, // shift of current tree
+    index: Index, // index of the value to get
+  ): T {
+    node = this;
+    loop {
+      node match {
+      | Leaf(elements) ->
+        break unsafeGet(Unsafe.array_get(elements, index.leafChild()))
+      | Internal(elements) ->
+        Unsafe.array_get(elements, index.child(shift)) match {
+        | Some(childNode) -> !node = childNode
+        | _ ->
+          invariant_violation(
+            `Node::get: unexpected null node with shift=${shift.i}`,
+          )
+        };
+        !shift = shift.decrement()
+      }
+    }
+  }
+
+  fun set<T2>[T: T2](
+    shift: Shift, // shift of the current tree
+    index: Index, // index at which to write the value
+    value: T2,
+  ): Node<T2>
+  | Leaf(elements) ->
+    child = index.leafChild();
+    // todo: `nextElements = elements.clone()` should work...
+    nextElements = Array::mfillBy(branchFactor, i ->
+      (Unsafe.array_get(elements, i) : RawStorage<T2>)
+    );
+    Unsafe.array_set(nextElements, child, unsafeMake(value));
+    Leaf(unsafe_chill_trust_me(nextElements))
+  | Internal(elements) ->
+    child = index.child(shift);
+    Unsafe.array_get(elements, child) match {
+    | Some(childNode) ->
+      nextChildNode = childNode.set(shift.decrement(), index, value);
+      // todo: `nextElements = elements.clone()` should work...
+      nextElements = Array::mfillBy(branchFactor, i ->
+        (Unsafe.array_get(elements, i) : ?Node<T2>)
+      );
+      Unsafe.array_set(nextElements, child, Some(nextChildNode));
+      Internal(unsafe_chill_trust_me(nextElements))
+    | None() ->
+      invariant_violation(
+        `Node::set: unexpected null node with shift=${shift.i}`,
+      )
+    }
+}
+
+// RawStorage Alias
+// Thesee aliases here are to make it easier to switch to using an Option
+// during development
+
+type RawStorage<T> = Unsafe.RawStorage<T>;
+
+@always_inline
+private fun unsafeGet<T>(storage: RawStorage<T>): T {
+  Unsafe.RawStorage::unsafeGet(storage)
+}
+
+@always_inline
+private fun unsafeMake<T>(value: T): RawStorage<T> {
+  Unsafe.RawStorage::make(value)
+}
+
+@always_inline
+private fun unsafeUninitialized<T>(): RawStorage<T> {
+  Unsafe.RawStorage::uninitialized()
+}
+
+private fun iterateNode<T>(
+  node: Node<T>,
+  shift: Shift,
+  rootSize: Index,
+): mutable Iterator<T> {
+  node match {
+  | Leaf(elements) ->
+    for (x in elements) {
+      yield unsafeGet(x)
+    }
+  | Internal(elements) ->
+    for (i in Range(0, rootSize.child(shift))) {
+      Unsafe.array_get(elements, i) match {
+      | Some(childNode) ->
+        for (x in iterateNode(childNode, shift.decrement(), rootSize)) {
+          yield x
+        }
+      | None() ->
+        invariant_violation(
+          `iterateNode: unexpected null node with shift=${shift.i}`,
+        )
+      }
+    }
+  }
+}
+
+module end;

@@ -1,0 +1,23 @@
+File "./typechecking/invalid/annotation_on_collection.sk", line 12, characters 3-16:
+The value returned from the function is incompatible with the return type 'Toto<Bool>'
+10 |
+11 | fun test(): Toto<Bool> {
+12 |   Toto<String>[];
+   |   ^^^^^^^^^^^^^^
+13 | }
+
+File "./typechecking/invalid/annotation_on_collection.sk", line 12, characters 8-13:
+The invariant type: String
+10 |
+11 | fun test(): Toto<Bool> {
+12 |   Toto<String>[];
+   |        ^^^^^^
+13 | }
+
+File "./typechecking/invalid/annotation_on_collection.sk", line 11, characters 18-21:
+Is incompatible with the invariant type: Bool
+ 9 | }
+10 |
+11 | fun test(): Toto<Bool> {
+   |                  ^^^^
+12 |   Toto<String>[];

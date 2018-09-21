@@ -1,0 +1,23 @@
+File "./typechecking/invalid/irreconcilable_branch_pattern_return_types.sk", line 14, characters 19-28:
+Invalid branch
+12 | fun perform<T>(e: Expr<T>, v: T): T {
+13 |   e match {
+14 |   | IntExpr(_) -> add_one(v)
+   |                   ^^^^^^^^^^
+15 |   | BoolExpr(_) -> or_true(v)
+
+File "./typechecking/invalid/irreconcilable_branch_pattern_return_types.sk", line 5, characters 28-30:
+The type: Int
+3 | class BoolExpr(Bool) extends Expr<Bool>
+4 |
+5 | fun add_one<T: Int>(x: T): Int {
+  |                            ^^^
+6 |   x + 1
+
+File "./typechecking/invalid/irreconcilable_branch_pattern_return_types.sk", line 8, characters 29-32:
+Does not share a common super type with: Bool
+ 6 |   x + 1
+ 7 | }
+ 8 | fun or_true<T: Bool>(x: T): Bool {
+   |                             ^^^^
+ 9 |   x || true

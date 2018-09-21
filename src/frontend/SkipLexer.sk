@@ -1,0 +1,838 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The lexer. */
+/*****************************************************************************/
+module SkipLexer;
+
+// Shared code between Lexer and TemplateLexer.
+mutable base class SkipLexer extends Lexer.Lexer {
+  mutable fun skipHexDigits(digits: Int): void {
+    if (digits == 0) {
+      void
+    } else if (Chars.isHexDigit(this.peek())) {
+      this.advance();
+      this.skipHexDigits(digits - 1);
+    } else {
+      this.addErrorAt(
+        this.position,
+        errorMissingHexEscape,
+        "Missing hex digit in escape sequence",
+      );
+    }
+  }
+
+  mutable fun checkHexEscape(expectedDigits: Int): void {
+    start = this.mark();
+    initialErrorCount = this.errorCount();
+    this.skipHexDigits(expectedDigits);
+    if (!this.hadError(initialErrorCount)) {
+      code = Chars.hexDigitsToInt(this.getTokenText(start));
+      if (!Char::isValidCharCodePoint(code)) {
+        this.addErrorAt(
+          start,
+          errorCharLiteralOutOfRange,
+          "Invalid char escape sequence",
+        );
+      }
+    }
+  }
+
+  mutable fun skipEscapeSequence(): void {
+    invariant(this.peek() == '\\', "Expected escape start");
+    start = this.mark();
+    this.advance();
+    if (this.atEnd()) {
+      this.addErrorAt(
+        start,
+        errorUnterminatedEscapeSequence,
+        "Unterminated escape sequence",
+      );
+    } else {
+      escape = this.mark();
+      this.next() match {
+      // Standard escapes
+      | 'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0'
+      // For template literals
+      | '$' | '{' | '`' ->
+        void
+
+      | 'x' -> this.checkHexEscape(2)
+      | 'u' -> this.checkHexEscape(4)
+      | 'U' -> this.checkHexEscape(8)
+      | _ ->
+        this.addErrorAt(
+          escape,
+          errorInvalidEscapeSequence,
+          "Invalid escape sequence",
+        )
+      }
+    }
+  }
+
+  // Called after a token is completed.
+  // Consumes tokens on this line
+  protected mutable fun lexTrailingTrivia(): void {
+    start = this.mark();
+    while ({
+      whitespaceStart = this.mark();
+      this.skipWhitespace();
+      if (start.line() != this.position.line()) {
+        this.setPosition(whitespaceStart);
+        false;
+      } else if (this.peekChar('/') && this.peekCharOffset('/', 1)) {
+        startComment = this.mark();
+        this.skipToEndOfLine();
+        this.createAndAddComment(startComment, Token.LineComment());
+        false;
+      } else if (this.peekChar('/') && this.peekCharOffset('*', 1)) {
+        startComment = this.mark();
+        this.skipDelimitedCommentTail(start);
+        if (start.line() == this.position.line()) {
+          this.createAndAddComment(startComment, Token.DelimitedComment());
+          true;
+        } else {
+          // multiline comment, starting on the same line as the token
+          // but ends on a different line.
+          // Keep any previous comments on this line, but discard this comment.
+          this.setPosition(startComment);
+          false;
+        };
+      } else {
+        // We've found a new token on the same line as the completed token.
+        // Discard any trivia which we had consumed above.
+        this.finishToken();
+        this.setPosition(start);
+        false;
+      };
+    }) void;
+  }
+
+  // 4.3.3 Whitespace
+  mutable fun skipWhitespace(): void {
+    this.skipChars(Chars.isWhitespace);
+  }
+
+  // 4.3.2 Comments
+  mutable fun skipToEndOfLine(): void {
+    if (!this.atEnd() && !Chars.isNewLine(this.peek())) {
+      this.advance();
+      this.skipToEndOfLine();
+    }
+  }
+
+  mutable fun skipDelimitedCommentTail(
+    start: readonly Lexer.LexingPosition,
+  ): void {
+    if (this.atEnd()) {
+      this.addError(
+        SyntaxError.create(
+          errorUnterminatedComment,
+          start.getRange(this.position),
+          "Unterminated comment",
+        ),
+      );
+    } else if (
+      this.peekChar(Chars.star) &&
+      this.peekCharOffset(Chars.forwardSlash, 1)
+    ) {
+      this.advance();
+      this.advance();
+    } else {
+      this.advance();
+      this.skipDelimitedCommentTail(start);
+    }
+  }
+}
+
+// Includes the core Skip Language specific lexing.
+//
+// Does not include lexing of Template literals.
+mutable class SkipCoreLexer extends SkipLexer {
+  // 4.3.4.4.6 String Literals
+  mutable fun reportUnterminatedStringLiteral(
+    start: readonly Lexer.LexingPosition,
+  ): Token.Token {
+    // TODO: Error recovery: Advance to closing " on the same line.
+    this.addAndCreateError(
+      start,
+      errorUnterminatedStringLiteral,
+      "Unterminated String Literal",
+    );
+  }
+
+  mutable fun finishStringLiteral(
+    start: readonly Lexer.LexingPosition,
+    kind: TokenKind.TokenKind,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    if (this.atEnd()) {
+      this.reportUnterminatedStringLiteral(start);
+    } else {
+      this.peek() match {
+      | '"' ->
+        this.advance();
+        this.createToken(start, kind, includeTrailingTrivia)
+      | '\\' ->
+        this.skipEscapeSequence();
+        this.finishStringLiteral(start, kind, includeTrailingTrivia)
+      | ch @ _ ->
+        if (Chars.isNewLine(ch)) {
+          this.addAndCreateError(
+            start,
+            errorNewLineInStringLiteral,
+            "New line not permitted in string literal",
+          );
+        } else {
+          this.advance();
+          this.finishStringLiteral(start, kind, includeTrailingTrivia)
+        }
+      }
+    }
+  }
+
+  mutable fun lexStringLiteral(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    invariant(start.peekChar('"'), "Expected string literal");
+    this.finishStringLiteral(
+      start,
+      TokenKind.STRING_LITERAL(),
+      includeTrailingTrivia,
+    )
+  }
+
+  // 4.3.4.4.3 Character Literals
+  mutable fun reportUnterminatedCharacterLiteral(
+    start: readonly Lexer.LexingPosition,
+  ): Token.Token {
+    if (this.atEnd()) {
+      this.addAndCreateError(
+        start,
+        errorUnterminatedCharacterLiteral,
+        "Unterminated character literal",
+      );
+    } else {
+      this.peek() match {
+      | '\'' ->
+        this.advance();
+        this.addAndCreateError(
+          start,
+          errorCharacterLiteralUsedInsteadOfStringLiteral,
+          "Too many characters for a character literal. Did you mean to create a string literal with double quotes (\") instead of single quotes (')?",
+        )
+      | '\\' ->
+        this.skipEscapeSequence();
+        this.reportUnterminatedCharacterLiteral(start)
+      | ch @ _ ->
+        if (Chars.isNewLine(ch)) {
+          this.addAndCreateError(
+            start,
+            errorUnterminatedCharacterLiteral,
+            "Unterminated character literal",
+          );
+        } else {
+          this.advance();
+          this.reportUnterminatedCharacterLiteral(start);
+        }
+      }
+    }
+  }
+
+  mutable fun finishCharacterLiteral(
+    start: readonly Lexer.LexingPosition,
+    kind: TokenKind.TokenKind,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    if (this.peekChar('\'')) {
+      this.advance();
+      this.createToken(start, kind, includeTrailingTrivia);
+    } else {
+      this.reportUnterminatedCharacterLiteral(start);
+    }
+  }
+
+  mutable fun lexCharLiteralValue(
+    start: readonly Lexer.LexingPosition,
+    kind: TokenKind.TokenKind,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    if (this.atEnd()) {
+      this.reportUnterminatedCharacterLiteral(start);
+    } else {
+      this.peek() match {
+      | '\'' ->
+        this.advance();
+        this.addAndCreateError(
+          start,
+          errorEmptyCharacterLiteral,
+          "Character literals must not be empty. Did you mean to create an empty string with double quotes (\"\") instead of single quotes ('')?",
+        )
+      | '\\' ->
+        initialErrorCount = this.errorCount();
+        this.skipEscapeSequence();
+        if (this.hadError(initialErrorCount)) {
+          this.advance();
+          this.createErrorToken(start);
+        } else {
+          this.finishCharacterLiteral(start, kind, includeTrailingTrivia)
+        }
+      | ch @ _ ->
+        if (Chars.isNewLine(ch)) {
+          this.addAndCreateError(
+            start,
+            errorNewLineInCharacterLiteral,
+            "New line not permitted in character literal",
+          )
+        } else {
+          this.advance();
+          this.finishCharacterLiteral(start, kind, includeTrailingTrivia)
+        }
+      }
+    }
+  }
+
+  mutable fun lexCharLiteral(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    invariant(start.peek() == '\'', "Expected char literal");
+    this.lexCharLiteralValue(
+      start,
+      TokenKind.CHAR_LITERAL(),
+      includeTrailingTrivia,
+    )
+  }
+
+  // 4.3.4.4.4 Integer Literals
+  // 4.3.4.4.5 Floating-Point Literals
+  mutable fun skipHexDigitSequence(): void {
+    this.skipChars(Chars.isHexDigit);
+  }
+
+  mutable fun skipDigitSequence(): void {
+    this.skipChars(Chars.isDigit);
+  }
+
+  readonly fun peekHexadecimalLiteral(
+    start: readonly Lexer.LexingPosition,
+  ): Bool {
+    start.peekChar('0') &&
+      (this.peekChar('x') || this.peekChar('X')) &&
+      Chars.isHexDigit(this.peekOffset(1));
+  }
+
+  mutable fun lexHexadecimalLiteral(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    this.advance();
+    this.advance();
+    this.skipHexDigitSequence();
+    this.createToken(start, TokenKind.INTEGER_LITERAL(), includeTrailingTrivia)
+  }
+
+  readonly fun peekFractionSuffix(): Bool {
+    this.peekChar('.') && Chars.isDigit(this.peekOffset(1));
+  }
+
+  readonly fun peekSign(offset: Int = 0): Bool {
+    this.peekCharOffset('+', offset) || this.peekCharOffset('-', offset);
+  }
+
+  readonly fun peekExponentValue(offset: Int = 0): Bool {
+    (this.peekSign(offset) && Chars.isDigit(this.peekOffset(offset + 1))) ||
+      Chars.isDigit(this.peekOffset(offset));
+  }
+
+  readonly fun peekExponentSuffix(): Bool {
+    (this.peekChar('e') || this.peekChar('E')) && this.peekExponentValue(1);
+  }
+
+  mutable fun skipExponentSuffix(): void {
+    invariant(this.peekExponentSuffix(), "Expected exponent suffix");
+    this.advance();
+    if (this.peekSign()) {
+      this.advance();
+    };
+    this.skipDigitSequence();
+  }
+
+  mutable fun lexNumber(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    invariant(Chars.isDigit(start.peek()), "Expected number");
+    if (this.peekHexadecimalLiteral(start)) {
+      this.lexHexadecimalLiteral(start, includeTrailingTrivia)
+    } else {
+      this.skipDigitSequence();
+      if (this.peekFractionSuffix()) {
+        this.advance();
+        this.advance();
+        this.skipDigitSequence();
+        if (this.peekExponentSuffix()) {
+          this.skipExponentSuffix();
+          this.createToken(
+            start,
+            TokenKind.FLOAT_LITERAL(),
+            includeTrailingTrivia,
+          )
+        } else {
+          this.createToken(
+            start,
+            TokenKind.FLOAT_LITERAL(),
+            includeTrailingTrivia,
+          )
+        }
+      } else if (this.peekExponentSuffix()) {
+        this.skipExponentSuffix();
+        this.createToken(
+          start,
+          TokenKind.FLOAT_LITERAL(),
+          includeTrailingTrivia,
+        )
+      } else {
+        this.checkIntLiteralOverflow(start);
+        this.createToken(
+          start,
+          TokenKind.INTEGER_LITERAL(),
+          includeTrailingTrivia,
+        )
+      }
+    }
+  }
+
+  static fun toIntOption(value: String): ?Int {
+    value.foldl<?Int>(
+      (result, digit) -> {
+        result match {
+        | None() -> None()
+        | Some(current) ->
+          digitValue = Chars.hexDigitToInt(digit);
+          if (current > ((Int::max - digitValue) / 10)) {
+            None();
+          } else {
+            Some(current * 10 + digitValue);
+          }
+        }
+      },
+      Some(0),
+    );
+  }
+
+  static fun isIntLiteralOverflow(value: String): Bool {
+    !Token.isIntMinString(value) && static::toIntOption(value).isNone();
+  }
+
+  mutable fun checkIntLiteralOverflow(
+    start: readonly Lexer.LexingPosition,
+  ): void {
+    if (static::isIntLiteralOverflow(this.getTokenText(start))) {
+      this.addError(
+        SyntaxError.create(
+          errorIntLiteralOverflow,
+          this.getRange(start),
+          "Int literal overflow",
+        ),
+      );
+    };
+  }
+
+  // 4.3.4.2 Identifiers
+  // 4.3.4.3 Keywords
+  mutable fun skipIdentifierChars(): void {
+    this.skipChars(isIdentifierChar);
+  }
+
+  mutable fun lexIdentifierOrKeyword(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    this.skipIdentifierChars();
+    value = this.getTokenText(start);
+    if (Keywords.isKeyword(value)) {
+      this.createToken(start, Keywords.toKeyword(value), includeTrailingTrivia)
+    } else if (Chars.isUpperCaseLetter(start.peek())) {
+      this.createToken(
+        start,
+        TokenKind.TYPE_IDENTIFIER(),
+        includeTrailingTrivia,
+      )
+    } else {
+      this.createToken(
+        start,
+        TokenKind.NONTYPE_IDENTIFIER(),
+        includeTrailingTrivia,
+      )
+    }
+  }
+
+  mutable fun lexMacroIdentifier(
+    start: readonly Lexer.LexingPosition,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    this.skipIdentifierChars();
+    value = this.getTokenText(start);
+    invariant(value.startsWith("#"));
+    if (value.length() < 2 || !isIdentifierStartChar(value[1])) {
+      this.addAndCreateError(
+        start,
+        errorMissingMacroIdentifier,
+        "Expected letter after '#'",
+      );
+    } else if (Keywords.isKeyword(value)) {
+      this.createToken(start, Keywords.toKeyword(value), includeTrailingTrivia)
+    } else if (Chars.isUpperCaseLetter(value[1])) {
+      this.createToken(
+        start,
+        TokenKind.MACRO_TYPE_IDENTIFIER(),
+        includeTrailingTrivia,
+      )
+    } else {
+      this.createToken(
+        start,
+        TokenKind.MACRO_NONTYPE_IDENTIFIER(),
+        includeTrailingTrivia,
+      )
+    }
+  }
+
+  // 4.3.4 Tokens
+  protected mutable fun lexTokenInternal(
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    this.skipWhitespace();
+    start = this.mark();
+    if (this.atEnd()) {
+      this.createToken(start, TokenKind.END_OF_FILE(), includeTrailingTrivia);
+    } else {
+      this.next() match {
+      // 4.3.4.5 Operators and Punctuators
+      | '(' ->
+        this.createToken(start, TokenKind.OPEN_PAREN(), includeTrailingTrivia)
+      | ')' ->
+        this.createToken(start, TokenKind.CLOSE_PAREN(), includeTrailingTrivia)
+      | '{' ->
+        this.createToken(start, TokenKind.OPEN_CURLY(), includeTrailingTrivia)
+      | '}' ->
+        this.createToken(start, TokenKind.CLOSE_CURLY(), includeTrailingTrivia)
+      | ',' -> this.createToken(start, TokenKind.COMMA(), includeTrailingTrivia)
+      | ':' ->
+        if (this.eatOpt(':')) {
+          this.createToken(
+            start,
+            TokenKind.COLON_COLON(),
+            includeTrailingTrivia,
+          )
+        } else {
+          this.createToken(start, TokenKind.COLON(), includeTrailingTrivia)
+        }
+      | '<' ->
+        if (this.eatOpt('=')) {
+          this.createToken(start, TokenKind.LESS_EQUAL(), includeTrailingTrivia)
+        } else {
+          this.createToken(start, TokenKind.OPEN_ANGLE(), includeTrailingTrivia)
+        }
+      | '>' ->
+        if (this.eatOpt('=')) {
+          this.createToken(
+            start,
+            TokenKind.GREATER_EQUAL(),
+            includeTrailingTrivia,
+          )
+        } else {
+          this.createToken(
+            start,
+            TokenKind.CLOSE_ANGLE(),
+            includeTrailingTrivia,
+          )
+        }
+      | ';' ->
+        this.createToken(start, TokenKind.SEMI_COLON(), includeTrailingTrivia)
+      | '=' ->
+        this.peek() match {
+        | '=' ->
+          // This should really be reported in the Parser; == = is a perfectly
+          // valid token sequence. Reporting this here would be like reporting
+          // an unbound name error in the parser. It may be correct, but it
+          // violates the design of the compiler.
+          // That said, we do know that == = can never result in a valid
+          // parse, and adding this to the Parser would be a bit of a pain.
+          this.advance();
+          if (this.eatOpt('=')) {
+            this.addAndCreateError(
+              start,
+              errorInvalidTripleEqualToken,
+              "Invalid token '==='. Use '==' for value equality.",
+            );
+          } else {
+            this.createToken(
+              start,
+              TokenKind.EQUAL_EQUAL(),
+              includeTrailingTrivia,
+            )
+          }
+        | '>' ->
+          this.advance();
+          this.createToken(start, TokenKind.FAT_ARROW(), includeTrailingTrivia)
+        | '.' ->
+          this.advance();
+          this.createToken(start, TokenKind.EQUAL_DOT(), includeTrailingTrivia)
+        | _ -> this.createToken(start, TokenKind.EQUAL(), includeTrailingTrivia)
+        }
+      | '.' ->
+        this.createToken(start, TokenKind.PERIOD(), includeTrailingTrivia)
+      | '+' -> this.createToken(start, TokenKind.PLUS(), includeTrailingTrivia)
+      | '-' ->
+        if (this.eatOpt('>')) {
+          this.createToken(start, TokenKind.ARROW(), includeTrailingTrivia)
+        } else {
+          this.createToken(start, TokenKind.MINUS(), includeTrailingTrivia)
+        }
+      | '~' ->
+        if (this.eatOpt('>')) {
+          this.createToken(
+            start,
+            TokenKind.TILDE_ARROW(),
+            includeTrailingTrivia,
+          )
+        } else {
+          this.addAndCreateError(
+            start,
+            errorExpectedTildeArrow,
+            "Expected '>' after '~'",
+          )
+        }
+      | '*' ->
+        this.peek() match {
+        | '*' ->
+          // This should really be reported in the Parser; * * is a perfectly
+          // valid token sequence. Reporting this here would be like reporting
+          // an unbound name error in the parser. It may be correct, but it
+          // violates the design of the compiler.
+          // That said, we do know that * * can never result in a valid
+          // parse, and adding this to the Parser would be a bit of a pain.
+          this.advance();
+          this.addAndCreateError(
+            start,
+            errorInvalidStarStarToken,
+            "Invalid token '**'. Use 'Math.pow(value, power)' for exponentiation.",
+          )
+        | _ -> this.createToken(start, TokenKind.STAR(), includeTrailingTrivia)
+        }
+      | '/' ->
+        this.peek() match {
+        | '/' ->
+          this.skipToEndOfLine();
+          this.createAndAddComment(start, Token.LineComment());
+          this.lexTokenInternal(includeTrailingTrivia)
+        | '*' ->
+          this.skipDelimitedCommentTail(start);
+          this.createAndAddComment(start, Token.DelimitedComment());
+          this.lexTokenInternal(includeTrailingTrivia)
+        | _ -> this.createToken(start, TokenKind.SLASH(), includeTrailingTrivia)
+        }
+      | '%' ->
+        this.createToken(start, TokenKind.PERCENT(), includeTrailingTrivia)
+      | '!' ->
+        if (this.eatOpt('=')) {
+          if (this.peekChar('=')) {
+            // This should really be reported in the Parser; != = is a perfectly
+            // valid token sequence. Reporting this here would be like reporting
+            // an unbound name error in the parser. It may be correct, but it
+            // violates the design of the compiler.
+            // That said, we do know that != = can never result in a valid
+            // parse, and adding this to the Parser would be a bit of a pain.
+            this.advance();
+            this.addAndCreateError(
+              start,
+              errorInvalidTripleNotEqualToken,
+              "Invalid token '!=='. Use '!=' for value inequality.",
+            );
+          } else {
+            this.createToken(
+              start,
+              TokenKind.BANG_EQUAL(),
+              includeTrailingTrivia,
+            )
+          }
+        } else {
+          this.createToken(start, TokenKind.BANG(), includeTrailingTrivia)
+        }
+      | '|' ->
+        if (this.eatOpt('|')) {
+          this.createToken(start, TokenKind.BAR_BAR(), includeTrailingTrivia)
+        } else if (this.eatOpt('>')) {
+          this.createToken(start, TokenKind.PIPE(), includeTrailingTrivia)
+        } else {
+          this.createToken(start, TokenKind.BAR(), includeTrailingTrivia)
+        }
+      | '&' ->
+        if (this.eatOpt('&')) {
+          this.createToken(
+            start,
+            TokenKind.AMPERSAND_AMPERSAND(),
+            includeTrailingTrivia,
+          )
+        } else {
+          this.createToken(start, TokenKind.AMPERSAND(), includeTrailingTrivia)
+        }
+      | '[' ->
+        this.createToken(start, TokenKind.OPEN_SQUARE(), includeTrailingTrivia)
+      | ']' ->
+        this.createToken(start, TokenKind.CLOSE_SQUARE(), includeTrailingTrivia)
+      | '?' ->
+        this.createToken(start, TokenKind.QUESTION(), includeTrailingTrivia)
+      | '^' -> this.createToken(start, TokenKind.CARET(), includeTrailingTrivia)
+      | '`' -> this.createToken(start, TokenKind.BACK_TICK(), false)
+
+      // 4.3.4.4.3 Character Literals
+      | '\'' -> this.lexCharLiteral(start, includeTrailingTrivia)
+
+      // 4.3.4.4.6 String Literals
+      | '"' -> this.lexStringLiteral(start, includeTrailingTrivia)
+
+      // 4.3.4.4.4 Integer Literals
+      // 4.3.4.4.5 Floating-Point Literals
+      | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' ->
+        this.lexNumber(start, includeTrailingTrivia)
+
+      // TODO: Spec: annotations
+      | '@' -> this.createToken(start, TokenKind.AT(), includeTrailingTrivia)
+
+      | '#' -> this.lexMacroIdentifier(start, includeTrailingTrivia)
+
+      // 4.3.4.2 Identifiers
+      // 4.3.4.3 Keywords
+      | ch ->
+        if (isIdentifierStartChar(ch)) {
+          this.lexIdentifierOrKeyword(start, includeTrailingTrivia);
+        } else if (ch == '$' && isIdentifierStartChar(this.peek())) {
+          afterDollar = this.mark();
+          this.skipIdentifierChars();
+          this.addAndCreateError(
+            start,
+            errorDollarVariable,
+            "Unexpected '$'. '$' is not a valid character in an identifier. " +
+              "Did you mean '" +
+              this.getTokenText(afterDollar) +
+              "'?",
+          );
+        } else {
+          this.advance();
+          this.addAndCreateError(
+            start,
+            errorNotTokenStart,
+            "Invalid token start character",
+          );
+        }
+      }
+    }
+  }
+}
+
+// Lexer for the contents of template-literal-expressions
+//
+// Yields one of:
+//  - END_OF_FILE
+//  - BACK_TICK - the end of the template-literal-expression
+//  - TEMPLATE_LITERAL_STRING - literal chars
+//  - TEMPLATE_LITERAL_EXPRESSION_START - the $ at start of an
+//      embedded ${expression-list} in a template-literal.
+mutable class TemplateLexer extends SkipLexer {
+  protected mutable fun lexTokenInternal(
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    start = this.mark();
+    if (this.atEnd()) {
+      this.createToken(start, TokenKind.END_OF_FILE(), false);
+    } else {
+      this.peek() match {
+      | '`' ->
+        this.advance();
+        this.createToken(start, TokenKind.BACK_TICK(), includeTrailingTrivia)
+      | '$' ->
+        if (this.peekTemplateLiteralExpressionStart()) {
+          this.advance();
+          this.createToken(
+            start,
+            TokenKind.TEMPLATE_LITERAL_EXPRESSION_START(),
+            includeTrailingTrivia,
+          );
+        } else {
+          this.lexTemplateLiteralStringElement(start)
+        }
+      | _ -> this.lexTemplateLiteralStringElement(start)
+      }
+    }
+  }
+
+  mutable fun lexTemplateLiteralStringElement(
+    start: readonly Lexer.LexingPosition,
+  ): Token.Token {
+    if (
+      this.atEnd() ||
+      this.peekChar('`') ||
+      this.peekTemplateLiteralExpressionStart()
+    ) {
+      this.createToken(start, TokenKind.TEMPLATE_LITERAL_STRING(), false);
+    } else if (this.peekChar('\\')) {
+      this.skipEscapeSequence();
+      this.lexTemplateLiteralStringElement(start);
+    } else {
+      this.advance();
+      this.lexTemplateLiteralStringElement(start);
+    };
+  }
+
+  mutable fun peekTemplateLiteralExpressionStart(): Bool {
+    this.peekChar('$') && this.peekCharOffset('{', 1);
+  }
+}
+
+// Lexer Errors
+const errorUnterminatedComment: Int = 1;
+const errorUnterminatedCharacterLiteral: Int = 2;
+const errorEmptyCharacterLiteral: Int = 3;
+const errorUnterminatedEscapeSequence: Int = 4;
+const errorMissingHexEscape: Int = 5;
+const errorInvalidEscapeSequence: Int = 6;
+const errorUnterminatedStringLiteral: Int = 7;
+const errorNotTokenStart: Int = 8;
+const errorMissingAnnotationName: Int = 9;
+const errorExpectedTildeArrow: Int = 10;
+const errorCharLiteralOutOfRange: Int = 11;
+const errorHexLiteralOverflow: Int = 12;
+const errorIntLiteralOverflow: Int = 13;
+const errorNewLineInCharacterLiteral: Int = 14;
+const errorNewLineInStringLiteral: Int = 15;
+const errorInvalidTripleEqualToken: Int = 16;
+const errorInvalidTripleNotEqualToken: Int = 17;
+const errorCharacterLiteralUsedInsteadOfStringLiteral: Int = 18;
+const errorDollarVariable: Int = 19;
+const errorInvalidStarStarToken: Int = 20;
+const errorMissingMacroIdentifier: Int = 21;
+
+fun isIdentifierStartChar(ch: Char): Bool {
+  code = ch.code();
+  code == Chars.underscoreCode ||
+    Chars.isLowerCode(code) ||
+    Chars.isUpperCode(code)
+}
+
+fun isIdentifierChar(ch: Char): Bool {
+  code = ch.code();
+  code == Chars.underscoreCode ||
+    Chars.isLowerCode(code) ||
+    Chars.isUpperCode(code) ||
+    Chars.isDigitCode(code)
+}
+
+module end;

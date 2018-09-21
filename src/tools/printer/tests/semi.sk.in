@@ -1,0 +1,17 @@
+mutable class Processor(mutable x: Int, mutable y: Int, flag: Bool) {
+ mutable fun similar_to_given_example(): void {
+   this.update_x();
+   this.update_y();
+ }
+ mutable fun update_x(): void {
+   this.!x = if (this.flag) {
+     res = foo();
+     this.x + res
+   } else {
+     0
+   };
+ }
+ mutable fun update_y(): void {
+   this.!y = if (this.flag) this.y else 0;
+ }
+}

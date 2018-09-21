@@ -1,0 +1,11 @@
+base class P<T>
+class C1<T1, T2>() extends P<T2>
+class C2<T>() extends P<Int>
+
+fun no1<T>(): void {
+  _: P<Int> = C1<T, Int>();
+}
+
+fun no2<T>(): void {
+  _: P<Int> = C2<T>();
+}

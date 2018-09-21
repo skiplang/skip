@@ -1,0 +1,6 @@
+File "./expand/invalid/macro_method_signature.sk", line 2, characters 12-13:
+Macros may only be used inside bodies of methods marked 'macro'.
+1 | class C{} {
+2 |   fun f(): #T {
+  |            ^^
+3 |     void

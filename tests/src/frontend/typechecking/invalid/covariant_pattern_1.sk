@@ -1,0 +1,23 @@
+mutable class Inv<T>(mutable x: T)
+
+base class P
+class C1() extends P {
+  fun pass(): String {
+    "Pass\n"
+  }
+}
+class C2() extends P
+
+mutable base class Co<+T>(mutable dummy: String = "")
+mutable class Foo<T>(mutable inner: mutable Inv<T>) extends Co<T>
+
+fun main(): void {
+  i = mutable Inv(C1());
+  x: mutable Co<P> = mutable Foo(i);
+  x match {
+  | Foo(i2, _) ->
+    troll: P = C2();
+    i2.!x = troll // Boom, x is not Foo<P>
+  };
+  print_raw(i.x.pass())
+}

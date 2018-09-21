@@ -1,0 +1,32 @@
+File "./typechecking/invalid/await_outside_async3.sk", line 12, characters 5-11:
+Cannot await outside an async context
+10 | async fun bar<T1, T: ^T1>(): T -> T1 {
+11 |   x ->
+12 |     await x // error, await outside async context
+   |     ^^^^^^^
+13 | }
+
+File "./typechecking/invalid/await_outside_async3.sk", line 3, characters 3-5:
+The value returned from the function is incompatible with the return type '^((T) -> T1)'
+1 | // synchronously build and return a lambda with an async block - ok
+2 | fun foo<T1, T: ^T1>(): ^(T -> T1) {
+3 |   x ->
+  |   ^^^^
+4 |     async {
+  |     ^^^^^^^
+
+File "./typechecking/invalid/await_outside_async3.sk", line 3, characters 3-5:
+The type: ((_) -> _)
+1 | // synchronously build and return a lambda with an async block - ok
+2 | fun foo<T1, T: ^T1>(): ^(T -> T1) {
+3 |   x ->
+  |   ^^^^
+4 |     async {
+  |     ^^^^^^^
+
+File "./typechecking/invalid/await_outside_async3.sk", line 2, characters 24-33:
+Is not a subtype of: ^((T) -> T1)
+1 | // synchronously build and return a lambda with an async block - ok
+2 | fun foo<T1, T: ^T1>(): ^(T -> T1) {
+  |                        ^^^^^^^^^^
+3 |   x ->

@@ -1,0 +1,35 @@
+base class BaseP<T>
+
+class P<T: Equality>() extends BaseP<T>
+
+//////////////////////////
+
+base class BaseEx<T>
+class Ex<T>(BaseL<T>, BaseP<T>) extends BaseEx<T>
+
+//////////////////////////
+
+base class BaseL<T>
+class L<T: Int>(BaseF<T>) extends BaseL<T>
+
+//////////////////////////
+
+base class BaseF<T>
+class F<T: Int>() extends BaseF<T>
+
+//////////////////////////
+
+class ExTester() {
+  fun test<T: Int>(expr: BaseEx<T>): void {
+    expr match {
+    | Ex(plan, P()) ->
+      plan match {
+      | L(F()) -> void
+      }
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

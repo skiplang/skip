@@ -1,0 +1,5 @@
+File "./expand/invalid/expand_unbound_type.sk", line 1, characters 13-13:
+Unbound module: M
+1 | fun main(): M.T {
+  |             ^
+2 |   "Fail"

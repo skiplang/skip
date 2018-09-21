@@ -1,0 +1,32 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+base class DoI<+T> {
+  children =
+  | DontGotIt()
+  | GotIt(T)
+}
+
+base class MyBase {
+  fun doit(): void;
+}
+
+class Co<+T>(x: T) {
+  fun each(f: T -> void): void {
+    f(this.x)
+  }
+}
+
+class Foo<TElem: MyBase>(x: TElem) {
+  fun getValue(): DoI<Co<TElem>> {
+    GotIt(Co(this.x))
+  }
+
+  fun tester(): void {
+    this.getValue() match {
+    | GotIt(v) -> v.each(x -> x.doit())
+    | DontGotIt _ -> void
+    }
+  }
+}

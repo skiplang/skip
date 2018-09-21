@@ -1,0 +1,29 @@
+base class MyBase final () {
+  children =
+  | C1
+  | C2
+
+  static fun foo1(x: MyBase): void {
+    x match {
+    | C1() -> void
+    | C2() -> void
+    }
+  }
+
+  static fun foo2(x: MyBase): void {
+    x match {
+    | C1() -> void
+    | _ -> void
+    }
+  }
+
+  static fun foo3(x: MyBase): void {
+    x match {
+    | _y -> void
+    }
+  }
+}
+
+fun main(): void {
+  print_string("OK")
+}

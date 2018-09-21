@@ -1,0 +1,6 @@
+File "./syntax/invalid/char_escape_surrogate.sk", line 2, characters 6-6:
+Invalid char escape sequence
+1 | fun main(): String {
+2 |   '\udc00'.toString()
+  |      ^
+3 | }

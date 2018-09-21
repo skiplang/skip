@@ -1,0 +1,7 @@
+File "./typechecking/invalid/recursive_type.sk", line 8, characters 9-12:
+Recursive type
+ 6 |   );
+ 7 |   pong = (
+ 8 |     (n, pong) -> {
+   |         ^^^^
+ 9 |       if (n == 0) void else ping(n - 1, pong)

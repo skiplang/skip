@@ -1,0 +1,300 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Sequence;
+
+// Represents a sequence of values that are key-value items:
+// implementations must guarantee that each key in the sequence
+// is associated with exactly one value (keys must be unique).
+mutable base class .KeyedSequence<+K: Hashable & Equality, +V> uses
+  IntoIterator<(K, V)>,
+{
+  // Return a chilled (shallowly frozen) copy of this sequence.
+  readonly fun chill(): this;
+
+  // # Sizing
+  // Methods to query or change the size or capacity of a container.
+
+  // Returns the total number of items contained by this container.
+  readonly fun size(): Int;
+
+  // Returns true if there are no items in this container (ie size() == 0).
+  overridable readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  // # Accessing Items
+
+  // Returns true if the key is associated to a value in this sequence,
+  // otherwise false.
+  readonly overridable fun containsKey<K2: Hashable & Equality>[K: K2](
+    k: K2,
+  ): Bool {
+    this.maybeGetItem(k).isSome()
+  }
+
+  // Get the value for the given key, throws if the key is not present.
+  readonly overridable fun get<K2: Hashable & Equality>[K: K2](k: K2): V {
+    this.maybeGetItem(k) match {
+    | Some((_, v)) -> v
+    | None() -> throwKeyNotFound()
+    }
+  }
+
+  // Get the value for the given key as Some() or return None() if the index
+  // is not present.
+  readonly overridable fun maybeGet<K2: Hashable & Equality>[K: K2](k: K2): ?V {
+    this.maybeGetItem(k).map(v -> v.i1)
+  }
+
+  // Similar to get(), but returns a (key, value) tuple.
+  readonly overridable fun getItem<K2: Hashable & Equality>[K: K2](
+    k: K2,
+  ): (K, V) {
+    this.maybeGetItem(k) match {
+    | Some(i) -> i
+    | None() -> throwKeyNotFound()
+    }
+  }
+
+  // Similar to maybeGet(), but returns a (key, value) tuple.
+  readonly fun maybeGetItem<K2: Hashable & Equality>[K: K2](k: K2): ?(K, V);
+
+  // # Iteration
+  // Methods for iterating over the items of a sequence for the purpose
+  // of executing side effects.
+
+  // Calls the given function once per key-value association of this sequence.
+  readonly overridable fun each(f: (K, V) -> void): void {
+    this.items().each(i -> f(i.i0, i.i1));
+  }
+
+  // # Aggregation
+  // Methods that aggregate (or "reduce") the items of a sequence into a single
+  // value.
+
+  // Returns Some(v) for value of the first item in this sequence that matches
+  // the predicate, or None() if no items match.
+  readonly overridable fun find(p: (K, V) -> Bool): ?V {
+    this.findItem(p).map(i -> i.i1)
+  }
+
+  // Returns Some((k, v)) for the first item (key-value association) in this
+  // sequence that matches the predicate, or None() if no items match.
+  readonly overridable fun findItem(p: (K, V) -> Bool): ?(K, V) {
+    this.items().find(i -> p(i.i0, i.i1))
+  }
+
+  // Returns true if the predicate returns true for all key-value items
+  // of this sequence.
+  @synonym("every")
+  overridable readonly fun all(p: (K, V) -> Bool): Bool {
+    this.find((k, v) -> !p(k, v)).isNone()
+  }
+
+  // Returns true if the predicate returns true for at least one key-value
+  // association of this sequence.
+  @synonym("some")
+  overridable readonly fun any(p: (K, V) -> Bool): Bool {
+    this.find(p).isSome()
+  }
+
+  // Returns the result of applying an accumulator function to all the elements
+  // of this sequence.
+  @synonym("aggregate")
+  @synonym("fold")
+  @synonym("foldl")
+  overridable readonly fun reduce<U>(f: (U, K, V) -> U, init: U): U {
+    result = init;
+    this.each((k, v) -> !result = f(result, k, v));
+    result
+  }
+
+  // Returns a string containing the keys of this (converted to String per
+  // their Implementation of Show) with the given separator string between
+  // items.
+  overridable readonly fun joinKeys[K: readonly Show](
+    separator: String,
+  ): String {
+    strings = Array::mfill(this.size(), "");
+    index = 0;
+    this.each((k, _) -> {
+      strings.set(index, k.toString());
+      !index = index + 1;
+    });
+    strings.join(separator)
+  }
+
+  // Returns a string containing the values of this (converted to String per
+  // their Implementation of Show) with the given separator string between
+  // items.
+  overridable readonly fun joinValues[V: readonly Show](
+    separator: String,
+  ): String {
+    strings = Array::mfill(this.size(), "");
+    index = 0;
+    this.each((_, v) -> {
+      strings.set(index, v.toString());
+      !index = index + 1;
+    });
+    strings.join(separator)
+  }
+
+  // # Composition
+
+  // Returns a new sequence containing the same keys as this map, but where
+  // values are the results of calling the selection function for the key &
+  // value of this map.
+  @synonym("select")
+  @synonym("project")
+  readonly overridable fun map<V2>(s: (K, V) -> V2): KeyedSequence<K, V2> {
+    this.items().map(i -> (i.i0, s(i.i0, i.i1))).collect(Map)
+  }
+
+  // Returns a new sequence containing the results of mapping each key-value
+  // association of this map to a new key and new value via the selection
+  // function.
+  readonly overridable fun mapItems<K2: Hashable & Equality, V2>(
+    s: (K, V) -> (K2, V2),
+  ): KeyedSequence<K2, V2> {
+    this.items().map(i -> s(i.i0, i.i1)).collect(Map)
+  }
+
+  // Returns a new sequence representing all the key-value items of this
+  // sequence for which the predicate returns true.
+  @synonym("where")
+  readonly overridable fun filter(p: (K, V) -> Bool): KeyedSequence<K, V> {
+    this.items().filter(i -> p(i.i0, i.i1)).collect(Map)
+  }
+
+  // When the values of this sequence are Options, returns a new sequence
+  // containing only the items for which the value value is Some(), with
+  // the values unboxed:
+  //
+  // Before:
+  //   Map[a => None(), b => None(), c => Some(2), d => None(), e => Some(4)]
+  // After:
+  //   Map[c => 2, e => 4]
+  readonly overridable fun filterNone<U>[V: ?U](): KeyedSequence<K, U> {
+    this.items()
+      .filter(i -> i.i1.isSome())
+      .map(i -> (i.i0, i.i1.fromSome()))
+      .collect(Map)
+  }
+
+  // # Async
+
+  // async frozen fun gen<V2>[K: Orderable, V: ^V2](): ^KeyedSeq<K, V2>;
+
+  async overridable frozen fun genMap<V2: frozen>[K: Orderable](
+    _s: (K, V) ~> ^V2,
+  ): ^KeyedSequence<K, V2> {
+    invariant_violation("TODO: implement default version");
+  }
+
+  async overridable frozen fun genFilter<V2: frozen>[K: Orderable](
+    _p: (K, V) ~> ^Bool,
+  ): ^KeyedSequence<K, V> {
+    invariant_violation("TODO: implement default version");
+  }
+
+  // # Iterators
+
+  // Iterator over the key, value items of this map.
+  readonly fun items(): mutable Iterator<(K, V)>;
+
+  readonly fun iterator(): mutable Iterator<(K, V)> {
+    this.items();
+  }
+
+  // Iterator over the keys of this map.
+  readonly overridable fun keys(): mutable Iterator<K> {
+    this.items().map(i -> i.i0)
+  }
+
+  // Iterator over the values of this map.
+  readonly overridable fun values(): mutable Iterator<V> {
+    this.items().map(i -> i.i1)
+  }
+}
+
+mutable base class .MutableKeyedSequence<+K: Hashable & Equality, +V> extends
+  KeyedSequence<K, V>,
+{
+  // # Creating Sequences
+
+  // Create a mutable container with the given capacity.
+  static fun mcreate(capacity: Int = 0): mutable this;
+
+  // Create a frozen container from a sequence of items.
+  static fun createFromItems<I: readonly Sequence<(K, V)>>(items: I): this;
+
+  // Create a mutable container from a sequence of items.
+  static fun mcreateFromItems<I: readonly Sequence<(K, V)>>(
+    items: I,
+  ): mutable this;
+
+  // Create a mutable, shallow copy of the contents of this container.
+  // The capacity of the returned container is only guaranteed to be
+  // greater than or equal to this' size. To ensure space for more items,
+  // pass a non-zero reserveCapacity.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this;
+
+  // # Sizing
+
+  // Grows the container's internal storage as necessary to ensure that the
+  // container has capacity for at least the specified number of items: the
+  // container may grow more than requested.
+  mutable fun ensureCapacity(capacity: Int): void;
+
+  // Remove all items, setting the container's size to 0 without changing its
+  // capacity.
+  mutable fun clear(): void;
+
+  // # Modifying Items
+
+  // Associate key with value in this Map:
+  // - If the key already exists in this Map, associates it to the new value.
+  // - Else add the key/value association.
+  mutable fun set(k: K, v: V): void;
+
+  // Like set, but the lambda is used to resolve collisions
+  overridable mutable fun setWith(k: K, v: V, collision: (V, V) -> V): void {
+    this.maybeGet(k) match {
+    | None() -> this.set(k, v)
+    | Some(v2) -> this.set(k, collision(v, v2))
+    }
+  }
+
+  // Like set(), but throws a Duplicate() exception if the key already exists.
+  mutable fun add(k: K, v: V): void;
+
+  // If the key does not already exist, inserts it and returns true. Else
+  // returns false.
+  mutable fun maybeSet(k: K, v: V): Bool;
+
+  // If k exists in this map, returns its value. Else, runs f() to get
+  // a new value, inserts it, and returns that new value.
+  mutable fun getOrAdd(k: K, f: () -> V): V;
+
+  // Adds all of the key/value associations from the second Map to this one,
+  // replacing values for keys already present and adding key/value associations
+  // for keys not yet in this Map.
+  overridable mutable fun extend(second: readonly KeyedSequence<K, V>): void {
+    second.each((k, v) -> this.set(k, v))
+  }
+
+  // Remove the given key from this Map:
+  // - If the key is present remove it and return true.
+  // - Otherwise do nothing and return false.
+  mutable fun maybeRemove(k: K): Bool;
+
+  // Remove the key from this Map if present, otherwise throw.
+  mutable fun remove(k: K): void;
+}
+
+module end;

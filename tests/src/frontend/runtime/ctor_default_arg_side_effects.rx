@@ -1,0 +1,5 @@
+class C(x: Int = { print_string("Pass"); 42 }) {}
+
+fun main(): void {
+  _ = C();
+}

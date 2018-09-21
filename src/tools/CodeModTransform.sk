@@ -1,0 +1,475 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Place example CodeMod's here.
+
+module alias P = ParseTree;
+
+module CodeModTransforms;
+
+// This code mod produces identical output as input.
+class IdentityCodeMod() extends P.CodeMod {
+  fun transformTree(_tree: ParseTree): ?ParseTree {
+    None();
+  }
+}
+
+// "..." + x.toString() -> "..." + x
+class RemoveUselessToStringCodeMod() extends P.CodeMod {
+  fun rightMostLeaf(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.BinaryExpressionTree{right} -> this.rightMostLeaf(right)
+    | _ -> tree
+    }
+  }
+
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | ParseTree.BinaryExpressionTree{
+      range,
+      left,
+      operator => operator @ ParseTree.TokenTree{
+        token => Token.Token{kind => TokenKind.PLUS(), value => "+"},
+      },
+      right => ParseTree.CallExpressionTree{
+        arguments => ParseTree.PositionalArgumentsTree{arguments => callArgs},
+        func => ParseTree.MemberSelectionExpressionTree{
+          member => ParseTree.TokenTree{
+            token => Token.Token{
+              kind => TokenKind.NONTYPE_IDENTIFIER(),
+              value => "toString",
+            },
+          },
+          object,
+          operator => ParseTree.TokenTree{
+            token => Token.Token{kind => TokenKind.PERIOD(), value => "."},
+          },
+        },
+      },
+    } if (
+      callArgs.isEmpty() &&
+      this.rightMostLeaf(left) is ParseTree.TokenTree{
+        token => Token.Token{kind => TokenKind.STRING_LITERAL()},
+      }
+    ) ->
+      Some(
+        ParseTree.BinaryExpressionTree{range, left, operator, right => object},
+      )
+    | _ -> None()
+    }
+  }
+}
+
+/**
+ * Rewrites class-based unit tests into function-based unit tests.
+ *
+ * Example input:
+ *
+ *  class <name> extends UnitTest {
+ *    [readonly] fun testFoo(): _ { ... }
+ * }
+ *
+ * and corresponding output:
+ *
+ *   @test
+ *   fun testFoo(): _ { ... }
+ */
+class UnitTestCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | sourceUnit @ P.SourceUnitTree{declarations} ->
+      // Attempt to transform each declaration
+      nextDeclarations = mutable Vector[];
+      hasReplacement = false;
+      for (declaration in declarations.getList()) {
+        this.transformDeclaration(declaration) match {
+        | Some(replacements) ->
+          !hasReplacement = true;
+          nextDeclarations.extend(replacements)
+        | None() -> nextDeclarations.push(declaration)
+        }
+      };
+      // Only replace the SourceUnit if at least one declaration
+      // changed
+      if (hasReplacement) {
+        Some(
+          sourceUnit with {
+            declarations => declarations.asList() with {
+              elements => nextDeclarations.collect(Array),
+            },
+          },
+        )
+      } else {
+        None()
+      }
+    | _ -> None()
+    }
+  }
+
+  fun transformDeclaration(tree: ParseTree): ?Sequence<ParseTree> {
+    tree match {
+    | cd @ P.ClassDeclarationTree{
+      body,
+      extendsUses => P.ParseTreeList{elements},
+    } if (
+      elements.size() == 1 &&
+      elements[0] is P.ExtendsTree{
+        baseTypes => P.ParseTreeList _,
+        extendsKeyword => P.TokenTree{
+          token => Token.Token{kind => TokenKind.EXTENDS(), value => "extends"},
+        },
+      } &&
+      {
+        baseTypes = (elements[0] as P.ExtendsTree _).baseTypes.getList();
+        baseTypes.size() == 1 &&
+          baseTypes[0] is P.TypeNameTree{
+            name => P.TokenTree{
+              token => Token.Token{
+                kind => TokenKind.TYPE_IDENTIFIER(),
+                value => "UnitTest",
+              },
+            },
+          }
+      }
+    ) ->
+      Some(
+        body
+          .getList()
+          .values()
+          .map(item ~> {
+            this.transformMethod(cd, item).default(item)
+          })
+          .collect(Vector),
+      )
+    | _ -> None()
+    }
+  }
+
+  fun transformMethod(cd: P.ClassDeclarationTree, tree: ParseTree): ?ParseTree {
+    tree match {
+    | methodDeclaration @ P.MethodDeclarationTree{
+      modifiers,
+      name => P.TokenTree{
+        token => Token.Token{
+          kind => TokenKind.NONTYPE_IDENTIFIER(),
+          value => methodName,
+        },
+      },
+    } if (
+      methodName.startsWith("test") &&
+      !modifiers.getList().values().any(modifier ~>
+        (modifier is P.AnnotationTree _) &&
+          (modifier as P.AnnotationTree _).name.getTokenString() == "@test"
+      )
+    ) ->
+      invariant(
+        !modifiers.getList().any(modifier ~> {
+          modifier.isToken() && modifier.getTokenString() == "static"
+        }),
+        "Unexpected static method on UnitTest subclass " +
+          cd.name.getTokenString(),
+      );
+      // Find methods named "test*" that don't already have an "@test" annotation
+      testAnnotation = P.createAnnotation("@test");
+      elements = modifiers.getList().filter(modifier ~>
+        !modifier.isToken() ||
+          (modifier.getTokenString() != "readonly" &&
+            modifier.getTokenString() != "mutable")
+      );
+      Some(
+        methodDeclaration with {
+          modifiers => modifiers.asList() with {
+            elements => Array[Array[testAnnotation], elements].flatten(),
+          },
+        },
+      )
+    | _ -> None()
+    }
+  }
+}
+
+class FixedVectorToArrayCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | nameTree @ P.GenericTypeNameTree{
+      name => name @ P.TokenTree{
+        token => token @ Token.Token{
+          kind => TokenKind.TYPE_IDENTIFIER(),
+          value => "FixedVector",
+        },
+      },
+    } ->
+      Some(
+        nameTree with {
+          name => name with {token => token with {value => "Array"}},
+        },
+      )
+    | nameTree @ P.TypeNameTree{
+      name => name @ P.TokenTree{
+        token => token @ Token.Token{
+          kind => TokenKind.TYPE_IDENTIFIER(),
+          value => "FixedVector",
+        },
+      },
+    } ->
+      Some(
+        nameTree with {
+          name => name with {token => token with {value => "Array"}},
+        },
+      )
+    | _ -> None()
+    }
+  }
+}
+
+// This code mod replaces ?T with Nullable<T>
+class QuestionToNullableCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | P.OptionTypeSpecifierTree{elementType} ->
+      Some(P.createGenericTypeName1("Nullable", Array[elementType]))
+    | _ -> None()
+    }
+  }
+}
+
+// This code mod replaces sk_not(arg) with !arg
+class SkNotCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | P.CallExpressionTree{
+      func,
+      arguments,
+    } if (
+      func.matchNonTypeIdentifier("sk_not") &&
+      arguments.isPositionalArgument(1)
+    ) ->
+      Some(
+        P.createUnaryExpression(
+          TokenKind.BANG(),
+          arguments.getPositionalArgument(1),
+        ),
+      )
+    | _ -> None()
+    }
+  }
+}
+
+class ListLiteralCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    // List.Nil() -> List[]
+    tree match {
+    | P.CallExpressionTree{
+      func,
+      arguments,
+      typeArguments,
+    } if (
+      arguments.isPositionalArgument(0) &&
+      typeArguments.isEmpty() &&
+      func.matchDottedTypeName("List", "Nil")
+    ) ->
+      Some(P.createCallArrayExpression(P.createTypeName("List"), Array[]))
+    // List.Cons(head, List[tail])  -> List[head, ...tail]
+    | P.CallExpressionTree{
+      func,
+      arguments,
+      typeArguments,
+    } if (
+      typeArguments.isEmpty() &&
+      func.matchDottedTypeName("List", "Cons") &&
+      (arguments.getPositionalArgument(1) match {
+      | P.CallArrayExpressionTree{func => type} -> type.matchTypeName("List")
+      | _ -> false
+      })
+    ) ->
+      Some(
+        P.createCallArrayExpression(
+          P.createTypeName("List"),
+          Array[
+            Array[arguments.getPositionalArgument(0)],
+            (arguments.getPositionalArgument(
+              1,
+            ) as P.CallArrayExpressionTree _).arguments.getList(),
+          ].flatten(),
+        ),
+      )
+
+    | _ -> None()
+    }
+  }
+}
+
+// { name => name } -> { name }
+class ObjectShortHandCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | t @ ParseTree.NamedArgumentTree{
+      name => ParseTree.TokenTree{
+        token => Token.Token{
+          kind => TokenKind.NONTYPE_IDENTIFIER(),
+          value => value1,
+        },
+      },
+      value => ParseTree.NamedArgumentValueTree{
+        value => ParseTree.TokenTree{
+          token => Token.Token{
+            kind => TokenKind.NONTYPE_IDENTIFIER(),
+            value => value2,
+          },
+        },
+      },
+    } if (value1 == value2) ->
+      Some(t with {value => P.createEmpty()})
+    | _ -> None()
+    }
+  }
+}
+
+// fun main(): String { "x" } -> fun main(): void { print_raw("x") }
+class MainStringToVoidCodeMod() extends P.CodeMod {
+  fun transform(tree: ParseTree): (ParseTree, Vector<P.Subst>) {
+    (afterChildren, childSubstitions) = this.transformChildren(tree);
+
+    afterChildren match {
+    | t @ ParseTree.FunctionDeclarationTree{
+      name => ParseTree.TokenTree{
+        token => Token.Token{
+          kind => TokenKind.NONTYPE_IDENTIFIER(),
+          value => "main",
+        },
+      },
+      body => body @ ParseTree.BlockTree{
+        expressions => bodyExpresions @ ParseTree.ParseTreeList{
+          elements => bodyExpresionsElements,
+        },
+      },
+      returnType => returnType @ ParseTree.TypeNameTree{
+        name => returnTypeName @ ParseTree.TokenTree{
+          token => returnTypeNameToken @ Token.Token{
+            kind => TokenKind.TYPE_IDENTIFIER(),
+            value => "String",
+          },
+        },
+      },
+    } ->
+      size = bodyExpresionsElements.size();
+
+      transformedElements = bodyExpresionsElements.mapWithIndex((i, tree) -> {
+        if (i != size - 1) {
+          tree
+        } else {
+          tree match {
+          | tokenTree @ ParseTree.TokenTree{
+            token => token @ Token.Token{
+              kind => TokenKind.STRING_LITERAL(),
+              value => "\"\"",
+            },
+          } ->
+            tokenTree with {
+              token => token with {kind => TokenKind.VOID(), value => "void"},
+            }
+          | tokenTree @ ParseTree.TokenTree{
+            token => token @ Token.Token{
+              kind => TokenKind.STRING_LITERAL(),
+              value,
+            },
+          } if (value.endsWith("\\n\"")) ->
+            ParseTree.createCallExpressionPositional(
+              ParseTree.createNonTypeIdentifier("print_string"),
+              Array[
+                tokenTree with {
+                  token => token with {
+                    value => value.sub(0, value.length() - 3) + "\"",
+                  },
+                },
+              ],
+            )
+          | _ ->
+            ParseTree.createCallExpressionPositional(
+              ParseTree.createNonTypeIdentifier("print_raw"),
+              Array[tree],
+            )
+          }
+        }
+      });
+
+      transformedBody = body with {
+        expressions => bodyExpresions with {elements => transformedElements},
+      };
+
+      transformedReturnType = returnType with {
+        name => returnTypeName with {
+          token => returnTypeNameToken with {value => "void"},
+        },
+      };
+
+      transformedTree = t with {
+        returnType => transformedReturnType,
+        body => transformedBody,
+      };
+
+      lastElement = bodyExpresionsElements.last();
+      transformedLastElement = transformedElements.last();
+
+      (
+        transformedTree,
+        Vector[
+          (returnType.getRangeWithComments(), transformedReturnType),
+          (lastElement.getRangeWithComments(), transformedLastElement),
+        ],
+      )
+
+    | _ -> (afterChildren, childSubstitions)
+    }
+  }
+
+  fun transformTree(_tree: ParseTree): ?ParseTree {
+    None();
+  }
+}
+
+// replace token values with other values
+class TokenReplaceCodeMod(replacements: Map<String, String>) extends P.CodeMod {
+  fun transformTree(tree: P): ?P {
+    transforms = this.replacements.map((orig, replace) ~> {
+      tree match {
+      | tokenTree @ P.TokenTree{
+        token => token @ Token.Token{
+          kind => TokenKind.TokenKind _,
+          value => val,
+        },
+      } if (val == orig) ->
+        Some(tokenTree with {token => token with {value => replace}})
+      | _ -> None()
+      }
+    });
+    transforms.filterNone().maybeFirstItem().map(n -> n.i1)
+  }
+}
+
+// This code mod replaces Option<T> with ?T
+class OptionToQuestionCodeMod() extends P.CodeMod {
+  fun transformTree(tree: ParseTree): ?ParseTree {
+    tree match {
+    | P.GenericTypeNameTree{
+      range,
+      name => P.TypeNameTree{name},
+      arguments => P.ParseTreeList{elements},
+    } if (name.matchTypeIdentifier("Option") && !elements.isEmpty()) ->
+      Some(
+        P.OptionTypeSpecifierTree{
+          elementType => elements.first(),
+          question => ParseTree.createSimpleToken(TokenKind.QUESTION()),
+          range,
+        },
+      )
+    | _ -> None()
+    }
+  }
+}
+
+module end;

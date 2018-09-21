@@ -1,0 +1,15 @@
+base class Foo {
+  overridable fun hello(x: Int): String {
+    x.toString()
+  }
+}
+
+class Bar() extends Foo {
+  fun hello(_): String {
+    ""
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

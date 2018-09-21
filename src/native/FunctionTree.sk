@@ -1,0 +1,510 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias O = OuterIstToIR;
+
+module FunctionTree;
+
+fun emitBytePointerAdd{
+  fs: mutable O.FunSpecializer,
+  addr: O.MaybeExists<O.InstrTree>,
+  offset: O.MaybeExists<O.InstrTree>,
+  typ: Type,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, addr, pos, addr_ -> {
+    fromExists(fs, offset, pos, offset_ -> {
+      O.Exists(
+        O.NamedLeaf(
+          fs.emitBytePointerAdd{
+            addr => addr_.asLeaf(pos).value,
+            offset => offset_.asLeaf(pos).value,
+            typ,
+            pos,
+          }.id,
+        ),
+      )
+    })
+  })
+}
+
+fun emitLoad{
+  fs: mutable O.FunSpecializer,
+  addr: O.MaybeExists<O.InstrTree>,
+  bitOffset: Int,
+  addrByteAlignment: Int,
+  canCSE: Bool = false,
+  invariant: Bool = false,
+  typ: Type,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, addr, pos, addr_ -> {
+    shape = fs.scalarize(typ);
+    O.Exists(
+      shape.map((_, i) -> {
+        id = fs.emitLoad{
+          addr => addr_.asLeaf(pos).value,
+          bitOffset,
+          addrByteAlignment => ptrByteSize,
+          canCSE,
+          invariant,
+          typ => i,
+          pos,
+        }.id;
+        scalarType = fs.getScalarType(i);
+        !bitOffset = bitOffset + scalarType.bitSize;
+        id
+      }),
+    )
+  })
+}
+
+fun emitIntAdd{
+  fs: mutable O.FunSpecializer,
+  lhs: O.MaybeExists<O.InstrTree>,
+  rhs: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, lhs, pos, lhs_ -> {
+    fromExists(fs, rhs, pos, rhs_ -> {
+      O.Exists(
+        zipTrees(lhs_, rhs_, pos).map((_, i) -> {
+          (lhsValue, rhsValue) = i;
+          fs.emitIntAdd{lhs => lhsValue, rhs => rhsValue, pos}.id
+        }),
+      )
+    })
+  })
+}
+
+fun emitNamedCall{
+  fs: mutable O.FunSpecializer,
+  name: String,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  canThrow: Bool = true,
+  allocAmount: AllocAmount = AllocUnbounded(),
+  typ: Type,
+  pos: Pos,
+  llvmRetType: String = "",
+  casts: Array<String> = Array[],
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    ttype = fs.specializer.getReturnType(typ, fs.callers, pos);
+    call = fs.emitNamedCall{
+      typ => ttype,
+      name,
+      args => flatArgs,
+      canThrow,
+      allocAmount,
+      pos,
+      llvmRetType,
+      casts,
+    };
+    if (typ != tVoid) {
+      O.Exists(fs.reassembleCall(typ, call.id, pos, None()))
+    } else {
+      O.Exists(O.kVoidInstrTree)
+    }
+  })
+}
+
+fun emitCallFunction{
+  fs: mutable O.FunSpecializer,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  name: SFunctionID,
+  smap: SuperpositionMap<FunSuperpositionID>,
+  returns: Bool = true,
+  typ: Type,
+  pos: Pos,
+  prettyName: String = "",
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    ttype = fs.specializer.getReturnType(typ, fs.callers, pos);
+    call = fs.emitCallFunction{
+      args => flatArgs,
+      name,
+      smap,
+      returns,
+      typ => ttype,
+      pos,
+      prettyName,
+    };
+    if (typ != tVoid) {
+      O.Exists(fs.reassembleCall(typ, call.id, pos, None()))
+    } else {
+      O.Exists(O.kVoidInstrTree)
+    }
+  })
+}
+
+fun emitCallMethod{
+  fs: mutable O.FunSpecializer,
+  method: String,
+  retType: Type,
+  targs: Array<Type>,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    smap = fs.getMethodSMap(targs);
+    ttype = fs.specializer.getReturnType(retType, fs.callers, pos);
+    call = fs.emitCallMethod{method, args => flatArgs, smap, typ => ttype, pos};
+    if (retType != tVoid) {
+      O.Exists(fs.reassembleCall(retType, call.id, pos, None()))
+    } else {
+      O.Exists(O.kVoidInstrTree)
+    }
+  })
+}
+
+fun emitInvokeFunction{
+  fs: mutable O.FunSpecializer,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  name: SFunctionID,
+  smap: SuperpositionMap<FunSuperpositionID>,
+  returns: Bool = true,
+  typ: Type,
+  pos: Pos,
+  prettyName: String = "",
+  ifNoCatch: BlockSuccessor,
+  ifCatch: BlockSuccessor,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    noCatchHelper = fs.newBlockID();
+
+    ttype = fs.specializer.getReturnType(typ, fs.callers, pos);
+    call = fs.emitInvokeFunction{
+      args => flatArgs,
+      name,
+      smap,
+      returns,
+      typ => ttype,
+      pos,
+      prettyName,
+      ifNoCatch => BlockSuccessor(noCatchHelper),
+      ifCatch,
+    };
+    fs.startNewBlock(noCatchHelper);
+    result = if (typ != tVoid) {
+      O.Exists(fs.reassembleCall(typ, call.id, pos, None()))
+    } else {
+      O.Exists(O.kVoidInstrTree)
+    };
+    fs.emitJump{target => ifNoCatch, pos};
+    result
+  })
+}
+
+fun zipTrees<T: Show>(
+  lhs: O.NamedTree<T>,
+  rhs: O.NamedTree<T>,
+  pos: Pos,
+): O.NamedTree<(T, T)> {
+  rhs_ = rhs.flattened().values();
+  lhs.map((lhsName, lhsValue) -> {
+    (rhsName, rhsValue) = rhs_.next() match {
+    | None() -> pos.die("Too few values in rhs")
+    | Some(x) -> x
+    };
+    if (rhsName != lhsName) {
+      pos.die("Mismatched tree names")
+    };
+    (lhsValue, rhsValue)
+  })
+}
+
+fun fromExists<T: frozen>(
+  fs: mutable O.FunSpecializer,
+  value: O.MaybeExists<T>,
+  pos: Pos,
+  f: T -> O.MaybeExists<O.InstrTree>,
+): O.MaybeExists<O.InstrTree> {
+  value match {
+  | O.NotExists(why) ->
+    fs.emitUnreachable{why, pos};
+    O.NotExists(why)
+  | O.Exists(v) -> f(v)
+  }
+}
+
+fun fromExistsV<T: frozen>(
+  fs: mutable O.FunSpecializer,
+  value: O.MaybeExists<T>,
+  pos: Pos,
+  f: T -> void,
+): void {
+  value match {
+  | O.NotExists(why) -> fs.emitUnreachable{why, pos}
+  | O.Exists(v) -> f(v)
+  }
+}
+
+// Apply a call to each element of a InstrTree
+private fun applyScalarInstr(
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+  fn: (Type, InstrID) -> InstrID,
+): O.MaybeExists<O.InstrTree> {
+  fromExists(fs, value, pos, tree -> {
+    shape = fs.scalarize(typ);
+    src = tree.flattened();
+    if (src.size() != 1) {
+      pos.die(`Illegal call of applyScalarInstr() with non-scalar type ${typ}`);
+    };
+    O.Exists(
+      shape.map((_, dstTyp) -> {
+        srcId = src[0].i1;
+        fn(dstTyp, srcId);
+      }),
+    )
+  });
+}
+
+fun emitReinterpret{
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  applyScalarInstr(fs, typ, value, pos, (typ, v) ->
+    fs.emitReinterpret{typ, value => v, pos}.id
+  )
+}
+
+fun emitCast{
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  applyScalarInstr(fs, typ, value, pos, (typ, v) ->
+    fs.emitCast{typ, value => v, pos}.id
+  )
+}
+
+fun emitObject{
+  fs: mutable O.FunSpecializer,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  pos: Pos,
+  typ: Type,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    shape = fs.scalarize(typ);
+    shape match {
+    | O.NamedLeaf _ ->
+      // Normal object
+      ttype = fs.specializer.getReturnType(typ, fs.callers, pos);
+      call = fs.emitObject{args => flatArgs, pos, typ => ttype};
+      O.Exists(fs.reassembleCall(typ, call.id, pos, None()))
+    | O.NamedInner _ ->
+      // Just stitch together the args into a tree...
+      pos.lazyInvariant(flatArgs.size() == shape.flattened().size(), () ->
+        `Unable to emit scalar object of size ${shape
+          .flattened()
+          .size()} from args of size ${flatArgs.size()}`
+      );
+      idx = -1;
+      O.Exists(
+        shape.map((_, _) -> {
+          !idx = idx + 1;
+          flatArgs[idx];
+        }),
+      )
+    }
+  })
+}
+
+fun emitJump{
+  fs: mutable O.FunSpecializer,
+  target: BlockID,
+  args: Array<O.MaybeExists<O.InstrTree>>,
+  pos: Pos,
+}: void {
+  fromExistsV(fs, fs.flattenArgs(args), pos, flatArgs -> {
+    fs.emitJump{target => BlockSuccessor(target, flatArgs), pos};
+  });
+}
+
+fun emitStringSwitch{
+  fs: mutable O.FunSpecializer,
+  value: O.MaybeExists<O.InstrTree>,
+  cases: Array<O.MaybeExists<O.InstrTree>>,
+  successors: Array<BlockSuccessor>,
+  pos: Pos,
+}: void {
+  fromExistsV(fs, fs.flattenArgs(cases), pos, flatCases -> {
+    fromExistsV(fs, value, pos, v -> {
+      src = v.flattened().map(i -> i.i1);
+      if (src.size() != 1) {
+        pos.die("Illegal call of emitStringSwitch() with non-scalar value");
+      };
+      fs.emitStringSwitch{value => src[0], cases => flatCases, successors, pos}
+    })
+  })
+}
+
+fun emitIntSwitch{
+  fs: mutable O.FunSpecializer,
+  value: O.MaybeExists<O.InstrTree>,
+  cases: Array<Int>,
+  successors: Array<BlockSuccessor>,
+  pos: Pos,
+}: void {
+  fromExistsV(fs, value, pos, v -> {
+    src = v.flattened().map(i -> i.i1);
+    if (src.size() != 1) {
+      pos.die("Illegal call of emitIntSwitch() with non-scalar value");
+    };
+    fs.emitIntSwitch{value => src[0], cases, successors, pos}
+  })
+}
+
+fun emitTypeSwitch{
+  fs: mutable O.FunSpecializer,
+  value: O.MaybeExists<O.InstrTree>,
+  cases: Array<GClassName>,
+  successors: Array<BlockSuccessor>,
+  pos: Pos,
+}: void {
+  fromExistsV(fs, value, pos, v -> {
+    src = v.flattened().map(i -> i.i1);
+    if (src.size() != 1) {
+      pos.die("Illegal call of emitTypeSwitch() with non-scalar value");
+    };
+    fs.emitTypeSwitch{value => src[0], cases, successors, pos}
+  })
+}
+
+fun emitTupleExtract{
+  fs: mutable O.FunSpecializer,
+  obj: O.MaybeExists<O.InstrTree>,
+  index: Int,
+  typ: Type,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, obj, pos, tree -> {
+    flatTree = tree.flattened();
+    O.Exists(
+      if (flatTree.size() == 1) {
+        O.NamedLeaf(
+          fs.emitTupleExtract{obj => flatTree[0].i1, index, typ, pos}.id,
+        )
+      } else {
+        if (index >= flatTree.size()) {
+          pos.die(`Index ${index} exceeds tuple size ${flatTree.size()}`)
+        } else {
+          O.NamedLeaf(flatTree[index].i1)
+        }
+      },
+    )
+  });
+}
+
+fun startNewBlock{
+  fs: mutable O.FunSpecializer,
+  target: BlockID,
+  args: Array<Type>,
+  pos: Pos,
+}: Array<O.MaybeExists<O.InstrTree>> {
+  fs.startNewBlock(target);
+
+  blockParams = mutable Vector[];
+  index = 0;
+  result = args.map(arg -> {
+    shape = fs.scalarize(arg);
+    O.Exists(
+      shape.map((_, typ) -> {
+        id = fs.iid();
+        blockParams.push(BlockParam{id, typ, pos, index});
+        !index = index + 1;
+        id
+      }),
+    )
+  });
+
+  fs.!blockParams = blockParams.toArray();
+  result
+}
+
+fun emitTruncate{
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  applyScalarInstr(fs, typ, value, pos, (typ, v) ->
+    fs.emitTruncate{typ, value => v, pos}.id
+  )
+}
+
+fun emitZeroExtend{
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: O.MaybeExists<O.InstrTree>,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  applyScalarInstr(fs, typ, value, pos, (typ, v) ->
+    fs.emitZeroExtend{typ, value => v, pos}.id
+  )
+}
+
+fun emitGetField{
+  fs: mutable O.FunSpecializer,
+  obj: O.MaybeExists<O.InstrTree>,
+  field: String,
+  typ: Type,
+  pos: Pos,
+}: O.MaybeExists<O.InstrTree> {
+  fromExists(fs, obj, pos, obj_ -> {
+    O.Exists(
+      obj_ match {
+      | O.InstrLeaf(value) ->
+        // Our object is a class - the fields need to be extracted from the
+        // object itself.
+        fs.scalarize(typ).map((name, typ_) ->
+          fs.emitGetField{
+            obj => value,
+            typ => typ_,
+            field => O.dotJoin(field, name),
+            pos,
+          }.id
+        )
+      | inner @ O.InstrInner _ ->
+        // Our object is a value class - the fields will be available on the obj
+        // class.
+        innerMap = inner.flattened().collect(UnorderedMap);
+        fs.scalarize(typ).map((name, _) -> {
+          innerMap[O.dotJoin(field, name)]
+        })
+      },
+    )
+  });
+}
+
+fun constantString{
+  fs: mutable O.FunSpecializer,
+  value: String,
+}: O.MaybeExists<O.InstrTree> {
+  O.Exists(O.InstrLeaf(fs.constantString(value).id))
+}
+
+fun constantInt{
+  fs: mutable O.FunSpecializer,
+  value: Int,
+}: O.MaybeExists<O.InstrTree> {
+  O.Exists(O.InstrLeaf(fs.constantInt(value).id))
+}
+
+fun constantPointer{
+  fs: mutable O.FunSpecializer,
+  typ: Type,
+  value: Int,
+}: O.MaybeExists<O.InstrTree> {
+  O.Exists(O.InstrLeaf(fs.constantPointer(typ, value).id))
+}

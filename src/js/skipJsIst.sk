@@ -1,0 +1,196 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The abstract syntax tree that represents JavaScript */
+/* The language is a superscript of 5 and a subset of ECMAScript 6. */
+/* In particular it describes most of the language implemented by Node 6.3 */
+/* See http://www.ecma-international.org/ecma-262/6.0/#sec-grammar-summary */
+/* The AST is optimized for writing programs. Some simplifications have */
+/* been made, notably: */
+/*   - for statements */
+/*   - destructuring variables/assignment/parameters */
+/*****************************************************************************/
+module SkipJsIst;
+
+base class Postfix_operator {
+  children =
+  | PostfixIncrement()
+  | PostfixDecrement()
+}
+
+base class Unary_operator {
+  children =
+  | UnaryDelete()
+  | UnaryVoid()
+  | UnaryTypeof()
+  | UnaryIncrement()
+  | UnaryDecrement()
+  | UnaryPlus()
+  | UnaryMinus()
+  | UnaryBitwiseNot()
+  | UnaryNot()
+}
+
+base class Binary_operator {
+  children =
+  | BinaryTimes()
+  | BinaryDivide()
+  | BinaryModulo()
+  | BinaryPlus()
+  | BinaryMinus()
+  | BinaryLeftShift()
+  | BinaryRightShift()
+  | BinaryUnsignedRightShift()
+  | BinaryLess()
+  | BinaryGreater()
+  | BinaryLessEquals()
+  | BinaryGreaterEquals()
+  | BinaryInstanceof()
+  | BinaryIn()
+  | BinaryEquals()
+  | BinaryNotEquals()
+  | BinaryStrictEquals()
+  | BinaryStrictNotEquals()
+  | BinaryBitwiseAnd()
+  | BinaryBitwiseXor()
+  | BinaryBitwiseOr()
+  | BinaryAnd()
+  | BinaryOr()
+  | BinaryAssign()
+  | BinaryTimesAssign()
+  | BinaryDivideAssign()
+  | BinaryModuloAssign()
+  | BinaryPlusAssign()
+  | BinaryMinusAssign()
+  | BinaryLeftShiftAssign()
+  | BinaryRightShiftAssign()
+  | BinaryUnsignedRightShiftAssign()
+  | BinaryBitwiseAndAssign()
+  | BinaryBitwiseXorAssign()
+  | BinaryBitwiseOrAssign()
+}
+
+/* A.5 Scripts and Modules */
+type Script = List<Pos_statement>;
+
+/* A.4 Functions and Classes */
+class Function_definition{
+  function_body: Block_statement,
+  function_is_generator: Bool,
+  function_name: String,
+  function_parameters: List<String>,
+}
+
+class Lambda_definition{
+  lambda_body: Block_statement,
+  lambda_parameters: List<String>,
+}
+
+class Class_definition{
+  class_elements: List<Method_definition>,
+  class_extends: ?Pos_expression,
+  class_name: String,
+}
+
+base class Method_kind {
+  children =
+  | MethodKindNormal()
+  | MethodKindGenerator()
+  | MethodKindGet()
+  | MethodKindSet()
+}
+
+class Method_definition{
+  method_body: Block_statement,
+  method_is_static: Bool,
+  method_kind: Method_kind,
+  method_name: String,
+  method_parameters: List<String>,
+}
+base class Statement {
+  children =
+  | Variable(Variable_statement)
+  | LabeledStatement(String, Block_statement)
+  | Block(Block_statement)
+  | Empty()
+  | ExpressionStatement(Pos_expression)
+  | If(Pos_expression, Pos_statement, ?Pos_statement)
+  | Do(Pos_statement, Pos_expression)
+  | While(Pos_expression, Pos_statement)
+  | For(?Pos_expression, ?Pos_expression, ?Pos_expression, Pos_statement)
+  | ForOf(String, Pos_expression, Pos_statement)
+  | Switch(Switch_statement)
+  | Break(?String)
+  | Continue()
+  | Return(?Pos_expression)
+  | Throw(Pos_expression)
+  | Try(Try_statement)
+  | Debugger()
+}
+
+type Pos_statement = (FileRange, Statement);
+
+class Variable_statement{
+  variable_initializer: ?Pos_expression,
+  variable_is_const: Bool,
+  variable_is_var: Bool, /* has precedence over const */
+  variable_name: Pos_expression,
+}
+
+class Switch_statement{
+  switch_cases: List<Case_clause>,
+  switch_expression: Pos_expression,
+}
+
+base class Case_clause {
+  children =
+  | Case(List<Pos_expression>, List<Pos_statement>)
+  | Default(List<Pos_statement>)
+}
+
+class Try_statement{
+  try_block: Block_statement,
+  try_catch: ?(String, Block_statement),
+  try_finally: ?Block_statement,
+}
+
+type Block_statement = List<Pos_statement>;
+
+/* A.2 Expressions */
+base class Expression {
+  children =
+  | This()
+  | Super()
+  | Identifier(String)
+  | Null()
+  | BoolLiteral(Bool)
+  | Number(Float)
+  | StringLiteral(String)
+  | Literal(String)
+  | Array(List<Pos_expression>)
+  | Object(Object_literal)
+  | Function(Function_definition)
+  | Lambda(Lambda_definition)
+  | Class(Class_definition)
+  | Paren(Pos_expression)
+  | New(Pos_expression, List<Pos_expression>)
+  | Call(Pos_expression, List<Pos_expression>)
+  | ArrayAccess(Pos_expression, Pos_expression)
+  | MemberAccess(Pos_expression, String)
+  | Postfix(Pos_expression, Postfix_operator)
+  | Unary(Unary_operator, Pos_expression)
+  | Conditional(Pos_expression, Pos_expression, Pos_expression)
+  | Binary(Pos_expression, Binary_operator, Pos_expression)
+  | Comma(Pos_expression, Pos_expression)
+  | Yield(Pos_expression)
+}
+
+type Pos_expression = (FileRange, Expression);
+
+type Object_literal = List<Property_definition>;
+
+type Property_definition = (String, Pos_expression);

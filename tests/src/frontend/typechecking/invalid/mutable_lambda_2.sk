@@ -1,0 +1,11 @@
+mutable class Foo(mutable x: Int)
+
+fun no(): () ~> void {
+  x = mutable Foo(5);
+  f: () -> void = (
+    () -> {
+      x.!x = x.x + 1
+    }
+  );
+  f
+}

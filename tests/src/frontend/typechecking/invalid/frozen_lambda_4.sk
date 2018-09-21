@@ -1,0 +1,4 @@
+mutable class Foo(f: () -> void)
+fun no(): void {
+  _ = Foo(() -> void)
+}

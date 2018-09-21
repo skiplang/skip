@@ -1,0 +1,6 @@
+File "./syntax/invalid/dollar_variable.sk", line 2, characters 3-15:
+Unexpected '$'. '$' is not a valid character in an identifier. Did you mean 'someVariable'?
+1 | fun main(): String {
+2 |   $someVariable = 10;
+  |   ^^^^^^^^^^^^^
+3 | }

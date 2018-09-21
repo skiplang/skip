@@ -1,0 +1,15 @@
+File "./typechecking/invalid/mutable_lambda_3.sk", line 3, characters 20-29:
+Constants cannot contain mutable values; they must be frozen.
+1 | // mutable lambdas not allowed in constants
+2 | class Foo() {
+3 |   const mutLambda: () -> void = () -> void;
+  |                    ^^^^^^^^^^
+4 | }
+
+File "./typechecking/invalid/mutable_lambda_3.sk", line 3, characters 20-29:
+Not frozen because of this position.
+1 | // mutable lambdas not allowed in constants
+2 | class Foo() {
+3 |   const mutLambda: () -> void = () -> void;
+  |                    ^^^^^^^^^^
+4 | }

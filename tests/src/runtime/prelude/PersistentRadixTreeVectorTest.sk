@@ -1,0 +1,123 @@
+@test
+fun testSimple(): void {
+  vec = Persistent.RadixTreeVector::mcreate();
+  assertEqual(vec.size(), 0);
+  vec.push(42);
+  assertEqual(vec.size(), 1);
+  assertEqual(vec[0], 42);
+  assertEqual(vec.pop(), 42);
+  assertEqual(vec.size(), 0);
+}
+
+// Test creating a vector with mcreateFromItems
+@test
+fun testRadixTreeVectorQuickCheckFromItems(): void {
+  QuickCheck.assert(.Vector::generator(Int::generator()), base ~> {
+    test = Persistent.RadixTreeVector::createFromItems(base);
+    assertEqualPersistent(test, base);
+  });
+}
+
+// Test a random sequence of push/pop/set operations on a vector
+@test
+fun testRadixTreeVectorRandom(): void {
+  test = Persistent.RadixTreeVector::mcreate();
+  base = .Vector::mcreate();
+  // seed = nowNanos().toInt();
+  // debug(`seed=${seed}`);
+  seed = 1533245322973764467;
+  rng = Random::mcreate(seed);
+  for (_ in Range(0, 2000)) {
+    x = rng.random(0, 6);
+    if (x < 4) {
+      value = rng.next();
+      test.push(value);
+      base.push(value);
+      index = base.size() - 1;
+      assertEqual(test[index], base[index]);
+      assertEqual(test.size(), base.size());
+    } else if (x < 5) {
+      value = rng.next();
+      index = rng.random(0, base.size());
+      test.set(index, value);
+      base.set(index, value);
+      assertEqual(test[index], base[index]);
+    } else if (!base.isEmpty()) {
+      value = test.pop();
+      expectedValue = base.pop();
+      assertEqual(value, expectedValue);
+      assertEqual(test.size(), base.size());
+    }
+  };
+  assertEqualPersistent(test, base)
+}
+
+// Fill with push and then drain with pop
+@test
+fun testRadixTreeVectorPushPop(): void {
+  test = Persistent.RadixTreeVector::mcreate();
+  base = .Vector::mcreate();
+  assertEqual(test.size(), 0, `Expected initially empty`);
+  size = 2000;
+  for (i in Range(0, size)) {
+    test.push(i);
+    base.push(i);
+    assertEqual(test[i], base[i]);
+    assertEqual(test.size(), base.size());
+  };
+  assertEqualPersistent(test, base);
+  for (_ in Range(0, size)) {
+    testValue = test.pop();
+    baseValue = base.pop();
+    assertEqual(testValue, baseValue);
+    assertEqual(test.size(), base.size());
+  };
+  assertEqualPersistent(test, base);
+}
+
+@test
+fun testCompareAndEqual(): void {
+  // Test vectors in lexicographical order.
+  vecs = vectorsToTest();
+
+  // Try all O(n^2) combinations -- order should match index order.
+  vecs.eachWithIndex((i, v1) -> {
+    vecs.eachWithIndex((j, v2) -> {
+      assertEqual(v1 == v2, i == j);
+      assertEqual(v1 != v2, i != j);
+      assertEqual(v1.compare(v2), compare(i, j));
+      assertEqual(v1 > v2, i > j);
+      assertEqual(v1 >= v2, i >= j);
+      assertEqual(v1 < v2, i < j);
+      assertEqual(v1 <= v2, i <= j)
+    })
+  });
+}
+
+fun vectorsToTest(): Persistent.RadixTreeVector<
+  Persistent.RadixTreeVector<Int>,
+> {
+  Persistent.RadixTreeVector[
+    Persistent.RadixTreeVector[],
+    Persistent.RadixTreeVector[1],
+    Persistent.RadixTreeVector[1, 1, 1, 1, 1],
+    Persistent.RadixTreeVector[1, 1, 1, 1, 2],
+    Persistent.RadixTreeVector[1, 2],
+    Persistent.RadixTreeVector[1, 2, 3],
+    Persistent.RadixTreeVector[1, 3, 3],
+    Persistent.RadixTreeVector[1, 99],
+    Persistent.RadixTreeVector[4],
+    Persistent.RadixTreeVector[100, 101, 102, 103],
+  ]
+}
+
+fun assertEqualPersistent<T: readonly Equality & readonly Show>(
+  actual: readonly Persistent.RadixTreeVector<T>,
+  expected: readonly .Vector<T>,
+): void {
+  size = expected.size();
+  assertEqual(actual.size(), size);
+  for (i in Range(0, size)) {
+    assertEqual(actual[i], expected[i]);
+  };
+}

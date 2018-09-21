@@ -1,0 +1,22 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module FastOption;
+
+trait FastOptionJsonable<+T> {
+  fun toJson[T: Jsonable](): JSON.Value {
+    this.map(toJson).default(JSON.Null())
+  }
+
+  fun map<T2>(f: T -> T2): ?T2;
+}
+
+extension class FlagOption uses FastOptionJsonable<T> {}
+
+extension class SentinelOption uses FastOptionJsonable<T> {}
+
+module end;

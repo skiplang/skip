@@ -1,0 +1,22 @@
+File "./typechecking/invalid/constraint_param.sk", line 3, characters 17-17:
+Constraint not satisfied
+1 | trait X
+2 | class Y<T: X>(T)
+3 | fun test2<T>(_: Y<T>): void {
+  |                 ^
+4 |   void
+
+File "./typechecking/invalid/constraint_param.sk", line 3, characters 19-19:
+The type: T
+1 | trait X
+2 | class Y<T: X>(T)
+3 | fun test2<T>(_: Y<T>): void {
+  |                   ^
+4 |   void
+
+File "./typechecking/invalid/constraint_param.sk", line 2, characters 12-12:
+Is not a subtype of: X
+1 | trait X
+2 | class Y<T: X>(T)
+  |            ^
+3 | fun test2<T>(_: Y<T>): void {

@@ -1,0 +1,7 @@
+File "./typechecking/invalid/dependent_generic_args4.sk", line 3, characters 17-17:
+Unbound class: 'T'
+1 | class Foo<T>(x: T)
+2 |
+3 | fun foo<T2: Foo<T>, T>(): void {
+  |                 ^
+4 |   void

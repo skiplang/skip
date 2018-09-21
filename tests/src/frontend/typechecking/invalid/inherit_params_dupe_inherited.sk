@@ -1,0 +1,3 @@
+base class MyParent(x: Int, y: String) {}
+base class MyParent2(x: Bool, y: Bool) {}
+class Child extends MyParent, MyParent2

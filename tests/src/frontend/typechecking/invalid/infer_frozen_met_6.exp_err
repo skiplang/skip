@@ -1,0 +1,30 @@
+File "./typechecking/invalid/infer_frozen_met_6.sk", line 9, characters 3-16:
+Constraint not satisfied
+ 7 | fun test(): void {
+ 8 |   x: readonly Tester<mutable Array<Int>> = mutable Tester(mutable Array[]);
+ 9 |   x.foo(Array[])
+   |   ^^^^^^^^^^^^^^
+10 | }
+
+File "./typechecking/invalid/infer_frozen_met_6.sk", line 9, characters 9-15:
+The possibly mutable type 'readonly Array<Int>' appeared inside an immutable type.
+ 7 | fun test(): void {
+ 8 |   x: readonly Tester<mutable Array<Int>> = mutable Tester(mutable Array[]);
+ 9 |   x.foo(Array[])
+   |         ^^^^^^^
+10 | }
+
+File "./typechecking/invalid/infer_frozen_met_6.sk", line 2, characters 23-28:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | mutable class Tester<V>(mutable x: V) {
+2 |   readonly fun foo<T: frozen>[V: T](T): Array<T> {
+  |                       ^^^^^^
+3 |     Array[]
+
+File "./typechecking/invalid/infer_frozen_met_6.sk", line 8, characters 22-39:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'readonly' modifier
+ 6 |
+ 7 | fun test(): void {
+ 8 |   x: readonly Tester<mutable Array<Int>> = mutable Tester(mutable Array[]);
+   |                      ^^^^^^^^^^^^^^^^^^
+ 9 |   x.foo(Array[])

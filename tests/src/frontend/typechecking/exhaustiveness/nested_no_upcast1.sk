@@ -1,0 +1,20 @@
+base class B {
+  children =
+  | A(B)
+  | C(Int)
+}
+base class X {
+  children =
+  | Y(B)
+}
+fun main(): void {
+  print_raw(
+    Y(A(C(1))) match {
+    | Y(A(C(1))) -> "Pass\n"
+    | Y(A(B _))
+    | Y(C(1))
+    | Y(C(Int _)) ->
+      "Fail\n"
+    },
+  )
+}

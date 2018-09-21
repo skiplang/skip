@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/type_alias_recursive.sk", line 10, characters 5-5:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | this::Foo(_, Plus _)
+ 8 |
+ 9 |   fun bar(x: Expr): Int {
+10 |     x match {
+   |     ^^^^^^^^^
+11 |     | this::Foo(_, Value(1)) -> 0
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

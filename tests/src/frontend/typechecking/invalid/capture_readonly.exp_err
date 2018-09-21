@@ -1,0 +1,24 @@
+File "./typechecking/invalid/capture_readonly.sk", line 4, characters 13-13:
+You cannot capture this variable
+2 |
+3 | fun foo(x: mutable X): void {
+4 |   f = () ~> x;
+  |             ^
+5 |   _x = f();
+
+File "./typechecking/invalid/capture_readonly.sk", line 3, characters 12-20:
+Mutable because of this position
+1 | mutable class X(mutable x: Int)
+2 |
+3 | fun foo(x: mutable X): void {
+  |            ^^^^^^^^^
+4 |   f = () ~> x;
+
+File "./typechecking/invalid/capture_readonly.sk", line 4, characters 7-13:
+Because this closure was declared as pure (~>)
+Try '->' instead
+2 |
+3 | fun foo(x: mutable X): void {
+4 |   f = () ~> x;
+  |       ^^^^^^^
+5 |   _x = f();

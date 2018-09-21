@@ -1,0 +1,4 @@
+fun main(): void {
+  { void }.x = 42;
+  print_raw("Fail")
+}

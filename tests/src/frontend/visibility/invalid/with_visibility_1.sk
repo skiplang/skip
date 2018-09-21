@@ -1,0 +1,6 @@
+class Foo private (x: void)
+
+fun test(f: Foo): void {
+  f.x;
+  !f.x = void
+}

@@ -1,0 +1,5 @@
+fun main(): String {
+  0 match {
+  | - false -> "Fail"
+  }
+}

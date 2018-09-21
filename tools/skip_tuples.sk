@@ -1,0 +1,695 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+fun main(): void {
+  SkipTuples.generate();
+  void
+}
+
+module SkipTuples;
+
+const min_size: Int = SharedTuples.min_size;
+const max_size: Int = SharedTuples.max_size;
+
+fun generate(): void {
+  BufferedPrinter.pp(generate_, max_size)
+}
+
+fun generate_(o: mutable BufferedPrinter.Out, max_size: Int): void {
+  o.out("/**");
+  o.newline();
+  o.out(" * @" + "generated");
+  o.newline();
+  o.out(" * Use ./tools/skip_tuples to regenerate");
+  o.newline();
+  o.out(" */");
+  o.newline();
+  o.newline();
+  o.out("module Tuple;");
+  o.newline();
+  o.newline();
+
+  for (tuple_size in Range(min_size, max_size + 1)) {
+    (mutable GenTuple(o, tuple_size)).gen();
+    o.newline()
+  };
+
+  o.newline();
+  o.newline();
+  o.out("module end;");
+  o.newline();
+  o.newline();
+  o.out("module Serialization;");
+  o.newline();
+  (mutable GenSerializeTuples(o, Range(min_size, max_size + 1))).gen();
+  o.newline();
+  o.out("module end;");
+  o.newline();
+  o.newline();
+  (mutable GenTupleMetaClasses(o, Range(min_size, max_size + 1))).gen();
+  o.newline();
+}
+
+/*****************************************************************************/
+/* Class declaration */
+/*****************************************************************************/
+
+mutable class GenTuple(o: mutable BufferedPrinter.Out, arity: Int) {
+  mutable fun gen(): void {
+    this.genContainer();
+    this.o.newline();
+    this.o.out("value class ");
+    this.arityCname();
+    this.arityTparams();
+    this.arityFields();
+    this.conditionalUses(
+      Vector["readonly Show", "Hashable", "Orderable", "Equality"],
+    );
+    this.o.out(" {");
+    this.o.newline();
+    this.o.margin(() -> {
+      // ==
+      this.genEq();
+      this.o.newline();
+      // !=
+      this.genNeq();
+      this.o.newline();
+      // compare
+      this.genCompare();
+      this.o.newline();
+      // <
+      this.genLt();
+      this.o.newline();
+      // >
+      this.genGt();
+      this.o.newline();
+      // <=
+      this.genLeq();
+      this.o.newline();
+      // >=
+      this.genGeq();
+      this.o.newline();
+      // toString
+      this.genToString();
+      this.o.newline();
+      // hash
+      this.genHash();
+      this.o.newline();
+      // inspect
+      this.genInspect();
+      this.o.newline();
+      // parallelMap
+      this.genParallelMap();
+      this.o.newline();
+    });
+    this.o.newline();
+    this.o.out("}");
+    this.o.newline();
+  }
+
+  mutable fun arityCname(): void {
+    this.o.out("." + SharedTuples.tuple_root_name);
+    this.o.out(this.arity.toString());
+  }
+
+  mutable fun arityTparams(): void {
+    this.o.out("<");
+    this.arityList(i -> {
+      this.o.out("+");
+      this.tparam(i)
+    });
+    this.o.out(">");
+  }
+
+  mutable fun arityTypeTargs(): void {
+    this.o.out("<");
+    this.arityList(this.tparam);
+    this.o.out(">");
+  }
+
+  mutable fun tparam(i: Int): void {
+    this.o.out("T" + i)
+  }
+
+  mutable fun arityFields(): void {
+    this.o.out("(");
+    this.arityList(i -> {
+      this.o.out(this.field(i));
+      this.o.out(": ");
+      this.tparam(i)
+    });
+    this.o.out(")")
+  }
+
+  readonly fun field(i: Int): String {
+    SharedTuples.tuple_field_root_name + i
+  }
+
+  mutable fun arityListOp(op: String, f: Int -> void): void {
+    for (i in Range(0, this.arity)) {
+      f(i);
+      if (i + 1 != this.arity) this.o.out(op)
+    }
+  }
+
+  mutable fun arityList(f: Int -> void): void {
+    this.arityListOp(", ", f)
+  }
+
+  /****************************************************************************/
+  /* Traits */
+  /****************************************************************************/
+
+  mutable fun conditionalUses(traits: Vector<String>): void {
+    len = traits.size();
+    if (len == 0) return void;
+
+    this.o.out(" uses ");
+    for (i in Range(0, len)) {
+      this.conditionalUse(traits[i]);
+      if (i + 1 != len) this.o.out(", ")
+    }
+  }
+
+  mutable fun conditionalUse(ntrait: String): void {
+    this.o.out(ntrait.replace("readonly ", ""));
+    this.o.out("[");
+    this.arityList(i -> {
+      this.tparam(i);
+      this.o.out(": ");
+      this.o.out(ntrait)
+    });
+    this.o.out("]")
+  }
+
+  /****************************************************************************/
+  /* Methods */
+  /****************************************************************************/
+
+  // ==
+  mutable fun genEq(): void {
+    op = "==";
+    this.funProtoType(op, this.outEquality, this.outBool);
+    this.methodBody(() ->
+      this.arityListOp(" && ", i -> {
+        this.element("this", i);
+        this.o.out(" " + op + " ");
+        this.element(static::other_var, i)
+      })
+    );
+  }
+
+  // !=
+  mutable fun genNeq(): void {
+    this.funProtoType("!=", this.outEquality, this.outBool);
+    this.methodBody(() -> this.o.out("!(this == " + static::other_var + ")"));
+  }
+
+  // compare
+  mutable fun genCompare(): void {
+    this.funProtoType("compare", this.outOrderable, this.outOrder);
+    this.methodBody(() -> this.compareBlock(0))
+  }
+
+  mutable fun compareBlock(idx: Int): void {
+    this.element("this", idx);
+    this.o.out(".compare(");
+    this.element(static::other_var, idx);
+    this.o.out(")");
+    if (idx + 1 != this.arity) {
+      this.o.out(" match {");
+      this.o.newline();
+      // EQ
+      this.o.out("| EQ() -> ");
+      this.o.newline();
+      this.o.margin(() -> this.compareBlock(idx + 1));
+      this.o.newline();
+      // Otherwise
+      this.o.out("| c -> c");
+      this.o.newline();
+      this.o.out("}")
+    }
+  }
+
+  // <
+  mutable fun genLt(): void {
+    this.genCompareWrapper("<", "== LT()")
+  }
+
+  // >
+  mutable fun genGt(): void {
+    this.genCompareWrapper(">", "== GT()")
+  }
+
+  // <=
+  mutable fun genLeq(): void {
+    this.genCompareWrapper("<=", "!= GT()")
+  }
+
+  // >=
+  mutable fun genGeq(): void {
+    this.genCompareWrapper(">=", "!= LT()")
+  }
+
+  mutable fun genCompareWrapper(op: String, check: String): void {
+    this.funProtoType(op, this.outOrderable, this.outBool);
+    this.methodBody(() ->
+      this.o.out("this.compare(" + static::other_var + ") " + check)
+    );
+  }
+
+  // toString
+  mutable fun genToString(): void {
+    this.funProtoTypeNoArgs("toString", this.outShow, this.outString);
+    this.methodBody(() -> {
+      this.o.out("\"(\" + ");
+      this.arityListOp(" + \", \" + ", i -> this.element("this", i));
+      this.o.out(" + \")\"");
+    });
+  }
+
+  // inspect
+  mutable fun genInspect(): void {
+    this.o.out("fun inspect(): Inspect");
+    this.methodBody(() -> {
+      this.o.out("InspectCall(\"\", Array[inspect(");
+      this.arityListOp("), inspect(", i -> this.element("this", i));
+      this.o.out(")])");
+    });
+  }
+
+  // hash
+  mutable fun genHash(): void {
+    this.funProtoTypeNoArgs("hash", this.outHashable, this.outInt);
+    this.methodBody(() -> this.hashBlock(0))
+  }
+
+  mutable fun hashBlock(idx: Int): void {
+    if (idx + 1 != this.arity) {
+      this.o.out("Hashable.combine(");
+      this.element("this", idx);
+      this.o.out(".hash()");
+      this.o.out(",");
+      this.hashBlock(idx + 1);
+      this.o.out(")")
+    } else {
+      this.element("this", idx);
+      this.o.out(".hash()")
+    }
+  }
+
+  mutable fun genContainer(): void {
+    this.o.out("private base class C" + this.arity + "<");
+    this.arityList(this.other_tparam);
+    this.o.out("> {");
+    this.o.newline();
+    this.o.margin(() -> {
+      this.o.out("children = ");
+      this.arityListOp(" | ", i -> {
+        this.o.out("C" + this.arity + "_" + i + "(");
+        this.other_tparam(i);
+        this.o.out(")");
+      })
+    });
+    this.o.newline();
+    this.o.out("}");
+    this.o.newline();
+  }
+
+  // parallelMap
+  mutable fun genParallelMap(): void {
+    this.o.out("frozen fun parallelMap<");
+    this.arityList(this.other_tparam);
+    this.o.out(">");
+    this.o.out("(");
+    this.arityList(i -> {
+      this.o.out("f" + i + ": ");
+      this.tparam(i);
+      this.o.out(" ~> ");
+      this.other_tparam(i);
+    });
+    this.o.out("): ");
+    this.o.out("(");
+    this.arityList(this.other_tparam);
+    this.o.out(")");
+
+    this.methodBody(() -> {
+      this.o.out("res = Parallel.tabulate(" + this.arity + ", i ~>");
+      this.o.newline();
+      this.o.margin(() -> {
+        this.o.out("i match {");
+        this.o.newline();
+        for (i in Range(0, this.arity)) {
+          this.o.out(
+            "| " + i + " -> C" + this.arity + "_" + i + "(f" + i + "(",
+          );
+          this.element("this", i);
+          this.o.out("))");
+          this.o.newline();
+        };
+        this.o.out("| _ -> invariant_violation(\"Tuple.parallelMap\")");
+        this.o.newline();
+        this.o.out("}");
+      });
+      this.o.newline();
+      this.o.out(");");
+      this.o.newline();
+      this.o.out("(");
+      this.o.newline();
+      this.o.margin(() -> {
+        for (i in Range(0, this.arity)) {
+          this.o.out("res[" + i + "] match { ");
+          this.o.out("C" + this.arity + "_" + i + "(x) -> x ");
+          this.o.out("| _ -> invariant_violation(\"Tuple.parallelMap\") },");
+          this.o.newline();
+        }
+      });
+      this.o.out(")");
+    })
+  }
+
+  mutable fun element(var: String, idx: Int): void {
+    this.o.out(var);
+    this.o.out("." + this.field(idx));
+  }
+
+  mutable fun outEquality(): void {
+    this.o.out("Equality")
+  }
+
+  mutable fun outBool(): void {
+    this.o.out("Bool")
+  }
+
+  mutable fun outOrderable(): void {
+    this.o.out("Orderable")
+  }
+
+  mutable fun outOrder(): void {
+    this.o.out("Order")
+  }
+
+  mutable fun outShow(): void {
+    this.o.out("readonly Show")
+  }
+
+  mutable fun outString(): void {
+    this.o.out("String")
+  }
+
+  mutable fun outHashable(): void {
+    this.o.out("Hashable")
+  }
+
+  mutable fun outInt(): void {
+    this.o.out("Int")
+  }
+
+  const other_tparam_name: String = "U";
+  const other_var: String = "other";
+
+  mutable fun funProtoType(
+    fun_name: String,
+    constraint: () -> void,
+    return_type: () -> void,
+  ): void {
+    this.o.out("fun ");
+    this.o.out(fun_name);
+    this.other_type_params(constraint);
+    this.constraintClause(this.other_tparam);
+    this.o.out("(" + static::other_var + ": ");
+    this.other_var_type();
+    this.o.out("): ");
+    return_type()
+  }
+
+  mutable fun funProtoTypeNoArgs(
+    fun_name: String,
+    constraint: () -> void,
+    return_type: () -> void,
+  ): void {
+    this.o.out("fun ");
+    this.o.out(fun_name);
+    this.constraintClause(_ -> constraint());
+    this.o.out("(): ");
+    return_type()
+  }
+
+  mutable fun other_tparam(i: Int): void {
+    this.o.out(static::other_tparam_name + i)
+  }
+
+  mutable fun other_type_params(constraint: () -> void): void {
+    this.o.out("<");
+    this.arityList(i -> {
+      this.other_tparam(i);
+      this.o.out(": ");
+      constraint()
+    });
+    this.o.out(">")
+  }
+
+  mutable fun other_var_type(): void {
+    this.o.out("readonly ");
+    this.arityCname();
+    this.o.out("<");
+    this.arityList(this.other_tparam);
+    this.o.out(">");
+  }
+
+  mutable fun constraintClause(constriant: Int -> void): void {
+    this.o.out("[");
+    this.arityList(i -> {
+      this.tparam(i);
+      this.o.out(": ");
+      constriant(i)
+    });
+    this.o.out("]")
+  }
+
+  mutable fun methodBody(body: () -> void): void {
+    this.o.out(" {");
+    this.o.newline();
+    this.o.margin(body);
+    this.o.newline();
+    this.o.out("}")
+  }
+}
+
+mutable class GenSerializeTuples(
+  o: mutable BufferedPrinter.Out,
+  arities: Sequence<Int>,
+) {
+  mutable fun gen(): void {
+    this.genReaders();
+    this.genWriters();
+  }
+
+  mutable fun genReaders(): void {
+    this.o.newline();
+    this.o.out("extension mutable base class TupleReader {");
+    this.o.newline();
+    for (arity in this.arities) {
+      this.o.margin(() -> {
+        generics = Range(0, arity).map((x) ->
+          `T${x}, S${x}: Serializer<T${x}>`
+        ).join(", ");
+        args = Range(0, arity).map((x) -> `serializer${x}: S${x}`).join(", ");
+        returnType = Range(0, arity).map((x) -> `T${x}`).join(", ");
+        this.o.out(
+          `mutable fun readTuple${arity}<${generics}>(${args}): (${returnType}) {`,
+        );
+        this.o.newline();
+        this.o.margin(() -> {
+          tuple = Range(0, arity).map((x) ->
+            `this.readValue(serializer${x})`
+          ).join(", ");
+          this.o.out(`result = (${tuple});`);
+          this.o.newline();
+          this.o.out(`this.end();`);
+          this.o.newline();
+          this.o.out(`result`);
+          this.o.newline();
+        });
+        this.o.out(`}`);
+        this.o.newline();
+        this.o.newline()
+      });
+    };
+    this.o.newline();
+    this.o.out("}");
+    this.o.newline()
+  }
+
+  mutable fun genWriters(): void {
+    this.o.newline();
+    this.o.out("extension mutable base class TupleWriter {");
+    this.o.newline();
+    for (arity in this.arities) {
+      this.o.margin(() -> {
+        generics = Range(0, arity).map((x) ->
+          `T${x}, S${x}: Serializer<T${x}>`
+        ).join(", ");
+        args = Range(0, arity).map((x) ->
+          `value${x}: T${x}, serializer${x}: S${x}`
+        ).join(", ");
+        this.o.out(
+          `mutable fun writeTuple${arity}<${generics}>(${args}): void {`,
+        );
+        this.o.newline();
+        this.o.margin(() -> {
+          for (x in Range(0, arity)) {
+            this.o.out(`this.writeValue(value${x}, serializer${x});`);
+            this.o.newline();
+          };
+          this.o.out(`this.end();`);
+          this.o.newline();
+        });
+        this.o.out(`}`);
+        this.o.newline();
+        this.o.newline()
+      });
+    };
+    this.o.newline();
+    this.o.out("}");
+    this.o.newline()
+  }
+}
+
+mutable class GenTupleMetaClasses(
+  o: mutable BufferedPrinter.Out,
+  arities: Sequence<Int>,
+) {
+  mutable fun gen(): void {
+    this.genExtension();
+    this.genMetaClass();
+  }
+
+  mutable fun genExtension(): void {
+    this.o.newline();
+    for (arity in this.arities) {
+      name = `Tuple${arity}`;
+      this.o.out(`extension class ${name} {`);
+      this.o.newline();
+      this.o.margin(() -> {
+        generics = Range(0, arity).map((x) ->
+          `T${x}, C${x}: MetaClass<T${x}>`
+        ).join(", ");
+        args = Range(0, arity).map((x) -> `class${x}: C${x}`).join(", ");
+        returnTypeGenerics = Range(0, arity).map((x) -> `T${x}, C${x}`).join(
+          ", ",
+        );
+        returnType = `${name}MetaClass<${returnTypeGenerics}>`;
+        this.o.out(`static fun meta<${generics}>(${args}): ${returnType} {`);
+        this.o.newline();
+        this.o.margin(() -> {
+          callArgs = Range(0, arity).map((x) -> `class${x}`).join(", ");
+          this.o.out(`${name}MetaClass(${callArgs})`);
+          this.o.newline();
+        });
+        this.o.out("}");
+        this.o.newline();
+      });
+      this.o.out("}");
+      this.o.newline();
+      this.o.newline();
+    }
+  }
+
+  mutable fun genMetaClass(): void {
+    this.o.newline();
+    for (arity in this.arities) {
+      name = `Tuple${arity}`;
+      nameGenerics = `${name}<${Range(0, arity).map((x) -> `T${x}`).join(
+        ", ",
+      )}>`;
+      classGenerics = Range(0, arity).map((x) ->
+        `T${x}, C${x}: MetaClass<T${x}>`
+      ).join(", ");
+      classArgs = Range(0, arity).map((x) -> `class${x}: C${x}`).join(", ");
+      typeConstraints = Range(0, arity).map((x) ->
+        `C${x}: Serialization.Serializer<T${x}>`
+      ).join(", ");
+      this.o.out(`class ${name}MetaClass<${classGenerics}>(${classArgs}) `);
+      this.o.newline();
+      this.o.out(`extends MetaClass<${nameGenerics}> `);
+      this.o.newline();
+      this.o.out(
+        `uses Serialization.Serializer<${nameGenerics}>[${typeConstraints}] {`,
+      );
+      this.o.newline();
+      this.o.margin(() -> {
+        this.genMetaDescription(name, arity);
+        this.o.newline();
+        this.genMetaSerialize(nameGenerics, typeConstraints, arity);
+        this.o.newline();
+        this.genMetaDeserialize(nameGenerics, typeConstraints, arity);
+      });
+      this.o.newline();
+      this.o.out("}");
+      this.o.newline();
+      this.o.newline();
+    }
+  }
+
+  mutable fun genMetaDescription(name: String, arity: Int): void {
+    this.o.out("fun description(): String {");
+    this.o.newline();
+    this.o.margin(() -> {
+      this.o.out(
+        `\`${name}<${Range(0, arity).map((x) ->
+          "${" + `this.class${x}.description()` + "}"
+        ).join(", ")}>\``,
+      );
+      this.o.newline();
+    });
+    this.o.out("}");
+    this.o.newline();
+  }
+
+  mutable fun genMetaSerialize(
+    name: String,
+    typeConstraints: String,
+    arity: Int,
+  ): void {
+    this.o.out(
+      `fun serialize[${typeConstraints}](value: ${name}, writer: mutable Serialization.Writer): void {`,
+    );
+    this.o.newline();
+    this.o.margin(() -> {
+      this.o.out(`tupleWriter = writer.writeTuple(${arity});`);
+      this.o.newline();
+      args = Range(0, arity).map((x) -> `value.i${x}, this.class${x}`).join(
+        ", ",
+      );
+      this.o.out(`tupleWriter.writeTuple${arity}(${args})`);
+      this.o.newline();
+    });
+    this.o.out("}");
+    this.o.newline();
+  }
+
+  mutable fun genMetaDeserialize(
+    name: String,
+    typeConstraints: String,
+    arity: Int,
+  ): void {
+    this.o.out(
+      `fun deserialize[${typeConstraints}](reader: mutable Serialization.Reader): ${name} {`,
+    );
+    this.o.newline();
+    this.o.margin(() -> {
+      this.o.out(`tupleReader = reader.readTuple(${arity});`);
+      this.o.newline();
+      args = Range(0, arity).map((x) -> `this.class${x}`).join(", ");
+      this.o.out(`tupleReader.readTuple${arity}(${args})`);
+      this.o.newline();
+    });
+    this.o.out("}");
+    this.o.newline();
+  }
+}

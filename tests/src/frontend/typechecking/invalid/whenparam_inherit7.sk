@@ -1,0 +1,11 @@
+base class Parent<P> {
+  overridable fun foo[P: Show](): void {
+    void
+  }
+}
+
+class Child<X, T>() extends Parent<T> {
+  fun foo[X: Show, T: Show](): void {
+    void
+  }
+}

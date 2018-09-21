@@ -1,0 +1,8 @@
+const F: Int ~> Int = x ~> x;
+
+fun shouldFail(x: Int ~> Int): String {
+  x match {
+  | F -> "Fail\n"
+  | _ -> "You shouldn't be seeing this\n"
+  }
+}

@@ -1,0 +1,5 @@
+fun main(): void {
+  f = (x: String) -> x;
+  _ = f(42);
+  print_raw("FAIL")
+}

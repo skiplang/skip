@@ -1,0 +1,11 @@
+base class Foo {
+  overridable private fun foo(): void {
+    void
+  }
+}
+
+class Bar extends Foo {
+  private fun foo(): void {
+    void
+  }
+}

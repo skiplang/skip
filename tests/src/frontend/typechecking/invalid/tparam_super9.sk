@@ -1,0 +1,11 @@
+class Foo<T>(x: T) {
+  fun getX(): T {
+    this.x
+  }
+  fun tonly(x: T): T {
+    x
+  }
+  fun foo<U>[T: U](x: U): U {
+    this.tonly(x)
+  }
+}

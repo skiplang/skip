@@ -1,0 +1,116 @@
+mutable class MyInfinite() extends Iterator<void> {
+  readonly fun next(): ?void {
+    Some(void)
+  }
+}
+
+fun main(): void {
+  for (_ in mutable MyInfinite()) {
+    print_string("Pass");
+    break void;
+  };
+
+  empty = Vector[];
+  full = mutable Vector[1, 2, 3];
+  tuples = Vector[(0, 42, false), (1, 100, false), (2, 112, true)];
+  keyed = mutable Map["a" => 0, "b" => 1, "c" => 2];
+
+  for (_ in empty) void else print_string("Pass");
+  for (_ in full) void else print_string("Pass");
+  for (_ in (full : readonly Vector<Int>)) void else print_string("Pass");
+  for (_ in mutable Vector[]) void else print_string("Pass");
+  for ((_, _, _) in tuples) void else print_string("Pass");
+  for (_ => _ in keyed) void else print_string("Pass");
+
+  print_string(for (_ in empty) break "FAIL" else "Pass");
+  print_string(
+    for (x in full) {
+      if (x == 2) break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+  print_string(
+    for ((_, _, b) in tuples) {
+      if (b) break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+  print_string(
+    for (k => v in keyed) {
+      if (k == "b" && v == 1) break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+
+  print_string(for (_ in empty) continue else "Pass");
+  print_string(
+    for (x in full) {
+      if (x != 2) continue;
+      break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+  print_string(
+    for ((_, _, b) in tuples) {
+      if (!b) continue;
+      break "Pass";
+    } else {
+      "FAIL"
+    },
+  );
+  print_string(
+    for (k => v in keyed) {
+      if (k != "c" || v != 2) continue;
+      break "Pass"
+    } else {
+      "FAIL"
+    },
+  );
+
+  print_string(
+    for (x in full) {
+      if (x != 100) continue;
+      break "FAIL"
+    } else {
+      "Pass"
+    },
+  );
+  print_string(
+    for ((x, _, b) in tuples) {
+      if (x == 2 || !b) continue;
+      break "FAIL";
+    } else {
+      "Pass"
+    },
+  );
+  print_string(
+    for (k => v in keyed) {
+      if (k != "" && v != -1) continue;
+      break "FAIL"
+    } else {
+      "Pass"
+    },
+  );
+
+  try {
+    _ =
+      1 +
+      (for (_ in mutable MyInfinite()) {
+        throw MyExn()
+      } else {
+        invariant_violation("impossible")
+      });
+  } catch {
+  | e @ MyExn() -> print_string(e.getMessage())
+  }
+}
+
+class MyExn() extends Exception {
+  fun getMessage(): String {
+    "Pass"
+  }
+}

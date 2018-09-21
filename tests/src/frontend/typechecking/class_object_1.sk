@@ -1,0 +1,6 @@
+class Foo(x: String)
+
+fun main(): void {
+  x = Foo;
+  print_raw(x("Pass\n").x)
+}

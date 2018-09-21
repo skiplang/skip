@@ -1,0 +1,42 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// To run:
+// BACKEND=native ./run.sh experimental/reactiveMap/reactiveMap.sk --watch
+
+// workaround for T27558960:
+type MyCache = Reactive.GlobalCache<Array<String>>;
+const myCache: MyCache = MyCache::make();
+
+memoized fun updateFiles(): void {
+  print_string("tick");
+  curTime = Reactive.timer("tick counter", 1.0) % 8;
+
+  Reactive.withTransaction(() -> {
+    if (curTime.and(1) != 0) {
+      myCache!["a"] = Array[curTime.toString()];
+    };
+    if (curTime.and(2) != 0) {
+      myCache!["b"] = Array[curTime.toString()];
+    };
+    if (curTime.and(4) != 0) {
+      myCache!["c"] = Array[curTime.toString()];
+    };
+  });
+}
+
+memoized fun memo_value(id: String): String {
+  print_string(`'${id}' changed`);
+  myCache.maybeGet(id).maybe("<empty>", v -> v[0])
+}
+
+fun main(): void {
+  updateFiles();
+  print_string(
+    `Hello, World: ${memo_value("a")}, ${memo_value("b")}, ${memo_value("c")}`,
+  );
+}

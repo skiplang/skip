@@ -1,0 +1,9 @@
+fun main(): void {
+  void
+}
+class X()
+class Y()
+
+fun test(c: Bool): _ {
+  if (c) X() else Y()
+}

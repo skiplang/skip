@@ -1,0 +1,9 @@
+class Foo<T: () -> Int>(v: T)
+
+fun no<T: () -> Int>(foo: readonly Foo<T>): void {
+  _ = foo.v()
+}
+
+fun check(): void {
+  no(freeze(Foo<() -> Int>(() -> 0)))
+}

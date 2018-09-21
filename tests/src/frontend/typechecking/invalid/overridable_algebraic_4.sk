@@ -1,0 +1,13 @@
+base class L {
+  fun foo(): void
+  | X _ -> void
+}
+base class R {
+  fun foo(): void
+  | C _ -> invariant_violation("dead")
+}
+base class X extends L, R {
+  fun foo from L;
+}
+// super confusing since we don't get R::foo, we get L::foo
+class C() extends X

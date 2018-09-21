@@ -1,0 +1,6 @@
+File "./syntax/invalid/star_star_exponentiation.sk", line 2, characters 5-6:
+Invalid token '**'. Use 'Math.pow(value, power)' for exponentiation.
+1 | fun main(): String {
+2 |   a ** b
+  |     ^^
+3 | }

@@ -1,0 +1,37 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Entry point used for typechecking. Invoke it as
+ *
+ *     skip_check_reactive [ROOT_DIR | FILE]
+ *
+ * It will search upward from the given root path (or the current directory) for a
+ * .skipconfig file. See skipConfig.ml for more.
+ */
+/*****************************************************************************/
+
+untracked fun compileLoop(target: String): void {
+  print_string("SkipCheck running");
+  errors = SkipAnalyze.analyzeFile(target);
+  if (errors.isEmpty()) {
+    print_string("No errors!");
+    FileSystem.writeTextFile("/tmp/errors.txt", "No errors!")
+  } else {
+    errorStr = errors.join("\n");
+    print_raw(errorStr);
+    FileSystem.writeTextFile("/tmp/errors.txt", errorStr)
+  };
+  print_string("Ready");
+  command = read_line();
+  print_string("Command received: " + command);
+  compileLoop(target)
+}
+
+untracked fun main(): void {
+  compileLoop(SkipAnalyze.pathOfArguments());
+}

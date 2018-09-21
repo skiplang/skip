@@ -1,0 +1,14 @@
+fun alwaysThrow<T>(): T {
+  throw KeyNotFound()
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      _ = alwaysThrow();
+      "Fail\n"
+    } catch {
+    | KeyNotFound() -> "Pass\n"
+    },
+  )
+}

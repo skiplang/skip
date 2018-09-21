@@ -1,0 +1,46 @@
+File "./typechecking/invalid/foreach_next.sk", line 11, characters 13-21:
+The field next is undefined
+ 9 |
+10 | fun no1(): void {
+11 |   for (_ in MyClass()) void
+   |             ^^^^^^^^^
+12 | }
+
+File "./typechecking/invalid/foreach_next.sk", line 5, characters 17-20:
+For the expression of type MyClass
+3 |     this
+4 |   }
+5 |   fun values(): this {
+  |                 ^^^^
+6 |     this
+
+File "./typechecking/invalid/foreach_next.sk", line 15, characters 18-26:
+The field next is undefined
+13 |
+14 | fun no2(): void {
+15 |   for (_ => _ in MyClass()) void
+   |                  ^^^^^^^^^
+16 | }
+
+File "./typechecking/invalid/foreach_next.sk", line 2, characters 16-19:
+For the expression of type MyClass
+1 | class MyClass() {
+2 |   fun items(): this {
+  |                ^^^^
+3 |     this
+
+File "./typechecking/invalid/foreach_next.sk", line 19, characters 21-29:
+The field next is undefined
+17 |
+18 | fun no3(): void {
+19 |   for ((_, _, _) in MyClass()) void
+   |                     ^^^^^^^^^
+20 | }
+
+File "./typechecking/invalid/foreach_next.sk", line 5, characters 17-20:
+For the expression of type MyClass
+3 |     this
+4 |   }
+5 |   fun values(): this {
+  |                 ^^^^
+6 |     this

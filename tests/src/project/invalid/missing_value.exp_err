@@ -1,0 +1,5 @@
+File "invalid/missing_value/skip.project.json"
+Invalid value 'missing' for variable 'var'. Valid values are 'val1'.
+
+File "invalid/missing_value/skip.project.json"
+Referenced from

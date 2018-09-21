@@ -1,0 +1,14 @@
+base class MyParent final {x: this::T} {
+  type T: Test.MixedScalar;
+  deferred static fun call(x: this::T): String {
+    x.toString()
+  }
+}
+
+class MyChild extends MyParent {
+  type T = Test.MixedString;
+}
+
+fun main(): void {
+  print_raw(MyChild::call(Test.MixedString("Pass\n")))
+}

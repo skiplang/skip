@@ -1,0 +1,47 @@
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 22, characters 3-8:
+Constraint not satisfied
+20 |   p = if (true) L(None()) else R(None());
+21 |   // ERROR P<Int> does not use Equality
+22 |   selfEq(p)
+   |   ^^^^^^
+23 | }
+
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 20, characters 17-25:
+The type: P<_>
+18 | fun no(): Bool {
+19 |   // p : P<alpha>, the trait was dropped since alpha wasn't known
+20 |   p = if (true) L(None()) else R(None());
+   |                 ^^^^^^^^^
+21 |   // ERROR P<Int> does not use Equality
+
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 14, characters 15-22:
+Is not a subtype of: Equality
+12 | class R<T> extends P<T>
+13 |
+14 | fun selfEq<T: Equality>(x: T): Bool {
+   |               ^^^^^^^^
+15 |   x == x
+
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 33, characters 3-8:
+Constraint not satisfied
+31 | fun no_inv(): Bool {
+32 |   i = Inv(if (true) L(None()) else R(None()));
+33 |   selfEq(i)
+   |   ^^^^^^
+34 | }
+
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 32, characters 7-45:
+The type: Inv<P<_>>
+30 |
+31 | fun no_inv(): Bool {
+32 |   i = Inv(if (true) L(None()) else R(None()));
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 |   selfEq(i)
+
+File "./typechecking/invalid/invalid_conditional_use_7.sk", line 14, characters 15-22:
+Is not a subtype of: Equality
+12 | class R<T> extends P<T>
+13 |
+14 | fun selfEq<T: Equality>(x: T): Bool {
+   |               ^^^^^^^^
+15 |   x == x

@@ -1,0 +1,25 @@
+base class A<T: frozen>
+class B<T: frozen>() extends A<(T, T)>
+
+class Foo<-T: frozen>()
+
+class Container<T: frozen>(x: T) {
+  fun add(T): this {
+    this
+  }
+}
+
+fun aFoo(): Foo<A<(Int, Int)>> {
+  Foo()
+}
+fun bFoo(): Foo<B<Int>> {
+  Foo()
+}
+
+fun make(): Container<Foo<B<Int>>> {
+  Container(aFoo()).add(bFoo())
+}
+
+fun main(): void {
+  print_string("Pass")
+}

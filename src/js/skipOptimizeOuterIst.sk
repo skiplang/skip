@@ -1,0 +1,425 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Common lowering passes shared by all backends                             */
+/*****************************************************************************/
+module alias O = OuterIst;
+
+module alias OU = SkipOuterIstUtils;
+
+module alias AU = SkipAstUtils;
+
+module alias SLO = SkipLowerOuterIst;
+
+/*****************************************************************************/
+/* Add an alias for the 'this' local variable in all instance methods */
+/* Add an alias for the 'static' local variable in all static methods */
+/* TODO: Move 'static' local in instance methods here from skipNaming */
+/*****************************************************************************/
+module SkipOptimizeOuterIst;
+
+const mutable_this_var_name: String = "!this";
+const static_var_name: String = "!static";
+fun lower_this_local_string(n: String): String {
+  n match {
+  | "this" -> mutable_this_var_name
+  | "static" -> static_var_name
+  | _ -> n
+  }
+}
+
+fun lower_this_local_name(n: O.Name): O.Name {
+  O.Name(n.pos, lower_this_local_string(n.id))
+}
+
+fun lower_stmt_this_to_local_rec(s: O.Stmt): O.Stmt {
+  OU.transform_stmt_children(
+    lower_expr_this_to_local_rec,
+    lower_stmt_this_to_local_rec,
+    s,
+  ) match {
+  | O.Assign(O.LocalVar(ty, name), value) ->
+    O.Assign(O.LocalVar(ty, lower_this_local_name(name)), value)
+  | O.AssignField(O.LocalVar(ty, name), source, field, value) ->
+    O.AssignField(
+      O.LocalVar(ty, lower_this_local_name(name)),
+      source,
+      field,
+      value,
+    )
+  | s1 -> s1
+  }
+}
+
+fun lower_expr_this_to_local_rec(e: O.Expr): O.Expr {
+  OU.transform_expr_children(
+    lower_expr_this_to_local_rec,
+    lower_stmt_this_to_local_rec,
+    e,
+  ) match {
+  | O.Expr(ty, pos, O.Local(name)) ->
+    O.Expr(ty, pos, O.Local(lower_this_local_name(name)))
+  | O.Expr(expr_ty, pos, O.Lambda(parameters, ty, sk_uses, body, yields)) ->
+    uses1 = sk_uses.reduce(
+      ((result, k, b) -> {
+        result.set(
+          lower_this_local_string(k),
+          O.Binding(b.ty, lower_this_local_name(b.name), b.info),
+        )
+      }),
+      SortedMap[],
+    );
+    O.Expr(expr_ty, pos, O.Lambda(parameters, ty, uses1, body, yields))
+  | t -> t
+  }
+}
+
+fun lower_stmt_this_to_local(s: O.Stmt): O.Stmt {
+  lower_stmt_this_to_local_rec(s)
+}
+
+mutable class LowerThisToLocal() extends OU.Visitor {
+  readonly fun getVisitorName(): String {
+    "LowerThisToLocal";
+  }
+
+  mutable fun method_def(met: O.MethodDef): (Bool, O.MethodDef) {
+    // Used for source code backends where the 'this' parameter is readonly.
+    met.body match {
+    | Some(mb) if (met.implicit_param.info.updated) ->
+      body = mb.asOuter();
+      make_body = (original_binding: O.Binding) -> {
+        bind_assign = OU.make_bind_statement(
+          O.Binding(
+            original_binding.ty,
+            lower_this_local_name(original_binding.name),
+            original_binding.info,
+          ),
+          Some(OU.make_local_expr(original_binding.name, original_binding.ty)),
+        );
+        seq = O.Seq(List[bind_assign, lower_stmt_this_to_local(body)]);
+        met with {body => Some(O.OuterBody(seq))}
+      };
+      !met = make_body(met.implicit_param);
+      info = OU.const_binding_info;
+      (
+        true,
+        met with {
+          implicit_param => O.Binding(
+            met.implicit_param.ty,
+            met.implicit_param.name,
+            info,
+          ),
+        },
+      )
+    | _ -> (false, met)
+    }
+  }
+}
+
+mutable class FlattenSequences() extends OU.Visitor {
+  readonly fun getVisitorName(): String {
+    "FlattenSequences";
+  }
+
+  mutable fun seq(s: O.Seq): (Bool, O.Stmt) {
+    // TODO improve efficiency, detect unchanged
+    (_, stmts) = this.stmts(s.stmts);
+    (true, OU.flatten_statement_sequence(stmts))
+  }
+}
+
+/*****************************************************************************/
+/* Tail Calls */
+/*  */
+/* Replaces: */
+/*   return call_of_current_function(args) */
+/* With: */
+/*   parameters <- args; continue; */
+/* And if any returns were converted, then the function body is wrapped in a */
+/*   do {... } while_loop(true); */
+/* */
+/* Does nothing to lambdas, as they cannot be recursive. */
+/* */
+/* NOTE: This pass must be run before lower_this_to_local */
+/*    and after optimize_locals */
+/*****************************************************************************/
+base class Tail_call_context {
+  children =
+  | MethodDefContext(O.MethodDef)
+  | FunDefContext(O.FunDef)
+}
+
+fun replace_tail_call_return_with_continue(
+  new_id: () -> Int,
+  context: Tail_call_context,
+  endLabel: O.Name,
+  s: O.Stmt,
+): O.Stmt {
+  recurse_stmt = s1 ->
+    replace_tail_call_return_with_continue(new_id, context, endLabel, s1);
+  recurse_match_branch_list = mbl -> {
+    mbl.map(mb -> O.MatchBranch(mb.pats, mb.guard, recurse_stmt(mb.action)))
+  };
+  is_tail_call = e -> {
+    context match {
+    | FunDefContext(fun_def) ->
+      e.expr match {
+      | O.FunCall(n, tyl, _) ->
+        n.id == fun_def.name.id && OU.tparams_matches_tyl(fun_def.tparams, tyl)
+      | _ -> false
+      }
+    | MethodDefContext(method_def) ->
+      if (OU.method_is_static(method_def)) {
+        e.expr match {
+        | O.StaticCall(dot_info, _) ->
+          OU.method_matches_dot_info(method_def, dot_info)
+        | _ -> false
+        }
+      } else {
+        e.expr match {
+        | O.MethodCall(dot_info, _) ->
+          OU.method_matches_dot_info(method_def, dot_info)
+        | _ -> false
+        }
+      }
+    }
+  };
+  args_of_call = e -> {
+    e.expr match {
+    | O.FunCall(_, _, args) -> args
+    | O.MethodCall(_, args) -> args
+    | O.StaticCall(_, args) -> args
+    | _ -> e.pos.die("Expected tail call to match context")
+    }
+  };
+  params_of_context = () -> {
+    context match {
+    | FunDefContext(fun_def) -> fun_def.params
+    | MethodDefContext(method_def) -> method_def.params
+    }
+  };
+  named_args_of_call = e -> {
+    params = params_of_context();
+    args = args_of_call(e);
+    result_no_this = params.combine(args).toList().map(pa -> {
+      (param, arg) = pa;
+      arg1 = {
+        if (OU.is_default_arg_expr(arg)) {
+          param.value.fromSome().asOuter()
+        } else {
+          (OU.make_empty_statement, arg)
+        }
+      };
+      (param.name, arg1)
+    });
+    context match {
+    | MethodDefContext(method_def) if (!OU.method_is_static(method_def)) ->
+      pos = e.pos;
+      this_name = O.Name(pos, "this");
+      List.Cons(
+        (this_name, (OU.make_empty_statement, OU.this_arg_of_method_call(e))),
+        result_no_this,
+      )
+    | _ -> result_no_this
+    }
+  };
+  replace_return_with_continue = e -> {
+    invariant(is_tail_call(e), "Expected tail call");
+    named_args = (named_args_of_call(e) : List<(O.Name, (O.Stmt, O.Expr))>);
+    arg_temp = named_arg -> {
+      (param_name, (_, arg_expr)) = (named_arg.i0.id, named_arg.i1);
+      arg_pos = arg_expr.pos;
+      id = new_id().toString();
+      O.Name(arg_pos, "!!tco_temp!" + param_name + "_" + id)
+    };
+    eval_arg = named_arg -> {
+      (_, (arg_stmt, arg_expr)) = named_arg;
+      temp = arg_temp(named_arg);
+      info = OU.const_binding_info;
+      temp_binding = O.Binding(arg_expr.ty, temp, info);
+      bind_stmt = OU.make_bind_statement(temp_binding, Some(arg_expr));
+      temp_seq = OU.make_seq(arg_stmt, bind_stmt);
+      (temp, temp_seq)
+    };
+    assign_arg = (temp: O.Name, named_arg: (O.Name, (O.Stmt, O.Expr))) -> {
+      (param_name, (_, arg_expr)) = named_arg;
+      ty = arg_expr.ty;
+      param_lhs = O.LocalVar(ty, param_name);
+      temp_rhs = OU.make_local_expr(temp, ty);
+      OU.make_assign_local(param_lhs, temp_rhs)
+    };
+    /* Must do all evals before assigns, as later evals may depend on parameter values */
+    (temps, eval_args) = named_args.map(eval_arg).unzip();
+    assign_args = List::map2(assign_arg, temps, named_args);
+    O.Seq(
+      eval_args.concat(assign_args).concat(List[(O.JumpTo(endLabel) : O.Stmt)]),
+    )
+  };
+  s match {
+  | O.JumpTo _
+  | O.Bind _
+  | O.Assign _
+  | O.AssignField _
+  | O.SingleExpr _
+  | O.Throw _
+  | O.Yield _
+  | O.YieldBreak _ ->
+    s
+  | O.Seq(ss) -> O.Seq(ss.map(recurse_stmt))
+  | O.If(e, st, sf) -> O.If(e, recurse_stmt(st), recurse_stmt(sf))
+  | O.Match(e, mbl) -> O.Match(e, recurse_match_branch_list(mbl))
+  | O.Switch(e, sbl, d) ->
+    map_branch = vs -> O.SwitchBranch(vs.cases, recurse_stmt(vs.action));
+    O.Switch(e, sbl.map(map_branch), d.map(recurse_stmt))
+  | O.TypeSwitch(e, tsbl, d) ->
+    map_branch = b -> O.TypeSwitchBranch(b.cases, recurse_stmt(b.action));
+    O.TypeSwitch(e, tsbl.map(map_branch), d.map(recurse_stmt))
+  | O.JumpBlock(lstmts, loopb) ->
+    map_lstmt = ls -> O.LabeledStmt(ls.label, recurse_stmt(ls.stmt));
+    O.JumpBlock(lstmts.map(map_lstmt), loopb)
+  | O.Try(pos, body, catch_clauses) ->
+    O.Try(pos, recurse_stmt(body), recurse_match_branch_list(catch_clauses))
+  | O.TryCatch(pos, body, caught_binding, catch_clause) ->
+    O.TryCatch(
+      pos,
+      recurse_stmt(body),
+      caught_binding,
+      recurse_stmt(catch_clause),
+    )
+  | O.Return(e) ->
+    if (is_tail_call(e)) {
+      replace_return_with_continue(e)
+    } else {
+      s
+    }
+  | O.LoopForever(pos, body) -> O.LoopForever(pos, recurse_stmt(body))
+  }
+}
+
+fun replace_tail_call_return_with_continue_body(
+  new_id: () -> Int,
+  pos: FileRange,
+  context: Tail_call_context,
+  s: O.Stmt,
+): (Bool, O.Stmt) {
+  if (OU.statement_contains_captured_locals(s)) {
+    (false, s)
+  } else {
+    endLabel = O.Name(pos, "loop_end!" + new_id());
+    new_body = replace_tail_call_return_with_continue(
+      new_id,
+      context,
+      endLabel,
+      s,
+    );
+    if (OU.contains_jump_to_label(new_body, endLabel)) {
+      bodyLabel = O.Name(pos, "loop_begin!" + new_id());
+      svoid = OU.make_void_statement(pos);
+      block = O.JumpBlock(
+        List[
+          O.LabeledStmt(bodyLabel, new_body),
+          O.LabeledStmt(endLabel, svoid),
+        ],
+        false,
+      );
+      (true, O.LoopForever(pos, block))
+    } else {
+      // new_body == s at this point
+      (false, new_body)
+    }
+  }
+}
+
+mutable class TailCallsToLoops(new_id: () -> Int) extends OU.Visitor {
+  readonly fun getVisitorName(): String {
+    "TailCallsToLoops";
+  }
+
+  @gc
+  mutable fun fun_def(func: O.FunDef): (Bool, O.FunDef) {
+    func.body match {
+    | None() -> (false, func)
+    | Some(b) ->
+      body = b.asOuter();
+      pos = func.name.pos;
+      context = FunDefContext(func);
+      (body_changed, new_body) = replace_tail_call_return_with_continue_body(
+        this.new_id,
+        pos,
+        context,
+        body,
+      );
+      new_body match {
+      | O.LoopForever _ ->
+        invariant(body_changed, "body not changed, but contains LoopForever");
+        params = func.params.map(OU.set_param_updated);
+        (true, func with {body => Some(O.OuterBody(new_body)), params})
+      | _ -> (false, func)
+      }
+    }
+  }
+
+  @gc
+  mutable fun method_def(met: O.MethodDef): (Bool, O.MethodDef) {
+    met.body match {
+    | None() -> (false, met)
+    | Some _ if (met.overridable_.isSome()) -> (false, met)
+    | Some(b) ->
+      body = b.asOuter();
+      pos = met.name.pos;
+      context = MethodDefContext(met);
+      (body_changed, new_body) = replace_tail_call_return_with_continue_body(
+        this.new_id,
+        pos,
+        context,
+        body,
+      );
+      new_body match {
+      | O.LoopForever _ ->
+        invariant(body_changed, "body not changed, but contains LoopForever");
+        params = met.params.map(OU.set_param_updated);
+        (
+          true,
+          met with {
+            body => Some(O.OuterBody(new_body)),
+            params,
+            implicit_param => if (OU.method_is_instance(met)) {
+              OU.set_binding_updated(met.implicit_param)
+            } else {
+              met.implicit_param
+            },
+          },
+        )
+      | _ -> (false, met)
+      }
+    }
+  }
+}
+
+fun optimizingPipeline(
+  new_id: () -> Int,
+  class_defs: UMap<O.ClassDef>,
+): mutable OU.FunctionLevelVisitorPipeline {
+  // begin with lowering passes
+  passes = Vector::mcreateFromItems(SLO.loweringPasses(new_id, class_defs));
+  // Order matters here. See comments in SkipLowerOuterIst
+  passes.push(mutable TailCallsToLoops(new_id));
+  passes.push(mutable LowerThisToLocal());
+  passes.push(mutable FlattenSequences());
+  mutable OU.FunctionLevelVisitorPipeline(passes.collect(Array))
+}
+
+@gc
+fun program(program: O.Program): O.Program {
+  runCompilerPhase("outer/lower_outer_all", () -> {
+    new_id = sk_create_counter();
+    pipe = optimizingPipeline(new_id, program.class_defs);
+    pipe.program(program).i1
+  })
+}

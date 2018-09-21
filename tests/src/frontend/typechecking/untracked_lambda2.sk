@@ -1,0 +1,5 @@
+// lambdas can be untracked
+untracked fun main(): void {
+  fn: (String, untracked Int -> Int) = ("name", untracked x -> x + 1);
+  print_raw(if (fn.i1(0) == 1) "Pass\n" else "Fail")
+}

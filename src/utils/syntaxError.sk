@@ -1,0 +1,45 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SyntaxError;
+
+type Message = (TextRange, String);
+
+fun messageToString(message: Message): String {
+  `${message.i0}: ${message.i1}`;
+}
+
+class .SyntaxError{
+  errorCode: Int,
+  messages: List<Message>,
+  fix: ?SkipError.Fix,
+} uses Show, Hashable, Equality {
+  fun toString(): String {
+    `Error ${this.errorCode} @${this.messages.map(messageToString).join("\n")}`;
+  }
+}
+
+fun create(
+  errorCode: Int,
+  range: TextRange,
+  message: String,
+  relatedMessages: List<Message> = List[],
+  fix: ?SkipError.Fix = None(),
+): SyntaxError {
+  SyntaxError{
+    errorCode,
+    messages => List.Cons((range, message), relatedMessages),
+    fix,
+  }
+}
+
+// TODO: Remove this ...
+fun errorsToString(errors: Array<SyntaxError>): String {
+  "Errors\n" + errors.map(error ~> error.toString()).join("\n") + "\n"
+}
+
+module end;

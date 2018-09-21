@@ -1,0 +1,11 @@
+base class A() {
+  children =
+  | B
+  | C
+}
+
+fun no(): void {
+  v = mutable Vector[];
+  v.push(B());
+  v.push(C())
+}

@@ -1,0 +1,13 @@
+base class A{x: Int}
+class B extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A{x => _} -> "Pass\n"
+  }
+}
+
+fun main(): void {
+  x = B{x => 1};
+  print_raw(myMatch(x))
+}

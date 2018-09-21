@@ -1,0 +1,27 @@
+File "./typechecking/invalid/async_mut_3.sk", line 2, characters 14-22:
+Invalid parameter. All parameters to a 'async' function must be frozen
+1 | mutable class X(mutable x: Int)
+2 | async fun no(mutable X): ^void {
+  |              ^^^^^^^^^
+3 |   void
+
+File "./typechecking/invalid/async_mut_3.sk", line 2, characters 1-5:
+The function was declared 'async' here
+1 | mutable class X(mutable x: Int)
+2 | async fun no(mutable X): ^void {
+  | ^^^^^
+3 |   void
+
+File "./typechecking/invalid/async_mut_3.sk", line 2, characters 14-22:
+The following type is not frozen: mutable X
+1 | mutable class X(mutable x: Int)
+2 | async fun no(mutable X): ^void {
+  |              ^^^^^^^^^
+3 |   void
+
+File "./typechecking/invalid/async_mut_3.sk", line 2, characters 14-22:
+Try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+1 | mutable class X(mutable x: Int)
+2 | async fun no(mutable X): ^void {
+  |              ^^^^^^^^^
+3 |   void

@@ -1,0 +1,12 @@
+// named constructor inheritance from trait
+trait Foo{x: String}
+
+class Bar{y: String} uses Foo {
+  fun get(): String {
+    this.x + this.y
+  }
+}
+
+fun main(): void {
+  print_raw(Bar{y => "\n", x => "OK"}.get())
+}

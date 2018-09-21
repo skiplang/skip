@@ -1,0 +1,21 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+trait Stringy {
+  fun toString(): String;
+}
+base class Bar<T: Stringy>
+class Foo<T: Stringy>(T) extends Bar<T>
+
+fun tester<T: Stringy>(Foo<T>): void {
+  void
+}
+
+fun matcher<T: Stringy>(x: Bar<T>): String {
+  x match {
+  | o @ Foo(v) ->
+    tester(o);
+    v.toString()
+  }
+}

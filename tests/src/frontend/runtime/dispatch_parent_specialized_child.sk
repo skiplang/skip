@@ -1,0 +1,14 @@
+base class MyBase {
+  fun foo(): String;
+}
+
+class Child<T: Show>(t: T) extends MyBase {
+  fun foo(): String {
+    this.t.toString()
+  }
+}
+
+fun main(): void {
+  c: MyBase = Child("Pass\n");
+  print_raw(c.foo())
+}

@@ -1,0 +1,8 @@
+// mutable lambdas allowed in typedefs
+class Foo() {
+  type MutLambda = () -> void;
+}
+
+fun main(): void {
+  print_string("OK")
+}

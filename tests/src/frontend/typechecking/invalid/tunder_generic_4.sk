@@ -1,0 +1,15 @@
+base class Foo<T> {
+  fun foo(): T {
+    invariant_violation("")
+  }
+}
+
+class Bar() extends Foo<Int>
+
+fun get_bar(): Foo<_> {
+  Bar()
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,11 @@
+fun searcher(find: Char): (String ~> Int) {
+  s ~> {
+    maybeIdx = s.search(0, c ~> c == find);
+    maybeIdx.fromSome()
+  }
+}
+
+fun main(): void {
+  f = searcher(' ');
+  print_raw(f("foo bar").toString() + "\n")
+}

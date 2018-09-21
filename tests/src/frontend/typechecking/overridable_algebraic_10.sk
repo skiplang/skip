@@ -1,0 +1,21 @@
+base class A {
+  children =
+  | B()
+  | C()
+
+  fun x(): Int
+  | B _ -> 1
+  | C _ -> 2
+}
+
+base class D extends A
+
+class E() extends D {
+  fun x(): Int {
+    3
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

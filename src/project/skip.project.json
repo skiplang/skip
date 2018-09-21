@@ -1,0 +1,41 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "project": {
+      "kind": "Library",
+      "sources": [
+        "ProjectConfig.sk",
+        "SkipProject.sk",
+        "SolutionLoader.sk",
+        "ConfigSerialization.sk"
+      ],
+      "references": [ { "path": "../utils" } ]
+    },
+    "analyze": {
+      "kind": "Library",
+      "sources": [
+        "SkipAnalyze.sk"
+      ],
+      "references": [
+        { "path": ".", "name": "project" },
+        { "path": "../frontend"}
+      ]
+    },
+    "skip_test": {
+      "kind": "Program",
+      "sources": ["skipTest.sk"],
+      "references": [
+        { "path": ".", "name": "project" },
+        { "path": "../frontend" }
+      ]
+    },
+    "skip_depends": {
+      "kind": "Program",
+      "sources": [
+        "SkipDepends.sk"
+      ],
+      "references": [ { "path": ".", "name": "project" } ]
+    }
+  },
+  "default": "project"
+}

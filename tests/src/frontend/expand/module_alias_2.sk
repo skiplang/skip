@@ -1,0 +1,17 @@
+module alias P = MySuperLongName;
+
+module MySuperLongName;
+fun pass(): String {
+  "Pass\n"
+}
+module end;
+
+module M;
+fun pass(): String {
+  P.pass()
+}
+module end;
+
+fun main(): void {
+  print_raw(M.pass())
+}

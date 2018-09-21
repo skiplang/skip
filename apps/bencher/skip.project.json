@@ -1,0 +1,37 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "bencher": {
+      "sources": [
+        "splay.sk",
+        "binarytrees.sk",
+        "fannkuch-redux.sk",
+        "fasta.sk",
+        "iterator-stream.sk",
+        "k-nucleotide.sk",
+        "listAlloc.sk",
+        "mandelbrot.sk",
+        "menu.sk",
+        "n-body.sk",
+        "regex-redux.sk",
+        "spectral-norm.sk",
+      ],
+      "kind": "Library",
+      "references": [
+        {
+          "path": "../../tests/runtime/prelude"
+        }
+      ]
+    },
+    "serialization": {
+      "kind": "Program",
+      "sources": ["serialization.sk"],
+      "references": [ { "path": "../../tests/runtime/prelude" } ]
+    },
+    "hashmap": {
+      "kind": "Program",
+      "sources": ["hashmap-bench.sk", "HashMap.sk"],
+      "references": [ { "path": "../../tests/runtime/prelude" } ]
+    },
+  }
+}

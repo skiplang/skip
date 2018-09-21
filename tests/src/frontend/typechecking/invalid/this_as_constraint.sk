@@ -1,0 +1,2 @@
+base class Foo<T: this>
+class Bar() extends Foo<this>

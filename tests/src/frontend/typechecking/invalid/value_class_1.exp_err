@@ -1,0 +1,5 @@
+File "./typechecking/invalid/value_class_1.sk", line 2, characters 1-5:
+Value classes cannot extend base classes
+1 | base class B
+2 | value class Foo extends B
+  | ^^^^^

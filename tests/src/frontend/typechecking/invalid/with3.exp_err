@@ -1,0 +1,21 @@
+File "./typechecking/invalid/with3.sk", line 5, characters 20-20:
+Invalid binding
+3 | fun main(): void {
+4 |   foo = Foo(42, "hello");
+5 |   !foo = foo with {x => "Fail"};
+  |                    ^
+6 |   print_raw(foo.x)
+
+File "./typechecking/invalid/with3.sk", line 5, characters 25-30:
+The type: String
+3 | fun main(): void {
+4 |   foo = Foo(42, "hello");
+5 |   !foo = foo with {x => "Fail"};
+  |                         ^^^^^^
+6 |   print_raw(foo.x)
+
+File "./typechecking/invalid/with3.sk", line 1, characters 14-16:
+Is not a subtype of: Int
+1 | class Foo(x: Int, y: String)
+  |              ^^^
+2 |

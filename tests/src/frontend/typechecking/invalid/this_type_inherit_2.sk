@@ -1,0 +1,14 @@
+base class MyList<+T: frozen> {
+  children =
+  | MyNil()
+  | MyCons(T, MyList<T>)
+
+  // rvalue element type incompatible with anno in the context of MyCons
+  fun ex2(): void {
+    _: Vector<this> = Vector[MyNil()]
+  }
+}
+
+fun main(): void {
+  print_string("Fail\n")
+}

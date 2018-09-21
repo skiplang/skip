@@ -1,0 +1,6 @@
+File "./typechecking/invalid/positional_default_constructor_multi.sk", line 5, characters 32-35:
+Optional parameters must be placed at the end
+3 | )  // error, defaults noncontiguous
+4 | base class B(y: String = "!\n")
+5 | class C(a: String, b: String = ", ") extends A, B
+  |                                ^^^^

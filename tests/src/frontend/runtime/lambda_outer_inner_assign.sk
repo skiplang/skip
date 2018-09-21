@@ -1,0 +1,15 @@
+fun main(): void {
+  o = "P";
+  lam = () -> {
+    i = "";
+    inner_lam = () -> {
+      !o = "Pa";
+      !i = "ss";
+      "\n"
+    };
+    r = inner_lam();
+    i + r;
+  };
+  r = lam();
+  print_raw(o + r);
+}

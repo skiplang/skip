@@ -1,0 +1,15 @@
+File "./syntax/invalid/invalid_object3.sk", line 3, characters 6-6:
+Expected '}'. Found ','.
+1 |
+2 | fun test(): void {
+3 |   { 1, 2 }
+  |      ^
+4 | }
+
+File "./syntax/invalid/invalid_object3.sk", line 3, characters 3-3:
+ For opening '{'
+1 |
+2 | fun test(): void {
+3 |   { 1, 2 }
+  |   ^
+4 | }

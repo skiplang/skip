@@ -1,0 +1,6 @@
+File "./syntax/invalid/matches_paren_name.sk", line 2, characters 9-9:
+name pattern not permitted in 'is' expression. Did you mean '_', a wildcard pattern, to match any value?
+1 | fun main(): void {
+2 |   a is (b);
+  |         ^
+3 | }

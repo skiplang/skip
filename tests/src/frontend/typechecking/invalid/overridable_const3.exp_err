@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable_const3.sk", line 6, characters 3-3:
+The child visibility of public does not match the parent's
+4 |
+5 | class Bar() extends Foo {
+6 |   const x: Int = 43;
+  |   ^
+7 | }
+
+File "./typechecking/invalid/overridable_const3.sk", line 2, characters 15-23:
+The parent visibility was defined here as protected
+1 | base class Foo {
+2 |   overridable protected const x: Int = 42;
+  |               ^^^^^^^^^
+3 | }

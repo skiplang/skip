@@ -1,0 +1,4 @@
+fun foo(): void {
+  t = (42, 42);
+  _ = Array[t, void]
+}

@@ -1,0 +1,45 @@
+@test
+fun testArguments(): void {
+  // Note this must be kept in sync with prelude/testing/run_test
+  assertEqual(arguments().take(4).join(""), "12--3");
+  void
+}
+
+@test
+untracked fun testNow(): void {
+  // sanity check that the function is implemented on all backends
+  n = now();
+  assertEqual(n > 0.0, true)
+}
+
+@test
+fun testOpenFile(): void {
+  x = FileSystem.readTextFile("tests/src/runtime/prelude/SystemTest.input");
+  assertEqual(x, "This is a sample file.\n")
+}
+
+@test
+fun testGetCwd(): void {
+  x = getcwd();
+  assertNotEqual(x, "");
+  assertNotEqual(x, "undefined");
+  assert(Path.isAbsolute(x));
+}
+
+@test
+fun testReaddir(): void {
+  // This test is run with cwd set to the root of the github enlistment.
+  files = FileSystem.readDirectory("tests/src/runtime/prelude/test_dir");
+  fileNames = files.join("");
+  assertEqual(fileNames, "a");
+}
+
+@test
+fun testIsDir(): void {
+  // Should return false, not throw.
+  assertFalse(FileSystem.isDirectory("dir_not_present"));
+  assertTrue(FileSystem.isDirectory("tests/src/runtime/prelude"));
+  assertFalse(
+    FileSystem.isDirectory("tests/src/runtime/prelude/SystemTest.input"),
+  );
+}

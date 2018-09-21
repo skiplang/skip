@@ -1,0 +1,31 @@
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_contravariant.sk", line 12, characters 7-8:
+For the child: 'C1', invalid use of the parent: 'Foo' via the parent: 'P1'
+10 | base class P1<-T> uses Foo<T>[T: HasBar]
+11 | base class P2<-T> uses Foo<T>[T: HasBar]
+12 | class C1<-U, -T: U>() extends P1<T>, P2<U> {
+   |       ^^
+13 |   fun doit[T: HasBar](t: T): Int {
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_contravariant.sk", line 11, characters 24-26:
+Incompatible extend
+ 9 | // also has EqualityIsh[T: OrderableIsh]
+10 | base class P1<-T> uses Foo<T>[T: HasBar]
+11 | base class P2<-T> uses Foo<T>[T: HasBar]
+   |                        ^^^
+12 | class C1<-U, -T: U>() extends P1<T>, P2<U> {
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_contravariant.sk", line 10, characters 28-28:
+The type: T
+ 8 |
+ 9 | // also has EqualityIsh[T: OrderableIsh]
+10 | base class P1<-T> uses Foo<T>[T: HasBar]
+   |                            ^
+11 | base class P2<-T> uses Foo<T>[T: HasBar]
+
+File "./typechecking/invalid/invalid_keep_multiple_use_conditions_contravariant.sk", line 11, characters 28-28:
+Is incompatible with: U
+ 9 | // also has EqualityIsh[T: OrderableIsh]
+10 | base class P1<-T> uses Foo<T>[T: HasBar]
+11 | base class P2<-T> uses Foo<T>[T: HasBar]
+   |                            ^
+12 | class C1<-U, -T: U>() extends P1<T>, P2<U> {

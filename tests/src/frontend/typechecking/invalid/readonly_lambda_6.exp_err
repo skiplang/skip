@@ -1,0 +1,15 @@
+File "./typechecking/invalid/readonly_lambda_6.sk", line 6, characters 5-12:
+Cannot have a readonly view of a mutable lambda
+4 | mutable class Foo<T: () -> Int>(mutable v: T) extends Hide {
+5 |   readonly fun doIt(): Int {
+6 |     this.v()
+  |     ^^^^^^^^
+7 |   }
+
+File "./typechecking/invalid/readonly_lambda_6.sk", line 4, characters 22-30:
+This is the lambda you are trying to make reaodnly
+2 |   readonly fun doIt(): Int;
+3 | }
+4 | mutable class Foo<T: () -> Int>(mutable v: T) extends Hide {
+  |                      ^^^^^^^^^
+5 |   readonly fun doIt(): Int {

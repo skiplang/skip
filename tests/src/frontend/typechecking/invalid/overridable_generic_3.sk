@@ -1,0 +1,22 @@
+class Bad<T>(x: T)
+
+trait TC<P> {
+  fun makeBad(): Bad<P>;
+}
+
+class A<T>(f: T) uses TC<T> {
+  fun makeBad(): T {
+    this.f
+  }
+}
+
+fun detonate<T: TC<Int>>(x: T): void {
+  oopsThisIsAnIntNotABad = x.makeBad();
+  _ = oopsThisIsAnIntNotABad.x
+}
+
+fun main(): void {
+  a: A<Int> = A(37);
+  detonate(a);
+  print_raw("Boom")
+}

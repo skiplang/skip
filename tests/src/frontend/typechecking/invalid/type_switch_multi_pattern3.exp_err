@@ -1,0 +1,20 @@
+File "./typechecking/invalid/type_switch_multi_pattern3.sk", line 10, characters 5-7:
+The following pattern is unused:
+ | X()
+ 8 | fun shouldFail(): String {
+ 9 |   Y() match {
+10 |   | X()
+   |     ^^^
+11 |   | Y() ->
+
+File "./typechecking/invalid/type_switch_multi_pattern3.sk", line 10, characters 5-7:
+In particular, we encountered this sub-pattern
+ | X()
+But expected one of
+ | Y()
+In that position.
+ 8 | fun shouldFail(): String {
+ 9 |   Y() match {
+10 |   | X()
+   |     ^^^
+11 |   | Y() ->

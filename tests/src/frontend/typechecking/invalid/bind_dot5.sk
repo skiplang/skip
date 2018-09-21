@@ -1,0 +1,12 @@
+class Foo() {
+  fun method(Int): void {
+    void
+  }
+}
+
+fun main(): void {
+  foo = Foo();
+  fakeMethod: Int -> void = (_ -> void);
+  !foo.method = fakeMethod;
+  print_raw("Fail")
+}

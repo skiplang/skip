@@ -1,0 +1,770 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias JS = SkipJsIst;
+
+/* route to tail-recursive sk_* but preserve ocaml param order */
+module SkipJsIstPp;
+
+fun list_map<Ta, Tb>(f: ((Ta) -> Tb), l: List<Ta>): List<Tb> {
+  l.map(f)
+}
+
+fun list_fold_right<Ta, Tb>(f: ((Ta, Tb) -> Tb), l: List<Ta>, acc: Tb): Tb {
+  l.foldr(f, acc)
+}
+
+fun postfix_operator_string(operator: JS.Postfix_operator): String {
+  operator match {
+  | JS.PostfixIncrement() -> "++"
+  | JS.PostfixDecrement() -> "--"
+  }
+}
+
+fun unary_operator_string(operator: JS.Unary_operator): String {
+  operator match {
+  | JS.UnaryDelete() -> "delete"
+  | JS.UnaryVoid() -> "void"
+  | JS.UnaryTypeof() -> "typeof"
+  | JS.UnaryIncrement() -> "++"
+  | JS.UnaryDecrement() -> "--"
+  | JS.UnaryPlus() -> "+"
+  | JS.UnaryMinus() -> "-"
+  | JS.UnaryBitwiseNot() -> "~"
+  | JS.UnaryNot() -> "!"
+  }
+}
+
+fun binary_operator_string(operator: JS.Binary_operator): String {
+  operator match {
+  | JS.BinaryTimes() -> "*"
+  | JS.BinaryDivide() -> "/"
+  | JS.BinaryModulo() -> "%"
+  | JS.BinaryPlus() -> "+"
+  | JS.BinaryMinus() -> "-"
+  | JS.BinaryLeftShift() -> "<<"
+  | JS.BinaryRightShift() -> ">>"
+  | JS.BinaryUnsignedRightShift() -> ">>>"
+  | JS.BinaryLess() -> "<"
+  | JS.BinaryGreater() -> ">"
+  | JS.BinaryLessEquals() -> "<="
+  | JS.BinaryGreaterEquals() -> ">="
+  | JS.BinaryInstanceof() -> "instanceof"
+  | JS.BinaryIn() -> "in"
+  | JS.BinaryEquals() -> "=="
+  | JS.BinaryNotEquals() -> "!="
+  | JS.BinaryStrictEquals() -> "==="
+  | JS.BinaryStrictNotEquals() -> "!=="
+  | JS.BinaryBitwiseAnd() -> "&"
+  | JS.BinaryBitwiseXor() -> "^"
+  | JS.BinaryBitwiseOr() -> "|"
+  | JS.BinaryAnd() -> "&&"
+  | JS.BinaryOr() -> "||"
+  | JS.BinaryAssign() -> "="
+  | JS.BinaryTimesAssign() -> "*="
+  | JS.BinaryDivideAssign() -> "/="
+  | JS.BinaryModuloAssign() -> "%="
+  | JS.BinaryPlusAssign() -> "+="
+  | JS.BinaryMinusAssign() -> "-="
+  | JS.BinaryLeftShiftAssign() -> "<<="
+  | JS.BinaryRightShiftAssign() -> ">>="
+  | JS.BinaryUnsignedRightShiftAssign() -> ">>>="
+  | JS.BinaryBitwiseAndAssign() -> "&="
+  | JS.BinaryBitwiseXorAssign() -> "^="
+  | JS.BinaryBitwiseOrAssign() -> "|="
+  }
+}
+
+type Writer = () -> void;
+
+fun make_writer<Ta>(write: ((Ta) -> void), value: Ta): Writer {
+  () -> write(value)
+}
+
+fun line_col_of_lexing_pos(pos: Position): Sourcemap.Line_col {
+  Sourcemap.Line_col{line => pos.line() + 1, col => pos.column()}
+}
+
+fun create_source_map(
+  destination_file: String,
+  files: List<String>,
+): Sourcemap.T {
+  Sourcemap.create(
+    destination_file,
+    list_map((f -> (f, FileSystem.readTextFile(f))), files),
+  )
+}
+
+mutable class Js_writer_t{
+  destination_file: String,
+  emit_source_map: Bool,
+  files: List<String>,
+  last_position: ?Sourcemap.Line_col,
+  o: mutable BufferedPrinter.Out,
+  source_map: mutable Ref<?Sourcemap.T>,
+}
+
+fun create_js_writer(
+  destination_file: String,
+  files: List<String>,
+  emit_source_map: Bool,
+): mutable Js_writer_t {
+  mutable Js_writer_t{
+    destination_file,
+    files,
+    emit_source_map,
+    source_map => mutable Ref(
+      if (emit_source_map) {
+        Some(create_source_map(destination_file, files))
+      } else {
+        None()
+      },
+    ),
+    o => BufferedPrinter.new_out(),
+    last_position => None(),
+  }
+}
+
+fun current_pos(t: mutable Js_writer_t): Sourcemap.Line_col {
+  o = t.o;
+  Sourcemap.Line_col{line => o.get_line(), col => o.get_column()}
+}
+
+fun set_pos(t: mutable Js_writer_t, pos: FileRange): void {
+  if (pos != FileRange.none) {
+    /* sub-expressions often have the same starting position as their parent */
+    if (t.last_position != Some(current_pos(t))) {
+      ignore(
+        t.source_map.value.map(sm -> {
+          t.source_map.!value = Some(
+            Sourcemap.add_mapping(
+              None(),
+              pos.filename,
+              line_col_of_lexing_pos(pos.startPosition()),
+              current_pos(t),
+              sm,
+            ),
+          )
+        }),
+      )
+    }
+  }
+}
+
+fun write(t: mutable Js_writer_t, str: String): void {
+  o = t.o;
+  o.out(str)
+}
+
+fun write_token(t: mutable Js_writer_t, str: String): void {
+  write(t, " " + str + " ")
+}
+
+fun newline(t: mutable Js_writer_t): void {
+  o = t.o;
+  o.newline()
+}
+
+fun margin(t: mutable Js_writer_t, body: Writer): void {
+  o = t.o;
+  o.margin(body)
+}
+
+fun end_statement(t: mutable Js_writer_t): void {
+  write(t, ";");
+  newline(t)
+}
+
+fun join<Ta>(
+  t: mutable Js_writer_t,
+  values: List<Ta>,
+  writer: ((Ta) -> void),
+  sep: String,
+): void {
+  values match {
+  | List.Nil() -> void
+  | List.Cons(value, List.Nil()) -> writer(value)
+  | List.Cons(hd, tl) ->
+    writer(hd);
+    write(t, sep);
+    join(t, tl, writer, sep)
+  }
+}
+
+fun join_newline<Ta>(
+  t: mutable Js_writer_t,
+  values: List<Ta>,
+  writer: ((Ta) -> void),
+  sep: String,
+): void {
+  values match {
+  | List.Nil() -> void
+  | List.Cons(value, List.Nil()) -> writer(value)
+  | List.Cons(hd, tl) ->
+    writer(hd);
+    write(t, sep);
+    newline(t);
+    join_newline(t, tl, writer, sep)
+  }
+}
+
+fun delimit(
+  t: mutable Js_writer_t,
+  start: String,
+  write_body: Writer,
+  close: String,
+): void {
+  write(t, start);
+  _ = write_body();
+  write(t, close)
+}
+
+fun delimit_list<Ta>(
+  t: mutable Js_writer_t,
+  start: String,
+  values: List<Ta>,
+  writer: ((Ta) -> void),
+  sep: String,
+  close: String,
+): void {
+  delimit(t, start, () -> join(t, values, writer, sep), close)
+}
+
+fun delimit_list_newline<Ta>(
+  t: mutable Js_writer_t,
+  start: String,
+  values: List<Ta>,
+  writer: ((Ta) -> void),
+  sep: String,
+  close: String,
+): void {
+  delimit(
+    t,
+    start,
+    () -> {
+      if (!values.isEmpty()) {
+        newline(t);
+        margin(t, () -> join_newline(t, values, writer, sep));
+        newline(t);
+      };
+    },
+    close,
+  )
+}
+
+fun write_statement(t: mutable Js_writer_t, statement: JS.Statement): void {
+  statement match {
+  | JS.Variable(var) ->
+    write(
+      t,
+      {
+        (var.variable_is_var, var.variable_is_const) match {
+        | (true, _) -> "var "
+        | (false, true) -> "const "
+        | (false, false) -> "let "
+        }
+      },
+    );
+    write_pos_expression(t, var.variable_name);
+    var.variable_initializer match {
+    | None() -> void
+    | Some(init) ->
+      write_token(t, "=");
+      write_pos_expression(t, init)
+    };
+    end_statement(t)
+  | JS.Block(block) ->
+    write_block_statement(t, block);
+    newline(t)
+  | JS.LabeledStatement(id, block) ->
+    write(t, id);
+    write(t, ":");
+    write_block_statement(t, block);
+    newline(t)
+  | JS.Empty() -> end_statement(t)
+  | JS.ExpressionStatement(expr) ->
+    write_pos_expression(t, expr);
+    end_statement(t)
+  | JS.If(cond, thenClause, elseClause) ->
+    write(t, "if ");
+    write_paren_expression(t, cond);
+    indent_statement(t, thenClause);
+    elseClause match {
+    | None() -> void
+    | Some(elseClause1) ->
+      write(t, "else");
+      indent_statement(t, elseClause1)
+    }
+  | JS.Do(body, cond) ->
+    write(t, "do");
+    indent_statement(t, body);
+    write(t, "while ");
+    write_paren_expression(t, cond);
+    end_statement(t)
+  | JS.While(cond, body) ->
+    write(t, "while ");
+    write_paren_expression(t, cond);
+    newline(t);
+    indent_statement(t, body)
+  | JS.For(init, cond, incr, body) ->
+    write(t, "for (");
+    write_expression_opt(t, init);
+    write(t, "; ");
+    write_expression_opt(t, cond);
+    write(t, "; ");
+    write_expression_opt(t, incr);
+    write(t, ")");
+    indent_statement(t, body)
+  | JS.ForOf(name, collection, body) ->
+    write(t, "for (const ");
+    write(t, name);
+    write_token(t, "of");
+    write_pos_expression(t, collection);
+    write(t, ")");
+    indent_statement(t, body)
+  | JS.Switch(switchStatement) ->
+    write(t, "switch ");
+    write_paren_expression(t, switchStatement.switch_expression);
+    write(t, " ");
+    delimit_list_newline(
+      t,
+      "{",
+      switchStatement.switch_cases,
+      c -> write_case(t, c),
+      "",
+      "}",
+    );
+    newline(t)
+  | JS.Break(None()) ->
+    write(t, "break");
+    end_statement(t)
+  | JS.Break(Some(lbl)) ->
+    write(t, "break ");
+    write(t, lbl);
+    end_statement(t)
+  | JS.Continue() ->
+    write(t, "continue");
+    end_statement(t)
+  | JS.Return(None()) ->
+    write(t, "return");
+    end_statement(t)
+  | JS.Return(Some(result)) ->
+    write(t, "return ");
+    write_pos_expression(t, result);
+    end_statement(t)
+  | JS.Throw(error) ->
+    write(t, "throw ");
+    write_pos_expression(t, error);
+    end_statement(t)
+  | JS.Try(try_statement) ->
+    write(t, "try ");
+    write_block_statement(t, try_statement.try_block);
+    try_statement.try_catch match {
+    | None() -> void
+    | Some((error, body)) ->
+      write(t, "catch ");
+      delimit(t, "(", make_writer(v -> write(t, v), error), ")");
+      write_block_statement(t, body);
+      try_statement.try_finally match {
+      | None() -> void
+      | Some(body1) ->
+        write(t, "finally");
+        write_block_statement(t, body1)
+      }
+    };
+    newline(t)
+  | JS.Debugger() ->
+    write(t, "debugger");
+    end_statement(t)
+  }
+}
+
+fun write_pos_statement(
+  t: mutable Js_writer_t,
+  pos_statement: JS.Pos_statement,
+): void {
+  set_pos(t, pos_statement.i0);
+  write_statement(t, pos_statement.i1)
+}
+
+fun write_case(t: mutable Js_writer_t, case: JS.Case_clause): void {
+  case match {
+  | JS.Case(exprs, statements) ->
+    for (cur1 in exprs) write_case_expr(t, cur1);
+    indent_statements(t, statements)
+  | JS.Default(statements) ->
+    write(t, "default:");
+    indent_statements(t, statements)
+  }
+}
+
+fun write_case_expr(t: mutable Js_writer_t, case: JS.Pos_expression): void {
+  write(t, "case ");
+  write_pos_expression(t, case);
+  write(t, ":");
+}
+
+fun indent_statement(
+  t: mutable Js_writer_t,
+  statement: JS.Pos_statement,
+): void {
+  newline(t);
+  margin(t, make_writer(s -> write_pos_statement(t, s), statement))
+}
+
+fun indent_statements(
+  t: mutable Js_writer_t,
+  statements: List<JS.Pos_statement>,
+): void {
+  newline(t);
+  margin(t, () -> join(t, statements, s -> write_pos_statement(t, s), ""));
+}
+
+fun write_block_statement(
+  t: mutable Js_writer_t,
+  block: JS.Block_statement,
+): void {
+  block match {
+  | List.Nil() -> write(t, "{}")
+  | List.Cons _ ->
+    write(t, "{");
+    indent_statements(t, block);
+    write(t, "}")
+  }
+}
+
+fun write_paren_expression(
+  t: mutable Js_writer_t,
+  expr: JS.Pos_expression,
+): void {
+  delimit(t, "(", () -> write_pos_expression(t, expr), ")")
+}
+
+fun delimit_expressions(
+  t: mutable Js_writer_t,
+  start: String,
+  values: List<JS.Pos_expression>,
+  close: String,
+): void {
+  delimit_list_newline(
+    t,
+    start,
+    values,
+    pe -> write_pos_expression(t, pe),
+    ",",
+    close,
+  )
+}
+
+fun write_arguments(
+  t: mutable Js_writer_t,
+  arguments: List<JS.Pos_expression>,
+): void {
+  delimit_list(t, "(", arguments, pe -> write_pos_expression(t, pe), ", ", ")")
+}
+
+fun utf16_escape_code_point(code_point: Int): String {
+  invariant(
+    code_point >= 0 && code_point < 0x10000,
+    "Invalid UTF16 code point",
+  );
+  "\\u" + Chars.intToHexDigits(code_point, 4)
+}
+
+// Return a string escape for a char in UTF16
+// See UTF16Encoding in the ECMAScript Spec
+fun utf16_escape_char(code: Int): String {
+  invariant(code >= 0 && code < 0x110000, "Invalid Unicode char code");
+  if (code < 0x10000) {
+    utf16_escape_code_point(code);
+  } else {
+    code_point_1 = (code - 0x10000) / 0x400 + 0xD800;
+    code_point_2 = (code - 0x10000) % 0x400 + 0xDC00;
+    utf16_escape_code_point(code_point_1) +
+      utf16_escape_code_point(code_point_2);
+  }
+}
+
+fun escape_char(ch: Char): String {
+  ch match {
+  | '\'' -> "\\'"
+  | '\0' -> "\\x00"
+  | '\\' -> "\\\\"
+  | '\n' -> "\\n"
+  | '\r' -> "\\r"
+  | '\t' -> "\\t"
+  | ch1 ->
+    if (Chars.isPrintableAscii(ch1)) {
+      ch1.toString()
+    } else {
+      utf16_escape_char(ch1.code())
+    }
+  }
+}
+
+fun escape_string(value: String): String {
+  value.chars().map(escape_char).join("")
+}
+
+fun write_string(t: mutable Js_writer_t, value: String): void {
+  write(t, "'" + escape_string(value) + "'")
+}
+
+fun write_pos_expression(
+  t: mutable Js_writer_t,
+  pos_expression: JS.Pos_expression,
+): void {
+  set_pos(t, pos_expression.i0);
+  write_expression(t, pos_expression.i1)
+}
+
+fun write_expression(t: mutable Js_writer_t, expr: JS.Expression): void {
+  expr match {
+  | JS.This() -> write(t, "this")
+  | JS.Super() -> write(t, "super")
+  | JS.Identifier(id) -> write(t, id)
+  | JS.Null() -> write(t, "null")
+  | JS.BoolLiteral(true) -> write(t, "true")
+  | JS.BoolLiteral(false) -> write(t, "false")
+  | JS.Number(value) -> write(t, value.toString())
+  | JS.StringLiteral(value) -> write_string(t, value)
+  | JS.Literal(value) -> write(t, value)
+  | JS.Array(values) -> delimit_expressions(t, "[", values, "]")
+  | JS.Object(properties) ->
+    delimit_list_newline(
+      t,
+      "{",
+      properties,
+      p -> write_property(t, p),
+      ",",
+      "}",
+    )
+  | JS.Function(func) -> write_function(t, func)
+  | JS.Lambda(lambda) -> write_lambda(t, lambda)
+  | JS.Class(cls) -> write_class(t, cls)
+  | JS.Paren(expr1) ->
+    delimit(t, "(", () -> write_pos_expression(t, expr1), ")")
+  | JS.New(ctor, args) ->
+    write(t, "new ");
+    write_pos_expression(t, ctor);
+    write_arguments(t, args)
+  | JS.Call(meth, args) ->
+    write_pos_expression(t, meth);
+    write_arguments(t, args)
+  | JS.ArrayAccess(array, index) ->
+    write_pos_expression(t, array);
+    delimit(t, "[", () -> write_pos_expression(t, index), "]")
+  | JS.MemberAccess(obj, name) ->
+    write_pos_expression(t, obj);
+    write(t, ".");
+    write(t, name)
+  | JS.Postfix(expr1, operator) ->
+    write_pos_expression(t, expr1);
+    write_token(t, postfix_operator_string(operator))
+  | JS.Unary(operator, expr1) ->
+    write_token(t, unary_operator_string(operator));
+    write_pos_expression(t, expr1)
+  | JS.Conditional(condition, trueValue, falseValue) ->
+    write_pos_expression(t, condition);
+    write_token(t, "?");
+    write_pos_expression(t, trueValue);
+    write_token(t, ":");
+    write_pos_expression(t, falseValue)
+  | JS.Binary(left, operator, right) ->
+    write_pos_expression(t, left);
+    write_token(t, binary_operator_string(operator));
+    write_pos_expression(t, right)
+  | JS.Comma(left, right) ->
+    write_pos_expression(t, left);
+    write(t, ", ");
+    write_pos_expression(t, right)
+  | JS.Yield(value) ->
+    write(t, "yield ");
+    write_pos_expression(t, value)
+  }
+}
+
+fun write_property(t: mutable Js_writer_t, n_v: JS.Property_definition): void {
+  (name, value) = n_v;
+  write(t, name);
+  write(t, ": ");
+  write_pos_expression(t, value)
+}
+
+fun write_parameters(t: mutable Js_writer_t, parameters: List<String>): void {
+  delimit_list(t, "(", parameters, p -> write(t, p), ", ", ")")
+}
+
+fun write_function(t: mutable Js_writer_t, func: JS.Function_definition): void {
+  write(t, "function");
+  if (func.function_is_generator) {
+    write(t, "*")
+  };
+  if (func.function_name != "") {
+    write(t, " ")
+  };
+  write(t, func.function_name);
+  write_parameters(t, func.function_parameters);
+  write(t, " ");
+  write_block_statement(t, func.function_body)
+}
+
+fun write_lambda(t: mutable Js_writer_t, lambda: JS.Lambda_definition): void {
+  write_parameters(t, lambda.lambda_parameters);
+  write_token(t, "=>");
+  newline(t);
+  write_block_statement(t, lambda.lambda_body)
+}
+
+fun write_expression_opt(
+  t: mutable Js_writer_t,
+  expr_opt: ?JS.Pos_expression,
+): void {
+  expr_opt match {
+  | None() -> void
+  | Some(expr) -> write_pos_expression(t, expr)
+  }
+}
+
+fun write_class(t: mutable Js_writer_t, cls: JS.Class_definition): void {
+  write(t, "class ");
+  write(t, cls.class_name);
+  cls.class_extends match {
+  | None() -> void
+  | Some(sk_extends) ->
+    write_token(t, "extends");
+    write_pos_expression(t, sk_extends)
+  };
+  delimit_list_newline(
+    t,
+    "{",
+    cls.class_elements,
+    m -> write_method(t, m),
+    "",
+    "}",
+  )
+}
+
+fun write_method(t: mutable Js_writer_t, meth: JS.Method_definition): void {
+  if (meth.method_is_static) {
+    write(t, "static ")
+  };
+  meth.method_kind match {
+  | JS.MethodKindNormal() -> void
+  | JS.MethodKindGenerator() -> write(t, "*")
+  | JS.MethodKindGet() -> write(t, "get ")
+  | JS.MethodKindSet() -> write(t, "set ")
+  };
+
+  /* Method names may contain non-identifier chars so use strings not identifiers */
+  write_string(t, meth.method_name);
+  write_parameters(t, meth.method_parameters);
+  write_block_statement(t, meth.method_body)
+}
+
+fun write_script(t: mutable Js_writer_t, statements: JS.Script): void {
+  for (statement in statements) {
+    write_pos_statement(t, statement);
+    newline(t);
+  }
+}
+
+fun write_source_map(
+  t: mutable Js_writer_t,
+  source_map_filename: String,
+): void {
+  newline(t);
+  write(t, "//# sourceMappingURL=" + source_map_filename);
+  newline(t)
+}
+
+fun contents(t: mutable Js_writer_t): String {
+  o = t.o;
+  o.contents()
+}
+
+fun write_js_file(t: mutable Js_writer_t, statements: JS.Script): void {
+  write_script(t, statements);
+  if (t.emit_source_map) {
+    source_map_filename = t.destination_file + ".map";
+    write_source_map(t, Path.basename(source_map_filename));
+    Json.json_to_file(
+      Sourcemap.json_of_sourcemap(t.source_map.value.fromSome()),
+      source_map_filename,
+    )
+  };
+  FileSystem.writeTextFile(t.destination_file, contents(t))
+}
+
+fun can_split_path(path: String): Bool {
+  Path.dirname(path) != path
+}
+
+fun parent_dir(path: String): String {
+  if (can_split_path(path) && Path.basename(path) != Path.parentDirectory) {
+    Path.dirname(path)
+  } else if (path == Path.currentDirectory) {
+    Path.parentDirectory
+  } else {
+    Path.join(path, Path.parentDirectory)
+  }
+}
+
+/* replaces all occurences of a/dir/../b with a/b */
+/* removes all unneeded . */
+fun normalize(path: String): String {
+  if (can_split_path(path)) {
+    basename = Path.basename(path);
+    dirname = normalize(Path.dirname(path));
+    if (basename == Path.currentDirectory) {
+      dirname
+    } else if (
+      basename == Path.parentDirectory &&
+      can_split_path(dirname) &&
+      Path.basename(dirname) != Path.parentDirectory
+    ) {
+      Path.dirname(dirname)
+    } else if (dirname == Path.currentDirectory) {
+      basename
+    } else {
+      Path.join(dirname, basename)
+    }
+  } else {
+    path
+  }
+}
+
+fun filename_relative(src: String, dest: String): String {
+  if (Path.isRelative(dest)) {
+    if (can_split_path(dest)) {
+      basename = Path.basename(dest);
+      dirname = Path.dirname(dest);
+      if (basename == Path.parentDirectory) {
+        filename_relative(parent_dir(src), dirname)
+      } else {
+        parent_dir(filename_relative(src, dirname))
+      }
+    } else if (dest == Path.currentDirectory) {
+      src
+    } else {
+      parent_dir(src)
+    }
+  } else {
+    /* TODO: Handle non-relative paths */
+    SkipError.fail()
+  }
+}
+
+fun to_files(
+  js_filename: String,
+  prog: JS.Script,
+  files: List<String>,
+  source_map: Bool,
+): void {
+  o = create_js_writer(js_filename, files, source_map);
+  write_js_file(o, prog)
+}

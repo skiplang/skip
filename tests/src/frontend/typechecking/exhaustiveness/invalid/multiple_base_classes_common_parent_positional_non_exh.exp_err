@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/multiple_base_classes_common_parent_positional_non_exh.sk", line 13, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | OtherRRA _
+11 |
+12 | fun myMatch(x: A): String {
+13 |   x match {
+   |   ^^^^^^^^^
+14 |   | LA _ -> "Pa"
+   |   ^^^^^^^^^^^^^^

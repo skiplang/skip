@@ -1,0 +1,8 @@
+fun main(): void {
+  print_raw(
+    // comment
+    (a, /* b */ a) match {
+    | (1, 1) -> ""
+    },
+  )
+}

@@ -1,0 +1,16 @@
+base class B(s: String) {
+  children =
+  | C
+  | D
+}
+
+// Test mix of patterns with/without params in an inheritance hierarchy
+fun main(): void {
+  print_raw(
+    (C("Pass\n") : B) match {
+    | C("Fail") -> "Fail"
+    | D _ -> "Fail"
+    | b @ B _ -> b.s
+    },
+  )
+}

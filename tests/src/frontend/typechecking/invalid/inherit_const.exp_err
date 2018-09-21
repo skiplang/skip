@@ -1,0 +1,14 @@
+File "./typechecking/invalid/inherit_const.sk", line 9, characters 7-7:
+Missing implementation for the constant c
+ 7 | }
+ 8 |
+ 9 | class Y() extends X {}
+   |       ^
+
+File "./typechecking/invalid/inherit_const.sk", line 6, characters 9-9:
+Defined here
+4 |
+5 | base class X {
+6 |   const c: Bool;
+  |         ^
+7 | }

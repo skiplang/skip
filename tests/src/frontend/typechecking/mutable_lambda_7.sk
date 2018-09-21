@@ -1,0 +1,18 @@
+mutable class Foo(mutable x: Int) {
+  mutable fun doIt(): void {
+    this.!x = this.x + 1
+  }
+}
+
+fun yes(): void {
+  x = mutable Foo(5);
+  apply(x.doIt)
+}
+
+fun apply(f: () -> void): void {
+  f()
+}
+
+fun main(): void {
+  print_string("Pass")
+}

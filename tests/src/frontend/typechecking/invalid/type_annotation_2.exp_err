@@ -1,0 +1,32 @@
+File "./typechecking/invalid/type_annotation_2.sk", line 5, characters 10-18:
+Invalid annotation
+3 |
+4 | fun foo(): void {
+5 |   _: C = (C() : B)
+  |          ^^^^^^^^^
+6 | }
+
+File "./typechecking/invalid/type_annotation_2.sk", line 5, characters 17-17:
+The type: B
+3 |
+4 | fun foo(): void {
+5 |   _: C = (C() : B)
+  |                 ^
+6 | }
+
+File "./typechecking/invalid/type_annotation_2.sk", line 5, characters 6-6:
+Is not a subtype of: C
+3 |
+4 | fun foo(): void {
+5 |   _: C = (C() : B)
+  |      ^
+6 | }
+
+File "./typechecking/invalid/type_annotation_2.sk", line 5, characters 6-6:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: B
+3 |
+4 | fun foo(): void {
+5 |   _: C = (C() : B)
+  |      ^
+6 | }

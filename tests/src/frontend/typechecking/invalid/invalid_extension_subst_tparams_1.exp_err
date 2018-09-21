@@ -1,0 +1,7 @@
+File "./typechecking/invalid/invalid_extension_subst_tparams_1.sk", line 13, characters 12-12:
+Class constants cannot use the class generics
+11 |
+12 | extension base class XSeq {
+13 |   const x: T = invariant_violation("");
+   |            ^
+14 | }

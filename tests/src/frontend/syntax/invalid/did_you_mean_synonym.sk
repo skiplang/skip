@@ -1,0 +1,36 @@
+class A{} {
+  @synonym("filter")
+  fun where(): void {
+    void
+  }
+}
+
+fun f(a: A): String {
+  a.filter()
+}
+
+fun f2(a: A): String {
+  a.filtr() // mistyped synonyms are also matched
+}
+
+class B{item: String} {
+  @synonym("items")
+  fun entries(): void {
+    void
+  }
+}
+
+fun g(b: B): String {
+  b.items() // matches both synonyms and other fields/methods
+}
+
+class C{} {
+  @synonym("new")
+  static fun create(): this {
+    C{}
+  }
+}
+
+fun h(): C {
+  C::new();
+}

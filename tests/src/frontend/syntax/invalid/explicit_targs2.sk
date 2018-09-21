@@ -1,0 +1,5 @@
+class A<T>(T)
+
+fun test(_: A<Int>): A<Int> {
+  A<Bool>(0)
+}

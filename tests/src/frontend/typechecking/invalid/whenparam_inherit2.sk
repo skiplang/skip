@@ -1,0 +1,9 @@
+base class Foo<T> {
+  fun foo[T: String](): void;
+}
+
+class Bar<T>() extends Foo<T> {
+  fun foo[T: Int](): void {
+    void
+  }
+}

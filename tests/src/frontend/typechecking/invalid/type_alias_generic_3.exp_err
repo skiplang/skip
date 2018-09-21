@@ -1,0 +1,6 @@
+File "./typechecking/invalid/type_alias_generic_3.sk", line 3, characters 19-19:
+Unbound class: 'X'
+1 | class Bar<T>{}
+2 |
+3 | type Foo<T> = Bar<X>; /* Unbound name: X */
+  |                   ^

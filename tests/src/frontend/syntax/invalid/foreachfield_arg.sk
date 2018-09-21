@@ -1,0 +1,10 @@
+
+base class B {
+  macro fun m(): void {
+    #forEachField(a) a
+  }
+}
+
+fun main(): void {
+  print_string("FAIL");
+}

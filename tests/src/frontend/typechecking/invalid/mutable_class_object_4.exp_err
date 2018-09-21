@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_class_object_4.sk", line 4, characters 16-22:
+Invalid argument to the construction of a 'Foo'
+2 |
+3 | fun no(x: mutable Foo<mutable Foo<Int>>): void {
+4 |   _ = class(x)(Foo(42))
+  |                ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/mutable_class_object_4.sk", line 4, characters 16-22:
+The type: Foo<Int>
+2 |
+3 | fun no(x: mutable Foo<mutable Foo<Int>>): void {
+4 |   _ = class(x)(Foo(42))
+  |                ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/mutable_class_object_4.sk", line 3, characters 23-38:
+Is not a subtype of: mutable Foo<Int>
+1 | mutable class Foo<T>(mutable v: T)
+2 |
+3 | fun no(x: mutable Foo<mutable Foo<Int>>): void {
+  |                       ^^^^^^^^^^^^^^^^
+4 |   _ = class(x)(Foo(42))
+
+File "./typechecking/invalid/mutable_class_object_4.sk", line 3, characters 23-38:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Foo<Int>
+1 | mutable class Foo<T>(mutable v: T)
+2 |
+3 | fun no(x: mutable Foo<mutable Foo<Int>>): void {
+  |                       ^^^^^^^^^^^^^^^^
+4 |   _ = class(x)(Foo(42))

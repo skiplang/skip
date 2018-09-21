@@ -1,0 +1,11 @@
+File "./typechecking/exhaustiveness/invalid/nested_tuple_upcast.sk", line 14, characters 3-3:
+Non-exhaustive pattern match found.
+The following are the structures of values that won't be matched:
+ | (Z(), G())
+ | (Z(), R())
+12 | }
+13 | fun test(): String {
+14 |   ((Y() : B), (G() : L)) match {
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |   | (Y(), G()) -> "Fail1\n"
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^

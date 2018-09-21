@@ -1,0 +1,31 @@
+File "./typechecking/invalid/mutable_lambda_6.sk", line 13, characters 9-14:
+Invalid argument
+11 | fun no(): void {
+12 |   f = mutable Foo();
+13 |   apply(f.doIt)
+   |         ^^^^^^
+14 | }
+
+File "./typechecking/invalid/mutable_lambda_6.sk", line 2, characters 15-18:
+The type: (() -> void)
+1 | mutable class Foo() {
+2 |   mutable fun doIt(): void {
+  |               ^^^^
+3 |     void
+
+File "./typechecking/invalid/mutable_lambda_6.sk", line 7, characters 14-23:
+Is not a subtype of: (() ~> void)
+5 | }
+6 |
+7 | fun apply(f: () ~> void): void {
+  |              ^^^^^^^^^^
+8 |   f()
+
+File "./typechecking/invalid/mutable_lambda_6.sk", line 7, characters 14-23:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: (() -> void)
+5 | }
+6 |
+7 | fun apply(f: () ~> void): void {
+  |              ^^^^^^^^^^
+8 |   f()

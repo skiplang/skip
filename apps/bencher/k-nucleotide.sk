@@ -1,0 +1,91 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Adapted from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/knucleotide-hack-4.html
+module KNucleotide;
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  sequence = read_sequence(FileSystem.readTextFile("./k-nucleotide-input.txt"));
+  bencher.bench{
+    run => () -> {
+      _ = write_freq(sequence, 1);
+      _ = write_freq(sequence, 2);
+      _ = write_count(sequence, "GGT");
+      _ = write_count(sequence, "GGTA");
+      _ = write_count(sequence, "GGTATT");
+      _ = write_count(sequence, "GGTATTTTAATT");
+      write_count(sequence, "GGTATTTTAATTTATAGT");
+    },
+  }
+}
+
+fun read_sequence(sequence: String): String {
+  res = mutable Vector[];
+  seq = sequence
+    .getIter()
+    // Drop everything before the third line that starts with a >
+    .dropWhile(c -> !(c is '>'))
+    .drop(1)
+    .dropWhile(c -> !(c is '>'))
+    .drop(1)
+    .dropWhile(c -> !(c is '>'))
+    .drop(1)
+    .dropWhile(c -> !(c is '\n'))
+    .drop(1);
+
+  // Copy every character except for newlines
+  for (c in seq) {
+    if (!(c is '\n')) res.push(c.capitalize());
+  };
+
+  String::fromChars(res.toArray())
+}
+
+fun write_freq(sequence: String, key_length: Int): Array<(String, Float)> {
+  map = generate_frequencies(sequence, key_length);
+  items = Array::mcreateFromIterator(map.items());
+  total = items.map(x -> x.i1).sumInt();
+  items.sortBy(x ~> -x.i1);
+  items.map(item -> {
+    (key, value) = item;
+    (key, value.toFloat() / total.toFloat() * 100.0)
+  });
+}
+
+fun write_count(sequence: String, key: String): (String, Int) {
+  map = generate_frequencies(sequence, key.length());
+  value = map.maybeGet(key).default(0);
+  (key, value)
+}
+
+fun generate_frequencies(
+  sequence: String,
+  size: Int,
+): mutable UnorderedMap<String, Int> {
+  map = mutable UnorderedMap[];
+
+  start = sequence.getIter();
+  end = start.clone();
+  for (_ in Range(0, size)) {
+    _ = end.next()
+  };
+
+  while (
+    (start.next(), end.next()) match {
+    | (_, Some _) ->
+      key = start.substring(end);
+      map![key] = map.maybeGet(key).default(0) + 1;
+      true
+    | _ -> false
+    }
+  ) void;
+
+  map
+}
+
+module end;

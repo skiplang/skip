@@ -1,0 +1,45 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+class InlinedPos{
+  // Function of the original code (pre-inlining).
+  origFun: FunPos,
+
+  // Where it got inlined into (containing function is implicit).
+  inlinedAt: FileRange,
+} extends Pos {
+  // Produce an InlinedPos for code originally written at fromPos,
+  // which is being inlined from fromFun, being inlined to the location
+  // specified by toPos.
+  static fun inlineAt(toPos: Pos, fromPos: Pos, fromFun: FunPos): InlinedPos {
+    // Find the location in the target function where we are inlining this.
+    inlinedAt = toPos match {
+    | InlinedPos{inlinedAt} -> inlinedAt
+    | fr @ FileRange _ -> fr
+    };
+
+    fromPos match {
+    | i @ InlinedPos _ -> i with {inlinedAt}
+    | fr @ FileRange _ ->
+      InlinedPos{
+        filename => fr.filename,
+        range => fr.range,
+        origFun => fromFun,
+        inlinedAt,
+      }
+    }
+  }
+
+  fun die(msg: String): _ {
+    throw Assert.InternalError(this.defaultToString(), msg);
+  }
+
+  fun toString(): String {
+    `${this.defaultToString()} fun=${this.origFun.name}, ` +
+      `FID#${this.origFun.id} (inlined at ${this.inlinedAt})`
+  }
+}

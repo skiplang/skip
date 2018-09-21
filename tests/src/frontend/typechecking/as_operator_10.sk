@@ -1,0 +1,11 @@
+fun main(): void {
+  a = "0";
+  _a = a as "0";
+  try {
+    b = "";
+    _b = b as "0";
+    print_string("Fail")
+  } catch {
+  | InvalidCast _ -> print_string("Pass")
+  }
+}

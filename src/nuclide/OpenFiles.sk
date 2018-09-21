@@ -1,0 +1,88 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias LSP = LanguageServerProtocol;
+
+// Tracks a file open in the editor for an LSP client.
+class SourceFileInfo{
+  uri: String,
+  version: ?Int,
+  contents: String,
+  parseErrors: Vector<LSP.Diagnostic>,
+  tree: ParseTree,
+} {
+  static fun create(
+    uri: String,
+    version: ?Int,
+    contents: String,
+  ): SourceFileInfo {
+    parseResults = SkipParser.parseSource(contents, false);
+    SourceFileInfo{
+      uri,
+      version,
+      contents,
+      parseErrors => parseResults.errors
+        .map(error -> syntaxErrorToDiagnostic(uri, error))
+        .collect(Vector),
+      tree => parseResults.tree,
+    };
+  }
+
+  fun hasParseErrors(): Bool {
+    !this.parseErrors.isEmpty()
+  }
+}
+
+// Tracks all open files for an LSP client.
+// Also tracks the current set of type errors for the entire project.
+mutable class OpenFiles{
+  openFiles: mutable Map<String, SourceFileInfo> = mutable Map[],
+  mutable typeErrors: Map<String, Vector<LSP.Diagnostic>> = Map[],
+} {
+  mutable fun set(uri: String, version: ?Int, contents: String): void {
+    this.openFiles.set(uri, SourceFileInfo::create(uri, version, contents));
+  }
+
+  mutable fun maybeGet(uri: String): ?SourceFileInfo {
+    this.openFiles.maybeGet(uri)
+  }
+
+  mutable fun maybeRemove(uri: String): void {
+    _ = this.openFiles.maybeRemove(uri)
+  }
+
+  readonly fun hasAnyParseErrors(): Bool {
+    this.openFiles.values().any(info -> info.hasParseErrors())
+  }
+
+  // Returns the set of files to send errors for.
+  // Must send errors for files with errors, as well as for files where errors
+  // were all removed.
+  mutable fun setTypeErrors(
+    errors: Map<String, Vector<LSP.Diagnostic>>,
+  ): Sequence<String> {
+    urisToSend = this.openFiles.keys()
+      .collect(Set)
+      // TODO: Should not need to call .collect(Set) here?
+      .union(errors.keys().collect(Set))
+      .union(this.typeErrors.keys().collect(Set));
+    this.!typeErrors = errors;
+    urisToSend
+  }
+
+  mutable fun getParseErrorsForFile(uri: String): Sequence<LSP.Diagnostic> {
+    this.openFiles.maybeGet(uri).map(info -> info.parseErrors).default(Array[])
+  }
+
+  mutable fun getTypeErrorsForFile(uri: String): Vector<LSP.Diagnostic> {
+    this.typeErrors.maybeGet(uri).default(Vector[])
+  }
+
+  mutable fun getErrorsForFile(uri: String): Vector<LSP.Diagnostic> {
+    this.getTypeErrorsForFile(uri).concat(this.getParseErrorsForFile(uri))
+  }
+}

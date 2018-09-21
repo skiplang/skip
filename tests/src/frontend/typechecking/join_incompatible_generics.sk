@@ -1,0 +1,23 @@
+class X()
+class Y()
+
+base class A
+base class B<T> extends A
+class C() extends B<X>
+class D() extends B<Y>
+
+fun main(): void {
+  // This fails with "X is incompatible with Y", as it attempts
+  // to unify B<X> and B<Y>. But proceeding to A would have
+  // worked.
+  _ = if (true) C() else D();
+
+  // This works, explicitly telling type inference to skip past B to A.
+  //  _ = if (true) (C() : A) else (D() : A);
+
+  print_string(
+    // This works, explicitly telling type inference to skip past B to A.
+    //  _ = if (true) (C() : A) else (D() : A);
+    "Pass",
+  )
+}

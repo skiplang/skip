@@ -1,0 +1,67 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Round up 'a' to the given power of two.
+fun roundUp(a: Int, align: Int): Int {
+  (a + align - 1).and(-align)
+}
+
+trait HasIDValue<T> {
+  readonly fun idValue(): T;
+}
+
+// A unique ID number.
+//
+// These act as indirect pointers (handles) to various objects, so we can
+// replace one object with another and not need to update all of the references.
+//
+// For integers, the numbers are usually kept small to facilitate using
+// vectors to map IDs to other objects.
+//
+// The scope of "uniqueness" varies by ID; see the type declarations for
+// details.
+trait TypeSafeID<T: Hashable & Orderable & Show>(
+  id: T,
+) extends Hashable, Orderable, Show, HasIDValue<T> {
+  readonly fun idValue(): T {
+    this.id
+  }
+
+  readonly fun ==(other: inst): Bool {
+    this.id == other.id
+  }
+
+  readonly fun !=(other: inst): Bool {
+    this.id != other.id
+  }
+
+  readonly fun compare(other: inst): Order {
+    this.id.compare(other.id)
+  }
+
+  readonly fun hash(): Int {
+    this.id.hash()
+  }
+
+  readonly overridable macro fun toString(): String {
+    `${#thisClassName}(${this.id})`
+  }
+}
+
+// Zero-extends n. TODO: Make a method on Int?
+fun zext(n: Int, numBits: Int): Int {
+  shift = 64 - numBits;
+  invariant(shift.ult(64), "Illegal bit width");
+  n.shl(shift).ushr(shift)
+}
+
+// Sign-extends n. TODO: Make a method on Int?
+fun sext(n: Int, numBits: Int): Int {
+  shift = 64 - numBits;
+  invariant(shift.ult(64), "Illegal bit width");
+  n.shl(shift).shr(shift)
+}

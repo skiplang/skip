@@ -1,0 +1,21 @@
+mutable class Cov<-T>() {
+  mutable fun eat(T): void {
+    void
+  }
+  static fun new(T): mutable this {
+    mutable Cov()
+  }
+}
+
+fun main(): void {
+  f1 = () ~> 0;
+  f2 = () -> 0;
+  _ = f1();
+  _ = f2();
+  c1 = Cov::new(f1);
+  c2 = Cov::new(f2);
+  cm = if (true) c1 else c2;
+  cm.eat(f1);
+  cm.eat(f2); // bad for c1!
+  print_raw("FAIL")
+}

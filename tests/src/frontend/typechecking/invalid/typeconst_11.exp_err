@@ -1,0 +1,15 @@
+File "./typechecking/invalid/typeconst_11.sk", line 34, characters 3-16:
+Invalid call of deferred method
+32 |
+33 | fun wrong(x: MyBase, y: MyBase): void {
+34 |   x.set(y.get())
+   |   ^^^^^^^^^^^^^^
+35 | }
+
+File "./typechecking/invalid/typeconst_11.sk", line 9, characters 3-10:
+'set' was declared as 'deferred' and can only be called  from a 'deferred' method or from 'this'
+ 7 | base class MyBase {
+ 8 |   type T: Fields;
+ 9 |   deferred fun set(x: this::T): void;
+   |   ^^^^^^^^
+10 |   fun get(): this::T;

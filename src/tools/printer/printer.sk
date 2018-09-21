@@ -1,0 +1,1945 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SkipPrinter;
+type ParseTree = ParseTree.ParseTree;
+
+class Context{
+  contents: String,
+  alreadyPrintedLeadingComments: UnorderedSet<HashableToken> = UnorderedSet[],
+  parents: List<ParseTree> = List[],
+  loopElseBranch: Bool = false,
+} {
+  fun isAlreadyPrintedLeadingComments(token: Token.Token): Bool {
+    this.alreadyPrintedLeadingComments.contains(HashableToken(token))
+  }
+
+  fun withAlreadyPrintedLeadingComments(token: Token.Token): Context {
+    this with {
+      alreadyPrintedLeadingComments => {
+        newSet = this.alreadyPrintedLeadingComments.clone();
+        newSet.add(HashableToken(token));
+        freeze(newSet)
+      },
+    }
+  }
+
+  fun getParent(n: Int): ParseTree {
+    try {
+      this.parents.getNth(n)
+    } catch {
+    | _ -> ParseTree.EmptyTree{range => TextRange.none}
+    }
+  }
+}
+
+// Workaround to be able to hash the token based on the range only
+value class HashableToken(token: Token.Token) uses Hashable, Equality {
+  fun hash(): Int {
+    this.token.range.hash()
+  }
+  fun ==(other: HashableToken): Bool {
+    this.token.range == other.token.range
+  }
+}
+
+fun printJustComments(ctx: Context, t: ParseTree): Doc {
+  t match {
+  | ParseTree.TokenTree{token} ->
+    Doc.Concat[
+      if (!ctx.isAlreadyPrintedLeadingComments(token)) {
+        printLeadingComments(t, token.leadingComments)
+      } else {
+        Doc.Empty()
+      },
+      printTrailingComments(t, token.trailingComments),
+    ]
+  | _ ->
+    invariant_violation("Should not call printJustComments without a TokenTree")
+  }
+}
+
+fun printTreeToString(
+  parseTree: ParseTree.ParseTree,
+  contents: String = "",
+): String {
+  ctx = SkipPrinter.Context{contents};
+  doc = SkipPrinter.print(ctx, parseTree);
+  // debug(Doc.simplifyDoc(doc));
+  result = mutable Vector[];
+  Doc.printDoc(doc, x -> result.push(x));
+  result.join("")
+}
+
+fun printTreeList(
+  c: Context,
+  t: ParseTree,
+  beforeSeparator: Doc,
+  afterSeparator: Doc,
+  indent: Bool = false,
+  trailingSeparator: Bool = false,
+  shouldGroup: Bool = true,
+  marker: ?Doc.Marker = None(),
+): Doc {
+  line = if (
+    beforeSeparator is Doc.HardLine() ||
+    afterSeparator is Doc.HardLine()
+  ) {
+    Doc.HardLine()
+  } else {
+    Doc.SoftLine()
+  };
+
+  printTreeWithComments(c, t, (ctx, treeList) -> {
+    treeList match {
+    | ParseTree.ParseTreeList{
+      startDelimiter,
+      elements,
+      separators,
+      endDelimiter,
+      separatorKind,
+    } ->
+      if (elements.size() == 0) {
+        Doc.Concat[print(ctx, startDelimiter), print(ctx, endDelimiter)]
+      } else {
+        printedElements = mutable Vector<Doc>[];
+        // Avoid O(n^2) behavior because of random access
+        elementsVec = elements;
+        separatorsVec = separators;
+
+        elementsVec.eachWithIndex((i, element) -> {
+          printedElements.push(
+            Doc.Concat[
+              if (
+                i > 0 &&
+                element.getRangeWithComments().start.line() >
+                  1 +
+                    (if (separatorsVec.size() >= i) {
+                      separatorsVec[i - 1]
+                    } else {
+                      elementsVec[i - 1]
+                    })
+                      .getRangeWithComments()
+                      .end.line()
+              ) {
+                line
+              } else {
+                Doc.Empty()
+              },
+
+              print(ctx, element),
+
+              if (i == elementsVec.size() - 1) {
+                if (trailingSeparator) {
+                  if (separatorsVec.size() == elementsVec.size()) {
+                    Doc.IfBreak(
+                      print(ctx, separatorsVec[i]),
+                      printJustComments(ctx, separatorsVec[i]),
+                    )
+                  } else {
+                    Doc.IfBreak(Doc.Str(separatorKind.fromSome().toString()))
+                  }
+                } else {
+                  if (separatorsVec.size() == elementsVec.size()) {
+                    printJustComments(ctx, separatorsVec[i])
+                  } else {
+                    Doc.Empty()
+                  }
+                }
+              } else {
+                Doc.Concat[
+                  beforeSeparator,
+                  if (separatorsVec.size() == 0) {
+                    Doc.Empty()
+                  } else {
+                    print(ctx, separatorsVec[i])
+                  },
+                  afterSeparator,
+                ]
+              },
+            ],
+          )
+        });
+
+        if (indent) {
+          // We want to print the last comment of a block as trailing of the
+          // last element rather than leading of the end delimiter
+          (
+            printedEndDelimiterComments,
+            printedEndDelimiter,
+          ) = endDelimiter.getFirstToken() match {
+          | Some(firstToken) ->
+            (
+              Doc.Concat[
+                printTrailingComments(
+                  elements.last(),
+                  firstToken.leadingComments,
+                ),
+                firstToken.leadingComments.maybeLast() match {
+                | Some(Token.Comment{kind => Token.LineComment()}) ->
+                  Doc.IfBreak(Doc.Empty(), Doc.HardLine())
+                | _ -> Doc.Empty()
+                },
+              ],
+              print(
+                ctx.withAlreadyPrintedLeadingComments(firstToken),
+                endDelimiter,
+              ),
+            )
+          | None() -> (Doc.Empty(), Doc.Empty())
+          };
+
+          contents = Doc.Concat[
+            print(ctx, startDelimiter),
+            Doc.Indent[
+              line,
+              Doc.Concat(freeze(printedElements)),
+              printedEndDelimiterComments,
+            ],
+            line,
+          ];
+
+          Doc.Concat[
+            if (shouldGroup) {
+              Doc.Group(contents, /* break */ false, marker)
+            } else {
+              contents
+            },
+            printedEndDelimiter,
+          ]
+        } else {
+          Doc.Concat[
+            print(ctx, startDelimiter),
+            Doc.Concat(freeze(printedElements)),
+            print(ctx, endDelimiter),
+          ]
+        }
+      }
+    | ParseTree.EmptyTree{} -> Doc.Empty()
+    | _ ->
+      invariant_violation(
+        "Expecting a ParseTreeList but got " + treeList.toDebugString(),
+      )
+    }
+  })
+}
+
+fun printCommaList(
+  ctx: Context,
+  treeList: ParseTree,
+  shouldGroup: Bool = true,
+  marker: ?Doc.Marker = None(),
+): Doc {
+  printTreeList(
+    ctx,
+    treeList,
+    Doc.Empty(), // beforeSeparator
+    Doc.Line(), // afterSeparator
+    true, // indent
+    true, // trailingSeparator
+    shouldGroup, // shouldGroup
+    marker, // marker
+  )
+}
+
+fun printHardlineList(
+  ctx: Context,
+  treeList: ParseTree,
+  trailingSeparator: Bool = false,
+): Doc {
+  printTreeList(
+    ctx,
+    treeList,
+    Doc.Empty(), // beforeSeparator
+    Doc.HardLine(), // afterSeparator
+    false, // indent
+    trailingSeparator,
+  )
+}
+
+fun printBarList(
+  c: Context,
+  bar: ?ParseTree,
+  t: ParseTree,
+  line: Doc,
+  shouldFill: Bool = false,
+): Doc {
+  printTreeWithComments(c, t, (ctx, treeList) -> {
+    treeList match {
+    | ParseTree.ParseTreeList{elements, separators, separatorKind} ->
+      if (elements.size() == 0) {
+        Doc.Empty()
+      } else {
+        printedElements = mutable Vector<Doc>[];
+        // Avoid O(n^2) behavior because of random access
+        elementsVec = elements;
+        separatorsVec = separators;
+
+        elementsVec.eachWithIndex((i, element) -> {
+          printedElements.push(print(ctx, element));
+          printedElements.push(
+            Doc.Concat[
+              if (i != elementsVec.size() - 1) {
+                Doc.Concat[
+                  if (
+                    separatorsVec[i].getRangeWithComments().start.line() >
+                    element.getRangeWithComments().end.line() + 1
+                  ) {
+                    line
+                  } else {
+                    Doc.Empty()
+                  },
+                  line,
+                  print(ctx, separatorsVec[i]),
+                  Doc.space,
+                ]
+              } else {
+                Doc.Empty()
+              },
+            ],
+          )
+        });
+        Doc.Concat[
+          if (bar.isSome()) {
+            Doc.Concat[
+              printFallback(
+                ctx,
+                bar.fromSome(),
+                Doc.Str(separatorKind.fromSome().toString()),
+              ),
+              Doc.space,
+            ]
+          } else {
+            Doc.Empty()
+          },
+          if (shouldFill) {
+            Doc.Fill(freeze(printedElements))
+          } else {
+            Doc.Concat(freeze(printedElements))
+          },
+        ]
+      }
+    | _ ->
+      invariant_violation(
+        "Expecting a ParseTreeList but got " + treeList.toDebugString(),
+      )
+    }
+  })
+}
+
+fun join(ctx: Context, separator: Doc, elems: Array<ParseTree>): Doc {
+  res = mutable Vector<Doc>[];
+  elems.eachWithIndex((i, elem) -> {
+    res.push(print(ctx, elem));
+    if (i != elems.size() - 1) {
+      res.push(separator)
+    }
+  });
+  Doc.Concat(freeze(res))
+}
+
+fun printModifiers(ctx: Context, t: ParseTree): Doc {
+  elements = t.asList().elements;
+  if (elements.isEmpty()) {
+    Doc.Empty()
+  } else {
+    Doc.Concat(
+      elements
+        .map(element -> {
+          Doc.Concat[
+            print(ctx, element),
+            if (element is ParseTree.AnnotationTree _) {
+              Doc.HardLine()
+            } else {
+              Doc.space
+            },
+          ]
+        })
+        .collect(Vector),
+    )
+  }
+}
+
+fun printFallback(ctx: Context, t: ParseTree, fallback: Doc): Doc {
+  t match {
+  | ParseTree.EmptyTree _ -> fallback
+  | _ -> print(ctx, t)
+  }
+}
+
+fun printComment(comment: Token.Comment): Doc {
+  res = mutable Vector<Doc>[];
+  lines = comment.value.split("\n");
+
+  isAllStar =
+    comment.value.startsWith("/*") &&
+    lines.slice(1).all(line ~> line.matches(Regex::create("^[ \t]*\\*")));
+
+  lines.eachWithIndex((i, line) -> {
+    // Each line will be printed at the current level of indentation. Since the
+    // comment uses raw spaces for indentation, we need to subtract as many
+    // spaces as the current level of indentation to be a no-op.
+    dedentedLine = if (i > 0) {
+      // This removes the first `comment.range.start.column()` spaces:
+      pos = line.getIter();
+      index = 0;
+      for (_ in Range(0, comment.range.start.column())) {
+        pos.current() match {
+        | Some(' ') ->
+          _ = pos.next();
+          !index = index + 1
+        | _ ->
+          // This is the case where a non-first line in a multi-line comment is
+          // indented less than the first line.
+          break void
+        }
+      };
+      // For /** comments, if a line starts with *, we want to indent it
+      // at the start of the star with one more space
+      if (isAllStar) {
+        starIndex = index;
+        loop {
+          pos.current() match {
+          | Some(' ')
+          | Some('\t') ->
+            _ = pos.next();
+            !starIndex = starIndex + 1
+          | Some('*') -> break " " + line.substring(starIndex)
+          | _ -> break line.substring(index)
+          }
+        }
+      } else {
+        line.substring(index)
+      }
+    } else {
+      line
+    };
+
+    res.push(Doc.Str(dedentedLine));
+    if (i != lines.size() - 1) {
+      res.push(Doc.HardLine())
+    }
+  });
+  Doc.Concat(freeze(res))
+}
+
+fun printLeadingComments(tree: ParseTree, comments: Array<Token.Comment>): Doc {
+  if (comments.size() > 0) {
+    Doc.Concat[
+      Doc.LineSuffixBoundary(),
+      Doc.Concat(
+        comments
+          .mapWithIndex((i, comment) -> {
+            nextRange = if (i == comments.size() - 1) {
+              tree.range
+            } else {
+              comments[i + 1].range
+            };
+            currentRange = comment.range;
+            Doc.Concat[
+              printComment(comment),
+              if (
+                i == comments.size() - 1 &&
+                tree.matchTreeKind(TokenKind.END_OF_FILE())
+              ) {
+                Doc.Empty()
+              } else {
+                Doc.Concat[
+                  if (
+                    nextRange.start.line() > currentRange.end.line() ||
+                    // Even if the ranges are wrong (which can happen with
+                    // codemods), we always want to add a trailing newline for
+                    // "// comments"
+                    comment.kind is Token.LineComment()
+                  ) {
+                    Doc.HardLine()
+                  } else {
+                    Doc.space
+                  },
+                  if (nextRange.start.line() > currentRange.end.line() + 1) {
+                    Doc.HardLine()
+                  } else {
+                    Doc.Empty()
+                  },
+                ]
+              },
+            ]
+          })
+          .collect(Vector),
+      ),
+    ]
+  } else {
+    Doc.Empty()
+  }
+}
+
+fun printTrailingComments(
+  tree: ParseTree,
+  comments: Array<Token.Comment>,
+): Doc {
+  if (comments.size() > 0) {
+    Doc.Concat(
+      comments
+        .mapWithIndex((i, comment) -> {
+          previousRange = if (i == 0) {
+            tree.range
+          } else {
+            comments[i - 1].range
+          };
+          currentRange = comment.range;
+          printedComment = printComment(comment);
+          if (previousRange.end.line() != currentRange.start.line()) {
+            Doc.Concat[Doc.HardLine(), printedComment]
+          } else {
+            res = Doc.Concat[Doc.space, printedComment];
+            if (comment.kind is Token.LineComment _) {
+              Doc.LineSuffix(res)
+            } else {
+              res
+            }
+          }
+        })
+        .collect(Vector),
+    )
+  } else {
+    Doc.Empty()
+  }
+}
+
+fun printTreeWithComments(
+  ctx: Context,
+  t: ParseTree,
+  cb: (Context, ParseTree) -> Doc,
+): Doc {
+  leadingComments = if (t is ParseTree.PatternBranchListTree _) {
+    Array[]
+  } else {
+    // This is going to be O(n^2), where n is the depth of the tree. It should be
+    // fine but a bit unfortunate.
+    t.getFirstToken() match {
+    | Some(
+      firstToken,
+    ) if (
+      !ctx.isAlreadyPrintedLeadingComments(firstToken) &&
+      firstToken.leadingComments.size() > 0
+    ) ->
+      !ctx = ctx.withAlreadyPrintedLeadingComments(firstToken);
+      firstToken.leadingComments
+    | _ -> Array[]
+    }
+  };
+
+  if (
+    leadingComments.any(comment -> comment.value.contains("printer-ignore"))
+  ) {
+    Doc.Str(
+      TextRange.contentFromLines(
+        t.getRangeWithComments(),
+        ctx.contents.split("\n"),
+      ),
+    )
+  } else {
+    !ctx = ctx with {parents => List.Cons(t, ctx.parents)};
+    content = cb(ctx, t);
+
+    Doc.Concat[printLeadingComments(t, leadingComments), content]
+  }
+}
+
+// For binary expressions to be consistent, we need to group
+// subsequent operators with the same precedence level under a single
+// group. Otherwise they will be nested such that some of them break
+// onto new lines but not all. Operators with the same precedence
+// level should either all break or not. Because we group them by
+// precedence level and the AST is structured based on precedence
+// level, things are naturally broken up correctly, i.e. `&&` is
+// broken before `+`.
+fun printBinaryExpression(
+  ctx: Context,
+  t: ParseTree,
+  shouldExpand: Bool,
+): mutable Vector<Doc> {
+  parts = mutable Vector[];
+
+  t match {
+  | ParseTree.BinaryExpressionTree{left, operator, right} ->
+    // Put all operators with the same precedence level in the same
+    // group. The reason we only need to do this with the `left`
+    // expression is because given an expression like `1 + 2 - 3`, it
+    // is always parsed like `((1 + 2) - 3)`, meaning the `left` side
+    // is where the rest of the expression will exist. Binary
+    // expressions on the right side mean they have a difference
+    // precedence level and should be treated as a separate group, so
+    // print them normally.
+
+    left match {
+    | ParseTree.BinaryExpressionTree{
+      operator => leftOperator,
+    } if (
+      operator.getTokenKind().precedence() ==
+      leftOperator.getTokenKind().precedence()
+    ) ->
+      // Flatten them out by recursively calling this function.
+      for (part in printBinaryExpression(
+        ctx with {parents => List.Cons(t, ctx.parents)},
+        left,
+        shouldExpand,
+      )) parts.push(part)
+
+    | _ -> parts.push(print(ctx, left))
+    };
+
+    isLogicalExpression =
+      operator.matchTreeKind(TokenKind.AMPERSAND_AMPERSAND()) ||
+      operator.matchTreeKind(TokenKind.BAR_BAR());
+
+    nodeKind = t.getKind();
+    shouldGroup =
+      !(shouldExpand && isLogicalExpression) &&
+      ctx.getParent(1).getKind() != nodeKind &&
+      left.getKind() != nodeKind &&
+      right.getKind() != nodeKind;
+
+    printedRight = Doc.Concat[
+      print(ctx, operator),
+      Doc.Line(),
+      print(ctx, right),
+    ];
+
+    parts.push(Doc.space);
+    if (shouldGroup) {
+      parts.push(Doc.Group(printedRight))
+    } else {
+      parts.push(printedRight)
+    }
+  | _ ->
+    // Our stopping case. Simply print the node normally.
+    parts.push(print(ctx, t))
+  };
+
+  parts
+}
+
+fun isMemberish(t: ParseTree): Bool {
+  t is ParseTree.MemberSelectionExpressionTree _ ||
+    t is ParseTree.CallArrayExpressionTree _
+}
+
+fun isCallArrayInteger(t: ParseTree): Bool {
+  t match {
+  | ParseTree.CallArrayExpressionTree{
+    arguments => ParseTree.ParseTreeList{elements},
+  } if (
+    elements.size() == 1 &&
+    elements[0] is ParseTree.TokenTree{
+      token => Token.Token{kind => TokenKind.INTEGER_LITERAL()},
+    }
+  ) ->
+    true
+  | _ -> false
+  }
+}
+
+fun printMemberNode(ctx: Context, t: ParseTree): Doc {
+  // Note(vjeux): should ctx be fixed to preserve parents?
+  t match {
+  | ParseTree.MemberSelectionExpressionTree{operator, member} ->
+    Doc.Concat[print(ctx, operator), print(ctx, member)]
+  | ParseTree.CallExpressionTree{typeArguments, arguments} ->
+    Doc.Concat[printCommaList(ctx, typeArguments), print(ctx, arguments)]
+  | ParseTree.CallArrayExpressionTree{typeArguments, bang, arguments} ->
+    Doc.Concat[
+      print(ctx, typeArguments),
+      print(ctx, bang),
+      printCommaList(ctx, arguments),
+    ]
+  | _ -> print(ctx, t)
+  }
+}
+
+fun isFactory(t: ParseTree): Bool {
+  t is ParseTree.GenericTypeNameTree{
+    name => ParseTree.TokenTree{
+      token => Token.Token{kind => TokenKind.TYPE_IDENTIFIER()},
+    },
+  } ||
+    t is ParseTree.TokenTree{token => Token.Token{kind => TokenKind.THIS()}} ||
+    t is ParseTree.TokenTree{token => Token.Token{kind => TokenKind.STATIC()}}
+}
+
+fun printMemberChain(ctx: Context, t: ParseTree): Doc {
+  // The first phase is to linearize the AST by traversing it down.
+  //
+  //   a().b()
+  // has the following AST structure:
+  //   CallExpression(MemberSelectionExpression(CallExpression(Token)))
+  // and we transform it into
+  //   [Token, CallExpression, MemberSelectionExpression, CallExpression]
+  nodes = mutable Vector[];
+  elem = t;
+  while ({
+    nodes.push(elem);
+    elem match {
+    | ParseTree.MemberSelectionExpressionTree{object => next}
+    | ParseTree.CallExpressionTree{func => next}
+    | ParseTree.CallArrayExpressionTree{func => next} ->
+      !elem = next;
+      true
+    | _ -> false
+    }
+  }) void;
+  nodes.reverse();
+
+  // Once we have a linear list of nodes, we want to create groups out
+  // of it.
+  //
+  //   a().b.c().d().e
+  // will be grouped as
+  //   [
+  //     [Identifier, CallExpression],
+  //     [MemberSelectionExpressionTree, MemberSelectionExpressionTree, CallExpression],
+  //     [MemberSelectionExpressionTree, CallExpression],
+  //     [MemberSelectionExpressionTree],
+  //   ]
+  // so that we can print it as
+  //   a()
+  //     .b.c()
+  //     .d()
+  //     .e
+
+  // The first group is the first node followed by
+  //   - as many CallExpression as possible
+  //       < fn()()() >.something()
+  //   - as many numeric CallArrayExpressionTree as possible
+  //       < fn()[0][1][2] >.something()
+
+  groups = mutable Vector[];
+  currentGroup = mutable Vector[nodes[0]];
+  i = 1;
+  while ({
+    if (i >= nodes.size()) {
+      false
+    } else if (
+      nodes[i] is ParseTree.CallExpressionTree _ ||
+      isCallArrayInteger(nodes[i])
+    ) {
+      currentGroup.push(nodes[i]);
+      !i = i + 1;
+      true
+    } else {
+      false
+    }
+  }) void;
+
+  //   - then, as many MemberSelectionExpressionTree as possible but the last one
+  //       < this.items >.something()
+
+  if (!(nodes[0] is ParseTree.CallExpressionTree _)) {
+    while ({
+      if (i + 1 >= nodes.size()) {
+        false
+      } else if (isMemberish(nodes[i]) && isMemberish(nodes[i + 1])) {
+        currentGroup.push(nodes[i]);
+        !i = i + 1;
+        true
+      } else {
+        false
+      }
+    }) void;
+  };
+  groups.push(currentGroup);
+  !currentGroup = mutable Vector[];
+
+  // Then, each following group is a sequence of MemberSelectionExpression followed by
+  // a sequence of CallExpression. To compute it, we keep adding things to the
+  // group until we has seen a CallExpression in the past and reach a
+  // MemberExpression
+
+  hasSeenCallExpression = false;
+  while ({
+    if (i >= nodes.size()) {
+      false
+    } else if (hasSeenCallExpression && isCallArrayInteger(nodes[i])) {
+      // [0] should be appended at the end of the group instead of the
+      // beginning of the next one
+      currentGroup.push(nodes[i]);
+      !i = i + 1;
+      true
+    } else {
+      if (hasSeenCallExpression && isMemberish(nodes[i])) {
+        groups.push(currentGroup);
+        !currentGroup = mutable Vector[];
+        !hasSeenCallExpression = false
+      };
+
+      if (nodes[i] is ParseTree.CallExpressionTree _) {
+        !hasSeenCallExpression = true
+      };
+      currentGroup.push(nodes[i]);
+
+      !i = i + 1;
+      true
+    }
+  }) void;
+  if (currentGroup.size() > 0) {
+    groups.push(currentGroup)
+  };
+
+  printedGroups = groups.map(group -> {
+    Doc.Concat(group.map(node -> printMemberNode(ctx, node)))
+  });
+
+  // In case that we have Uppercase.call() or this.call() we don't want to put
+  // a newline before the `.`
+  shouldMerge = isFactory(nodes[0]);
+
+  // If we only have a single `.`, we shouldn't do anything fancy and just
+  // render everything concatenated together.
+  if (groups.size() <= if (shouldMerge) 3 else 2) {
+    Doc.Group(Doc.Concat(printedGroups))
+  } else {
+    // If there's a lambda anywhere in the chain we don't want to inline
+    noLambda = nodes.slice(0, -1).all(node ->
+      node match {
+      | ParseTree.CallExpressionTree{
+        arguments => ParseTree.PositionalArgumentsTree{
+          arguments => ParseTree.ParseTreeList{elements},
+        },
+      } if (
+        elements.any(element -> element is ParseTree.LambdaExpressionTree _)
+      ) ->
+        false
+      | _ -> true
+      }
+    );
+    marker = if (noLambda) {
+      nodes.last() match {
+      | ParseTree.CallExpressionTree{
+        arguments => tree @ ParseTree.PositionalArgumentsTree{arguments},
+      } if (lastLambdaShouldInline(arguments)) ->
+        Some(Doc.Marker(tree.range))
+      | _ -> None()
+      }
+    } else {
+      None()
+    };
+
+    Doc.Group(
+      Doc.Concat[
+        printedGroups[0],
+        if (shouldMerge) printedGroups[1] else Doc.Empty(),
+        Doc.Indent[
+          Doc.Concat(
+            printedGroups
+              .slice(if (shouldMerge) 2 else 1, printedGroups.size())
+              .map(printedGroup -> Doc.Concat[Doc.SoftLine(), printedGroup]),
+          ),
+        ],
+      ],
+      /* break */ false,
+      marker,
+    )
+  }
+}
+
+fun shouldExpandBinary(ctx: Context, n: Int = 0): Bool {
+  ctx.getParent(n + 1) is ParseTree.IfExpressionTree _ ||
+    ctx.getParent(n + 1) is ParseTree.WhileLoopExpressionTree _ ||
+    ctx.getParent(n + 1) is ParseTree.InfiniteLoopExpressionTree _ ||
+    ctx.getParent(n + 1) is ParseTree.IfClauseTree _ ||
+    ctx.getParent(n + 1) is ParseTree.SimpleBindingExpressionTree _ ||
+    (ctx.getParent(n + 1) is ParseTree.UnaryExpressionTree _ &&
+      ctx.getParent(n + 2) is ParseTree.SimpleBindingExpressionTree _)
+}
+
+fun lastLambdaShouldInline(t: ParseTree): Bool {
+  args = t.asList().elements;
+  !args.isEmpty() &&
+    (args.last() is ParseTree.LambdaExpressionTree _) &&
+    args.filter(x -> x is ParseTree.LambdaExpressionTree _).size() == 1
+}
+
+fun printBody(ctx: Context, body: ParseTree, isOnlyBranch: Bool): Doc {
+  body match {
+  | ParseTree.BlockTree _ ->
+    Doc.Concat[
+      Doc.space,
+      print(ctx, body),
+      if (isOnlyBranch) Doc.Empty() else Doc.space,
+    ]
+  | _ ->
+    Doc.Group[
+      Doc.IfBreak(Doc.Concat[Doc.space, Doc.Str("{")]),
+      Doc.Indent[Doc.Line(), print(ctx, body)],
+      if (isOnlyBranch) Doc.SoftLine() else Doc.Line(),
+      Doc.IfBreak(
+        Doc.Concat[Doc.Str("}"), if (!isOnlyBranch) Doc.space else Doc.Empty()],
+      ),
+    ]
+  }
+}
+
+fun print(ctx: Context, t: ParseTree): Doc {
+  printTreeWithComments(ctx, t, printTree)
+}
+
+fun printTree(ctx: Context, t: ParseTree): Doc {
+  t match {
+  | ParseTree.LazyTree _ ->
+    invariant_violation("ICE: the printer should not be using lazy parsing")
+  | ParseTree.SourceUnitTree{begin, moduleAliases, declarations, end} ->
+    // debug(t);
+
+    moduleAliasesRange = moduleAliases.getRangeWithComments();
+    declarationsRange = declarations.getRangeWithComments();
+    endRange = end.getRangeWithComments();
+    Doc.Group[
+      print(ctx, begin),
+      printHardlineList(ctx, moduleAliases),
+      if (!moduleAliases.isEmptyList() && !declarations.isEmptyList()) {
+        Doc.Concat[
+          Doc.HardLine(),
+          if (
+            declarationsRange.start.line() >
+            moduleAliasesRange.end.line() + 1
+          ) {
+            Doc.HardLine()
+          } else {
+            Doc.Empty()
+          },
+        ]
+      } else {
+        Doc.Empty()
+      },
+      printHardlineList(ctx, declarations),
+      if (!end.getFirstToken().fromSome().leadingComments.isEmpty()) {
+        Doc.Concat[
+          if (endRange.start.line() > declarationsRange.end.line()) {
+            Doc.HardLine()
+          } else {
+            Doc.Empty()
+          },
+          if (endRange.start.line() > declarationsRange.end.line() + 1) {
+            Doc.HardLine()
+          } else {
+            Doc.Empty()
+          },
+        ]
+      } else {
+        Doc.Empty()
+      },
+      print(ctx, end),
+    ]
+  | ParseTree.TokenTree{token} ->
+    Doc.Concat[
+      if (!ctx.isAlreadyPrintedLeadingComments(token)) {
+        printLeadingComments(t, token.leadingComments)
+      } else {
+        Doc.Empty()
+      },
+      Doc.Str(token.value),
+      printTrailingComments(t, token.trailingComments),
+    ]
+  | ParseTree.EmptyTree{} -> Doc.Empty()
+  | ParseTree.ThisTypeTree{token} -> print(ctx, token)
+  | ParseTree.VoidTypeTree{token} -> print(ctx, token)
+  | ParseTree.FrozenTypeTree{token} -> print(ctx, token)
+  | ParseTree.UnderscoreTypeTree{token} -> print(ctx, token)
+  | ParseTree.InstTypeTree{token} -> print(ctx, token)
+  | ParseTree.ModuleAliasTree{
+    moduleKeyword,
+    aliasKeyword,
+    equals,
+    name,
+    value,
+    semiColon,
+  } ->
+    Doc.Concat[
+      print(ctx, moduleKeyword),
+      Doc.space,
+      print(ctx, aliasKeyword),
+      Doc.space,
+      print(ctx, name),
+      Doc.space,
+      print(ctx, equals),
+      Doc.space,
+      print(ctx, value),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.LambdaTypeSpecifierTree{
+    modifierOpt,
+    arguments,
+    arrow,
+    returnType,
+  } ->
+    Doc.Concat[
+      print(ctx, modifierOpt),
+      if (modifierOpt.isEmpty()) Doc.Empty() else Doc.space,
+      print(ctx, arguments),
+      Doc.space,
+      print(ctx, arrow),
+      Doc.space,
+      print(ctx, returnType),
+    ]
+  | ParseTree.WithExpressionTree{value, withKeyword, arguments} ->
+    Doc.Concat[
+      print(ctx, value),
+      Doc.space,
+      print(ctx, withKeyword),
+      Doc.space,
+      print(ctx, arguments),
+    ]
+  | ParseTree.ParenTypeSpecifierTree{openParen, element, closeParen} ->
+    Doc.Concat[
+      print(ctx, openParen),
+      print(ctx, element),
+      print(ctx, closeParen),
+    ]
+  | ParseTree.PositionalParametersTree{parameters}
+  | ParseTree.NamedParametersTree{parameters} ->
+    // We want the arguments to break before the generics and return type:
+    // removing the group around the arguments is a way to get that behavior.
+    shouldGroup = !(
+      ctx.getParent(1) is ParseTree.MethodDeclarationTree _ ||
+      ctx.getParent(1) is ParseTree.FunctionDeclarationTree _ ||
+      ctx.getParent(1) is ParseTree.ClassConstructorDeclarationTree _
+    );
+    printCommaList(ctx, parameters, shouldGroup)
+  | ParseTree.GlobalConstantTree{
+    modifiers,
+    constKeyword,
+    name,
+    colon,
+    typeSpecifier,
+    initializer,
+    semiColon,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, constKeyword),
+      Doc.space,
+      print(ctx, name),
+      print(ctx, colon),
+      Doc.space,
+      print(ctx, typeSpecifier),
+      print(ctx, initializer),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.ConstantTree{
+    modifiers,
+    constKeyword,
+    name,
+    colonTypeSpecifier,
+    value,
+    semiColon,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, constKeyword),
+      Doc.space,
+      print(ctx, name),
+      print(ctx, colonTypeSpecifier),
+      if (value is ParseTree.FromTree _) Doc.space else Doc.Empty(),
+      print(ctx, value),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.DefaultTypeConstantValueTree{defaultKeyword, typeSpecifier} ->
+    Doc.Concat[
+      Doc.space,
+      print(ctx, defaultKeyword),
+      Doc.space,
+      print(ctx, typeSpecifier),
+    ]
+  | ParseTree.ParenPatternTree{openParen, pattern, closeParen} ->
+    Doc.Concat[
+      print(ctx, openParen),
+      print(ctx, pattern),
+      print(ctx, closeParen),
+    ]
+  | ParseTree.ParameterNameColonTree{name, colon} ->
+    Doc.Concat[print(ctx, name), print(ctx, colon), Doc.space]
+  | ParseTree.ColonTypeSpecifierTree{colon, typeSpecifier} ->
+    Doc.Concat[print(ctx, colon), Doc.space, print(ctx, typeSpecifier)]
+  | ParseTree.NamedParameterTree{
+    modifiers,
+    name,
+    colon,
+    typeSpecifier,
+    defaultValue,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, name),
+      print(ctx, colon),
+      Doc.space,
+      print(ctx, typeSpecifier),
+      print(ctx, defaultValue),
+    ]
+  | ParseTree.PositionalParameterTree{
+    modifiers,
+    nameColon,
+    typeSpecifier,
+    defaultValue,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, nameColon),
+      print(ctx, typeSpecifier),
+      print(ctx, defaultValue),
+    ]
+  | ParseTree.SimpleBindingExpressionTree{
+    left,
+    colonTypeSpecifier,
+    equal,
+    right,
+  } ->
+    Doc.Group[
+      print(ctx, left),
+      print(ctx, colonTypeSpecifier),
+      Doc.space,
+      print(ctx, equal),
+      if (right is ParseTree.BinaryExpressionTree _) {
+        Doc.Indent[Doc.Line(), print(ctx, right)]
+      } else {
+        Doc.Concat[Doc.space, print(ctx, right)]
+      },
+    ]
+  | ParseTree.CallExpressionTree{func, typeArguments, arguments} ->
+    if (isMemberish(func)) {
+      printMemberChain(ctx, t)
+    } else {
+      Doc.Concat[
+        print(ctx, func),
+        printCommaList(ctx, typeArguments),
+        print(ctx, arguments),
+      ]
+    }
+  | ParseTree.PositionalArgumentsTree{arguments} ->
+    marker = if (lastLambdaShouldInline(arguments)) {
+      Some(Doc.Marker(t.range))
+    } else {
+      None()
+    };
+
+    printCommaList(ctx, arguments, /* shouldGroup */ true, marker)
+  | ParseTree.NamedArgumentsTree{arguments} -> printCommaList(ctx, arguments)
+  | ParseTree.NamedArgumentTree{name, value} ->
+    Doc.Concat[print(ctx, name), print(ctx, value)]
+  | ParseTree.NamedArgumentValueTree{fatArrow, value} ->
+    Doc.Concat[Doc.space, print(ctx, fatArrow), Doc.space, print(ctx, value)]
+  | ParseTree.BlockTree{openCurly, expressions, closeCurly} ->
+    firstCloseCurlyToken = closeCurly.getFirstToken().fromSome();
+
+    listExpressions = expressions.asList();
+    trailingSeparator =
+      listExpressions.elements.size() == listExpressions.separators.size();
+    Doc.Group[
+      print(ctx, openCurly),
+      Doc.Indent[
+        Doc.HardLine(),
+        printHardlineList(ctx, expressions, trailingSeparator),
+        printTrailingComments(
+          expressions.asList().elements.last(),
+          closeCurly.getFirstToken().fromSome().leadingComments,
+        ),
+      ],
+      Doc.HardLine(),
+      print(
+        ctx.withAlreadyPrintedLeadingComments(firstCloseCurlyToken),
+        closeCurly,
+      ),
+    ]
+  | ParseTree.CallArrayExpressionTree{func, typeArguments, bang, arguments} ->
+    Doc.Concat[
+      print(ctx, func),
+      print(ctx, typeArguments),
+      print(ctx, bang),
+      printCommaList(ctx, arguments),
+    ]
+  | ParseTree.MemberSelectionExpressionTree{object, operator, member} ->
+    i = 1;
+    parent = ctx.getParent(i);
+    firstNonMemberParent = parent;
+    while (firstNonMemberParent is ParseTree.MemberSelectionExpressionTree _) {
+      !i = i + 1;
+      !firstNonMemberParent = ctx.getParent(i);
+    };
+
+    shouldInline =
+      firstNonMemberParent is ParseTree.SimpleBindingExpressionTree _ ||
+      firstNonMemberParent is ParseTree.InitializerTree _ ||
+      firstNonMemberParent is ParseTree.NamedArgumentValueTree _ ||
+      (member.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+        object.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+        !(parent is ParseTree.MemberSelectionExpressionTree _));
+
+    printedMember = Doc.Concat[print(ctx, operator), print(ctx, member)];
+    Doc.Concat[
+      print(ctx, object),
+      if (shouldInline) {
+        printedMember
+      } else {
+        Doc.Group[Doc.Indent[Doc.SoftLine(), printedMember]]
+      },
+    ]
+  | ParseTree.CompoundBindingExpressionTree{left, operator, right} ->
+    Doc.Concat[print(ctx, left), print(ctx, operator), print(ctx, right)]
+  | ParseTree.BinaryExpressionTree _ ->
+    shouldExpand =
+      ctx.getParent(1) is ParseTree.SimpleBindingExpressionTree _ ||
+      (ctx.getParent(1) is ParseTree.ParenExpressionTree _ &&
+        shouldExpandBinary(ctx, 1));
+
+    parts = printBinaryExpression(ctx, t, shouldExpand);
+
+    //   if (
+    //     this.hasPlugin("dynamicImports") && this.lookahead().types == tt.parenLeft
+    //   ) {
+    //
+    // looks super weird, we want to break the children if the parent breaks
+    //
+    //   if (
+    //     this.hasPlugin("dynamicImports") &&
+    //     this.lookahead().types == tt.parenLeft
+    //   ) {
+    if (shouldExpand) {
+      Doc.Concat(freeze(parts))
+    } else {
+      Doc.Group[
+        Doc.Concat[
+          parts[0],
+          Doc.Indent(Doc.Concat(freeze(parts.slice(1, parts.size())))),
+        ],
+      ]
+    }
+  | ParseTree.GenericTypeNameTree{
+    arguments => ParseTree.ParseTreeList{
+      elements,
+      startDelimiter,
+      endDelimiter,
+      separators,
+    },
+    name => ParseTree.TypeNameTree{
+      name => name @ ParseTree.TokenTree{
+        token => Token.Token{
+          kind => TokenKind.TYPE_IDENTIFIER(),
+          value => "Option",
+        },
+      },
+    },
+  } if (elements.size() == 1) ->
+    Doc.Concat[
+      printJustComments(ctx, name),
+      Doc.Str("?"),
+      printJustComments(ctx, startDelimiter),
+      print(ctx, elements[0]),
+      if (separators.size() == 1) {
+        printJustComments(ctx, separators[0])
+      } else {
+        Doc.Empty()
+      },
+      printJustComments(ctx, endDelimiter),
+    ]
+  | ParseTree.GenericTypeNameTree{name, arguments} ->
+    Doc.Concat[
+      print(ctx, name),
+      if (arguments.isEmpty()) {
+        Doc.Empty()
+      } else {
+        printCommaList(ctx, arguments)
+      },
+    ]
+  | ParseTree.TuplePatternTree{elements} ->
+    shouldGroup = !(
+      ctx.getParent(1) is ParseTree.ParseTreeList _ &&
+      ctx.getParent(1).asList().elements.last().range ==
+        ctx.getParent(1).range &&
+      ctx.getParent(2) is ParseTree.PatternBranchTree{
+        ifClause => ParseTree.IfClauseTree _,
+      }
+    );
+    printCommaList(ctx, elements, shouldGroup)
+  | ParseTree.ClassConstructorDeclarationTree{modifiers, parameters} ->
+    Doc.Concat[
+      if (modifiers.asList().elements.isEmpty()) Doc.Empty() else Doc.space,
+      printModifiers(ctx, modifiers),
+      print(ctx, parameters),
+    ]
+  | ParseTree.UsesTree{usesKeyword, typeClasses} ->
+    Doc.Concat[
+      print(ctx, usesKeyword),
+      Doc.space,
+      printCommaList(ctx, typeClasses),
+    ]
+  | ParseTree.ExtendsTree{extendsKeyword, baseTypes} ->
+    Doc.Concat[
+      print(ctx, extendsKeyword),
+      Doc.space,
+      printCommaList(ctx, baseTypes),
+    ]
+  | ParseTree.TypeParametersTree{elements} -> printCommaList(ctx, elements)
+  | ParseTree.ColonTypeParameterConstraintsTree{colon, constraints} ->
+    Doc.Concat[
+      print(ctx, colon),
+      Doc.space,
+      join(ctx, Doc.Str(" & "), constraints.asList().elements),
+    ]
+  | ParseTree.TypeParameterTree{variance, name, constraints} ->
+    Doc.Concat[print(ctx, variance), print(ctx, name), print(ctx, constraints)]
+  | ParseTree.DottedQualifiedTypeNameTree{left, period, right} ->
+    Doc.Concat[print(ctx, left), print(ctx, period), print(ctx, right)]
+  | ParseTree.LambdaParameterTree{name, colonTypeSpecifier} ->
+    Doc.Concat[print(ctx, name), print(ctx, colonTypeSpecifier)]
+  | ParseTree.LambdaExpressionTree{modifierOpt, parameters, arrow, body} ->
+    isLastLambda =
+      ctx.getParent(1) is ParseTree.ParseTreeList _ &&
+      ctx.getParent(1).asList().elements.last().range == t.range &&
+      ctx.getParent(2) is ParseTree.PositionalArgumentsTree _;
+
+    Doc.Group[
+      print(ctx, modifierOpt),
+      if (!modifierOpt.isEmpty()) {
+        Doc.space
+      } else {
+        Doc.Empty()
+      },
+      if (parameters.isList()) {
+        printCommaList(ctx, parameters)
+      } else {
+        print(ctx, parameters)
+      },
+      Doc.space,
+      print(ctx, arrow),
+      Doc.space,
+      if (isLastLambda) {
+        Doc.Marker(ctx.getParent(2).range)
+      } else {
+        Doc.Empty()
+      },
+      if (body is ParseTree.BlockTree _) {
+        print(ctx, body)
+      } else {
+        Doc.Concat[
+          Doc.Indent[Doc.SoftLine(), print(ctx, body)],
+          if (isLastLambda) {
+            Doc.SoftLine()
+          } else {
+            Doc.Empty()
+          },
+        ]
+      },
+    ]
+  | ParseTree.ChildClassTree{annotations, name, constructor} ->
+    Doc.Group[
+      printModifiers(ctx, annotations),
+      print(ctx, name),
+      print(ctx, constructor),
+    ]
+  | ParseTree.ChildrenTree{childrenKeyword, equal, bar, childClasses} ->
+    Doc.Group[
+      print(ctx, childrenKeyword),
+      Doc.space,
+      print(ctx, equal),
+      Doc.HardLine(),
+      printBarList(ctx, Some(bar), childClasses, Doc.SoftLine()),
+    ]
+  | ParseTree.OptionTypeSpecifierTree{question, elementType} ->
+    Doc.Concat[print(ctx, question), print(ctx, elementType)]
+  | ParseTree.FromTree{from, name} ->
+    Doc.Concat[print(ctx, from), Doc.space, print(ctx, name)]
+  | ParseTree.NonNullableTypeTree{token} -> print(ctx, token)
+  | ParseTree.TraitDeclarationTree{
+    modifiers,
+    name,
+    traitKeyword => keyword,
+    typeParameters,
+    constructor,
+    extendsUses,
+    body,
+  }
+  | ParseTree.ClassDeclarationTree{
+    modifiers,
+    name,
+    classKeyword => keyword,
+    typeParameters,
+    constructor,
+    extendsUses,
+    body,
+  } ->
+    Doc.Concat[
+      Doc.Group[
+        printModifiers(ctx, modifiers),
+        print(ctx, keyword),
+        Doc.space,
+        print(ctx, name),
+        print(ctx, typeParameters),
+        print(ctx, constructor),
+        if (extendsUses.asList().elements.size() == 1) {
+          Doc.Group[
+            Doc.space,
+            printTreeList(
+              ctx,
+              extendsUses,
+              Doc.Empty(),
+              Doc.Line(),
+              /* indent */ false, // default value
+              /* trailingSeparator */ false, // default value
+              /* shouldGroup */ false,
+            ),
+            Doc.IfBreak(Doc.Empty(), Doc.space),
+          ]
+        } else {
+          Doc.Group[
+            Doc.Indent[
+              Doc.Line(),
+              printTreeList(ctx, extendsUses, Doc.Empty(), Doc.Line()),
+              if (!extendsUses.isEmptyList()) Doc.space else Doc.Empty(),
+            ],
+          ]
+        },
+      ],
+      printTreeList(ctx, body, Doc.Empty(), Doc.HardLine(), /* indent */ true),
+    ]
+  | ParseTree.ClassPatternTree{typeName, arguments} ->
+    Doc.Concat[
+      print(ctx, typeName),
+      if (arguments.isToken()) Doc.space else Doc.Empty(),
+      print(ctx, arguments),
+    ]
+  | ParseTree.PositionalPatternArgumentsTree{arguments}
+  | ParseTree.NamedPatternArgumentsTree{arguments} ->
+    shouldGroup = !(
+      ctx.getParent(1) is ParseTree.ClassPatternTree _ &&
+      ctx.getParent(2) is ParseTree.ParseTreeList _ &&
+      ctx.getParent(2).asList().elements.last().range ==
+        ctx.getParent(1).range &&
+      ctx.getParent(3) is ParseTree.PatternBranchTree{
+        ifClause => ParseTree.IfClauseTree _,
+      }
+    );
+
+    printCommaList(ctx, arguments, shouldGroup)
+  | ParseTree.NamedArgumentPatternTree{name, pattern} ->
+    Doc.Concat[print(ctx, name), print(ctx, pattern)]
+  | ParseTree.NamedArgumentValuePatternTree{fatArrow, pattern} ->
+    Doc.Concat[Doc.space, print(ctx, fatArrow), Doc.space, print(ctx, pattern)]
+  | ParseTree.IfClauseTree{ifKeyword, expression} ->
+    Doc.Concat[
+      Doc.space,
+      print(ctx, ifKeyword),
+      Doc.space,
+      print(ctx, expression),
+    ]
+  | ParseTree.MatchExpressionTree{value, branches, match} ->
+    Doc.Group[
+      print(ctx, value),
+      Doc.space,
+      print(ctx, match),
+      print(ctx, branches),
+    ]
+  | ParseTree.IsExpressionTree{value, is, pattern} ->
+    Doc.Group[
+      print(ctx, value),
+      Doc.space,
+      print(ctx, is),
+      Doc.space,
+      print(ctx, pattern),
+    ]
+  | ParseTree.AsExpressionTree{value, asKeyword, pattern} ->
+    Doc.Group[
+      print(ctx, value),
+      Doc.space,
+      print(ctx, asKeyword),
+      Doc.space,
+      print(ctx, pattern),
+    ]
+  | ParseTree.PatternBranchListTree{bar, branches} ->
+    Doc.Group[
+      Doc.HardLine(),
+      printBarList(ctx, Some(bar), branches, Doc.SoftLine()),
+      Doc.HardLine(),
+    ]
+  | ParseTree.AtPatternTree{identifier, at, pattern} ->
+    Doc.Concat[
+      print(ctx, identifier),
+      Doc.space,
+      print(ctx, at),
+      Doc.space,
+      print(ctx, pattern),
+    ]
+  | ParseTree.NamePatternTree{name} -> print(ctx, name)
+  | ParseTree.PatternBranchTree{patterns, ifClause, arrow, value} ->
+    // If the value is a single Block, then omit the `{}`
+    elements = value.asList().elements;
+    printedElements = elements[0] match {
+    | ParseTree.BlockTree{
+      openCurly,
+      expressions,
+      closeCurly,
+    } if (elements.size() == 1) ->
+      Doc.Concat[
+        printJustComments(ctx, openCurly),
+        printHardlineList(ctx, expressions),
+        printJustComments(ctx, closeCurly),
+      ]
+    | _ -> printHardlineList(ctx, value)
+    };
+
+    shouldFill = {
+      first = patterns.asList().elements.first();
+      first.matchTreeKind(TokenKind.CHAR_LITERAL()) ||
+        first.matchTreeKind(TokenKind.STRING_LITERAL())
+    };
+
+    Doc.Group[
+      Doc.Group[
+        printBarList(
+          ctx,
+          None(),
+          patterns,
+          if (shouldFill) Doc.Line() else Doc.HardLine(),
+          shouldFill,
+        ),
+        print(ctx, ifClause),
+        Doc.space,
+        print(ctx, arrow),
+      ],
+      Doc.Indent[Doc.Line(), printedElements],
+    ]
+  | ParseTree.PatternBranchBlockTree{openCurly, branches, closeCurly} ->
+    Doc.Group[
+      Doc.space,
+      print(ctx, openCurly),
+      print(ctx, branches),
+      print(ctx, closeCurly),
+    ]
+  | ParseTree.AnnotationTree{at, name, arguments} ->
+    Doc.Concat[print(ctx, at), print(ctx, name), print(ctx, arguments)]
+  | ParseTree.ModuleTree{moduleKeyword, name, semiColon, declarations, end} ->
+    Doc.Concat[
+      print(ctx, moduleKeyword),
+      Doc.space,
+      print(ctx, name),
+      print(ctx, semiColon),
+      if (declarations.asList().elements.isEmpty()) {
+        Doc.Empty()
+      } else {
+        Doc.Concat[
+          Doc.HardLine(),
+          if (
+            declarations.getRangeWithComments().start.line() >
+            semiColon.getRangeWithComments().end.line() + 1
+          ) {
+            Doc.HardLine()
+          } else {
+            Doc.Empty()
+          },
+        ]
+      },
+      printHardlineList(ctx, declarations),
+      if (
+        end.getRangeWithComments().end.line() >
+        declarations.getRangeWithComments().end.line() + 1
+      ) {
+        Doc.HardLine()
+      } else {
+        Doc.Empty()
+      },
+      print(ctx, end),
+    ]
+  | ParseTree.ModuleEndTree{moduleKeyword, end, semiColon} ->
+    Doc.Concat[
+      Doc.HardLine(),
+      print(ctx, moduleKeyword),
+      Doc.space,
+      print(ctx, end),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.TupleTypeSpecifierTree{elements} -> printCommaList(ctx, elements)
+  | ParseTree.TupleExpressionTree{values} -> printCommaList(ctx, values)
+  | ParseTree.IfExpressionTree{ifKeyword, ifControl, trueBranch, falseBranch} ->
+    shouldGroup = !(ctx.getParent(1) is ParseTree.ElseBranchTree _);
+    res = Doc.Concat[
+      print(ctx, ifKeyword),
+      Doc.space,
+      print(ctx, ifControl),
+      printBody(ctx, trueBranch, falseBranch.isEmpty()),
+      printElseBranch(ctx, falseBranch, false),
+    ];
+    if (shouldGroup) Doc.Group(res) else res
+
+  | ParseTree.ElseBranchTree{elseKeyword, value} ->
+    onLoop = ctx.loopElseBranch;
+    !ctx.loopElseBranch = false;
+    Doc.Concat[
+      print(ctx, elseKeyword),
+      Doc.space,
+      value match {
+      | ParseTree.BlockTree _ -> print(ctx, value)
+      | ParseTree.IfExpressionTree _ if (!onLoop) -> print(ctx, value)
+      | _ ->
+        Doc.Concat[
+          Doc.IfBreak(Doc.Str("{")),
+          Doc.Indent[Doc.SoftLine(), print(ctx, value)],
+          Doc.SoftLine(),
+          Doc.IfBreak(Doc.Concat[Doc.Str("}")]),
+        ]
+      },
+    ]
+
+  | ParseTree.InfiniteLoopExpressionTree{loopKeyword, body} ->
+    Doc.Group[
+      print(ctx, loopKeyword),
+      printBody(ctx, body, /* isOnlyBranch */ true),
+    ]
+
+  | ParseTree.DoLoopExpressionTree{
+    doKeyword,
+    body,
+    whileKeyword,
+    condition,
+    elseOpt,
+  } ->
+    res = Doc.Concat[
+      print(ctx, doKeyword),
+      body match {
+      | ParseTree.BlockTree _ -> Doc.Concat[Doc.space, print(ctx, body)]
+      | _ ->
+        Doc.Concat[Doc.Indent[Doc.Line(), print(ctx, body)], Doc.SoftLine()]
+      },
+      Doc.space,
+      print(ctx, whileKeyword),
+      Doc.space,
+      print(ctx, condition),
+      if (elseOpt.isEmpty()) {
+        Doc.Empty()
+      } else {
+        Doc.Concat[Doc.space, printElseBranch(ctx, elseOpt, true)]
+      },
+    ];
+    Doc.Group(res)
+
+  | ParseTree.WhileLoopExpressionTree{whileKeyword, condition, body, elseOpt} ->
+    Doc.Group[
+      print(ctx, whileKeyword),
+      Doc.space,
+      print(ctx, condition),
+      printBody(ctx, body, elseOpt.isEmpty()),
+      printElseBranch(ctx, elseOpt, true),
+    ]
+  | ParseTree.ForEachLoopExpressionTree{
+    forEachKeyword,
+    openParen,
+    value,
+    inKeyword,
+    collection,
+    closeParen,
+    body,
+    elseOpt,
+  } ->
+    res = Doc.Concat[
+      print(ctx, forEachKeyword),
+      Doc.space,
+      print(ctx, openParen),
+      value match {
+      | ParseTree.ParseTreeList _ -> printCommaList(ctx, value)
+      | _ -> print(ctx, value)
+      },
+      Doc.space,
+      print(ctx, inKeyword),
+      Doc.space,
+      print(ctx, collection),
+      print(ctx, closeParen),
+      printBody(ctx, body, elseOpt.isEmpty()),
+      printElseBranch(ctx, elseOpt, true),
+    ];
+    Doc.Group(res)
+  | ParseTree.UnaryExpressionTree{operator, operand} ->
+    Doc.Concat[
+      print(ctx, operator),
+      if (operator.getTokenKind().isKeyword()) Doc.space else Doc.Empty(),
+      print(ctx, operand),
+    ]
+  | ParseTree.YieldExpressionTree{yieldKeyword, value} ->
+    Doc.Concat[print(ctx, yieldKeyword), Doc.space, print(ctx, value)]
+  | ParseTree.YieldBreakExpressionTree{yieldKeyword, breakKeyword} ->
+    Doc.Concat[print(ctx, yieldKeyword), Doc.space, print(ctx, breakKeyword)]
+  | ParseTree.ReturnExpressionTree{returnKeyword, value} ->
+    Doc.Concat[print(ctx, returnKeyword), Doc.space, print(ctx, value)]
+  | ParseTree.BreakExpressionTree{breakKeyword, value} ->
+    Doc.Concat[print(ctx, breakKeyword), Doc.space, print(ctx, value)]
+  | ParseTree.ParenExpressionTree{openParen, value, closeParen} ->
+    if (shouldExpandBinary(ctx) && !(value is ParseTree.BlockTree _)) {
+      Doc.Group[
+        print(ctx, openParen),
+        Doc.Indent[Doc.SoftLine(), print(ctx, value)],
+        Doc.SoftLine(),
+        print(ctx, closeParen),
+      ]
+    } else {
+      Doc.Concat[
+        print(ctx, openParen),
+        print(ctx, value),
+        print(ctx, closeParen),
+      ]
+    }
+  | ParseTree.GlobalQualifiedTypeNameTree{name, period} ->
+    Doc.Concat[print(ctx, period), print(ctx, name)]
+  | ParseTree.MutableTypeSpecifierTree{mutableKeyword, elementType} ->
+    Doc.Concat[print(ctx, mutableKeyword), Doc.space, print(ctx, elementType)]
+  | ParseTree.ReadonlyTypeSpecifierTree{elementType, readonlyKeyword} ->
+    Doc.Concat[print(ctx, readonlyKeyword), Doc.space, print(ctx, elementType)]
+  | ParseTree.FunctionDeclarationTree{
+    modifiers,
+    funKeyword,
+    name,
+    typeParameters,
+    parameters,
+    colon,
+    returnType,
+    body,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, funKeyword),
+      Doc.space,
+      Doc.Group[
+        print(ctx, name),
+        print(ctx, typeParameters),
+        print(ctx, parameters),
+        print(ctx, colon),
+        Doc.space,
+        print(ctx, returnType),
+      ],
+      if (body.isToken()) Doc.Empty() else Doc.space,
+      print(ctx, body),
+    ]
+  | ParseTree.WhenTypeClauseTree{subtype, supertypes} ->
+    Doc.Concat[print(ctx, subtype), print(ctx, supertypes)]
+  | ParseTree.GlobalExpressionTree{} -> Doc.Empty()
+  | ParseTree.TypeAnnotatedExpressionTree{
+    openParen,
+    value,
+    colon,
+    typeSpecifier,
+    closeParen,
+  } ->
+    Doc.Concat[
+      print(ctx, openParen),
+      print(ctx, value),
+      Doc.space,
+      print(ctx, colon),
+      Doc.space,
+      print(ctx, typeSpecifier),
+      print(ctx, closeParen),
+    ]
+  | ParseTree.WhenParametersTree{elements} -> printCommaList(ctx, elements)
+  | ParseTree.MethodDeclarationTree{
+    modifiers,
+    funKeyword,
+    name,
+    typeParameters,
+    whenParameters,
+    parameters,
+    colon,
+    returnType,
+    body,
+    semiColon,
+  } ->
+    Doc.Group[
+      printModifiers(ctx, modifiers),
+      print(ctx, funKeyword),
+      Doc.space,
+      Doc.Group[
+        print(ctx, name),
+        print(ctx, typeParameters),
+        print(ctx, whenParameters),
+        print(ctx, parameters),
+        if (colon.isEmpty()) {
+          Doc.Empty()
+        } else {
+          Doc.Concat[print(ctx, colon), Doc.space]
+        },
+        print(ctx, returnType),
+      ],
+      if (body.isToken()) Doc.Empty() else Doc.space,
+      body match {
+      | ParseTree.PatternBranchListTree{bar, branches} ->
+        Doc.Group[
+          Doc.HardLine(),
+          print(ctx, bar),
+          Doc.space,
+          printTreeList(ctx, branches, Doc.Line(), Doc.space),
+        ]
+      | _ -> print(ctx, body)
+      },
+      print(ctx, semiColon),
+    ]
+  | ParseTree.ForEachKeyValueTree{key, fatArrow, value}
+  | ParseTree.MapElementTree{key, fatArrow, value} ->
+    Doc.Concat[
+      print(ctx, key),
+      Doc.space,
+      print(ctx, fatArrow),
+      Doc.space,
+      print(ctx, value),
+    ]
+  | ParseTree.CatchClauseTree{catchKeyword, branches} ->
+    Doc.Concat[print(ctx, catchKeyword), print(ctx, branches)]
+  | ParseTree.TryExpressionTree{tryKeyword, body, catchClause} ->
+    Doc.Concat[
+      print(ctx, tryKeyword),
+      Doc.space,
+      print(ctx, body),
+      Doc.space,
+      print(ctx, catchClause),
+    ]
+  | ParseTree.CallMapExpressionTree{func, typeArguments, bang, arguments} ->
+    Doc.Concat[
+      print(ctx, func),
+      print(ctx, typeArguments),
+      print(ctx, bang),
+      printCommaList(ctx, arguments),
+    ]
+  | ParseTree.ColonColonQualifiedTypeNameTree{left, colonColon, right} ->
+    Doc.Concat[print(ctx, left), print(ctx, colonColon), print(ctx, right)]
+  | ParseTree.LambdaParameterTypeTree{nameColon, typeSpecifier} ->
+    Doc.Concat[print(ctx, nameColon), print(ctx, typeSpecifier)]
+  | ParseTree.ThrowExpressionTree{throwKeyword, value} ->
+    Doc.Concat[print(ctx, throwKeyword), Doc.space, print(ctx, value)]
+  | ParseTree.InitializerTree{equal, value} ->
+    Doc.Concat[Doc.space, print(ctx, equal), Doc.space, print(ctx, value)]
+  | ParseTree.TypeInitializerTree{equal, typeSpecifier} ->
+    Doc.Concat[
+      Doc.space,
+      print(ctx, equal),
+      Doc.space,
+      print(ctx, typeSpecifier),
+    ]
+  | ParseTree.ConditionalUseTree{typeName, conditions} ->
+    Doc.Group[print(ctx, typeName), print(ctx, conditions)]
+  | ParseTree.TypeNameTree{name} -> print(ctx, name)
+  | ParseTree.TypeAliasDeclarationTree{
+    modifiers,
+    typeKeyword,
+    name,
+    typeParameters,
+    initializer,
+    semiColon,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, typeKeyword),
+      Doc.space,
+      print(ctx, name),
+      print(ctx, typeParameters),
+      print(ctx, initializer),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.ConstPatternTree{value} -> print(ctx, value)
+  | ParseTree.VoidPatternTree{voidKeyword} -> print(ctx, voidKeyword)
+  | ParseTree.TypeConstantTree{
+    modifiers,
+    typeKeyword,
+    name,
+    typeParameters,
+    colonConstraint,
+    value,
+    semiColon,
+  } ->
+    Doc.Concat[
+      printModifiers(ctx, modifiers),
+      print(ctx, typeKeyword),
+      Doc.space,
+      print(ctx, name),
+      print(ctx, typeParameters),
+      print(ctx, colonConstraint),
+      print(ctx, value),
+      print(ctx, semiColon),
+    ]
+  | ParseTree.ColonTypeConstraintTree{colon, constraint} ->
+    Doc.Concat[print(ctx, colon), Doc.space, print(ctx, constraint)]
+  | ParseTree.AwaitableTypeSpecifierTree{caret, elementType} ->
+    Doc.Concat[print(ctx, caret), print(ctx, elementType)]
+  | ParseTree.NegativeLiteralPatternTree{minus, value} ->
+    Doc.Concat[print(ctx, minus), print(ctx, value)]
+  | ParseTree.TemplateLiteralExpressionTree{elements} ->
+    // To ensure no spaces are inserted between the lexical components of the
+    // Template Literal concat them into individual Str elements.
+    head = "`";
+    components: mutable Vector<Doc> = mutable Vector[];
+    for (element in elements.getList()) {
+      element match {
+      | ParseTree.TokenTree{token} ->
+        invariant(token.kind == TokenKind.TEMPLATE_LITERAL_STRING());
+        // TODO: Normalize string escapes in token.value
+        !head = head + token.value
+      | ParseTree.TemplateLiteralExpressionElementTree{dollar, expression} ->
+        expressions = (expression as ParseTree.BlockTree _).expressions;
+        shouldInline = !(
+          expressions is ParseTree.ParseTreeList _ &&
+          {
+            list = expressions.getList();
+            list.size() == 1 &&
+              list[0] is ParseTree.MemberSelectionExpressionTree _
+          }
+        );
+
+        components.push(
+          Doc.Concat[
+            Doc.Str(head),
+            print(ctx, dollar),
+            Doc.Str("{"),
+            if (shouldInline) {
+              printHardlineList(ctx, expressions)
+            } else {
+              Doc.Group[
+                Doc.Indent[Doc.SoftLine(), printHardlineList(ctx, expressions)],
+                Doc.SoftLine(),
+              ]
+            },
+          ],
+        );
+        !head = "}"
+      | _ -> invariant_violation("Unexpected TemplateLiteralElement")
+      }
+    };
+    components.push(Doc.Str(head + "`"));
+    Doc.Concat(freeze(components))
+
+  | ParseTree.TemplateLiteralExpressionElementTree _ ->
+    invariant_violation(
+      "Found TemplateLiteralExpressionElementTree which is not a child of TemplateLiteralExpressionTree!",
+    )
+
+  | ParseTree.ForEachFieldMacroTree{keyword, params, body} ->
+    Doc.Group(
+      Doc.Concat[
+        print(ctx, keyword),
+        Doc.space,
+        print(ctx, params),
+        printBody(ctx, body, true),
+      ],
+    )
+
+  | ParseTree.ErrorTree{value} -> Doc.Str(value)
+
+  | ParseTree.ParseTreeList _ ->
+    invariant_violation("We shouldn't be printing those elements!")
+  }
+}
+
+fun printElseBranch(ctx: Context, else_: ParseTree, loopElseBranch: Bool): Doc {
+  else_ match {
+  | _ if (else_.isEmpty()) -> Doc.Empty()
+  | ParseTree.ElseBranchTree _ -> print(ctx with {loopElseBranch}, else_)
+  | _ ->
+    invariant_violation("Unexpected else branch : " + else_.toDebugString())
+  }
+}
+
+module end;

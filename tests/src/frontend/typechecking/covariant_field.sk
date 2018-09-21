@@ -1,0 +1,12 @@
+mutable class MyRef<+T>(value: T, mutable i: Int)
+
+fun main(): void {
+  ref = mutable MyRef(Some("OK\n"), 0);
+  ref.!i = ref.i + 1;
+  print_raw(
+    ref.value match {
+    | Some(x) -> x
+    // fine, value is immutable
+    },
+  );
+}

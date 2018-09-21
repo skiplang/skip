@@ -1,0 +1,11 @@
+class Foo(x: Int, private y: Int) {
+  fun yes(f: Foo): Int {
+    f match {
+    | Foo(x, y) -> x + y
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,9 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+trait Stringy
+
+fun tester<Ts: Stringy, Tv, Tt: (Ts, Tv)>(x: Tt): void {
+  (_p1, _p2) = x
+}

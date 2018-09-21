@@ -1,0 +1,24 @@
+mutable class Foo(bar: mutable Bar)
+mutable class Bar(mutable baz: String) {
+  mutable fun checkBaz(): String {
+    val = this.baz;
+    this.!baz = "";
+    val
+  }
+}
+
+fun shouldFail(): String {
+  bar = mutable Bar("Fail");
+  foo = mutable Foo(bar);
+  foo match {
+  | z @ Foo(y) if (
+    y match {
+    | Bar(_) if (y.checkBaz() == "Fail") -> true
+    | Bar _ -> false
+    }
+  ) ->
+    z.bar.!baz = "BOOOOOM\n"
+  | _ -> void
+  };
+  foo.bar.baz
+}

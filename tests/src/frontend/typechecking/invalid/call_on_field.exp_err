@@ -1,0 +1,21 @@
+File "./typechecking/invalid/call_on_field.sk", line 2, characters 12-28:
+Not a function, so expected a constructor call
+1 | fun no(): void {
+2 |   _: Int = MyEnum::A.value()
+  |            ^^^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/call_on_field.sk", line 5, characters 36-38:
+The type: Int
+3 | }
+4 |
+5 | value class MyEnum private (value: Int) {
+  |                                    ^^^
+6 |   const A: MyEnum = MyEnum(1);
+
+File "./typechecking/invalid/call_on_field.sk", line 2, characters 12-28:
+Does not share a common super type with: Concrete<_>
+1 | fun no(): void {
+2 |   _: Int = MyEnum::A.value()
+  |            ^^^^^^^^^^^^^^^^^
+3 | }

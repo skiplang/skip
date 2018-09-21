@@ -1,0 +1,25 @@
+class Foo<T>() {
+  static fun make(Int -> T, Int): this {
+    Foo()
+  }
+
+  fun get(Int): T {
+    invariant_violation("")
+  }
+  fun size(): Int {
+    0
+  }
+
+  fun add<T2: T>(f2: Foo<T2>): Foo<T> {
+    f: Int -> T = (
+      i -> {
+        if (i < this.size()) this[i] else f2[i - this.size()]
+      }
+    );
+    static::make(f, this.size() + f2.size())
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

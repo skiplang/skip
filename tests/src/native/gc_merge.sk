@@ -1,0 +1,34 @@
+@no_inline
+@debug
+fun myTest(i: Int, _x1: mutable Ref<Int>, _x2: mutable Ref<Int>): Array<Int> {
+  // Produce some garbage to clobber the Obstack.
+  Array::fill(50, i * 100100100100100100)
+}
+
+fun main(): void {
+  // Verify that we don't allocate x1 and x2 together in a single batch,
+  // then corrupt x2's reserved memory by having GC freeing it before we
+  // realize that it's live.
+  x1 = mutable Ref(12345678);
+  localGC();
+  x2 = mutable Ref(87654321);
+
+  // Allocate the loop closure inside a different basic block so it does not
+  // itself fall victim to the bug we are testing for.
+  alwaysTrue = arguments().size() != 999999999;
+
+  if (alwaysTrue) {
+    for (i in Range(0, 99)) {
+      _ = myTest(i + 1, x1, x2);
+
+      if (x1.value != 12345678) {
+        invariant_violation("x1 set to " + x1.value + " on iteration " + i)
+      };
+      if (x2.value != 87654321) {
+        invariant_violation("x2 set to " + x2.value + " on iteration " + i)
+      }
+    }
+  };
+
+  print_string("Pass")
+}

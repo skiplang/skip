@@ -1,0 +1,28 @@
+File "./typechecking/invalid/bind_dot2.sk", line 6, characters 8-12:
+Invalid binding
+4 | fun main(): void {
+5 |   foo = Foo(Bar());
+6 |   !foo.value = mutable Bar();
+  |        ^^^^^
+7 |   _ = foo;
+
+File "./typechecking/invalid/bind_dot2.sk", line 6, characters 16-28:
+The type: mutable Bar
+4 | fun main(): void {
+5 |   foo = Foo(Bar());
+6 |   !foo.value = mutable Bar();
+  |                ^^^^^^^^^^^^^
+7 |   _ = foo;
+
+File "./typechecking/invalid/bind_dot2.sk", line 1, characters 26-36:
+Is not a subtype of: Bar
+1 | mutable class Foo(value: mutable Bar)
+  |                          ^^^^^^^^^^^
+2 | mutable class Bar(mutable dummy: String = "")
+
+File "./typechecking/invalid/bind_dot2.sk", line 1, characters 26-36:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Bar
+1 | mutable class Foo(value: mutable Bar)
+  |                          ^^^^^^^^^^^
+2 | mutable class Bar(mutable dummy: String = "")

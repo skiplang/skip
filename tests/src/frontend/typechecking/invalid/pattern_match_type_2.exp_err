@@ -1,0 +1,7 @@
+File "./typechecking/invalid/pattern_match_type_2.sk", line 4, characters 23-24:
+Expected '(', '{', or '_'
+2 |   type T;
+3 |   fun matcher(x : this::T): void {
+4 |     x match { this::T -> void }
+  |                       ^^
+5 |   }

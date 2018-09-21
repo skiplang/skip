@@ -1,0 +1,14 @@
+base class P
+base class L extends P
+base class R extends P
+class C() extends L, R
+class D() extends L
+
+fun shouldFail(): String {
+  l: P = C();
+  l match {
+  | R _ -> "Fail\n"
+  | L _ -> "Fail\n"
+  | _ -> "Fail\n"
+  }
+}

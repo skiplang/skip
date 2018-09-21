@@ -1,0 +1,26 @@
+class A() extends Exception
+class B() extends Exception
+
+fun throw_A(): Int {
+  throw A()
+}
+fun throw_B(): Int {
+  throw B()
+}
+
+// if evaluated alphanumerically, you get B instead of A
+fun foo{z: Int = throw_A(), a: Int = throw_B()}: void {
+  void
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      foo{};
+      "FAIL"
+    } catch {
+    | A _ -> "Pass\n"
+    | B _ -> "FAIL"
+    },
+  )
+}

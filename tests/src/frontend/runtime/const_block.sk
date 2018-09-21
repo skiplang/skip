@@ -1,0 +1,8 @@
+const foo: String = {
+  x = "Pass\n";
+  x
+};
+
+fun main(): void {
+  print_raw(foo)
+}

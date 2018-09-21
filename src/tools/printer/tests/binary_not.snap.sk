@@ -1,0 +1,11 @@
+fun main(): void {
+  disasm = !(
+    (f.isDisasm || kConfig.mainConfig.disasmAll) &&
+    !f.superpositions.isEmpty()
+  );
+
+  disasm2 = (
+    (f.isDisasm || kConfig.mainConfig.disasmAll) &&
+    !f.superpositions.isEmpty()
+  );
+}

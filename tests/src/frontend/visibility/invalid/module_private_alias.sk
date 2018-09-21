@@ -1,0 +1,13 @@
+module M;
+
+private type T = Int;
+
+module end;
+
+fun f(): M.T {
+  0;
+}
+
+fun main(): void {
+  print_raw("Fail")
+}

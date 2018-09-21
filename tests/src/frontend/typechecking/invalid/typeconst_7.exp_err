@@ -1,0 +1,15 @@
+File "./typechecking/invalid/typeconst_7.sk", line 27, characters 13-35:
+Invalid call of deferred method
+25 |   inty = as_myparent(IntChild{x => Test.MixedInt(666)});
+26 |   stringy = as_myparent(StringChild{x => Test.MixedString("You done goof'd")});
+27 |   print_raw(inty.set(stringy.get()).get().toString())
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+28 | }
+
+File "./typechecking/invalid/typeconst_7.sk", line 3, characters 3-10:
+'set' was declared as 'deferred' and can only be called  from a 'deferred' method or from 'this'
+1 | base class MyParent final {x: this::T} {
+2 |   type T: Test.MixedScalar;
+3 |   deferred fun set(x: this::T): this {
+  |   ^^^^^^^^
+4 |     !this.x = x;

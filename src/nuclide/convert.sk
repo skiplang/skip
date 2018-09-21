@@ -1,0 +1,92 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Conversion from Skip to LSP data structures
+
+module alias LSP = LanguageServerProtocol;
+module alias RPC = JsonRpc;
+
+fun convertFileRange(range: FileRange): LSP.Location {
+  convertLocation(uriOfFile(range.filename), range.range)
+}
+
+fun convertLocation(uri: String, range: TextRange): LSP.Location {
+  LSP.Location{uri, range => convertRange(range)}
+}
+
+fun convertRange(range: TextRange): LSP.Range {
+  LSP.Range{
+    start => convertPosition(range.start),
+    end => convertPosition(range.end),
+  }
+}
+
+fun convertPosition(position: Position): LSP.Position {
+  LSP.Position{line => position.line(), character => position.column()}
+}
+
+fun syntaxErrorToDiagnostic(uri: String, error: SyntaxError): LSP.Diagnostic {
+  LSP.Diagnostic{
+    range => convertRange(error.messages.getHead().i0),
+    severity => Some(LSP.DiagnosticSeverity::Error),
+    code => Some(error.errorCode),
+    source => Some("Skip"),
+    message => error.messages.getHead().i1,
+    relatedLocations => error.messages
+      .getTail()
+      .map(message ->
+        LSP.DiagnosticRelatedInformation{
+          location => convertLocation(uri, message.i0),
+          message => message.i1,
+        }
+      )
+      .collect(Vector),
+  }
+}
+
+fun fileOfUri(uri: String): String {
+  uri.replace("file://", "")
+}
+
+fun uriOfFile(filename: String): String {
+  "file://" + filename
+}
+
+fun errorToDiagnostic(error: SkipError.Error): LSP.Diagnostic {
+  LSP.Diagnostic{
+    range => convertRange(error.range().range),
+    severity => Some(LSP.DiagnosticSeverity::Error),
+    code => None(),
+    source => Some("Skip"),
+    message => error.message(),
+    relatedLocations => error.traces
+      .getTail()
+      .map(trace ->
+        LSP.DiagnosticRelatedInformation{
+          location => convertLocation(
+            uriOfFile(trace.i0.filename),
+            trace.i0.range,
+          ),
+          message => trace.i1,
+        }
+      )
+      .collect(Vector),
+  }
+}
+
+fun errorsToDiagnostics(
+  errors: Vector<SkipError.Error>,
+): Map<String, Vector<LSP.Diagnostic>> {
+  results = mutable Map[];
+  for (error in errors) {
+    diagnostics = results.getOrAdd(uriOfFile(error.filename()), () ~>
+      mutable Vector[]
+    );
+    diagnostics.push(errorToDiagnostic(error));
+  };
+  freeze(results);
+}

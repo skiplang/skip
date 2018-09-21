@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_collection_set_in_expr.sk", line 2, characters 12-12:
+'![' in non-lvalue
+1 | fun main(): String {
+2 |   v![0] = v![1]
+  |            ^
+3 | }

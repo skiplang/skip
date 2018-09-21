@@ -1,0 +1,15 @@
+File "./typechecking/invalid/invalid_tparam_match_4.sk", line 5, characters 7-11:
+Invalid match against the generic 'V'
+3 | fun getMaxTimeFromFilter<V: Show>(x: C<V>): Nullable<Int> {
+4 |   x match {
+5 |   | C(Int _) -> Null()
+  |       ^^^^^
+6 |   }
+
+File "./typechecking/invalid/invalid_tparam_match_4.sk", line 3, characters 40-40:
+This generic was constrained by a trait, but to perform a structural pattern match, this generic needs to be constrained by a class (normal or base)
+1 | class C<T>(value: T)
+2 |
+3 | fun getMaxTimeFromFilter<V: Show>(x: C<V>): Nullable<Int> {
+  |                                        ^
+4 |   x match {

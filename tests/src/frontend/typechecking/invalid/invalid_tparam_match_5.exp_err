@@ -1,0 +1,13 @@
+File "./typechecking/invalid/invalid_tparam_match_5.sk", line 3, characters 5-9:
+Invalid match against the generic 'V'
+1 | fun no<V>(x: V): Nullable<Int> {
+2 |   x match {
+3 |   | Int _ -> Null()
+  |     ^^^^^
+4 |   }
+
+File "./typechecking/invalid/invalid_tparam_match_5.sk", line 1, characters 14-14:
+This generic was not constrained by a concrete type. To perform a structural pattern match, this generic needs to be constrained by a class (normal or base)
+1 | fun no<V>(x: V): Nullable<Int> {
+  |              ^
+2 |   x match {

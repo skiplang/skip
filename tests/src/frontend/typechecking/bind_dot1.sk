@@ -1,0 +1,14 @@
+class Foo(bar: Bar)
+class Bar(baz: Baz)
+class Baz(value: Int)
+
+fun showValue(foo: Foo): String {
+  foo.bar.baz.value.toString()
+}
+
+fun main(): void {
+  foo = Foo(Bar(Baz(0)));
+  oldFoo = foo;
+  !foo.bar.baz.value = 42;
+  print_raw(showValue(oldFoo) + " " + showValue(foo) + "\n")
+}

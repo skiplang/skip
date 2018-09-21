@@ -1,0 +1,10 @@
+base class X {
+  const a: void = void;
+  static fun b(): void {
+    void
+  }
+}
+fun foo(x: Class<X>): void {
+  _ = x::c;
+  void
+}

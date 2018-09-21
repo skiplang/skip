@@ -1,0 +1,13 @@
+fun main(): void {
+  x: ?Char = Some('c');
+  y: ?Char = None();
+
+  _: Bool = areEqual(x, y);
+
+  // ERROR: can't compare w un-annotated None
+  if (areEqual(x, None())) print_string("FAIL") else print_string("Pass")
+}
+
+fun areEqual<T: Equality>(a: T, b: T): Bool {
+  a == b
+}

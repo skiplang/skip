@@ -1,0 +1,19 @@
+base class A<T>
+class B() extends A<Int>
+
+class Foo<-T>()
+
+fun aFoo(): Foo<A<String>> {
+  Foo()
+}
+fun bFoo(): Foo<B> {
+  Foo()
+}
+
+fun make(): Array<Foo<B>> {
+  Array[aFoo(), bFoo()]
+}
+
+fun main(): void {
+  print_string("Pass")
+}

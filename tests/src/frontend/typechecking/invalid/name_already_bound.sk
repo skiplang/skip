@@ -1,0 +1,5 @@
+fun main(): void {
+  value = 10;
+  value = 10;
+  print_raw("a")
+}

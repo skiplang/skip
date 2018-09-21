@@ -1,0 +1,112 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Dominator;
+
+// This use the dominator tree algorithm described in:
+//
+// A Simple, Fast Dominance Algorithm
+//
+// https://www.cs.rice.edu/uploadedFiles/Computer_Science/Research/Tech_Reports/2006/TR06-38870.pdf
+
+// Finds the first common ancestor in the dominator tree.
+private fun intersectDominators(
+  b1: BlockID,
+  b2: BlockID,
+  rpoIndex: Array<Int>,
+  dom: mutable Array<BlockID>,
+): BlockID {
+  while (b1 != b2) {
+    if (rpoIndex[b1.id] > rpoIndex[b2.id]) {
+      !b1 = dom[b1.id]
+    } else {
+      !b2 = dom[b2.id]
+    }
+  };
+
+  b1
+}
+
+private fun assignDominators(
+  optinfo: mutable OptimizerInfo,
+  rpo: Array<BlockID>,
+  rpoIndex: Array<Int>,
+  dom: mutable Array<BlockID>,
+): void {
+  // Iterate until we hit a fixed point (usually quick).
+  changed = true;
+  while (changed) {
+    !changed = false;
+
+    for (i in Range(0, rpo.size() - 1)) {
+      b = rpo[i + 1];
+
+      newdom = BlockID::none;
+
+      for (p in optinfo.getPredecessors(b)) {
+        if (dom[p.id] != BlockID::none) {
+          !newdom = if (newdom == BlockID::none) {
+            p
+          } else {
+            intersectDominators(newdom, p, rpoIndex, dom)
+          }
+        }
+      };
+
+      if (newdom != dom[b.id]) {
+        dom.set(b.id, newdom);
+        !changed = true
+      }
+    }
+  };
+}
+
+fun computeDominatorTree(optinfo: mutable OptimizerInfo): Array<BlockID> {
+  rpo = optinfo.reversePostorder();
+
+  // Start out with only the entry node knowing a dominator (itself).
+  dom = Array::mfill(optinfo.idToBlock.size(), BlockID::none);
+  entry = rpo[0];
+  dom.set(entry.id, entry);
+
+  // Remember each Block's index in the blocks array.
+  rpoIndex = Array::mfill(dom.size(), -1);
+  rpo.eachWithIndex((i, b) -> rpoIndex.set(b.id, i));
+
+  assignDominators(optinfo, rpo, freeze(rpoIndex), dom);
+
+  // The entry block has no dominator.
+  dom.set(entry.id, BlockID::none);
+
+  freeze(dom)
+}
+
+fun computeDominatorChildren(
+  tree: Array<BlockID>,
+  optinfo: mutable OptimizerInfo,
+): Array<Array<BlockID>> {
+  // For each parent, build up a List of its dominator tree children.
+  emptyList: List<BlockID> = List[];
+  children_ = Array::mfill(optinfo.idToBlock.size(), emptyList);
+
+  for (childID in optinfo.reversePostorder()) {
+    parent = tree[childID.id];
+    if (parent.id >= 0) {
+      children_.set(parent.id, List.Cons(childID, children_[parent.id]))
+    }
+  };
+
+  // Convert to immutable array form.
+  empty: Array<BlockID> = Array[];
+  children_.map(x ->
+    if (x.isEmpty()) {
+      empty
+    } else {
+      x.collect(Array)
+    }
+  )
+}

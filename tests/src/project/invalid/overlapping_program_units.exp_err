@@ -1,0 +1,2 @@
+File "invalid/overlapping_program_units/skip.project.json"
+File 'invalid/overlapping_program_units/t.sk' contained in 'lib2' is also contained in program unit 'lib1' in project 'invalid/overlapping_program_units/skip.project.json'.

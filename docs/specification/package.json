@@ -1,0 +1,32 @@
+{
+  "name": "skip-spec",
+  "private": true,
+  "contributors": [
+    "Rex Jaeschke <rex@rexjaeschke.com>"
+  ],
+  "license": "Creative Commons Attribution 4.0 International Public License",
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/ReflexLang/ReflexLang.git"
+  },
+  "watch": {
+    "test-and-build": {
+      "patterns": [
+        "./"
+      ],
+      "extensions": "md"
+    }
+  },
+  "scripts": {
+    "test": "spec-md Skip.md > /dev/null",
+    "build": "mkdir -p out; cp node_modules/spec-md/css/* out; spec-md Skip.md > out/index.html",
+    "serve": "http-server ./out",
+    "test-and-build": "npm run test; npm run build",
+    "watch": "npm-watch"
+  },
+  "devDependencies": {
+    "spec-md": "0.4.6",
+    "http-server": "0.9.0",
+    "npm-watch": "0.1.6"
+  }
+}

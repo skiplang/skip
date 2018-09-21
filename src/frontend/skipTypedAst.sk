@@ -1,0 +1,296 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The named abstract syntax tree. */
+/*****************************************************************************/
+
+module alias FileRange = FileRange;
+
+module SkipTypedAst;
+
+type Class_kind = SkipNamedAst.Class_kind;
+
+type Visibility = SkipNamedAst.Visibility_;
+
+type Name = (FileRange, String);
+
+class Program{
+  class_defs: UMap<Class_def>,
+  fun_defs: UMap<Fun_def>,
+  const_defs: UMap<Const_def>,
+  tya_defs: UMap<Type_alias_def>,
+}
+
+class Const_def{
+  annotations: SSet,
+  native_: ?FileRange,
+  visibility: (FileRange, Visibility),
+  name: Name,
+  type: Type_,
+  value: ?Expr,
+  from_: ?Name,
+  source: ?Name,
+  deferred_: ?FileRange,
+}
+
+class Type_def{
+  annotations: SSet,
+  visibility: (FileRange, Visibility),
+  name: Name,
+  tparams: .Array<Type_parameter>,
+  body: Cla_tyd,
+  source: Name,
+}
+
+type Type_alias_def = SkipNamedAst.Type_alias_def;
+
+type Cla_tyd = SkipNamedAst.Cla_tyd;
+
+base class Definition {
+  children =
+  | DClass(Class_def)
+  | DConst(Const_def)
+  | DFun(Fun_def)
+}
+
+class Class_def{
+  depth: Int,
+  native_: ?FileRange,
+  kind: Class_kind,
+  value: ?FileRange,
+  data: ?FileRange,
+  mutable_: ?FileRange,
+  name: Name,
+  tparams: .Array<Type_parameter>,
+  params: ?Class_params,
+  extends_: UMap<Parent>,
+  use: UMap<Parent>,
+  methods: UMap<Method_def>,
+  fields: UMap<SkipNamedAst.Field_type>,
+  types: UMap<Type_def>,
+  annotations: SSet,
+  children_: SSet,
+  concrete_children: SSet,
+  consts: UMap<Const_def>,
+  is_self_parameterized: Bool,
+}
+
+class Class_params{
+  pos: FileRange,
+  final_: ?FileRange,
+  params: Parameters<Parameter>,
+  visibility: (FileRange, Visibility),
+  source: Name,
+}
+
+class Parent{
+  effective_source: Name,
+  inherited_source: Name,
+  targs: .Array<Type_>,
+}
+
+base class Callable_def{
+  annotations: SSet,
+  async_: ?FileRange,
+  body: Expr_body,
+  memoized_: ?FileRange,
+  name: Name,
+  native_: ?FileRange,
+  params: Parameters<Parameter>,
+  return_: Type_,
+  tparams: .Array<Type_parameter>,
+  untracked_: ?FileRange,
+  yields: ?FileRange,
+}
+
+class Method_def{
+  visibility: (FileRange, Visibility),
+  overridable_: ?FileRange,
+  kind: SkipNamedAst.FieldKind,
+  from_: Name,
+  /* source for the body of the method */
+  source: Name,
+  /* came from algebraic branch */
+  algebraic: Bool,
+  whenparams: .Array<Whenclause>,
+  implicit_param: Binding,
+  deferred_: ?FileRange,
+
+  /* Whenever we check that a method is a valid override of its parent, we
+   * need to keep around the mapping on generics that we used for the back-end.
+   *
+   * Concretely:
+   * class Parent { fun foo(inst): Bool }
+   * class Child { fun foo<T>[...](T): Bool }
+   * There might be a way for that override to be valid, but the back-end needs to
+   * to know what T was mapped to. This is what this field provides.
+   *
+   */
+  generic_mapping: SMap<SMap<Type_>>,
+} extends Callable_def
+
+type Whenclause = (Type_, .Array<Type_>);
+
+base class Expr_body {
+  children =
+  | Abstract()
+  | Native()
+  | Implemented(Expr)
+}
+
+class Fun_def{visibility: ?FileRange} extends Callable_def
+
+type Variance = SkipNamedAst.Variance;
+
+type Type_parameter = (Variance, String, Name, .Array<Type_>);
+
+class Parameter{
+  annotations: SSet,
+  visibility: (FileRange, Visibility),
+  name: Name,
+  type: Type_,
+  mutable_: ?FileRange,
+  value: ?Expr,
+  deferred_: ?FileRange,
+  /* if updated within the function body, a param is captured by reference
+   * by lambdas inside the function. Regardless, all params are passed by value.
+   */
+  frozen_: Binding_info,
+  index: Int,
+}
+
+type Named_type = (Name, .Array<Type_>);
+
+type Type_ = SkipNamedAst.Type_;
+
+type Type__ = SkipNamedAst.Type__;
+
+type Expr = (Type_, Expr_);
+
+type Expr_ = (FileRange, Expr__);
+
+base class Expr__ {
+  children =
+  | DefaultArg()
+  | Literal(value: SkipAst.LiteralValue)
+  | Const(name: Name)
+  | Fun(name: Name, types: .Array<Type_>)
+  | Local(name: Name)
+  | Object(name: Name, types: .Array<Type_>, args: Call_args)
+  | DynamicConstruction(
+    base: Expr,
+    name: Name,
+    types: .Array<Type_>,
+    args: Call_args,
+  )
+  | Seq(left: Expr, right: Expr)
+  | If(cond: Expr, t: Expr, f: Expr)
+  | Call(base: Expr, args: Call_args)
+  /* here so we can have both types */
+  | Annotated(expr: Expr, type_: Type_)
+  | Barbar(left: Expr, right: Expr)
+  | Ampamp(left: Expr, right: Expr)
+  | Bind(binding: Binding, expr: Expr, cont: Expr)
+  | Assign(info: LocalInfo, expr: Expr)
+  | StaticDot(info: Dot_info)
+  | Dot(info: Dot_info)
+  | Match(expr: Expr, branches: List<Match_branch>)
+  | Lambda(
+    params: Parameters<Binding>,
+    captured: SMap<Binding>,
+    body: Expr,
+    yields: ?FileRange,
+  )
+  | Try(expr: Expr, branches: List<Match_branch>)
+  | Await(expr: Expr)
+  | Return(expr: Expr)
+  | Async(captured: SMap<Binding>, expr: Expr)
+  | Throw(expr: Expr)
+  | Concurrent(exprs: List<Expr>)
+  | Array(args: .Array<Expr>)
+  | LazyLambda(id: Int)
+  | GetClass(expr: Expr)
+  | Freeze(expr: Expr)
+  | Classname(name: Name)
+  | With(expr: Expr, updated: With_updates)
+  /* First name is source; second name is field name */
+  | AssignField(base: Expr, source: Name, field: Name, expr: Expr)
+  | TemplateLiteral(args: Call_args)
+
+  | Continue()
+  | Break(Expr)
+  | Loop(body: Expr)
+  // dowhile/while is kept for ease of translating break and continue
+  // forEach is translated to dowhile
+  | DoWhile(body: Expr, condition: Expr, withoutBreak: Expr)
+  | While(condition: Expr, body: Expr, withoutBreak: Expr)
+
+  | Yield(expr: Expr)
+  | YieldBreak()
+}
+
+type Ordered_expr = (Int, Expr);
+
+type Call_args = Parameters<Ordered_expr>;
+
+type With_updates = UMap<With_update>;
+
+type With_update = (Int, Expr, Name, ?Type_);
+
+class Dot_info{
+  obj_expr: Expr,
+  field: Name,
+  field_targs: .Array<Type_>,
+  /* class we found the field on */
+  source: Name,
+  elt_kind: Elt_kind,
+}
+
+type Elt_kind = SkipNamedAst.Elt_kind;
+
+class Binding_info{captured: Bool, updated: Bool, read: Bool}
+
+type Binding = (Type_, Name, Binding_info);
+
+type LocalInfo = (Type_, Name);
+
+type Match_branch = (List<Pattern>, ?Expr, Expr);
+
+type Pattern = (Type_, Pattern_);
+
+type Pattern_ = (FileRange, Pattern__);
+
+/* for subpatterns of Pat_type, lowering needs access to
+ * the host slot/field type, as well as the type of the subpattern itself.
+ * (The former might be more general than the latter.)
+ */
+type ParamPattern = (Type_, Pattern);
+
+base class Pattern__ {
+  children =
+  | Pat_var(Binding)
+  | Pat_literal(SkipAst.LiteralValue)
+  | Pat_type(
+    // The class name being tested against. Note that for generic classes
+    // it does NOT include type arguments.
+    matchClass: Type_identifier,
+    // The type to cast to if the testType passes.
+    // Note this is not the same as the type of the containing Pattern.
+    // The type of the containing Pattern is the type when the entire nested
+    // pattern matches.
+    castType: Type_,
+    params: ?Parameters<ParamPattern>,
+  )
+  | Pat_as(Pattern, Binding)
+}
+
+base class Type_identifier {
+  children =
+  | Tid_object(Name)
+  | Tid_static((Name, Name), Name)
+}

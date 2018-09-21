@@ -1,0 +1,12 @@
+mutable class Foo(mutable x: Int)
+mutable class Cont<+T>(v: readonly Ref<T>)
+
+fun main(): void {
+  rfoo = Foo(42);
+  ref: readonly Ref<readonly Foo> = Ref(rfoo);
+  rcont: readonly Cont<readonly Foo> = mutable Cont(ref);
+  rcont match {
+  | Cont _ -> void
+  };
+  print_string("Pass")
+}

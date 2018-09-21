@@ -1,0 +1,22 @@
+File "./typechecking/invalid/constraint.sk", line 4, characters 14-19:
+Constraint not satisfied
+2 | class MyDict<Tid: MyTC>()
+3 | base class X<Tid> {
+4 |   fun gen(): MyDict<Tid>;
+  |              ^^^^^^
+5 | }
+
+File "./typechecking/invalid/constraint.sk", line 4, characters 21-23:
+The type: Tid
+2 | class MyDict<Tid: MyTC>()
+3 | base class X<Tid> {
+4 |   fun gen(): MyDict<Tid>;
+  |                     ^^^
+5 | }
+
+File "./typechecking/invalid/constraint.sk", line 2, characters 19-22:
+Is not a subtype of: MyTC
+1 | trait MyTC
+2 | class MyDict<Tid: MyTC>()
+  |                   ^^^^
+3 | base class X<Tid> {

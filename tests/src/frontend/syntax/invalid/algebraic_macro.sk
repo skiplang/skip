@@ -1,0 +1,13 @@
+base class B {
+  children =
+  | C()
+  | D()
+
+  macro fun m(): void
+  | C() -> void
+  | D() -> void
+}
+
+fun main(): void {
+  print_string("FAIL");
+}

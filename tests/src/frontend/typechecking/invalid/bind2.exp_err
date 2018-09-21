@@ -1,0 +1,32 @@
+File "./typechecking/invalid/bind2.sk", line 10, characters 10-10:
+Invalid argument
+ 8 |   f = mutable Foo(1);
+ 9 |   f.!x = 2;
+10 |   tester(f)
+   |          ^
+11 | }
+
+File "./typechecking/invalid/bind2.sk", line 8, characters 7-20:
+The type: mutable Foo
+ 6 |
+ 7 | fun bar(): void {
+ 8 |   f = mutable Foo(1);
+   |       ^^^^^^^^^^^^^^
+ 9 |   f.!x = 2;
+
+File "./typechecking/invalid/bind2.sk", line 3, characters 15-17:
+Is not a subtype of: Foo
+1 | mutable class Foo(mutable x: Int)
+2 |
+3 | fun tester(_: Foo): void {
+  |               ^^^
+4 |   void
+
+File "./typechecking/invalid/bind2.sk", line 3, characters 15-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Foo
+1 | mutable class Foo(mutable x: Int)
+2 |
+3 | fun tester(_: Foo): void {
+  |               ^^^
+4 |   void

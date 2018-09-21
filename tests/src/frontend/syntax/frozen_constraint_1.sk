@@ -1,0 +1,15 @@
+fun foo<T: frozen>(): void {
+  void
+}
+class Test<T: frozen, V>() {
+  fun bar<T: frozen & Show>(): void {
+    void
+  }
+  fun baz[T: frozen & Equality & nonNullable](): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

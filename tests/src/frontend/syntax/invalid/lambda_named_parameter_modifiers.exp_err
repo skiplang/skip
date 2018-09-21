@@ -1,0 +1,6 @@
+File "./syntax/invalid/lambda_named_parameter_modifiers.sk", line 2, characters 8-14:
+Expected expression
+1 | fun main(): String {
+2 |   x = {private p} ~> p;
+  |        ^^^^^^^
+3 |   x{"Fail"}

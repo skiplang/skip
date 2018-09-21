@@ -1,0 +1,32 @@
+File "./typechecking/invalid/capture_field.sk", line 4, characters 5-10:
+The value returned from the function is incompatible with the return type 'B'
+2 | mutable class A(x: mutable B) {
+3 |   readonly fun foo(): B {
+4 |     this.x
+  |     ^^^^^^
+5 |   }
+
+File "./typechecking/invalid/capture_field.sk", line 4, characters 5-10:
+The type: readonly B
+2 | mutable class A(x: mutable B) {
+3 |   readonly fun foo(): B {
+4 |     this.x
+  |     ^^^^^^
+5 |   }
+
+File "./typechecking/invalid/capture_field.sk", line 3, characters 23-23:
+Is not a subtype of: B
+1 | mutable class B()
+2 | mutable class A(x: mutable B) {
+3 |   readonly fun foo(): B {
+  |                       ^
+4 |     this.x
+
+File "./typechecking/invalid/capture_field.sk", line 3, characters 23-23:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly B
+1 | mutable class B()
+2 | mutable class A(x: mutable B) {
+3 |   readonly fun foo(): B {
+  |                       ^
+4 |     this.x

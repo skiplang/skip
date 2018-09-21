@@ -1,0 +1,512 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Checks that contravariance annotations ('-' signs) are correct. */
+/*****************************************************************************/
+
+module alias Ast = SkipAst;
+
+module alias N = SkipNamedAst;
+
+/*****************************************************************************/
+/* Types */
+/*****************************************************************************/
+module SkipCheckVariance;
+
+base class Position {
+  children =
+  | Covariant()
+  | Contravariant()
+  | Invariant()
+}
+
+/*****************************************************************************/
+/* The environment */
+/*****************************************************************************/
+class Env{
+  co_params: SMap<FileRange>,
+  contra_params: SMap<FileRange>,
+  inv_params: SMap<FileRange>,
+  is_static: Bool,
+  tparam_constraints: SMap<Array<N.Type_>>,
+}
+
+/* When checking the variance of extends lists, we need to know which tparams
+ * have a different variance than their parents. For example
+ *
+ * base class P<+T>
+ * base class C<V> extends P<V>
+ *
+ * V has mismatched variance since it was declared invariant but used in
+ *   covariant position
+ * This might just seem wrong to allow but it is a useful feature that is
+ * guarded in two ways
+ * 1) Any usage of the tparam in the parents class is more constrained than the
+ * invariant usage in the child. i.e. if the usage of the tparam is admissable
+ * in the parent, it is admissabl ein the child
+ * 2) Any bad downcast from the parent is protected via this mismached variance
+ * check. in other words, if you attempt to upcast the child to the
+ * co/contravariant parent, you will not be able to abuse that in the parent
+ * (since the parent must not be mutable otherwise it would be invariant)
+ * and if you attempt to downcast to witness the change, we replace the
+ * argumnent to the instantiated mismatched tparam with an unknown existentials
+ * thus blocking any access
+ */
+base class Acc<Ta> {
+  children =
+  | NoAcc()
+  | Mismatched(Ta)
+}
+
+fun empty_acc(): Acc<SMap<SSet>> {
+  Mismatched(SortedMap[])
+}
+
+fun no_acc(): Acc<SMap<SSet>> {
+  NoAcc()
+}
+
+fun no_acc_sset(): Acc<SSet> {
+  NoAcc()
+}
+
+fun ignore_noacc<Ta>(x: Acc<Ta>): void {
+  x match {
+  | NoAcc() -> void
+  | Mismatched _ -> invariant_violation("assert false")
+  }
+}
+
+fun get_mismatched<Ta>(x: Acc<Ta>): Ta {
+  x match {
+  | Mismatched(s) -> s
+  | NoAcc() -> invariant_violation("assert false")
+  }
+}
+
+fun add_inner(
+  name: N.Name,
+  inner: Acc<SSet>,
+  x: Acc<SMap<SSet>>,
+): Acc<SMap<SSet>> {
+  (_, n) = name;
+  x match {
+  | x1 @ NoAcc() -> x1
+  | Mismatched(m) ->
+    s = get_mismatched(inner);
+    m1 = s.reduce(
+      (acc, i) -> {
+        acc.maybeGet(i) match {
+        | None() -> acc.set(i, SSet[n])
+        | Some(s1) -> acc.set(i, s1.set(n))
+        }
+      },
+      m,
+    );
+    Mismatched(m1)
+  }
+}
+
+fun maybe_add(i: String, x: Acc<SSet>): Acc<SSet> {
+  x match {
+  | Mismatched(s) -> Mismatched(s.set(i))
+  | x1 @ NoAcc() -> x1
+  }
+}
+
+/*****************************************************************************/
+/* Checks */
+/*****************************************************************************/
+fun check_no_variance<Ta, Tb, Tc>(
+  tparam_l: Array<(N.Variance, Ta, (FileRange, Tb), Tc)>,
+): void {
+  for (tparam in tparam_l) {
+    (var, _, name, _) = tparam;
+    (pos, _) = name;
+    var match {
+    | Ast.Vnone() -> void
+    | Ast.Vplus()
+    | Ast.Vminus() ->
+      SkipError.error(pos, "Unexpected variance annotation")
+    }
+  }
+}
+
+/*****************************************************************************/
+/* Utils */
+/*****************************************************************************/
+fun flip(x: Position): Position {
+  x match {
+  | Covariant() -> Contravariant()
+  | Contravariant() -> Covariant()
+  | Invariant() -> Invariant()
+  }
+}
+
+fun allowed_covariant(x: Position): Bool {
+  x match {
+  | Covariant() -> true
+  | Contravariant()
+  | Invariant() ->
+    false
+  }
+}
+
+fun allowed_contravariant(x: Position): Bool {
+  x match {
+  | Contravariant() -> true
+  | Covariant()
+  | Invariant() ->
+    false
+  }
+}
+
+fun make_co_contra(
+  cd: N.Class_def,
+): (SMap<FileRange>, SMap<FileRange>, SMap<FileRange>) {
+  cd.tparams.foldl(
+    ((var, tparam) -> {
+      (co, contra, inv) = var;
+      (variance, ident, (pos, _), _) = tparam;
+      variance match {
+      | Ast.Vnone() -> (co, contra, inv.set(ident, pos))
+      | Ast.Vplus() -> (co.set(ident, pos), contra, inv)
+      | Ast.Vminus() -> (co, contra.set(ident, pos), inv)
+      }
+    }),
+    (SortedMap[], SortedMap[], SortedMap[]),
+  )
+}
+
+fun bind_tparams<Ta, Tb, Tc>(
+  constraints: SMap<Ta>,
+  tparams: Array<(Tb, String, Tc, Ta)>,
+): SMap<Ta> {
+  tparams.reduce(
+    (constraints1, tparam) -> {
+      (_, ident, _, tyl) = tparam;
+      constraints1.set(ident, tyl)
+    },
+    constraints,
+  )
+}
+
+/*****************************************************************************/
+/* Main entry point. */
+/*****************************************************************************/
+fun makeEmptyEnv(): Env {
+  Env{
+    co_params => SortedMap[],
+    contra_params => SortedMap[],
+    inv_params => SortedMap[],
+    is_static => false,
+    tparam_constraints => SortedMap[],
+  }
+}
+
+fun type_def(tyd: N.Type_def): void {
+  check_no_variance(tyd.tparams)
+}
+
+fun class_def(cd: N.Class_def): N.Class_def {
+  env = makeEmptyEnv();
+  (co_params, contra_params, inv_params) = make_co_contra(cd);
+  tparam_constraints = bind_tparams(env.tparam_constraints, cd.tparams);
+  !env = env with {co_params, contra_params, inv_params, tparam_constraints};
+  ignore_noacc(
+    cd.use.reduce(
+      (acc, n, targs, _) -> sk_extends(env, acc, n, targs),
+      no_acc(),
+    ),
+  );
+  acc = cd.extends_.reduce(
+    (acc, n, targs, _) -> sk_extends(env, acc, n, targs),
+    empty_acc(),
+  );
+  for (cur2 in cd.types) type_def(cur2);
+  tparam_mismatched = get_mismatched(acc);
+  class_params(env, cd.params);
+  for (cur1 => cur2 in cd.methods) method_def(env, cur1.i1, cur2);
+  cd with {tparam_mismatched}
+}
+
+fun method_def(env: Env, _: String, met: N.Method_def): void {
+  met.kind match {
+  | N.FKMutable _ -> void
+  | _ ->
+    tparam_constraints = bind_tparams(env.tparam_constraints, met.tparams);
+    env1 = env with {is_static => met.kind is N.FKStatic _, tparam_constraints};
+    check_no_variance(met.tparams);
+    ignore_noacc(parameters(Contravariant(), env1, no_acc_sset(), met.params));
+    ignore_noacc(type(Covariant(), env, no_acc_sset(), met.return_))
+  }
+}
+
+fun fun_def(fd: N.Fun_def): void {
+  check_no_variance(fd.tparams)
+}
+
+fun class_params(env: Env, opt: N.MaybeClassParams): void {
+  opt match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    void
+  | N.HasParams(x) ->
+    ignore_noacc(
+      x.params.foldl(
+        ((acc, param) ~> class_param(env, acc, param)),
+        no_acc_sset(),
+      ),
+    )
+  }
+}
+
+fun class_param(env: Env, acc: Acc<SSet>, cp_param: N.Parameter): Acc<SSet> {
+  parameter(Covariant(), env, acc, cp_param)
+}
+
+fun parameters(
+  variance: Position,
+  env: Env,
+  acc: Acc<SSet>,
+  params: Parameters<N.Parameter>,
+): Acc<SSet> {
+  params.foldl(((acc, param) ~> parameter(variance, env, acc, param)), acc)
+}
+
+fun parameter(
+  variance: Position,
+  env: Env,
+  acc: Acc<SSet>,
+  par: N.Parameter,
+): Acc<SSet> {
+  type(variance, env, acc, par.type)
+}
+
+fun sk_extends(
+  env: Env,
+  acc: Acc<SMap<SSet>>,
+  n: N.Name,
+  tya: Array<N.Type_>,
+): Acc<SMap<SSet>> {
+  inner_acc = acc match {
+  | Mismatched _ -> Mismatched(SSet[])
+  | NoAcc() -> NoAcc()
+  };
+  inner_acc1 = type(
+    Invariant(),
+    env,
+    inner_acc,
+    (n.i0, N.Tapply(N.Mchilled(), n, tya)),
+  );
+  add_inner(n, inner_acc1, acc)
+}
+
+fun type(
+  variance: Position,
+  env: Env,
+  acc: Acc<SSet>,
+  pty: N.Type_,
+): Acc<SSet> {
+  (tpos, ty) = pty;
+  ty match {
+  | N.Tanything()
+  | N.Tfrozen _
+  | N.TnonNullable _ ->
+    acc
+  | N.Tpromoted(_, _, _, _, tn, targs)
+  | N.Tapply(_, tn, targs) ->
+    cd = SkipInherit.getClass(tn);
+    tparams = cd.tparams;
+    ntargs = targs.size();
+    ntparams = tparams.size();
+    check_arity(tpos, cd, ntargs, ntparams);
+    tparams
+      .values()
+      .zip(targs.values())
+      .reduce((cur, p) -> type_parameter(variance, env, cur, p.i0, p.i1), acc)
+  | N.Tset(_, _, _, elts) ->
+    elts.foldl(
+      ((acc1, elt) -> {
+        cd = SkipInherit.getClass(elt.name);
+        tparams = cd.tparams;
+        ntargs = elt.targs.size();
+        ntparams = tparams.size();
+        check_arity(tpos, cd, ntargs, ntparams);
+        tparams
+          .values()
+          .zip(elt.targs.values())
+          .reduce(
+            (cur, p) -> type_parameter(variance, env, cur, p.i0, p.i1),
+            acc1,
+          )
+      }),
+      acc,
+    )
+  | N.Tawaitable(_, ty1) -> type(variance, env, acc, ty1)
+  | N.Tfun(_, _, _, params, ty1) ->
+    acc1 = fun_params(variance, env, acc, params);
+    type(variance, env, acc1, ty1)
+  | N.Tparam(_, _, ident, (_pos, _)) ->
+    if (env.is_static) {
+      assert(acc is NoAcc());
+      acc
+    } else {
+      check_param(env, acc, tpos, variance, ident)
+    }
+  | N.Tdefault(ty1)
+  | N.Tnamed(_, ty1) ->
+    type(variance, env, acc, ty1)
+  | N.Tvar _
+  | N.Tlambda _ ->
+    invariant_violation("assert false")
+  }
+}
+
+fun check_param(
+  env: Env,
+  acc: Acc<SSet>,
+  pos: FileRange,
+  variance: Position,
+  ident: String,
+): Acc<SSet> {
+  acc1 = {
+    env.co_params.maybeGet(ident) match {
+    | Some(def_pos) if (!allowed_covariant(variance)) ->
+      variance_error(def_pos, pos, variance)
+    | Some _ if (!(variance is Covariant())) -> maybe_add(ident, acc)
+    | _ -> acc
+    }
+  };
+  acc2 = {
+    env.contra_params.maybeGet(ident) match {
+    | Some(def_pos) if (!allowed_contravariant(variance)) ->
+      variance_error(def_pos, pos, variance)
+    | Some _ if (
+      variance match {
+      | Contravariant() -> false
+      | _ -> true
+      }
+    ) ->
+      maybe_add(ident, acc1)
+    | _ -> acc1
+    }
+  };
+  acc3 = {
+    env.inv_params.maybeGet(ident) match {
+    | Some _ if (
+      variance match {
+      | Invariant() -> false
+      | _ -> true
+      }
+    ) ->
+      maybe_add(ident, acc2)
+    | _ -> acc2
+    }
+  };
+  acc3
+}
+
+fun variance_error(
+  def_pos: FileRange,
+  usage_pos: FileRange,
+  x: Position,
+): Acc<SSet> {
+  x match {
+  | Covariant() ->
+    SkipError.errorl(
+      List[
+        (def_pos, "Invalid variance annotation"),
+
+        (usage_pos, "The parameter appears in a covariant position"),
+      ],
+    )
+  | Contravariant() ->
+    SkipError.errorl(
+      List[
+        (def_pos, "Invalid variance annotation"),
+
+        (usage_pos, "The parameter appears in a contravariant position"),
+      ],
+    )
+  | Invariant() ->
+    SkipError.errorl(
+      List[
+        (def_pos, "Invalid variance annotation"),
+
+        (usage_pos, "The parameter appears in an invariant position"),
+      ],
+    )
+  }
+}
+
+fun fun_params(
+  variance: Position,
+  env: Env,
+  acc: Acc<SSet>,
+  x: Parameters<N.Type_>,
+): Acc<SSet> {
+  x match {
+  | Positional(tyl) ->
+    tyl.foldl(((acc1, ty) -> type(flip(variance), env, acc1, ty)), acc)
+  | Named(tym) ->
+    tym.reduce(((acc1, _, ty) -> type(flip(variance), env, acc1, ty)), acc)
+  }
+}
+
+fun type_parameter(
+  variance: Position,
+  env: Env,
+  acc: Acc<SSet>,
+  tparam: Ast.Type_parameter,
+  ty: N.Type_,
+): Acc<SSet> {
+  (var, _, _, _) = tparam;
+  /* If we are currently in an Invariant position, we need to start tracking
+   * again, otherwise flip
+   */
+  variance1 = {
+    (var, variance) match {
+    | (Ast.Vminus(), Invariant()) -> Contravariant()
+    | (Ast.Vplus(), Invariant()) -> Covariant()
+    | (Ast.Vnone(), _) -> Invariant()
+    | (Ast.Vminus(), _) -> flip(variance)
+    | _ -> variance
+    }
+  };
+  type(variance1, env, acc, ty)
+}
+
+fun check_arity(
+  tpos: FileRange,
+  cd: Ast.Class_def,
+  ntargs: Int,
+  ntparams: Int,
+): void {
+  if (ntargs != ntparams) {
+    (cpos, cstr) = cd.name;
+    ntargs1 = ntargs.toString();
+    ntparams1 = ntparams.toString();
+    SkipError.errorl(
+      List[
+        (tpos, "Invalid instantiation"),
+
+        (
+          cpos,
+          cstr +
+            " expected " +
+            ntparams1 +
+            " type arguments, but was given " +
+            ntargs1,
+        ),
+      ],
+    )
+  }
+}
+
+module end;

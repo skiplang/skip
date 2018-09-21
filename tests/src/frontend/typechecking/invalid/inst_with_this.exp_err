@@ -1,0 +1,65 @@
+File "./typechecking/invalid/inst_with_this.sk", line 11, characters 7-13:
+Invalid override for the field 'bar' on child 'IntKey_' for parent 'ArrayKey_'
+ 9 | }
+10 |
+11 | class IntKey_(i: Int) extends ArrayKey_ {
+   |       ^^^^^^^
+12 |   fun asInt(): Int {
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+The type: ArrayKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+Is not a subtype of: IntKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: ArrayKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()
+
+File "./typechecking/invalid/inst_with_this.sk", line 17, characters 7-16:
+Invalid override for the field 'bar' on child 'StringKey_' for parent 'ArrayKey_'
+15 | }
+16 |
+17 | class StringKey_(x: String) extends ArrayKey_ {
+   |       ^^^^^^^^^^
+18 |   fun asString(): String {
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+The type: ArrayKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+Is not a subtype of: StringKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()
+
+File "./typechecking/invalid/inst_with_this.sk", line 6, characters 14-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: ArrayKey_
+4 |
+5 | base class ArrayKey_ uses MyTC {
+6 |   fun bar(x: this): String
+  |              ^^^^
+7 |   | IntKey_(_) -> x.asInt().toString()

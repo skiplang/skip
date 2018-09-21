@@ -1,0 +1,8 @@
+class Foo<T: Int>(x: T) {
+  fun add<U>[T: U](x: U): Foo<U> {
+    Foo(x)
+  }
+  fun inv(x: T): Foo<T> {
+    this.add(x)
+  }
+}

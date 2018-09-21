@@ -1,0 +1,21 @@
+File "./typechecking/invalid/call_global_constant.sk", line 4, characters 3-7:
+Not a function, so expected a constructor call
+2 |
+3 | fun no(): String {
+4 |   foo()
+  |   ^^^^^
+5 | }
+
+File "./typechecking/invalid/call_global_constant.sk", line 1, characters 12-17:
+The type: String
+1 | const foo: String = "foo";
+  |            ^^^^^^
+2 |
+
+File "./typechecking/invalid/call_global_constant.sk", line 4, characters 3-7:
+Does not share a common super type with: Concrete<_>
+2 |
+3 | fun no(): String {
+4 |   foo()
+  |   ^^^^^
+5 | }

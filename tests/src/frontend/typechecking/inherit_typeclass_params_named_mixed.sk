@@ -1,0 +1,17 @@
+// named constructor inheritance from traits and base class
+// trait fields are considered owned by the implmenting class, so bind
+// more tightly than inherited fields.
+trait X{x: String}
+trait Y{y: String}
+
+base class B{b: String}
+
+class C{c: String} extends B uses X, Y {
+  fun get(): String {
+    this.b + this.c + this.x + this.y
+  }
+}
+
+fun main(): void {
+  print_raw(C{b => "O", c => "K", x => "!", y => "\n"}.get())
+}

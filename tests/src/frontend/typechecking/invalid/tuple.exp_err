@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tuple.sk", line 7, characters 3-3:
+The value returned from the function is incompatible with the return type 'Bool'
+5 | fun test(): Bool {
+6 |   (x, _y) = (23, 22);
+7 |   x
+  |   ^
+8 | }
+
+File "./typechecking/invalid/tuple.sk", line 6, characters 14-15:
+The type: Int
+4 |
+5 | fun test(): Bool {
+6 |   (x, _y) = (23, 22);
+  |              ^^
+7 |   x
+
+File "./typechecking/invalid/tuple.sk", line 5, characters 13-16:
+Is not a subtype of: Bool
+3 | }
+4 |
+5 | fun test(): Bool {
+  |             ^^^^
+6 |   (x, _y) = (23, 22);

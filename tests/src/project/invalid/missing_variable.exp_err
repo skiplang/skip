@@ -1,0 +1,2 @@
+File "invalid/missing_variable/skip.project.json"
+No variable named 'missing' in project.

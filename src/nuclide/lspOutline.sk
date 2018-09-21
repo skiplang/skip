@@ -1,0 +1,270 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias LSP = LanguageServerProtocol;
+
+fun createOutline(
+  uri: String,
+  tree: ParseTree,
+  errors: Vector<LSP.Diagnostic>,
+): Vector<LSP.SymbolInformation> {
+  converter = mutable OutlineConverter{uri};
+  converter.convertSourceUnit(tree);
+  errors.each(converter.convertError);
+  freeze(converter.results)
+}
+
+mutable class OutlineConverter{
+  uri: String,
+  results: mutable Vector<LSP.SymbolInformation> = mutable Vector[],
+  context: mutable Vector<LSP.SymbolInformation> = mutable Vector[],
+} {
+  mutable fun add(symbol: LSP.SymbolInformation): void {
+    this.results.push(
+      symbol with {
+        containerName => if (this.context.isEmpty()) {
+          None()
+        } else {
+          Some(this.context[this.context.size() - 1].name)
+        },
+      },
+    );
+  }
+
+  mutable fun addContainer(
+    symbol: LSP.SymbolInformation,
+    elements: ParseTree,
+  ): void {
+    this.add(symbol);
+    this.context.push(symbol);
+    this.convertTreeList(elements);
+    _ = this.context.pop();
+  }
+
+  mutable fun convertSourceUnit(tree: ParseTree): void {
+    this.convertTrees(tree.declarationListOfSourceUnitTree())
+  }
+
+  mutable fun convertTrees(trees: Sequence<ParseTree>): void {
+    trees.each(this.convertTreeCatch)
+  }
+
+  mutable fun convertTreeList(tree: ParseTree): void {
+    tree.getOptList().each(this.convertTreeCatch)
+  }
+
+  mutable fun convertTreeCatch(tree: ParseTree): void {
+    try {
+      this.convertTree(tree);
+    } catch {
+    | e ->
+      // We get here when the parser produces an unexpected parse tree.
+      // Typically this occurs when parse errors occur.
+      this.add(
+        LSP.SymbolInformation{
+          location => convertLocation(this.uri, tree.range),
+          kind => LSP.SymbolKind::Boolean, // TODO: Kind
+          name => `Exception converting tree '${tree.toDebugString()}'. ${e.getMessage()}`,
+        },
+      )
+    }
+  }
+
+  mutable fun convertTree(tree: ParseTree): void {
+    location = convertLocation(this.uri, tree.range);
+    tree match {
+    // module declarations
+    | ParseTree.ModuleTree{name, declarations} ->
+      this.addContainer(
+        LSP.SymbolInformation{
+          name => treeToString(name),
+          kind => LSP.SymbolKind::Namespace, // TODO: Namespace?
+          location,
+        },
+        declarations,
+      )
+    | ParseTree.ModuleAliasTree{name} ->
+      this.add(
+        LSP.SymbolInformation{
+          name => treeToString(name),
+          kind => LSP.SymbolKind::Module,
+          location,
+        },
+      )
+    // module members
+    | ParseTree.FunctionDeclarationTree{modifiers, name, parameters} ->
+      // TODO:
+      _ = modifiers;
+      this.add(
+        LSP.SymbolInformation{
+          name => convertGlobalName(name) + convertParametersOpt(parameters),
+          kind => LSP.SymbolKind::Function,
+          location,
+        },
+      )
+    | ParseTree.ClassDeclarationTree{modifiers, name, constructor, body} ->
+      // TODO: modifiers
+      _ = modifiers;
+      this.addContainer(
+        LSP.SymbolInformation{
+          name => convertGlobalName(name) + convertConstructor(constructor),
+          kind => LSP.SymbolKind::Class,
+          location,
+        },
+        body,
+      )
+    | ParseTree.TraitDeclarationTree{modifiers, name, constructor, body} ->
+      // TODO: modifiers
+      _ = modifiers;
+      this.addContainer(
+        LSP.SymbolInformation{
+          name => convertGlobalName(name) + convertConstructor(constructor),
+          kind => LSP.SymbolKind::Class,
+          location,
+        },
+        body,
+      )
+    | ParseTree.ClassConstructorDeclarationTree{parameters} ->
+      // TODO:
+      _ = parameters
+    | ParseTree.GlobalConstantTree{modifiers, name} ->
+      // TODO:
+      _ = modifiers;
+      this.add(
+        LSP.SymbolInformation{
+          name => convertGlobalName(name),
+          kind => LSP.SymbolKind::Constant,
+          location,
+        },
+      )
+    | ParseTree.TypeAliasDeclarationTree{name} ->
+      this.add(
+        LSP.SymbolInformation{
+          name => convertGlobalName(name),
+          kind => LSP.SymbolKind::Interface, // TODO: Kind?
+          location,
+        },
+      )
+    // class members
+    | ParseTree.TypeConstantTree{name} ->
+      this.add(
+        LSP.SymbolInformation{
+          name => treeToString(name),
+          kind => LSP.SymbolKind::TypeParameter, // TODO: Kind?
+          location,
+        },
+      )
+    | ParseTree.ConstantTree{modifiers, name} ->
+      // TODO:
+      _ = modifiers;
+      this.add(
+        LSP.SymbolInformation{
+          name => treeToString(name),
+          kind => LSP.SymbolKind::Constant,
+          location,
+        },
+      )
+    | ParseTree.ChildrenTree _ -> void
+    | ParseTree.MethodDeclarationTree{modifiers, name, parameters} ->
+      // TODO:
+      _ = modifiers;
+      this.add(
+        LSP.SymbolInformation{
+          name => treeToString(name) + convertParametersOpt(parameters),
+          kind => LSP.SymbolKind::Method,
+          location,
+        },
+      )
+    | _ -> invariant_violation("Unexpected declaration: " + tree.range)
+    }
+  }
+
+  mutable fun convertError(error: LSP.Diagnostic): void {
+    this.add(
+      LSP.SymbolInformation{
+        location => LSP.Location{uri => this.uri, range => error.range},
+        kind => LSP.SymbolKind::Boolean, // TODO: Kind
+        name => error.message,
+      },
+    )
+  }
+}
+
+fun treeToString(tree: ParseTree): String {
+  tree match {
+  | ParseTree.TokenTree{token} -> token.value
+  | _ -> invariant_violation("Expected token tree" + tree.toDebugString())
+  }
+}
+
+fun convertGlobalName(tree: ParseTree): String {
+  tree match {
+  | ParseTree.GlobalQualifiedTypeNameTree{
+    name => ParseTree.TypeNameTree{name},
+  } ->
+    "." + treeToString(name)
+  | _ -> treeToString(tree)
+  }
+}
+
+fun convertNamedParameters(parameters: ParseTree): String {
+  parameters
+    .getOptList()
+    .map(parameter ->
+      parameter match {
+      // TODO: modifiers
+      | ParseTree.NamedParameterTree{name} -> treeToString(name)
+      | _ -> invariant_violation("unexpected named parameter")
+      }
+    )
+    .join(", ")
+}
+
+fun convertParameterNameColon(nameColon: ParseTree): String {
+  treeToString((nameColon as ParseTree.ParameterNameColonTree _).name);
+}
+
+fun convertParametersOpt(parametersOpt: ParseTree): String {
+  parametersOpt match {
+  | ParseTree.EmptyTree _ -> ""
+  | ParseTree.NamedParametersTree{parameters} ->
+    `{${convertNamedParameters(parameters)}}`
+  | ParseTree.PositionalParametersTree{parameters} ->
+    `(${convertPositionalParameters(parameters)})`
+  | _ ->
+    invariant_violation(
+      `Expected parameters. Got '${parametersOpt.toDebugString()}'`,
+    )
+  }
+}
+
+fun convertPositionalParameters(parameters: ParseTree): String {
+  parameters
+    .getOptList()
+    .map(parameter ->
+      parameter match {
+      // TODO: modifiers
+      | ParseTree.PositionalParameterTree{nameColon} ->
+        nameColon match {
+        | ParseTree.EmptyTree _ -> None()
+        | _ -> Some(convertParameterNameColon(nameColon))
+        }
+      | _ -> invariant_violation("unexpected named parameter")
+      }
+    )
+    .filterNone()
+    .join(", ")
+}
+
+fun convertConstructor(tree: ParseTree): String {
+  tree match {
+  | ParseTree.EmptyTree _ -> ""
+  | ParseTree.ClassConstructorDeclarationTree{parameters} ->
+    convertParametersOpt(parameters)
+  | _ -> invariant_violation("Unexpected constructor")
+  }
+}

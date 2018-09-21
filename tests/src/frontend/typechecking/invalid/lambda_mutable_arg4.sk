@@ -1,0 +1,19 @@
+fun doNothing<T>(_f: Ref<T> -> void, _t: T): void {
+  void
+}
+
+fun move<T>(f: (mutable Ref<T>) -> void, t: T): void {
+  ref = mutable Ref(t);
+  f(ref)
+}
+
+fun main(): void {
+  lambda = (
+    ref -> {
+      ref.!value = "hello"
+    }
+  );
+  move(lambda, "");
+  doNothing(lambda, "");
+  print_raw("fail")
+}

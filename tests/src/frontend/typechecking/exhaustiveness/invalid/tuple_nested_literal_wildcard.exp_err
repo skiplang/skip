@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/tuple_nested_literal_wildcard.sk", line 6, characters 5-19:
+The following pattern is unused:
+ | (_, (false, _))
+4 |   | (_, (true, _))
+5 |   | (_, (_, false))
+6 |   | (_, (false, _)) ->
+  |     ^^^^^^^^^^^^^^^
+7 |     "Fail\n"

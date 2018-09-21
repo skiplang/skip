@@ -1,0 +1,12 @@
+File "./syntax/invalid/duplicate_field_method.sk", line 2, characters 7-7:
+Name already bound: m
+1 | class C(m: Int) {
+2 |   fun m(): String {
+  |       ^
+3 |     ""
+
+File "./syntax/invalid/duplicate_field_method.sk", line 1, characters 9-9:
+Previously here
+1 | class C(m: Int) {
+  |         ^
+2 |   fun m(): String {

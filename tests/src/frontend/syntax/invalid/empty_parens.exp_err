@@ -1,0 +1,6 @@
+File "./syntax/invalid/empty_parens.sk", line 2, characters 14-14:
+Expression expected
+1 | fun foo(): void {
+2 |   { _ = 42; () }
+  |              ^
+3 | }

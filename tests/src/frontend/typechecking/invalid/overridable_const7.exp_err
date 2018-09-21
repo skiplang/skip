@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable_const7.sk", line 10, characters 9-10:
+Cannot override a final constant. Class D1 attempted to override constant c1 from parent B1
+ 8 |
+ 9 | class D1() extends B1, B2 {
+10 |   const c1 from B2;
+   |         ^^
+11 | }
+
+File "./typechecking/invalid/overridable_const7.sk", line 2, characters 9-10:
+To override the constant, B1::c1 must have the modifier 'overridable'
+1 | base class B1 {
+2 |   const c1: void = void;
+  |         ^^
+3 | }

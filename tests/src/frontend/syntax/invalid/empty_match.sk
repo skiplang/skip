@@ -1,0 +1,4 @@
+fun shouldFail(v : void) : String {
+  v match {
+  }
+}

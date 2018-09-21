@@ -1,0 +1,11 @@
+base class P {
+  children =
+  | B{z: Bool, a: Int}
+}
+
+fun test(x: P): void {
+  x match {
+  | B{z => true, a => 1} -> void
+  | B{z => false, a => 2} -> void
+  }
+}

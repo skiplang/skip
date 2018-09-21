@@ -1,0 +1,4 @@
+fun foo<T1, T: ^T1>(): T -> T1 {
+  x ->
+    await x // error, await in non-async lambda
+}

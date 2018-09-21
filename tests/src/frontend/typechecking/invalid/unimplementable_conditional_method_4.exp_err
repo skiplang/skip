@@ -1,0 +1,45 @@
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 8, characters 5-9:
+In 'XCons's version of the member 'xtoString' inherited from 'XShow'
+ 6 |   children =
+ 7 |   | XNil()
+ 8 |   | XCons(hd: T, tl: XList<T>)
+   |     ^^^^^
+ 9 | }
+
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 8, characters 5-9:
+Missing implementation for the method xtoString
+ 6 |   children =
+ 7 |   | XNil()
+ 8 |   | XCons(hd: T, tl: XList<T>)
+   |     ^^^^^
+ 9 | }
+
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 2, characters 16-24:
+Defined here
+1 | trait XShow {
+2 |   readonly fun xtoString(): String;
+  |                ^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 7, characters 5-8:
+In 'XNil's version of the member 'xtoString' inherited from 'XShow'
+5 | base class XList<+T> uses XShow[T: XShow] {
+6 |   children =
+7 |   | XNil()
+  |     ^^^^
+8 |   | XCons(hd: T, tl: XList<T>)
+
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 7, characters 5-8:
+Missing implementation for the method xtoString
+5 | base class XList<+T> uses XShow[T: XShow] {
+6 |   children =
+7 |   | XNil()
+  |     ^^^^
+8 |   | XCons(hd: T, tl: XList<T>)
+
+File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 2, characters 16-24:
+Defined here
+1 | trait XShow {
+2 |   readonly fun xtoString(): String;
+  |                ^^^^^^^^^
+3 | }

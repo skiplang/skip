@@ -1,0 +1,37 @@
+@no_inline
+@debug
+fun generateGarbage(s: String = "", depth: Int = 10): String {
+  if (depth == 0) {
+    s
+  } else if (depth == 999999999) {
+    // Won't happen, but trick compiler into thinking there may be side effects.
+    print_string(s);
+    "q"
+  } else {
+    generateGarbage(s, depth - 1) + "." + depth
+  }
+}
+
+@no_inline
+fun doTest(count: Int): String {
+  a = generateGarbage("a");
+  b = generateGarbage("b");
+  c = generateGarbage("c");
+  d = generateGarbage("d");
+
+  for (i in Range(0, count)) {
+    // Shift out some old values.
+    !a = b;
+    !b = c;
+    !c = d;
+    !d = generateGarbage(i.toString());
+
+    localGC();
+  };
+
+  a + "\n" + b + "\n" + c + "\n" + d + "\n"
+}
+
+fun main(): void {
+  print_raw(doTest(2));
+}

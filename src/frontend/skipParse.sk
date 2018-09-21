@@ -1,0 +1,70 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Utility functions to perform the parsing. */
+/*****************************************************************************/
+module alias Error = SkipError;
+
+module FileCache;
+
+const cache: Reactive.GlobalCache<String> = Reactive.GlobalCache::make();
+
+untracked fun addFile(filename: String): void {
+  cache.set(filename, FileSystem.readTextFile(filename))
+}
+module end;
+
+module SkipParse;
+
+fun openFile(filename: String): String {
+  FileCache.cache.maybeGet(filename) match {
+  | None() -> invariant_violation("The FileCache should have been populated")
+  | Some(x) -> x
+  }
+}
+
+@gc
+memoized fun parseFile(filename: String, lazy: Bool): List<SkipAst.Definition> {
+  source = openFile(filename);
+  fileResult = SkipParser.parseSource(source, lazy);
+  ast = parseToAst(filename, fileResult);
+  ast
+}
+
+fun parseFilesPhase(
+  files: Sequence<String>,
+  lazy: Bool,
+): Vector<List<SkipAst.Definition>> {
+  files.collect(Vector).parallelMap(file ~> parseFile(file, lazy))
+}
+
+fun parseToAst(
+  filename: String,
+  parseResults: Parser.ParseResults,
+): List<SkipAst.Definition> {
+  parseResults.throwOnError(filename);
+  List::createFromItems(
+    ConvertTree.Converter{filename}.convertTree(parseResults.tree),
+  );
+}
+
+// Used by docgen
+fun parse(filename: String, contents: String): List<SkipAst.Definition> {
+  parseToAst(filename, SkipParser.parseSource(contents, false));
+}
+
+fun parse_files(
+  fileList: Sequence<String>,
+  lazy: Bool,
+): List<List<SkipAst.Definition>> {
+  filenames = fileList.collect(Vector);
+  asts = parseFilesPhase(filenames, lazy);
+  List::createFromItems(asts)
+}
+
+module end;

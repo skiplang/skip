@@ -1,0 +1,13 @@
+File "./visibility/invalid/with_visibility_1.sk", line 5, characters 6-6:
+Invalid binding of property x for class Foo
+3 | fun test(f: Foo): void {
+4 |   f.x;
+5 |   !f.x = void
+  |      ^
+6 | }
+
+File "./visibility/invalid/with_visibility_1.sk", line 1, characters 11-17:
+Changing this property constructs a new object, so it is limited by the constructor visibility. It was declared as private
+1 | class Foo private (x: void)
+  |           ^^^^^^^
+2 |

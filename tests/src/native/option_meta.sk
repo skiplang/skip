@@ -1,0 +1,4 @@
+fun main(): void {
+  _ = Option<Int>::meta(BoolMetaClass());
+  print_string("Pass")
+}

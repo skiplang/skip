@@ -1,0 +1,3 @@
+fun no(): void {
+  freeze(((() -> void) : () -> void))
+}

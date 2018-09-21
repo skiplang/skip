@@ -1,0 +1,13 @@
+File "./expand/invalid/alias_collision.sk", line 1, characters 7-14:
+Conflict was already defined as a type
+1 | class Conflict() {}
+  |       ^^^^^^^^
+2 |
+
+File "./expand/invalid/alias_collision.sk", line 4, characters 6-13:
+Defined here
+2 |
+3 | // The following alias should cause a name conflict with the class above.
+4 | type Conflict = (Int, Int);
+  |      ^^^^^^^^
+5 |

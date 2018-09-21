@@ -1,0 +1,5 @@
+File "./syntax/invalid/invalid_modifier.sk", line 2, characters 1-10:
+Expected declaration.
+1 |
+2 | mymodifier fun foo(): void {}
+  | ^^^^^^^^^^

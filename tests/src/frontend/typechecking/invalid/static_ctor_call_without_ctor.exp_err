@@ -1,0 +1,7 @@
+File "./typechecking/invalid/static_ctor_call_without_ctor.sk", line 3, characters 5-14:
+'StaticClass' does not have a constructor
+1 | base class StaticClass {
+2 |   static fun test(): Nullable<StaticClass> {
+3 |     static(10)
+  |     ^^^^^^^^^^
+4 |   }

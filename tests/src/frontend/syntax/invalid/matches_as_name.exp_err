@@ -1,0 +1,6 @@
+File "./syntax/invalid/matches_as_name.sk", line 2, characters 8-8:
+'@' pattern not permitted in 'is' expression.
+1 | fun main(): void {
+2 |   a is n @ 12;
+  |        ^
+3 | }

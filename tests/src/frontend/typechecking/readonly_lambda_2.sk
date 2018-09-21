@@ -1,0 +1,23 @@
+mutable class Foo<T>(mutable v: T)
+
+fun check1(foo: readonly Foo<() -> Int>): void {
+  _ = foo.v()
+}
+
+class Bar<T: () -> Int>(v: T)
+
+fun check2(bar: readonly Bar<() -> Int>): void {
+  _ = bar.v()
+}
+fun check3<T: () -> Int>(bar: readonly Bar<() -> Int>): void {
+  _ = bar.v()
+}
+
+fun main(): void {
+  foo = Foo(() -> 0);
+  check1(foo);
+  bar = Bar(() -> 0);
+  check2(bar);
+  check3(bar);
+  print_string("Pass")
+}

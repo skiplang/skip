@@ -1,0 +1,133 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Escape;
+
+// Recursive helper for anythingEscapes.
+private fun anythingEscapesHelper(
+  t: Tclass,
+  env: GlobalEnv,
+  knownEscape: readonly UnorderedMap<Tclass, Bool>,
+  temporarilyAssumeNoEscape: mutable UnorderedSet<Tclass>,
+): Bool {
+  !t.isDeepFrozen() &&
+    knownEscape.maybeGet(t) match {
+    | Some(known) -> known
+    | None() ->
+      containingObjectIsMutable = t.isMutable();
+
+      fieldAllowsEscape = (fieldType, fieldIsAssignable) -> {
+        fieldType.maybeGetScalarType(env) match {
+        | None() -> false
+        | Some(scalarType) if (!scalarType.isGCPointer()) -> false
+        | _ if (containingObjectIsMutable && fieldIsAssignable) ->
+          // Someone can assign to a pointer field of a mutable object.
+          true
+        | _ ->
+          // Make sure nothing can escape via a field of a sub-object.
+          anythingEscapesHelper(
+            fieldType,
+            env,
+            knownEscape,
+            temporarilyAssumeNoEscape,
+          )
+        }
+      };
+
+      // While recursing, optimistically assume that types we have visited
+      // don't allow escapes, to avoid infinite recursion.
+      temporarilyAssumeNoEscape.maybeInsert(t) &&
+        !t.forEachConcreteSubtype(env, sc -> {
+          // For escape purposes, we treat an Array like an object
+          // with assignable fields consisting of the values stored in each slot.
+          fieldsAllowEscape = sc.arraySlot match {
+          | Some(vsi) -> vsi.types.any(ft -> fieldAllowsEscape(ft, true))
+          | None() ->
+            sc.fields.any(field ->
+              fieldAllowsEscape(field.typ, field.isAssignable)
+            )
+          };
+
+          !fieldsAllowEscape
+        })
+    }
+}
+
+// Returns true if there may be a way someone could store a pointer into
+// an instance of t. This is more complex than just checking readonly because
+// a readonly Vector<mutable Ref<String>> is readonly at the top-level, but
+// still allows String pointers to escape into it.
+private fun anythingEscapes(
+  t: Tclass,
+  env: GlobalEnv,
+  knownEscape: mutable UnorderedMap<Tclass, Bool>,
+  temporarilyAssumeNoEscape: mutable UnorderedSet<Tclass>,
+): Bool {
+  knownEscape.maybeGet(t) match {
+  | Some(known) -> known
+  | None() ->
+    // Reset this scratch Set for the recursion we're about to do.
+    temporarilyAssumeNoEscape.clear();
+
+    escapes = anythingEscapesHelper(
+      t,
+      env,
+      knownEscape,
+      temporarilyAssumeNoEscape,
+    );
+
+    // Remember this in case we see it again.
+    knownEscape.set(t, escapes);
+
+    if (!escapes) {
+      // Every type we depended on is also known not to allow escapes
+      // (if they did, we would too).
+      for (temp in temporarilyAssumeNoEscape) knownEscape.set(temp, false);
+    };
+
+    escapes
+  }
+}
+
+// Fill in the allowsPointerEscapeIfMutable and allowsPointerEscapeIfReadonly
+// fields of all sclasses.
+fun computeWhetherPointersCanEscape(env: GlobalEnv): GlobalEnv {
+  // This is a scratch buffer used over and over again.
+  temporarilyAssumeNoEscape = mutable UnorderedSet[];
+
+  // Information we have learned so far, to speed future checks.
+  // Assume anything can escape through a raw tGCPointer. We'll also
+  // be pessimistic and assume even a readonly tGCPointer allows escape.
+  knownEscape = mutable UnorderedMap[
+    tGCPointer => true,
+    tGCPointer with {mutability => Readonly()} => true,
+  ];
+
+  env with {
+    sclasses => env.sclasses.map((_, sc) -> {
+      allowsPointerEscapeIfMutable = anythingEscapes(
+        Tclass(sc.id, Mutable()),
+        env,
+        knownEscape,
+        temporarilyAssumeNoEscape,
+      );
+
+      ro = Tclass(sc.id, Readonly());
+
+      allowsPointerEscapeIfReadonly = if (!allowsPointerEscapeIfMutable) {
+        // If we don't allow escape for mutable we definitely don't allow
+        // it for readonly, so there's no need to check.
+        knownEscape.set(ro, false);
+        false
+      } else {
+        anythingEscapes(ro, env, knownEscape, temporarilyAssumeNoEscape)
+      };
+
+      sc with {allowsPointerEscapeIfMutable, allowsPointerEscapeIfReadonly}
+    }),
+  }
+}

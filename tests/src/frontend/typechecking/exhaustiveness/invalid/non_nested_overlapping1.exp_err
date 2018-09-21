@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/non_nested_overlapping1.sk", line 8, characters 5-8:
+The following pattern is unused:
+ | B(1)
+ 6 |   B(1) match {
+ 7 |   | B _ -> "Fail\n"
+ 8 |   | B(1) -> "Wrong\n"
+   |     ^^^^
+ 9 |   }

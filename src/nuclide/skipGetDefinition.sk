@@ -1,0 +1,68 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Entry point used for goto definition. Invoke it as
+ *
+ *     skip_get_definition FILE LINE COLUMN
+ *
+ * It will search upward from the given root path (or the current directory) for a
+ * .skipconfig file. See skipConfig.rx for more details.
+ */
+/*****************************************************************************/
+
+module alias N = SkipNamedAst;
+module alias T = SkipTypedAst;
+module alias TU = SkipTypedAstUtils;
+module alias AU = SkipAstUtils;
+
+const loggingEnabled: Bool = false;
+
+fun log(message: String): void {
+  if (loggingEnabled) {
+    print_string(message);
+  }
+}
+
+untracked fun main(): void {
+  // command line arguments
+  args = List::createFromItems(arguments());
+  filename = Path.resolve(args.getNth(0));
+  line = args.getNth(1).toInt();
+  column = args.getNth(2).toInt();
+  // TODO: Use this instead of whats on disk
+  // _fileContents = read_stdin();
+
+  log("analyzing ...");
+  (projectRoot, prog) = SkipError.doAndReportErrors(() -> {
+    SkipProject.findProjectFileOfPath(filename).flatMap(projectPath ->
+      SkipProject.getFilesToAnalyze(filename).flatMap(files ->
+        SkipMain.compileWithErrors(List::createFromItems(files)).map(prog ->
+          (projectPath, prog)
+        )
+      )
+    )
+  });
+
+  // find source location
+  log("finding source ...");
+  position = FilePosition{filename, position => Position.create(line, column)};
+  definitionOpt = GetDefinition.definitionOfPos(prog, position);
+  if (definitionOpt.isNone()) {
+    exit(1);
+  };
+  definition = definitionOpt.fromSome();
+
+  // find definition of source
+  log("finding definition ...");
+  destination = GetDefinition.posOfDefinition(definition);
+
+  print_raw(
+    // output
+    GetDefinition.createOutputJson(projectRoot, destination).toString(),
+  );
+}

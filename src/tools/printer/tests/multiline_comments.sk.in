@@ -1,0 +1,12 @@
+fun join(): void {
+  /* this grossness is to preserve Tnamed when joining Tvars and a type
+   * And to preserve Tnamed on Tany, which is needed for type constants
+   * on the PHP backend
+   */
+  void;
+/* this grossness is to preserve Tnamed when joining Tvars and a type
+ * And to preserve Tnamed on Tany, which is needed for type constants
+ * on the PHP backend
+ */
+  void;
+}

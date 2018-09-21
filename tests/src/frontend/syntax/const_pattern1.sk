@@ -1,0 +1,12 @@
+const My_const: Int = -1;
+
+fun shouldPass(x: Int): String {
+  x match {
+  | My_const -> "Pass\n"
+  | _ -> "Doesn't pass\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldPass(My_const))
+}

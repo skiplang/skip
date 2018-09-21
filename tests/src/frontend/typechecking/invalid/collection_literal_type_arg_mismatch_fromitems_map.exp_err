@@ -1,0 +1,23 @@
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_map.sk", line 13, characters 7-64:
+Constraint not satisfied
+11 | fun main(): void {
+12 |   _ = UnorderedMap<String, Int>["x" => 1, "y" => 2, "z" => 3]; // ok
+13 |   _ = UnorderedMap<String, String>["x" => 1, "y" => 2, "z" => 3]; // error
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_map.sk", line 13, characters 43-43:
+The type: Int
+11 | fun main(): void {
+12 |   _ = UnorderedMap<String, Int>["x" => 1, "y" => 2, "z" => 3]; // ok
+13 |   _ = UnorderedMap<String, String>["x" => 1, "y" => 2, "z" => 3]; // error
+   |                                           ^
+14 |   print_string("Fail")
+
+File "./typechecking/invalid/collection_literal_type_arg_mismatch_fromitems_map.sk", line 13, characters 28-33:
+Is not a subtype of: String
+11 | fun main(): void {
+12 |   _ = UnorderedMap<String, Int>["x" => 1, "y" => 2, "z" => 3]; // ok
+13 |   _ = UnorderedMap<String, String>["x" => 1, "y" => 2, "z" => 3]; // error
+   |                            ^^^^^^
+14 |   print_string("Fail")

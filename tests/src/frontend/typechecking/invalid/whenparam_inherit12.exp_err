@@ -1,0 +1,32 @@
+File "./typechecking/invalid/whenparam_inherit12.sk", line 14, characters 9-9:
+Invalid override for the field 'eat' on child 'C' for parent 'MyParent'. Constraint not satisfied
+12 | }
+13 |
+14 | class C<T: Low>() extends MyParent<T> {
+   |         ^
+15 |   fun eat(x: T): void {
+
+File "./typechecking/invalid/whenparam_inherit12.sk", line 11, characters 30-31:
+The type: P2
+ 9 |
+10 | base class MyParent<-P> {
+11 |   fun eat<P2: Mid>[P: P2](_: P2): void;
+   |                              ^^
+12 | }
+
+File "./typechecking/invalid/whenparam_inherit12.sk", line 14, characters 12-14:
+Is not a subtype of: Low
+12 | }
+13 |
+14 | class C<T: Low>() extends MyParent<T> {
+   |            ^^^
+15 |   fun eat(x: T): void {
+
+File "./typechecking/invalid/whenparam_inherit12.sk", line 14, characters 12-14:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Mid
+12 | }
+13 |
+14 | class C<T: Low>() extends MyParent<T> {
+   |            ^^^
+15 |   fun eat(x: T): void {

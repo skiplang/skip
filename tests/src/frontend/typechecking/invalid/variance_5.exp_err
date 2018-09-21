@@ -1,0 +1,32 @@
+File "./typechecking/invalid/variance_5.sk", line 20, characters 3-25:
+The value returned from the function is incompatible with the return type 'Fun_<Parent, Int>'
+18 |
+19 | fun child_to_parent(x: Fun_<ChildA, Int>): Fun_<Parent, Int> {
+20 |   ClosureBreaker(x).get()
+   |   ^^^^^^^^^^^^^^^^^^^^^^^
+21 | }
+
+File "./typechecking/invalid/variance_5.sk", line 19, characters 29-34:
+The invariant type: ChildA
+17 | }
+18 |
+19 | fun child_to_parent(x: Fun_<ChildA, Int>): Fun_<Parent, Int> {
+   |                             ^^^^^^
+20 |   ClosureBreaker(x).get()
+
+File "./typechecking/invalid/variance_5.sk", line 19, characters 49-54:
+Is incompatible with the invariant type: Parent
+17 | }
+18 |
+19 | fun child_to_parent(x: Fun_<ChildA, Int>): Fun_<Parent, Int> {
+   |                                                 ^^^^^^
+20 |   ClosureBreaker(x).get()
+
+File "./typechecking/invalid/variance_5.sk", line 19, characters 29-34:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+17 | }
+18 |
+19 | fun child_to_parent(x: Fun_<ChildA, Int>): Fun_<Parent, Int> {
+   |                             ^^^^^^
+20 |   ClosureBreaker(x).get()

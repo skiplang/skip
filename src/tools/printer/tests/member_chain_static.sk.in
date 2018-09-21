@@ -1,0 +1,4 @@
+fun main(): void {
+  static::fold2(values1, values2, (head, v1, v2) ~>
+                List.Cons((v1, v2), head), List::create()).reversed()
+}

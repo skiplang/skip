@@ -1,0 +1,2202 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Module dealing with code inheritance.
+ *
+ * After this pass, all the classes have been "flattened", in the sense that
+ * the full signature of a class is known, that is: all of its methods
+ * constants and types, inherited or not.
+ */
+/*****************************************************************************/
+module alias A = SkipAst;
+module alias AU = SkipAstUtils;
+
+/*****************************************************************************/
+/* Types and functions shared by method and constant inheritance */
+/*****************************************************************************/
+module SkipInherit;
+
+base class Extends_kind {
+  children =
+  | Extends()
+  | Implements()
+}
+
+// shared data for constants and methods when inheriting
+class Const_method_data{
+  dat_body: A.Inherited_body,
+  dat_name: A.Name,
+  dat_native: ?FileRange,
+  dat_overridable: ?FileRange,
+  dat_visibility: (FileRange, A.Visibility),
+}
+
+fun method_data(met: A.Method_def): Const_method_data {
+  Const_method_data{
+    dat_name => met.name,
+    dat_body => met.body,
+    dat_native => met.native_,
+    dat_overridable => met.overridable_,
+    dat_visibility => met.visibility,
+  }
+}
+
+fun const_data(con: A.Const_def): Const_method_data {
+  Const_method_data{
+    dat_name => con.name,
+    dat_body => con.value,
+    dat_native => con.native_,
+    dat_overridable => con.overridable_,
+    dat_visibility => con.visibility,
+  }
+}
+
+fun get_body(p: A.Inherited_body): A.Expr_body {
+  (_, body) = p;
+  body match {
+  | A.Inherited(A.InheritedKind{value => x}) -> x
+  | A.Body(x) -> x
+  }
+}
+
+fun get_source(parent_class: A.Name, p: A.Inherited_body): A.Name {
+  (_, body) = p;
+  body match {
+  | A.Inherited(A.InheritedKind{source => x}) -> x
+  | A.Body(_) -> parent_class
+  }
+}
+
+fun inherited_body(
+  parent_name: A.Name,
+  body: A.Inherited_body,
+): A.Inherited_body {
+  (
+    body.i0,
+    A.Inherited(
+      A.InheritedKind{
+        explicit => A.Implicit(),
+        from_ => parent_name,
+        value => get_body(body),
+        algebraic => false,
+        source => get_source(parent_name, body),
+      },
+    ),
+  )
+}
+
+fun empty_body(p1: A.Name, x: A.Inherited_body): Bool {
+  (_, child_str) = p1;
+  x match {
+  | (_, A.Inherited(A.InheritedKind{value => A.BAlgebraic(branches)}))
+  | (_, A.Body(A.BAlgebraic(branches))) ->
+    empty_algebraic(child_str)(branches)
+  | body -> bnone_body(body)
+  }
+}
+
+fun bnone_body(x: A.Inherited_body): Bool {
+  x match {
+  | (_, A.Inherited(A.InheritedKind{value => A.BNone()})) -> true
+  | (_, A.Body(A.BNone())) -> true
+  | _ -> false
+  }
+}
+
+fun empty_algebraic(child_str: String): ((List<A.Match_branch>) -> Bool) {
+  mbl ->
+    mbl.all(p -> {
+      (pats, _, _) = p;
+      empty_algebraic_pats(child_str)(pats)
+    })
+}
+
+fun empty_algebraic_pats(child_str: String): ((List<A.Pattern>) -> Bool) {
+  pl ->
+    pl.all(p -> {
+      (_, p1) = p;
+      empty_algebraic_(child_str, p1)
+    })
+}
+
+fun empty_algebraic_(child_str: String, x: A.Pattern_): Bool {
+  x match {
+  | A.Pat_const(_) -> false
+  | A.Pat_var(_) -> false
+  | A.Pat_literal(_) -> false
+  | A.Pat_type(tid, _, _) -> empty_algebraic_type_identifier(child_str, tid)
+  | A.Pat_as((_, p), _) -> empty_algebraic_(child_str, p)
+  | A.Pat_tuple(_) -> invariant_violation("ICE tuple in algebraic")
+  }
+}
+
+fun empty_algebraic_type_identifier(
+  child_str: String,
+  x: A.TypeIdentifier,
+): Bool {
+  x match {
+  | A.Tid_object(A.Tclass((_, parent_str))) -> child_str != parent_str
+  | A.Tid_object(A.Tmacro _)
+  | A.Tid_object(A.Tmodule_class _)
+  | A.Tid_object(A.Tparam _)
+  | A.Tid_static _ ->
+    invariant_violation("ICE type pattern in algebraic")
+  }
+}
+
+fun vis_string(x: (FileRange, A.Visibility)): String {
+  x match {
+  | (_, A.VPublic()) -> "public"
+  | (_, A.VPrivate()) -> "private"
+  | (_, A.VProtected()) -> "protected"
+  }
+}
+
+/*****************************************************************************/
+/* Simple subtyping checks used for resolving algebraic branches
+ * TODO only support algebraic branches on children clauses
+ */
+/*****************************************************************************/
+fun is_subtype(child_name: A.Name, parent_name: A.Name): Bool {
+  if (child_name.i1 == parent_name.i1) return true;
+  getCD = n ->
+    GlobalEnv.getClass(n.i1) match {
+    | None() -> SkipError.error(n.i0, `Unbound class: '${n.i1}'`)
+    | Some(cd) -> cd
+    };
+  child_class = getCD(child_name);
+  parent_class = getCD(parent_name);
+  parent_class.kind == A.KBase() &&
+    child_class.extends_.foldl(
+      (acc, p) -> {
+        acc ||
+          {
+            extend_name = p.parent match {
+            | (A.Tclass(x), _) -> x
+            | _ -> invariant_violation("ICE non expanded name in is_subtype")
+            };
+            is_subtype(extend_name, parent_name)
+          }
+      },
+      false,
+    )
+}
+
+fun tid_matches(self: A.Class_def, tid: A.TypeIdentifier): Bool {
+  tid match {
+  | A.Tid_object(A.Tclass(obj_name)) -> is_subtype(self.name, obj_name)
+  | _ -> false
+  }
+}
+
+fun pat_matches(self: A.Class_def, pat: A.Pattern): Bool {
+  pat match {
+  | (_, A.Pat_type(tid, _, _)) -> tid_matches(self, tid)
+  | (_, A.Pat_var(_this_name)) -> true
+  | (_, A.Pat_as(p, _this_name)) -> pat_matches(self, p)
+  | _ -> false
+  }
+}
+
+/*****************************************************************************/
+/* Handles conflict resolutions: 2 methods or constants with the same name are
+ * inherited through different paths.
+ *
+ * TODO only support algebraic branches on children clauses
+ * This will GREATLY simplify the logic for resolving conflics.
+ * I suggest a full rewrite once the change is made
+ *
+ * Reference:
+ * https://en.wikipedia.org/wiki/Multiple_inheritance#The_diamond_problem
+ */
+/*****************************************************************************/
+fun same_source(
+  from_: A.Name,
+  source: A.Name,
+  parent_cls: A.Name,
+  parent: Const_method_data,
+): Bool {
+  same_source_ = parent -> parent.i1 == from_.i1 || parent.i1 == source.i1;
+  if (same_source_(parent_cls)) return true;
+
+  parent.dat_body.i1 match {
+  | A.Inherited(A.InheritedKind{from_ => p_from, source => p_source}) ->
+    same_source_(p_from) || same_source_(p_source)
+  | A.Body(A.BAlgebraic(branches)) ->
+    branches.any(branch ->
+      branch.i0.any(pat ->
+        pat.i1 match {
+        | A.Pat_type(A.Tid_object(A.Tclass(branch_name)), _, _) ->
+          same_source_(branch_name)
+        | A.Pat_type _ -> invariant_violation("ICE bad pat_type in same_source")
+        | _ -> false
+        }
+      )
+    )
+  | A.Body(A.BFrom(_)) -> invariant_violation("ICE from in same source")
+  | _ -> false
+  }
+}
+
+fun check_override(
+  kind: String,
+  child_cls: A.Name,
+  child: Const_method_data,
+  parent_cls: A.Name,
+  parent: Const_method_data,
+): void {
+  name = child.dat_name.i1;
+  if (
+    parent.dat_overridable.isNone() &&
+    !(empty_body(child.dat_name, parent.dat_body))
+  ) {
+    SkipError.errorl(
+      List[
+        (
+          child.dat_name.i0,
+          "Cannot override a final " +
+            kind +
+            ". Class " +
+            child_cls.i1 +
+            " attempted to override " +
+            kind +
+            " " +
+            name +
+            " from parent " +
+            parent_cls.i1,
+        ),
+
+        (
+          parent.dat_name.i0,
+          "To override the " +
+            kind +
+            ", " +
+            parent_cls.i1 +
+            "::" +
+            name +
+            " must have the modifier 'overridable'",
+        ),
+      ],
+    )
+  };
+  if (parent.dat_native.isSome() && !(empty_body(child_cls, child.dat_body))) {
+    SkipError.errorl(
+      List[
+        (child.dat_name.i0, "Cannot override a native " + kind),
+
+        (parent.dat_native.fromSome(), "Native " + kind + " declaration here"),
+      ],
+    )
+  };
+  if (parent.dat_visibility.i1 != child.dat_visibility.i1) {
+    SkipError.errorl(
+      List[
+        (
+          child.dat_visibility.i0,
+          "The child visibility of " +
+            vis_string(child.dat_visibility) +
+            " does not match the parent's",
+        ),
+
+        (
+          parent.dat_visibility.i0,
+          "The parent visibility was defined here as " +
+            vis_string(parent.dat_visibility),
+        ),
+      ],
+    )
+  }
+}
+
+fun check_redeclare_abstract(
+  pos: FileRange,
+  new_cls: A.Name,
+  new_inh: Const_method_data,
+  cur_cls: A.Name,
+  cur_inh: Const_method_data,
+): void {
+  if (
+    AU.expr_body_is_none(get_body(new_inh.dat_body)) &&
+    !AU.expr_body_is_none(get_body(cur_inh.dat_body)) &&
+    new_inh.dat_native.isNone()
+  ) {
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          "Cannot redeclare " +
+            new_cls.i1 +
+            "::" +
+            cur_inh.dat_name.i1 +
+            " as abstract",
+        ),
+
+        (
+          cur_inh.dat_body.i0,
+          cur_cls.i1 +
+            "::" +
+            cur_inh.dat_name.i1 +
+            " was given a definition here",
+        ),
+      ],
+    )
+  }
+}
+
+fun check_multiple_algebraic(
+  child: Const_method_data,
+  parent_cls: A.Name,
+  parent: Const_method_data,
+): void {
+  (child_pos, child_body) = child.dat_body;
+  (parent_pos, parent_body) = parent.dat_body;
+  child_algebraic = child_body match {
+  | A.Body(_) -> invariant_violation("ICE body on check_multiple_algebraic")
+  | A.Inherited(
+    A.InheritedKind{algebraic => true, from_ => from_, source => source},
+  )
+  | A.Inherited(
+    A.InheritedKind{from_ => from_, source => source, value => A.BAlgebraic(_)},
+  ) ->
+    !same_source(from_, source, parent_cls, parent)
+  | A.Inherited(_) -> false
+  };
+  parent_algebraic = parent_body match {
+  | A.Body(A.BAlgebraic(_))
+  | A.Inherited(A.InheritedKind{algebraic => true})
+  | A.Inherited(A.InheritedKind{value => A.BAlgebraic(_)}) ->
+    true
+  | A.Body(_)
+  | A.Inherited(_) ->
+    false
+  };
+  if (child_algebraic && parent_algebraic) {
+    SkipError.errorl(
+      List[
+        (child_pos, child.dat_name.i1 + " has two algebraic declarations"),
+
+        (parent_pos, "Additional declaration defined here"),
+      ],
+    )
+  }
+}
+
+fun resolve_conflict<Tc>(
+  kind: String,
+  child_cls: A.Name,
+  child: Const_method_data,
+  parent_cls: A.Name,
+  parent: Const_method_data,
+  add_item: ((A.Explicity, Tc) -> Tc),
+  orig_map: Tc,
+): Tc {
+  child.dat_body.i1 match {
+  /* The child is declared but has no body */
+  | A.Body(A.BNone()) ->
+    check_redeclare_abstract(
+      child.dat_name.i0,
+      child_cls,
+      child,
+      parent_cls,
+      parent,
+    );
+    orig_map
+  /* The child defines its own body. */
+  | A.Body(A.BAlgebraic(_))
+  | A.Body(A.BNative(_))
+  | A.Body(A.BExpr(_)) ->
+    check_override(kind, child_cls, child, parent_cls, parent);
+    orig_map
+  /* The parent class defined it and the user specifically asked to pick this
+   * one in case of a conflict. */
+  | A.Body(A.BFrom(A.Tclass((_, cname)))) if (cname == parent_cls.i1) ->
+    add_item(A.Explicit(), orig_map)
+  | A.Inherited(
+    A.InheritedKind{explicit => A.TempFrom((cpos, cname)), from_ => from_},
+  ) if (cname == parent_cls.i1) ->
+    check_redeclare_abstract(cpos, child_cls, parent, from_, child);
+    add_item(A.Explicit(), orig_map)
+  /* The parent class defines it, but the user has specificied we should pick
+   * it from a different class. */
+  | A.Body(A.BFrom(A.Tclass(cname))) ->
+    check_override(kind, child_cls, child, parent_cls, parent);
+    add_item(A.TempFrom(cname), orig_map)
+  | A.Body(A.BFrom(_)) ->
+    invariant_violation("ICE body bfrom in resolve_conflict")
+  /* We already inherited with conflict resolution specified by the user */
+  | A.Inherited(A.InheritedKind{explicit => A.Explicit()}) ->
+    check_override(kind, child_cls, child, parent_cls, parent);
+    check_redeclare_abstract(
+      child.dat_name.i0,
+      child_cls,
+      child,
+      parent_cls,
+      parent,
+    );
+    check_multiple_algebraic(child, parent_cls, parent);
+    orig_map
+  /* We already inherited with no conflict resolution specified by the user */
+  | A.Inherited(
+    A.InheritedKind{
+      explicit => exp,
+      from_ => from_,
+      source => source,
+      value => value,
+    },
+  ) ->
+    (get_body(parent.dat_body), value) match {
+    | (_, A.BNone()) -> add_item(exp, orig_map)
+    | (A.BNone(), _) -> orig_map
+    | _ ->
+      have_same_source = same_source(from_, source, parent_cls, parent);
+      check_multiple_algebraic(child, parent_cls, parent);
+      if (exp == A.Implicit() && !(have_same_source)) {
+        SkipError.errorl(
+          List[
+            (child_cls.i0, "Inheritance conflict needs resolution"),
+
+            (child.dat_name.i0, "This " + kind),
+
+            (parent.dat_name.i0, "Conflicts with this one"),
+          ],
+        )
+      } else {
+        orig_map
+      }
+    }
+  }
+}
+
+fun verify_dat(kind: String, cd: A.Class_def, dat: Const_method_data): void {
+  dat.dat_overridable match {
+  | None() -> void
+  | Some(pos) ->
+    if (cd.kind == A.KClass()) {
+      SkipError.error(
+        pos,
+        kind +
+          "s in non-base classes cannot be overridable since the class cannot" +
+          " be extended",
+      )
+    };
+    if (dat.dat_visibility.i1 == A.VPrivate()) {
+      SkipError.error(
+        pos,
+        "Private " +
+          kind +
+          "s in base classes cannot be overridable since they are not" +
+          " visible in the children",
+      )
+    };
+    if (bnone_body(dat.dat_body)) {
+      SkipError.error(
+        pos,
+        "Abstract " +
+          kind +
+          "s cannot be declared as overridable since they MUST be " +
+          "overridden",
+      )
+    }
+  }
+}
+
+/*****************************************************************************/
+/* Given a type_name, produces a class name (trivial after expansion). */
+/*****************************************************************************/
+fun make_class_name(x: A.Type_name): A.Name {
+  x match {
+  | A.Tmacro(x1) ->
+    invariant_violation("Internal error: macro used as class name: " + x1.i1)
+  | A.Tclass(x1) -> x1
+  | A.Tmodule_class(pos, (_, x1), (_, y)) ->
+    SkipError.error(
+      pos,
+      "Internal error: unexpanded class name: " + x1 + "." + y,
+    )
+  | A.Tparam((pos, n), _) ->
+    SkipError.error(pos, "Internal error: type param used as class name: " + n)
+  }
+}
+
+/*****************************************************************************/
+/* Verifies the child class kind. */
+/*****************************************************************************/
+fun check_child_kind(pos: FileRange, child: A.Class_def): void {
+  child.kind match {
+  | A.KClass() -> void
+  | A.KBase() -> void
+  | A.KTrait() -> SkipError.error(pos, "Cannot pattern-match on a trait")
+  }
+}
+
+/*****************************************************************************/
+/* Method pattern-matching resolution.
+ * For example.
+ *****************************************************************************
+ *
+ * base class Expr {
+ *   public fun eval(): int
+ *   | Int(v) -> v
+ *   | Plus(e1, e2) -> e1.eval() + e2.eval()
+ * }
+ *
+ * class Int(int) extends Expr
+ * class Plus(Expr, Expr) extends Expr
+ *
+ *****************************************************************************
+ * Is compiled to.
+ *****************************************************************************
+ *
+ * base class Expr {
+ *   public abstract fun eval(): int;
+ * }
+ *
+ * class Int(v) {
+ *   public fun eval(): int {
+ *     v
+ *   }
+ * }
+ *
+ * class Plus(e1, e2) {
+ *   public fun eval(): int {
+ *     e1.eval() + e2.eval()
+ *   }
+ * }
+ *
+ */
+/*****************************************************************************/
+fun inherit_method(
+  self: A.Class_def,
+  parent_name: A.Name,
+  met: A.Method_def,
+  methods: UMap<A.Method_def>,
+): UMap<A.Method_def> {
+  met.body match {
+  | (
+    parent_pos,
+    A.Inherited(
+      A.InheritedKind{
+        explicit => explicit,
+        source => source,
+        value => A.BAlgebraic(mbl),
+      },
+    ),
+  ) if (self.kind == A.KClass()) ->
+    inherit_algebraic_pats(
+      self,
+      parent_name,
+      explicit,
+      source,
+      met.name,
+      met,
+      methods,
+      parent_pos,
+      List[],
+      mbl,
+    )
+  | _ -> methods.set(met.name, met)
+  }
+}
+
+fun find_matching_pattern_in_mbl(
+  self: A.Class_def,
+  mbl: List<A.Match_branch>,
+): ?(A.Pattern, ?A.Expr, A.Expr) {
+  mbl match {
+  | List.Cons((pats, mg, ex), tl) ->
+    pats.find(pat -> pat_matches(self, pat)) match {
+    | None() -> find_matching_pattern_in_mbl(self, tl)
+    | Some(pat) -> Some((pat, mg, ex))
+    }
+  | List.Nil() -> None()
+  }
+}
+
+fun inherit_algebraic_pats(
+  self: A.Class_def,
+  parent_name: A.Name,
+  explicit: A.Explicity,
+  source: A.Name,
+  name: A.Name,
+  met: A.Method_def,
+  methods: UMap<A.Method_def>,
+  parent_pos: FileRange,
+  this_aliases: List<A.Name>,
+  mbl: List<A.Match_branch>,
+): UMap<A.Method_def> {
+  find_matching_pattern_in_mbl(self, mbl) match {
+  | None() ->
+    SkipError.error(
+      parent_pos,
+      "Case " +
+        self.name.i1 +
+        " is missing.\nNote you cannot have multiple parents with " +
+        "algebraic patterns",
+    )
+  | Some((pat, Some(_), _)) ->
+    SkipError.error(
+      pat.i0,
+      "TODO: When clauses are not supported on algebraic method bodies.",
+    )
+  | Some((pat, None(), ex)) ->
+    inherit_algebraic(
+      self,
+      parent_name,
+      explicit,
+      source,
+      name,
+      met,
+      methods,
+      parent_pos,
+      this_aliases,
+      pat,
+      ex,
+    )
+  }
+}
+
+fun arg_pattern_to_param(p: A.Pattern): A.Name {
+  (pos, pat) = p;
+  pat match {
+  | A.Pat_var(name) -> name
+  | _ ->
+    SkipError.error(
+      pos,
+      "TODO: Nested patterns not supported in algebraic method bodies",
+    )
+  }
+}
+
+fun arg_patterns_to_params(
+  arg_pats: Parameters<A.Pattern>,
+): Parameters<A.Name> {
+  arg_pats.map(arg_pattern_to_param)
+}
+
+fun inherit_algebraic(
+  self: A.Class_def,
+  parent_name: A.Name,
+  explicit: A.Explicity,
+  source: A.Name,
+  name: A.Name,
+  met: A.Method_def,
+  methods: UMap<A.Method_def>,
+  parent_pos: FileRange,
+  this_aliases: List<A.Name>,
+  pat: A.Pattern,
+  action: A.Expr,
+): UMap<A.Method_def> {
+  assert(pat_matches(self, pat));
+  pat match {
+  | (
+    _,
+    A.Pat_type(A.Tid_object(A.Tclass(obj_name)), arg_pats, _),
+  ) if (is_subtype(self.name, obj_name)) ->
+    (pos, _) = obj_name;
+    check_child_kind(pos, self);
+    body2 = () ~> {
+      body = action;
+      body1 = {
+        arg_pats match {
+        | None() -> body
+        | Some(arg_pats1) ->
+          params = arg_patterns_to_params(arg_pats1);
+          param_bindings(pos, self.params, params, body)
+        }
+      };
+      this_bindings(pos, this_aliases, body1);
+    };
+    body3 = (action.i0, A.BExpr(body2));
+    inherited_method = A.InheritedKind{
+      explicit,
+      source,
+      from_ => parent_name,
+      value => body3.i1,
+      algebraic => true,
+    };
+    body4 = (body3.i0, A.Inherited(inherited_method));
+    met1 = (met : A.Method_def) with {body => body4};
+    methods.set(met1.name, met1)
+  | (_, A.Pat_var(this_name)) ->
+    (pos, _) = this_name;
+    body1 = () ~> {
+      this_aliases1 = List.Cons(this_name, this_aliases);
+      body = action;
+      this_bindings(pos, this_aliases1, body)
+    };
+    body2 = (pos, A.BExpr(body1));
+    inherited_method = A.InheritedKind{
+      explicit,
+      source,
+      from_ => parent_name,
+      value => body2.i1,
+      algebraic => true,
+    };
+    body3 = (body2.i0, A.Inherited(inherited_method));
+    met1 = (met : A.Method_def) with {body => body3};
+    methods.set(met1.name, met1)
+  | (_, A.Pat_as(p, this_name)) ->
+    this_aliases1 = List.Cons(this_name, this_aliases);
+    inherit_algebraic(
+      self,
+      parent_name,
+      explicit,
+      source,
+      name,
+      met,
+      methods,
+      parent_pos,
+      this_aliases1,
+      p,
+      action,
+    )
+  | _ -> invariant_violation("Mismatch with pat_matches")
+  }
+}
+
+/* In an algebraic branch, the matched parameters must be bound inside the
+ * method body
+ *
+ * TODO support nested patterns by adding a match inside the method
+ */
+fun param_bindings(
+  pos: FileRange,
+  params: A.MaybeClassParams,
+  pat_params: Parameters<A.Name>,
+  body: A.Expr,
+): A.Expr {
+  params match {
+  | A.NoParams() ->
+    SkipError.error(
+      pos,
+      "No constructor for class. Expected no paramaters in algebraic branch",
+    )
+  | A.NativeConstruct(fr) ->
+    emsg = "Native constructor for class. Expected no paramaters in algebraic branch";
+    nmsg = "Declared native here";
+    SkipError.errorl(List[(pos, emsg), (fr, nmsg)])
+  | A.HasParams(cp) ->
+    (cp.params, pat_params) match {
+    | (Positional(fparams), Positional(pparams)) ->
+      n = fparams.size();
+      if (n != pparams.size()) {
+        SkipError.error(pos, "Expected " + n + " arguments")
+      };
+      add_named_bindings(pos, fparams, pparams, body)
+    | (Named(fparams), Named(pparams)) ->
+      (keyparams_names, valueparams) = pparams.items().collect(Array).unzip();
+      msg = "Could not resolve named field in pattern";
+      keyparams = keyparams_names.map(pat_name ->
+        fparams.getWithMsg(pat_name, pos, msg)
+      );
+      add_named_bindings(pos, keyparams, valueparams, body)
+    | (Positional(_), Named(_)) ->
+      SkipError.error(pos, "Was expecting unnamed parameters")
+    | (Named(_), Positional(_)) ->
+      SkipError.error(pos, "Was expecting named parameters")
+    }
+  }
+}
+
+fun add_named_bindings(
+  pos: FileRange,
+  params: Array<A.Parameter>,
+  pat_params: Array<A.Name>,
+  body: A.Expr,
+): A.Expr {
+  invariant(
+    params.size() == pat_params.size(),
+    "ICE mismatched array sizes for add_named_bindings",
+  );
+
+  result = body;
+  sk_this = (pos, A.Var((pos, "this")));
+  for ((fparam, pparam) in params.values().zip(pat_params.values())) {
+    lvalue = (pos, A.Lvalue_bind_local(pparam));
+    rvalue = (pos, A.Dot(sk_this, fparam.name));
+    !result = (pos, A.Bind(lvalue, rvalue, result))
+  } else {
+    result
+  }
+}
+
+fun this_bindings(
+  pos: FileRange,
+  this_aliases: List<A.Name>,
+  body: A.Expr,
+): A.Expr {
+  this_aliases match {
+  | List.Nil() -> body
+  | List.Cons(this_alias, this_aliases1) ->
+    sk_this = (pos, A.Var((pos, "this")));
+    lvalue = (pos, A.Lvalue_bind_local(this_alias));
+    rest = this_bindings(pos, this_aliases1, body);
+    (pos, A.Bind(lvalue, sk_this, rest))
+  }
+}
+
+/*****************************************************************************/
+/* The environment. */
+/*****************************************************************************/
+// We strip out algebraic branches as a simplification for later passes
+fun remove_algebraic(class_defs: UMap<A.Class_def>): UMap<A.Class_def> {
+  class_defs.reduce(
+    (acc, class_name, cd) -> {
+      methods = cd.methods.reduce(
+        (acc1, method_name, met) -> {
+          body = {
+            met.body match {
+            | (pos, A.Body(A.BAlgebraic(_))) if (met.overridable_.isNone()) ->
+              if (cd.kind != A.KBase()) {
+                SkipError.error(
+                  pos,
+                  "Algebraic bodies can only be defined in base classes",
+                )
+              };
+              (pos, A.Body(A.BNone()))
+            | x -> x
+            }
+          };
+          acc1.add(method_name, (met : A.Method_def) with {body})
+        },
+        UMap[],
+      );
+      acc.add(class_name, (cd : A.Class_def) with {methods})
+    },
+    UMap[],
+  )
+}
+
+/*****************************************************************************/
+/* The main entry point. */
+/*****************************************************************************/
+
+fun getClass(className: A.Name): SkipAst.Class_def {
+  maybeGetClass(className.i1) match {
+  | None() -> SkipError.error(className.i0, `Unbound class: '${className.i1}'`)
+  | Some(x) -> x
+  }
+}
+
+memoized fun maybeGetClass(className: String): ?SkipAst.Class_def {
+  GlobalEnv.getClass(className) match {
+  | None() -> None()
+  | Some(cd) -> Some(class_def(cd))
+  }
+}
+
+fun class_def(cd: A.Class_def): A.Class_def {
+  verify_methods_and_consts(cd);
+  if (cd.value.isSome()) check_value_class(cd);
+
+  !cd.depth = 0;
+  !cd = cd.use.foldl((cd, parent) -> inherit_trait(cd, parent), cd);
+  extends_ = cd.extends_.map(x -> x with {source => cd.name});
+  /* All traits are flattened and inherited as if they were all written out
+   * on that class
+   * For example
+   * trait Z
+   * trait X extends Z
+   * class C uses X
+   *
+   * is
+   *
+   * class C uses X, Z
+   *
+   * as far as source information is concerned
+   * (other inheritance rules may still apply)
+   */
+  use = cd.use.map(x -> x with {source => cd.name});
+  !cd = cd with {extends_, use};
+
+  ext_names = cd.extends_.map(p -> make_class_name(p.parent.i0));
+  for (p in ext_names) {
+    if (cd.name.i1 == p.i1) {
+      SkipError.error(p.i0, "Classes cannot extend themselves")
+    }
+  };
+  /* params need to be done before inheriting methods for algebraic bodies */
+  !cd = cd.extends_.foldl((cd, p) -> inherit_class_params(cd, p), cd);
+  params = (cd.kind, cd.params) match {
+  | (A.KClass(), A.NoParams()) ->
+    msg = `Missing class constructor fields. You can define positional fields with '${
+      cd.name.i1
+    }()' or named fields with '${cd.name.i1}{}'`;
+    SkipError.error(cd.name.i0, msg)
+  | (_, x) -> x
+  };
+  !cd.params = params;
+  cd.extends_.foldl((cd, p) -> inherit_class(cd, p), cd)
+}
+
+fun inherit_class_params(cd: A.Class_def, p: A.Parent): A.Class_def {
+  (parent_name, type_arguments) = p.parent;
+  parent_name1 = make_class_name(parent_name);
+  (parent_pos, _) = parent_name1;
+  parent_class = getClass(parent_name1);
+  check_mutable(parent_pos, cd, parent_class);
+  check_extends(parent_pos, cd, parent_class, Extends());
+  tparams = parent_class.tparams.map(AU.tparam_id);
+  subst = AU.make_subst(parent_pos, tparams, type_arguments);
+  params = inherit_params(subst, parent_pos, cd, parent_class);
+  (cd : A.Class_def) with {params}
+}
+
+fun inherit_class(cd: A.Class_def, p: A.Parent): A.Class_def {
+  (parent_name, type_arguments) = p.parent;
+  parent_name1 = make_class_name(parent_name);
+  (parent_pos, _) = parent_name1;
+  parent_class = getClass(parent_name1);
+  tparams = parent_class.tparams.map(AU.tparam_id);
+  subst = AU.make_subst(parent_pos, tparams, type_arguments);
+  parent_extends = parent_class.extends_;
+  parent_uses = parent_class.use;
+  parent_methods = parent_class.methods;
+  parent_consts = parent_class.consts;
+  depth = inherit_depth(parent_class.depth, cd.depth);
+  types = inherit_types(cd.kind, subst, parent_class.types, cd.types);
+  extends_ = inherit_extends(subst, cd, parent_extends);
+  use = inherit_uses(subst, cd, parent_uses);
+  methods = inherit_methods(cd, subst, Array[], parent_name1, parent_methods);
+  consts = inherit_consts(subst, cd, parent_name1, parent_consts);
+  cd with {depth, extends_, use, consts, types, methods}
+}
+
+fun inherit_trait(cd: A.Class_def, p: A.Parent): A.Class_def {
+  if (p.source.i1 != "" && p.source.i1 != cd.name.i1) {
+    invariant_violation(
+      `ICE inherited trait ${p.parent.i0} on ${cd.name.i1} from ${p.source.i1}`,
+    )
+  };
+  (tc_cident, type_arguments) = p.parent;
+  tc_name = make_class_name(tc_cident);
+  (tc_pos, _) = tc_name;
+  tc_class = getClass(tc_name);
+  // conditionas are applied to anything inherited from the trait
+  // hence these bans
+  if (!p.conditions.isEmpty() && !tc_class.consts.isEmpty()) {
+    const_fr = tc_class.consts.values().next().fromSome().name.i0;
+    SkipError.errorl(
+      List[
+        (tc_pos, `Invalid conditional trait usage of trait: '${tc_name.i1}'`),
+        (cd.name.i0, `By class: '${cd.name.i1}'`),
+        (const_fr, "Cannot conditionally use a trait with constants"),
+      ],
+    )
+  };
+  if (!p.conditions.isEmpty() && !tc_class.types.isEmpty()) {
+    ty_fr = tc_class.types.values().next().fromSome().name.i0;
+    SkipError.errorl(
+      List[
+        (tc_pos, `Invalid conditional trait usage of trait: '${tc_name.i1}'`),
+        (cd.name.i0, `By class: '${cd.name.i1}'`),
+        (ty_fr, "Cannot conditionally use a trait with type constants"),
+      ],
+    )
+  };
+  check_extends(tc_pos, cd, tc_class, Implements());
+  tparams = tc_class.tparams.map(AU.tparam_id);
+  subst = AU.make_subst(tc_pos, tparams, type_arguments);
+  conditions = when_type_clause_list(subst, p.conditions);
+  parent_extends = tc_class.extends_.map(tc_par -> tc_par with {conditions});
+  use = inherit_uses(subst, cd, parent_extends);
+  parent_params = replace_cla_params_inst(cd, tc_class.params);
+  parent_tc = (tc_class : A.Class_def) with {params => parent_params};
+  params = inherit_params(subst, tc_pos, cd, parent_tc);
+  parent_types = tc_class.types.map((_, tyd) ->
+    replace_type_const_inst(cd, tyd)
+  );
+  parent_methods = tc_class.methods.map((_, md) -> replace_method_inst(cd, md));
+  parent_consts = tc_class.consts.map((_, con) -> replace_const_inst(cd, con));
+  depth = inherit_depth(tc_class.depth, cd.depth);
+  types = inherit_types(cd.kind, subst, parent_types, cd.types);
+  methods = inherit_methods(cd, subst, conditions, tc_name, parent_methods);
+  consts = inherit_consts(subst, cd, tc_name, parent_consts);
+  cd with {params, types, methods, consts, use, depth}
+}
+
+fun inherit_depth(parent_depth: Int, depth: Int): Int {
+  if (parent_depth >= depth) {
+    parent_depth + 1
+  } else {
+    depth
+  }
+}
+
+fun check_mutable(
+  pos: FileRange,
+  child: A.Class_def,
+  parent: A.Class_def,
+): void {
+  (child.mutable_, parent.mutable_) match {
+  | (None(), _)
+  | (Some _, Some _) ->
+    void
+  | (Some(mut_fr), None()) ->
+    SkipError.errorl(
+      List[
+        (pos, "Invalid extension of non-mutable base class"),
+        (mut_fr, "A 'mutable' child cannot extend a non-mutable base class"),
+      ],
+    )
+  }
+}
+fun check_extends(
+  pos: FileRange,
+  child: A.Class_def,
+  parent: A.Class_def,
+  kind: Extends_kind,
+): void {
+  parent.kind match {
+  | A.KTrait() ->
+    kind match {
+    | Extends() ->
+      child.kind match {
+      | A.KTrait() -> void
+      | _ ->
+        SkipError.error(pos, "A trait can only be extended by another trait")
+      }
+    | Implements() ->
+      child.kind match {
+      | A.KTrait() -> SkipError.error(pos, "A trait cannot use another trait")
+      | _ -> void
+      }
+    }
+  | A.KBase() ->
+    kind match {
+    | Extends() ->
+      child.kind match {
+      | A.KTrait() ->
+        SkipError.error(pos, "A trait can only extend another trait")
+      | _ -> void
+      }
+    | Implements() -> SkipError.error(pos, "Only traits can be used")
+    }
+  | A.KClass() ->
+    kind match {
+    | Extends() ->
+      SkipError.error(
+        pos,
+        "Only classes marked with the \"base\" keyword can be extended",
+      )
+    | Implements() -> SkipError.error(pos, "Only traits can be used")
+    }
+  }
+}
+
+fun check_value_class(cd: A.Class_def): void {
+  vpos = cd.value.fromSome();
+  cd.kind match {
+  | A.KBase() ->
+    SkipError.error(vpos, "Base classes cannot be declared as value classes")
+  | A.KTrait() ->
+    SkipError.error(vpos, "Traits cannot be declared as value classes")
+  | A.KClass() -> void
+  };
+  if (!cd.extends_.isEmpty()) {
+    SkipError.error(vpos, "Value classes cannot extend base classes")
+  }
+}
+
+fun inherit_extends(
+  subst: SMap<A.Type_>,
+  cd: A.Class_def,
+  parent_extends: Array<A.Parent>,
+): Array<A.Parent> {
+  parent_extends
+    .map(p -> {
+      inst = p.source;
+      (type_name, type_args) = p.parent;
+      (pos, name) = make_class_name(type_name);
+      if (cd.name.i1 == name) {
+        SkipError.errorl(
+          List[
+            (pos, `Cyclic class hierarchy. Class '${name}' extends itself`),
+            (
+              inst.i0,
+              `Self-inheritence caused by extending class '${inst.i1}'`,
+            ),
+          ],
+        )
+      };
+      !type_args = type_args.map(ty -> type(subst, ty));
+      invariant(p.conditions.isEmpty(), "ICE conditional extend");
+      !p.parent = (type_name, type_args);
+      p
+    })
+    .concat(cd.extends_)
+}
+
+fun inherit_uses(
+  subst: SMap<A.Type_>,
+  cd: A.Class_def,
+  parent_uses: Array<A.Parent>,
+): Array<A.Parent> {
+  parent_uses
+    .map(p -> {
+      (type_name, type_args) = p.parent;
+      !type_args = type_args.map(ty -> type(subst, ty));
+      !p.conditions = when_type_clause_list(subst, p.conditions);
+      !p.parent = (type_name, type_args);
+      p
+    })
+    .concat(cd.use)
+}
+
+fun verify_methods_and_consts(cd: A.Class_def): void {
+  verify_methods(cd, cd.methods);
+  verify_consts(cd, cd.consts)
+}
+
+fun replace_cla_params_inst(
+  cd: A.Class_def,
+  params: A.MaybeClassParams,
+): A.MaybeClassParams {
+  params.mapClassParams(
+    (cp -> cp with {params => replace_params_inst(cd, cp.params)}),
+  )
+}
+
+fun replace_params_inst(
+  cd: A.Class_def,
+  params: Parameters<A.Parameter>,
+): Parameters<A.Parameter> {
+  params.map(p ->
+    p with {
+      type => replace_inst_type(cd, p.type),
+      value => p.value.map(e -> replace_inst_expr(cd, e)),
+    }
+  )
+}
+
+fun replace_tparams_inst(
+  cd: A.Class_def,
+  tparams: Array<A.Type_parameter>,
+): Array<A.Type_parameter> {
+  tparams.map(p -> {
+    (v, i, n, t) = p;
+    (v, i, n, t.map((l -> l.map(ty -> replace_inst_type(cd, ty)))))
+  })
+}
+
+fun replace_method_inst(cd: A.Class_def, met: A.Method_def): A.Method_def {
+  tparams = replace_tparams_inst(cd, met.tparams);
+  params = replace_params_inst(cd, met.params);
+  return_ = replace_inst_type(cd, met.return_);
+  body = replace_body_inst(cd, met.body);
+  (met : A.Method_def) with {tparams, params, return_, body}
+}
+
+fun replace_const_inst(cd: A.Class_def, con: A.Const_def): A.Const_def {
+  type = replace_inst_type(cd, con.type);
+  value = replace_body_inst(cd, con.value);
+  (con : A.Const_def) with {type, value}
+}
+
+fun replace_type_const_inst(
+  cd: A.Class_def,
+  tyd: A.Cla_type_def,
+): A.Cla_type_def {
+  tparams = replace_tparams_inst(cd, tyd.tparams);
+  body = replace_cla_tyd_inst(cd, tyd.body);
+  (tyd : A.Cla_type_def) with {tparams, body}
+}
+
+fun replace_inst_types(cd: A.Class_def, tl: Array<A.Type_>): Array<A.Type_> {
+  tl.map(ty -> replace_inst_type(cd, ty))
+}
+
+fun replace_inst_type(cd: A.Class_def, p: A.Type_): A.Type_ {
+  (pos, ty) = p;
+  (pos, replace_inst_type_(cd, ty))
+}
+
+fun replace_inst_type_(cd: A.Class_def, t: A.Type__): A.Type__ {
+  t match {
+  | A.Tany()
+  | A.Tunder()
+  | A.Tthis()
+  | A.Tfrozen()
+  | A.TnonNullable()
+  | A.Tabstract _ ->
+    t
+  | A.Tinst() ->
+    /* build tparams for substuted type */
+    args = cd.tparams.map(p -> {
+      (_, id, n, _) = p;
+      (n.i0, A.Tapply(A.Tparam(n, id), Array[]))
+    });
+    /* classname has been expanded */
+    A.Tapply(A.Tclass(cd.name), args)
+  | A.Tapply(n, args) -> A.Tapply(n, replace_inst_types(cd, args))
+  | A.Ttuple(tyl) -> A.Ttuple(replace_inst_types(cd, tyl))
+  | A.Tfun(fkind, tparams, tbody) ->
+    tparams1 = tparams.map(ty -> replace_inst_type(cd, ty));
+    tbody1 = replace_inst_type(cd, tbody);
+    A.Tfun(fkind, tparams1, tbody1)
+  | A.Tmutable(ty) -> A.Tmutable(replace_inst_type(cd, ty))
+  | A.Treadonly(ty) -> A.Treadonly(replace_inst_type(cd, ty))
+  | A.Tawaitable(ty) -> A.Tawaitable(replace_inst_type(cd, ty))
+  }
+}
+
+fun replace_cla_tyd_inst(cd: A.Class_def, x: A.Cla_tyd): A.Cla_tyd {
+  x match {
+  | A.TydDefined(ty) -> A.TydDefined(replace_inst_type(cd, ty))
+  | A.TydAbstract(constraint_ty, default_ty) ->
+    A.TydAbstract(
+      constraint_ty.map(ty -> replace_inst_type(cd, ty)),
+      default_ty.map(ty -> replace_inst_type(cd, ty)),
+    )
+  }
+}
+
+fun replace_body_inst(cd: A.Class_def, x: A.Inherited_body): A.Inherited_body {
+  x match {
+  | x1 @ (_, A.Inherited(_)) -> x1
+  | (pos, A.Body(eb)) -> (pos, A.Body(replace_expr_body_inst(cd, eb)))
+  }
+}
+
+fun replace_expr_body_inst(cd: A.Class_def, x: A.Expr_body): A.Expr_body {
+  x match {
+  | A.BNone()
+  | A.BFrom(_)
+  | A.BNative(_) ->
+    x
+  | A.BExpr(e) -> A.BExpr(() ~> replace_inst_expr(cd, e()))
+  | A.BAlgebraic(mbl) -> A.BAlgebraic(replace_inst_match_branches(cd, mbl))
+  }
+}
+
+fun replace_inst_expr(cd: A.Class_def, e: A.Expr): A.Expr {
+  replace_inst_expr_cps((x -> x), cd, e)
+}
+
+fun replace_inst_expr_cps(
+  k: ((A.Expr) -> A.Expr),
+  cd: A.Class_def,
+  e: A.Expr,
+): A.Expr {
+  (pos, e_) = e;
+  e_ match {
+  | A.Bind(lv, rv, next_e) ->
+    rv1 = replace_inst_expr(cd, rv);
+    replace_inst_expr_cps((ek -> k((pos, A.Bind(lv, rv1, ek)))), cd, next_e)
+  | A.Seq(e1, e2) ->
+    e11 = replace_inst_expr(cd, e1);
+    replace_inst_expr_cps((e21 -> k((pos, A.Seq(e11, e21)))), cd, e2)
+  | _ -> k(replace_inst_expr_(cd, e))
+  }
+}
+
+fun replace_inst_expr_(cd: A.Class_def, p: (FileRange, A.Expr_)): A.Expr {
+  (pos, e_) = p;
+  (pos, replace_inst_expr__(cd, e_))
+}
+
+fun replace_inst_expr__(cd: A.Class_def, e_: A.Expr_): A.Expr_ {
+  k = ex -> replace_inst_expr(cd, ex);
+  k_params = params ->
+    params.map(p -> {
+      (i, e) = p;
+      (i, k(e))
+    });
+  e_ match {
+  | A.Bind _
+  | A.Seq _ ->
+    invariant_violation("ICE bind/seq covered in replace_inst_expr_cps")
+  | A.Literal(_)
+  | A.Var(_)
+  | A.MacroVar(_) ->
+    e_
+  | A.If(e1, e2, e3) -> A.If(k(e1), k(e2), k(e3))
+  | A.Cstr(n, tyl) -> A.Cstr(n, replace_inst_types(cd, tyl))
+  | A.Call(e, tyl, ep) ->
+    A.Call(k(e), replace_inst_types(cd, tyl), k_params(ep))
+  | A.CallArray(e, tyl, ep) ->
+    A.CallArray(k(e), replace_inst_types(cd, tyl), k_params(ep))
+  | A.CallMap(e, tyl, args) ->
+    A.CallMap(
+      k(e),
+      replace_inst_types(cd, tyl),
+      args.map(arg -> {
+        (key, value) = arg;
+        (k(key), k(value))
+      }),
+    )
+  | A.Annotated(e, ty) -> A.Annotated(k(e), replace_inst_type(cd, ty))
+  | A.Dot(e, n) -> A.Dot(k(e), n)
+  | A.StaticDot(e, n) -> A.StaticDot(k(e), n)
+  | A.MacroDot(e, n) -> A.MacroDot(k(e), n)
+  | A.MacroStaticDot(e, n) -> A.MacroStaticDot(k(e), n)
+  | A.Pipe(e1, e2) -> A.Pipe(k(e1), k(e2))
+  | A.Binop(bop, e1, e2) -> A.Binop(bop, k(e1), k(e2))
+  | A.Unop(uop, e) -> A.Unop(uop, k(e))
+  | A.Is(e1, pat) -> A.Is(k(e1), replace_inst_pattern(cd, pat))
+  | A.As(e1, pat) -> A.As(k(e1), replace_inst_pattern(cd, pat))
+  | A.Match(e, mbl) -> A.Match(k(e), replace_inst_match_branches(cd, mbl))
+  | A.Lambda(mods, nparams, e) -> A.Lambda(mods, nparams, k(e))
+  | A.Tuple(el) -> A.Tuple(el.map(k))
+  | A.TemplateLiteral(ep) -> A.TemplateLiteral(k_params(ep))
+  | A.Try(e, mbl) -> A.Try(k(e), replace_inst_match_branches(cd, mbl))
+  | A.Await(e) -> A.Await(k(e))
+  | A.Return(e) -> A.Return(k(e))
+  | A.Yield(e) -> A.Yield(k(e))
+  | A.YieldBreak() -> A.YieldBreak()
+  | A.Async(e) -> A.Async(k(e))
+  | A.Throw(e) -> A.Throw(k(e))
+  | A.With(e, updates) ->
+    A.With(
+      k(e),
+      updates.map((_, p) -> {
+        (i, e1) = p;
+        (i, k(e1))
+      }),
+    )
+  | A.Mutable(e) -> A.Mutable(k(e))
+  | A.Continue() -> A.Continue()
+  | A.Break(eb) -> A.Break(k(eb))
+  | A.Loop(eb) -> A.Loop(k(eb))
+  | A.DoWhile(body, condition, withoutBreak) ->
+    A.DoWhile(k(body), k(condition), k(withoutBreak))
+  | A.While(condition, body, withoutBreak) ->
+    A.While(k(condition), k(body), k(withoutBreak))
+  | A.ForEach(binding, collection, body, withoutBreak) ->
+    A.ForEach(binding, k(collection), k(body), k(withoutBreak))
+  | A.ForEachFieldMacro(field, fieldName, body) ->
+    A.ForEachFieldMacro(field, fieldName, k(body))
+  }
+}
+
+fun replace_inst_match_branches(
+  cd: A.Class_def,
+  mbl: List<A.Match_branch>,
+): List<A.Match_branch> {
+  mbl.map(mb -> replace_inst_match_branch(cd, mb))
+}
+
+fun replace_inst_match_branch(
+  cd: A.Class_def,
+  p: A.Match_branch,
+): A.Match_branch {
+  (ps, maybe_guard, e) = p;
+  (
+    ps.map(pat -> replace_inst_pattern(cd, pat)),
+    maybe_guard.map(ex -> replace_inst_expr(cd, ex)),
+    replace_inst_expr(cd, e),
+  )
+}
+
+fun replace_inst_pattern(cd: A.Class_def, p: A.Pattern): A.Pattern {
+  kex = ex -> replace_inst_expr(cd, ex);
+  kpat = pat -> replace_inst_pattern(cd, pat);
+  (
+    p.i0,
+    p.i1 match {
+    | A.Pat_const(ex) -> A.Pat_const(kex(ex))
+    | A.Pat_type(tid, params_opt, complete) ->
+      A.Pat_type(tid, params_opt.map(params -> params.map(kpat)), complete)
+    | A.Pat_tuple(pats) -> A.Pat_tuple(pats.map(kpat))
+    | A.Pat_as(pat, n) -> A.Pat_as(kpat(pat), n)
+    | A.Pat_var _
+    | A.Pat_literal _ ->
+      p.i1
+    },
+  );
+}
+
+/*****************************************************************************/
+/* Adds inherited parameters */
+/*****************************************************************************/
+fun inherit_params(
+  subst: SMap<A.Type_>,
+  pos: FileRange,
+  cd: A.Class_def,
+  parent: A.Class_def,
+): A.MaybeClassParams {
+  chifr = cd.name.i0;
+  (parent.params, cd.params) match {
+  // inherit native
+  | (x @ A.NativeConstruct _, A.NoParams())
+  // both native
+  | (A.NativeConstruct _, x @ A.NativeConstruct _)
+  /// parent has no constructor
+  | (A.NoParams(), x) ->
+    x
+  | (A.NativeConstruct(fr), A.HasParams(A.Class_params{pos => cfr})) ->
+    msg = `Child '${
+      cd.name.i1
+    }' inherited a native parameter list from parent '${parent.name.i1}'`;
+    chfr = cd.name.i0;
+    SkipError.errorl(
+      List[
+        (chfr, "Cannot add parameters to a class with a native parameter list"),
+        (cfr, msg),
+        (fr, `'${parent.name.i1}' was declared 'native' here`),
+      ],
+    )
+
+  | (A.HasParams(A.Class_params{pos => cfr}), A.NativeConstruct(fr)) ->
+    msg = `Child '${cd.name.i1}' inherited a parameter list from parent '${
+      parent.name.i1
+    }'`;
+    chfr = cd.name.i0;
+    SkipError.errorl(
+      List[
+        (chfr, "Cannot add parameters to a class with a native parameter list"),
+        (cfr, msg),
+        (fr, `'${cd.name.i1}' was declared 'native' here`),
+      ],
+    )
+  | (
+    A.HasParams(A.Class_params{source => (_, p_source)}),
+    A.HasParams(A.Class_params{source => (_, c_source)}),
+  ) if (p_source == c_source) ->
+    /* parent and child both inherit constructor from common super */
+    cd.params
+  | (A.HasParams(pp), mcp) if (parent.kind == A.KTrait()) ->
+    /* inherit trait fields by copying down without attribution */
+    parent_params = pp.params.map(par ->
+      par with {type => type(subst, par.type)}
+    );
+    cp = mcp match {
+    | A.NativeConstruct _ -> invariant_violation("ICE covered above")
+    | A.HasParams(params @ A.Class_params{params => child_params}) ->
+      cp_params = merge_params(pos, cd, parent, child_params, parent_params);
+      check_visibility(pos, params.visibility, pp.visibility);
+      (params : A.Class_params) with {params => cp_params}
+    | A.NoParams() ->
+      A.Class_params{
+        pos => cd.name.i0,
+        final_ => None(),
+        params => parent_params,
+        source => cd.name,
+        visibility => pp.visibility,
+      }
+    };
+    A.HasParams(cp)
+  | (A.HasParams(pp), mcp) ->
+    cp_opt = mcp match {
+    | A.NoParams() -> None()
+    | A.NativeConstruct _ -> invariant_violation("ICE covered above")
+    | A.HasParams(cp) -> Some(cp)
+    };
+    /* inherit base class fields */
+    parent_params = pp.params.map(par ->
+      par with {type => type(subst, par.type)}
+    );
+    params = (pp.final_, cp_opt) match {
+    | (_, None()) ->
+      /* child has no constructor, inherit parent fields */
+      parent_params
+    | (Some(pp_final_pos), Some(A.Class_params{source => source})) ->
+      /* parent constructor is not overridable */
+      /* message depends on whether child has already inherited */
+      msg = if (source.i0 != cd.name.i0) {
+        "To inherit multiple constructors, none can be declared as final"
+      } else {
+        "To add fields to an inherited constructor, it cannot be declared as final"
+      };
+      ppmsg = `Constructor for '${parent.name.i1}' was declared as final here`;
+      SkipError.errorl(List[(chifr, msg), (pp_final_pos, ppmsg)])
+    | (
+      None(),
+      Some(A.Class_params{final_ => Some(ffr), pos => _, source}),
+    ) if (source.i0 != cd.name.i0) ->
+      /* child has inherited a non-overridable constructor */
+      (_, source_name) = source;
+      chimsg = "To inherit multiple constructors, none can be declared as final";
+      finalmsg = `Constructor for '${source_name}' was declared as final here`;
+      SkipError.errorl(List[(chifr, chimsg), (ffr, finalmsg)])
+    | (None(), Some(A.Class_params{params => params})) ->
+      /* child has its own constructor, can be non-overridable and still inherit */
+      merge_params(pos, cd, parent, params, parent_params)
+    };
+
+    cp_pos = cp_opt match {
+    | None() -> pp.pos
+    | Some(A.Class_params{pos => cp_pos}) -> cp_pos
+    };
+    final_ = cp_opt match {
+    | None() -> pp.final_
+    | Some(A.Class_params{final_}) ->
+      pp.final_ match {
+      | Some(fr) ->
+        pmsg = "Parent's constructor was declared as final";
+        cmsg = "Child cannot modify the inherited constructor";
+        SkipError.errorl(List[(fr, pmsg), (cp_pos, cmsg)])
+      | None() -> void
+      };
+      final_
+    };
+    source = cp_opt match {
+    | None() -> pp.source
+    | Some(_) -> cd.name
+    };
+    visibility = cp_opt match {
+    | None() -> pp.visibility
+    | Some(A.Class_params{visibility}) ->
+      check_visibility(pos, visibility, pp.visibility);
+      visibility
+    };
+    A.HasParams(
+      A.Class_params{pos => cp_pos, final_, params, source, visibility},
+    )
+  }
+}
+
+fun merge_ordered_params(
+  childName: A.Name,
+  childA: Array<A.Parameter>,
+  parentA: Array<A.Parameter>,
+): Array<A.Parameter> {
+  /* check for dupe names here, to ensure good error positions */
+  to_map = a -> a.reduce((m, p) -> m.add(p.name, p), UMap[]);
+  fullMap = to_map(parentA).reduce(
+    (acc, n, param) -> add_field(childName, n, param, acc),
+    to_map(childA),
+  );
+  /* final field list is [child fields] @ [parent fields]
+     with all but leftmost occurence of common ancestor
+     fields removed. */
+  newParams = mutable Vector[];
+  index = 0;
+  buildAdded = (remaining, param) -> {
+    remaining.maybeGet(param.name) match {
+    | None() -> remaining
+    | Some(_) ->
+      newParams.push(param with {index});
+      !index = index + 1;
+      remaining.remove(param.name.i1)
+    }
+  };
+  !fullMap = childA.reduce(buildAdded, fullMap);
+  _ = parentA.reduce(buildAdded, fullMap);
+  newParams.toArray();
+}
+
+fun merge_params(
+  pos: FileRange,
+  child: A.Class_def,
+  parent: A.Class_def,
+  child_params: Parameters<A.Parameter>,
+  parent_params: Parameters<A.Parameter>,
+): Parameters<A.Parameter> {
+  (parent_params, child_params) match {
+  | (Positional(pl), Positional(cl)) ->
+    Positional(merge_ordered_params(child.name, cl, pl))
+  | (Named _, Named _) ->
+    Named(
+      UMap::createFromItems(
+        // Use the same algorithm for merging parameters
+        // So that the index that gets assigned is the same for both kinds of fields
+        merge_ordered_params(
+          child.name,
+          child_params.toArray().sortedBy(param ~> param.index),
+          parent_params.toArray().sortedBy(param ~> param.index),
+        ).map(param ~> (param.name, param)),
+      ),
+    )
+  | (Positional(_), Named(_)) ->
+    SkipError.errorl(
+      List[
+        (pos, "Incompatible kind of fields"),
+        (
+          parent.name.i0,
+          "'" + parent.name.i1 + "' has positional fields '(...)'",
+        ),
+        (child.name.i0, "But '" + child.name.i1 + "' has named fields '{...}'"),
+      ],
+    )
+  | (Named(_), Positional(_)) ->
+    SkipError.errorl(
+      List[
+        (pos, "Incompatible kind of fields"),
+        (parent.name.i0, "'" + parent.name.i1 + "' has named fields '{...}'"),
+        (
+          child.name.i0,
+          "But '" + child.name.i1 + "' has positional fields '(...)'",
+        ),
+      ],
+    )
+  }
+}
+
+fun add_field(
+  child_name: A.Name,
+  n: A.Name,
+  param: A.Parameter,
+  acc: UMap<A.Parameter>,
+): UMap<A.Parameter> {
+  acc.maybeGet(n) match {
+  | None() -> acc.add(n, param)
+  | Some(existing_param) ->
+    existing_param.source match {
+    | None() ->
+      (decl_pos, _) = existing_param.name;
+      (inherited_pos, inherited_class) = param.source.fromSome();
+      SkipError.errorl(
+        List[
+          (decl_pos, "Field name already bound: " + n.i1),
+
+          (
+            inherited_pos,
+            "Conflicts with field inherited from " + inherited_class,
+          ),
+        ],
+      )
+    | Some(src) if (src.i1 == child_name.i1) ->
+      (decl_pos, _) = existing_param.name;
+      (inherited_pos, _) = param.name;
+      (_, inherited_class) = param.source.fromSome();
+      SkipError.errorl(
+        List[
+          (decl_pos, "Field name already bound: " + n.i1),
+
+          (
+            inherited_pos,
+            "Conflicts with field declared in " + inherited_class,
+          ),
+        ],
+      )
+    | Some(src) if (src.i1 == param.source.fromSome().i1) ->
+      /* field has already been inherited from this base -
+         handled upstream, here for completeness */
+      acc
+    | Some(src) ->
+      (decl_pos, _) = child_name;
+      (inherited_pos, _) = param.name;
+      (_, inherited_class) = param.source.fromSome();
+      (existing_pos, _) = existing_param.name;
+      (_, existing_class) = src;
+      SkipError.errorl(
+        List[
+          (decl_pos, "Name already bound: " + n.i1),
+
+          (inherited_pos, "Field declared in " + inherited_class),
+
+          (existing_pos, "Conflicts with field declared in " + existing_class),
+        ],
+      )
+    }
+  }
+}
+
+fun check_visibility(
+  pos: FileRange,
+  child_vis: (FileRange, A.Visibility),
+  parent_vis: (FileRange, A.Visibility),
+): void {
+  (child_vis.i1, parent_vis.i1) match {
+  | (_, A.VPrivate())
+  | (A.VProtected(), A.VProtected())
+  | (A.VPublic(), A.VProtected())
+  | (A.VPublic(), A.VPublic()) ->
+    void
+  | _ ->
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          "Mismatched visibility. Child constructor visibility must match the parent's or must be more visible than the parent's",
+        ),
+        (
+          parent_vis.i0,
+          "Parent's constructor was declared with a visibility of: " +
+            vis_string(parent_vis),
+        ),
+        (
+          child_vis.i0,
+          "Child constructor was declared with a visibility of: " +
+            vis_string(child_vis),
+        ),
+      ],
+    )
+  }
+}
+
+/*****************************************************************************/
+/* Adds inherited constants. */
+/*****************************************************************************/
+fun inherit_consts(
+  subst: SMap<A.Type_>,
+  cd: A.Class_def,
+  parent_name: A.Name,
+  parent_consts: UMap<A.Const_def>,
+): UMap<A.Const_def> {
+  parent_consts.reduce(
+    (consts, name, pconst) -> {
+      consts.maybeGet(name) match {
+      | Some(cconst) ->
+        add_const_l = (exp, consts1) -> {
+          add_const(exp, parent_name, pconst, consts1)
+        };
+        resolve_conflict(
+          "constant",
+          cd.name,
+          const_data(cconst),
+          parent_name,
+          const_data(pconst),
+          add_const_l,
+          consts,
+        )
+      | None() ->
+        type = type(subst, pconst.type);
+        value = inherited_body(parent_name, pconst.value);
+        consts.add(name, (pconst : A.Const_def) with {type, value})
+      }
+    },
+    cd.consts,
+  )
+}
+
+fun add_const(
+  explicity: A.Explicity,
+  parent_name: A.Name,
+  pconst: A.Const_def,
+  consts: UMap<A.Const_def>,
+): UMap<A.Const_def> {
+  inherited = A.InheritedKind{
+    explicit => explicity,
+    from_ => parent_name,
+    value => get_body(pconst.value),
+    algebraic => false,
+    source => get_source(parent_name, pconst.value),
+  };
+  value = (pconst.value.i0, A.Inherited(inherited));
+  consts.replace(pconst.name.i1, (pconst : A.Const_def) with {value})
+}
+
+fun verify_consts(cd: A.Class_def, consts: UMap<A.Const_def>): void {
+  for (sk_const in consts) verify_dat("constant", cd, const_data(sk_const))
+}
+
+/*****************************************************************************/
+/* Adds inherited types. */
+/*****************************************************************************/
+fun inherit_types(
+  self_kind: A.Class_kind,
+  subst: SMap<A.Type_>,
+  parent_types: UMap<A.Cla_type_def>,
+  self_types: UMap<A.Cla_type_def>,
+): UMap<A.Cla_type_def> {
+  parent_types.reduce(
+    (self_types1, name, parent) -> {
+      self_types1.maybeGet(name) match {
+      | None() ->
+        body = inherit_cla_tyd(subst, self_kind, parent.body);
+        self_types1.add(name, (parent : A.Cla_type_def) with {body})
+      | Some(self) ->
+        check_inherit_type_body(parent, self);
+        self_types1
+      }
+    },
+    self_types,
+  )
+}
+
+fun inherit_cla_tyd(
+  subst: SMap<A.Type_>,
+  self_kind: A.Class_kind,
+  parent_body: A.Cla_tyd,
+): A.Cla_tyd {
+  (self_kind, parent_body) match {
+  | (_, A.TydDefined(value)) -> A.TydDefined(type(subst, value))
+  | (A.KClass(), A.TydAbstract(_, Some(def))) -> A.TydDefined(type(subst, def))
+  | (_, A.TydAbstract(tyd_type, def)) ->
+    tyd_type1 = tyd_type.map(ty -> type(subst, ty));
+    def1 = def.map(ty -> type(subst, ty));
+    A.TydAbstract(tyd_type1, def1)
+  }
+}
+
+fun check_inherit_type_body(
+  parent: A.Type_def<A.Cla_tyd>,
+  self: A.Type_def<A.Cla_tyd>,
+): void {
+  (parent.body, self.body) match {
+  | (A.TydDefined((ppos, _)), A.TydAbstract _) ->
+    SkipError.errorl(
+      List[
+        (
+          self.name.i0,
+          "Cannot redeclare this::" + self.name.i1 + " as abstract",
+        ),
+        (ppos, "Was defined with a type here"),
+      ],
+    )
+  | (A.TydDefined((ppos, _)), A.TydDefined((_spos, _))) ->
+    SkipError.errorl(
+      List[
+        (self.name.i0, "Cannot redefine this::" + self.name.i1),
+        (ppos, "Was defined with a type here"),
+      ],
+    )
+  | (A.TydAbstract(Some((ppos, _)), _), A.TydAbstract(None(), _)) ->
+    SkipError.errorl(
+      List[
+        (
+          self.name.i0,
+          "Cannot remove the constraint from this::" + self.name.i1,
+        ),
+        (ppos, "Was defined with a constraint here"),
+      ],
+    )
+  | (A.TydAbstract _, A.TydAbstract _)
+  | (A.TydAbstract _, A.TydDefined _) ->
+    void
+  }
+}
+
+/*****************************************************************************/
+/* Adds inherited methods. */
+/*****************************************************************************/
+fun inherit_methods(
+  self: A.Class_def,
+  subst: SMap<A.Type_>,
+  conditions: Array<A.When_type_clause>,
+  parent_name: A.Name,
+  parent_methods: UMap<A.Method_def>,
+): UMap<A.Method_def> {
+  chilled_only = self.isChilledOnly();
+  /* If a class cannot have mutable instantiations, we drop mutable and readonly
+   * modifiers from inherited members
+   * TODO The downside of this is that base classes tend to need to always
+   * be marked as mutable in the case that some child somwhere needs a mutable
+   * instance
+   */
+  update_kind = if (chilled_only) {
+    met ->
+      if (met.mutable_.isSome() || met.readonly_.isSome()) {
+        met with {mutable_ => None(), readonly_ => None()}
+      } else {
+        met
+      }
+  } else {
+    met -> met
+  };
+  /* We must rename inherited method's tparams to preserve global uniqueness */
+  parent_methods.reduce(
+    (methods, name, parent_method) -> {
+      mk_tparam = (n, id) -> (n.i0, A.Tapply(A.Tparam(n, id), Array[]));
+      !parent_method.tparams = parent_method.tparams.map(tp -> {
+        (var, old_id, n, tyl) = tp;
+        (_, parent_str) = parent_name;
+        new_id = old_id + "<on>" + self.name.i1 + "<from>" + parent_str;
+        !subst = subst.add(old_id, mk_tparam(n, new_id));
+        (var, new_id, n, tyl)
+      });
+      !parent_method = update_kind(method_(subst, parent_method));
+      child_method_opt = methods.maybeGet(name);
+      child_method_opt match {
+      | None() ->
+        body = inherited_body(parent_name, parent_method.body);
+        deferred_ = self.kind match {
+        | A.KClass() -> None()
+        | _ -> parent_method.deferred_
+        };
+        whenparams = parent_method.whenparams.concat(conditions);
+        met1 = parent_method with {body, deferred_, whenparams};
+        inherit_method(self, parent_name, met1, methods)
+      | Some(child_method) ->
+        add_method_wrap = (exp, methods1) -> {
+          deferred_ = child_method.deferred_;
+          whenparams = parent_method.whenparams.concat(conditions);
+          parent_method1 = parent_method with {deferred_, whenparams};
+          add_method(exp, self, parent_name, parent_method1, methods1)
+        };
+        resolve_conflict(
+          "method",
+          self.name,
+          method_data(child_method),
+          parent_name,
+          method_data(parent_method),
+          add_method_wrap,
+          methods,
+        )
+      }
+    },
+    self.methods,
+  )
+}
+
+fun verify_methods(cd: A.Class_def, consts: UMap<A.Method_def>): void {
+  for (met in consts) verify_dat("method", cd, method_data(met))
+}
+
+/*****************************************************************************/
+/* Adds a new inherited method. */
+/*****************************************************************************/
+fun add_method(
+  explicity: A.Explicity,
+  self: A.Class_def,
+  parent_name: A.Name,
+  parent_method: A.Method_def,
+  methods: UMap<A.Method_def>,
+): UMap<A.Method_def> {
+  deferred_ = parent_method.deferred_;
+  macro_ = parent_method.macro_;
+  whenparams = parent_method.whenparams;
+  body = parent_method.body;
+  inherited_method = A.InheritedKind{
+    explicit => explicity,
+    from_ => parent_name,
+    value => get_body(body),
+    algebraic => false,
+    source => get_source(parent_name, body),
+  };
+  inh_body = (body.i0, A.Inherited(inherited_method));
+  met = explicity match {
+  | A.Implicit() -> parent_method with {body => inh_body}
+  | A.Explicit()
+  | A.TempFrom(_) ->
+    met = methods[parent_method.name];
+    assert(explicity != A.Implicit() || empty_met(met));
+    met with {
+      body => inh_body,
+      deferred_,
+      macro_,
+      whenparams,
+      /* We must rename inherited method's tparams to preserve global uniqueness
+       * so grab the renamed ones
+       */
+      tparams => parent_method.tparams,
+      params => parent_method.params,
+      return_ => parent_method.return_,
+    }
+  };
+  inherit_method(self, parent_name, met, methods)
+}
+
+fun empty_met(met: A.Method_def): Bool {
+  empty_params = {
+    met.params match {
+    | Positional(params) -> params.isEmpty()
+    | Named(_) -> false
+    }
+  };
+  empty_ret = met.return_ match {
+  | (_, A.Tany()) -> true
+  | _ -> false
+  };
+  empty_params && empty_ret
+}
+
+/*****************************************************************************/
+/* Methods. */
+/*****************************************************************************/
+fun method_(subst: SMap<A.Type_>, met: A.Method_def): A.Method_def {
+  visibility = met.visibility;
+  memoized_ = met.memoized_;
+  macro_ = met.macro_;
+  mutable_ = met.mutable_;
+  async_ = met.async_;
+  static_ = met.static_;
+  annotations = met.annotations;
+  overridable_ = met.overridable_;
+  frozen_ = met.frozen_;
+  readonly_ = met.readonly_;
+  native_ = met.native_;
+  deferred_ = met.deferred_;
+  untracked_ = met.untracked_;
+  name = met.name;
+  tparams = met.tparams;
+  params = met.params;
+  whenparams = met.whenparams;
+  return_ = met.return_;
+  body = met.body;
+  tparams1 = type_parameter_list(subst, tparams);
+  whenparams1 = when_type_clause_list(subst, whenparams);
+  params1 = fun_parameters(subst, params);
+  return_1 = type(subst, return_);
+  body1 = method_body(subst, body);
+  A.Method_def{
+    range => met.range,
+    visibility,
+    memoized_,
+    macro_,
+    mutable_,
+    async_,
+    static_,
+    annotations,
+    overridable_,
+    frozen_,
+    readonly_,
+    native_,
+    deferred_,
+    untracked_,
+    name,
+    tparams => tparams1,
+    params => params1,
+    whenparams => whenparams1,
+    return_ => return_1,
+    body => body1,
+  }
+}
+
+fun method_body(subst: SMap<A.Type_>, p: A.Inherited_body): A.Inherited_body {
+  (pos, mb) = p;
+  (pos, method_body_(subst, mb))
+}
+
+fun method_body_(
+  subst: SMap<A.Type_>,
+  x: A.Inherited_body_,
+): A.Inherited_body_ {
+  x match {
+  | A.Inherited(e @ A.InheritedKind{value => value}) ->
+    value1 = method_body__(subst, value);
+    A.Inherited((e : A.InheritedKind) with {value => value1})
+  | A.Body(x1) -> A.Body(method_body__(subst, x1))
+  }
+}
+
+fun method_body__(subst: SMap<A.Type_>, x: A.Expr_body): A.Expr_body {
+  x match {
+  | A.BNone() -> A.BNone()
+  | A.BNative(p) -> A.BNative(p)
+  | A.BExpr(e) -> A.BExpr(() ~> expr(subst, e()))
+  | A.BAlgebraic(mbl) -> A.BAlgebraic(mbl.map(mb -> match_branch(subst, mb)))
+  | x1 @ A.BFrom(_) -> x1
+  }
+}
+
+/*****************************************************************************/
+/* Types */
+/*****************************************************************************/
+fun type_parameter_list(
+  subst: SMap<A.Type_>,
+  tpl: Array<A.Type_parameter>,
+): Array<A.Type_parameter> {
+  tpl.map(tp -> type_parameter(subst, tp))
+}
+
+fun type_parameter(
+  subst: SMap<A.Type_>,
+  p: A.Type_parameter,
+): A.Type_parameter {
+  (variance, i, tpn, ty_cstr) = p;
+  (variance, i, tpn, ty_cstr.map((l -> l.map(ty -> type(subst, ty)))))
+}
+
+fun when_type_clause_list(
+  subst: SMap<A.Type_>,
+  wcl: Array<A.When_type_clause>,
+): Array<A.When_type_clause> {
+  wcl.map(wc -> when_type_clause(subst, wc))
+}
+
+fun when_type_clause(
+  subst: SMap<A.Type_>,
+  wc: A.When_type_clause,
+): A.When_type_clause {
+  (ty, tyl) = wc;
+  (type(subst, ty), tyl.map(t -> type(subst, t)))
+}
+
+fun type(subst: SMap<A.Type_>, ty: A.Type_): A.Type_ {
+  (_, ty1) = AU.type(
+    ((subst1: SMap<SkipAst.Type_>, _: void, ty1: SkipAst.Type_) ~> {
+      ty1 match {
+      | (pos, A.Tapply(A.Tparam((_, _n), id), targs)) ->
+        if (!targs.isEmpty()) {
+          SkipError.error(
+            pos,
+            "A type parameter cannot be applied to type arguments",
+          )
+        };
+        subst1.maybeGet(id) match {
+        | Some(t) -> (void, (pos, t.i1))
+        | None() -> (void, ty1)
+        }
+      | x -> (void, x)
+      }
+    }),
+    subst,
+    void,
+    ty,
+  );
+  ty1
+}
+
+/*****************************************************************************/
+/* Function parameters. */
+/*****************************************************************************/
+fun fun_parameters(
+  subst: SMap<A.Type_>,
+  x: Parameters<A.Parameter>,
+): Parameters<A.Parameter> {
+  x.map(param -> parameter(subst, param))
+}
+
+fun parameter(subst: SMap<A.Type_>, param: A.Parameter): A.Parameter {
+  t__ = param;
+  annotations = t__.annotations;
+  visibility = t__.visibility;
+  anonymous = t__.anonymous;
+  mutable_ = t__.mutable_;
+  name = t__.name;
+  value = t__.value;
+  source = t__.source;
+  deferred_ = t__.deferred_;
+  index = t__.index;
+  type1 = type(subst, t__.type);
+  value1 = value.map(e -> expr(subst, e));
+  A.Parameter{
+    annotations,
+    visibility,
+    anonymous,
+    mutable_,
+    name,
+    type => type1,
+    value => value1,
+    source,
+    deferred_,
+    index,
+  }
+}
+
+/*****************************************************************************/
+/* Expressions. */
+/*****************************************************************************/
+fun match_branch(subst: SMap<A.Type_>, p: A.Match_branch): A.Match_branch {
+  (pat, maybe_guard, action) = p;
+  (pat, maybe_guard.map(ex -> expr(subst, ex)), expr(subst, action))
+}
+
+fun expr(subst: SMap<SkipAst.Type_>, e: SkipAst.Expr): SkipAst.Expr {
+  (_, e1) = AU.expr(
+    (subst1: SMap<SkipAst.Type_>, _: void, e1: SkipAst.Expr) ~> {
+      e1 match {
+      | (pos, A.Annotated(e2, ty)) ->
+        fixed_tyl = type(subst1, ty);
+        (void, (pos, A.Annotated(e2, fixed_tyl)))
+      | (pos, A.CallArray(ec, tyl, args)) ->
+        fixed_tyl = tyl.map(ty -> type(subst1, ty));
+        (void, (pos, A.CallArray(ec, fixed_tyl, args)))
+      | (pos, A.CallMap(ec, tyl, args)) ->
+        fixed_tyl = tyl.map(ty -> type(subst1, ty));
+        (void, (pos, A.CallMap(ec, fixed_tyl, args)))
+      | (pos, A.Call(ef, tyl, args)) ->
+        fixed_tyl = tyl.map(ty -> type(subst1, ty));
+        (void, (pos, A.Call(ef, fixed_tyl, args)))
+      | (pos, A.Cstr(n, tyl)) ->
+        fixed_tyl = tyl.map(ty -> type(subst1, ty));
+        (void, (pos, A.Cstr(n, fixed_tyl)))
+      | x -> (void, x)
+      }
+    },
+    subst,
+    void,
+    e,
+  );
+  e1
+}
+
+module end;

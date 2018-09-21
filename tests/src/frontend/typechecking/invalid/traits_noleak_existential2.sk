@@ -1,0 +1,11 @@
+base class P<T>
+class L<T, U: Equality & T>(x: T) extends P<U>
+class R<T, U: Equality & T>(x: T) extends P<U>
+
+fun test<T>(e: P<T>): Bool {
+  x = e match {
+  | L(v) -> v
+  | R(v) -> v
+  };
+  x == x
+}

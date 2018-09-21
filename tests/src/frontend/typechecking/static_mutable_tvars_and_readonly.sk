@@ -1,0 +1,12 @@
+mutable class Foo(mutable x: Int)
+class Eater() {
+  static fun eat<T: readonly Foo>(T): void {
+    void
+  }
+}
+
+fun main(): void {
+  m = mutable Foo(0);
+  Eater::eat(m);
+  print_string("Pass")
+}

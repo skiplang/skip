@@ -1,0 +1,7 @@
+fun no1(): void {
+  _ = while (false) break "" else 0
+}
+
+fun no2(): void {
+  _ = do break 0 while (true) else ""
+}

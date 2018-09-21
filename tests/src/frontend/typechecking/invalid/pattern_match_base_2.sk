@@ -1,0 +1,7 @@
+base class Foo
+
+fun matcher(x: Foo): void {
+  x match {
+  | Foo() -> void
+  }
+}

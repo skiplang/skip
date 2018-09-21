@@ -1,0 +1,7 @@
+fun test(): void {
+  if true {
+    void
+  } else {
+    void
+  }
+}

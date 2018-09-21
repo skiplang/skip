@@ -1,0 +1,23 @@
+trait Wrapper<T> {
+  fun get(): T;
+}
+
+class ConcreteWrapper<T>(t: T) uses Wrapper<T> {
+  fun get(): T {
+    this.t
+  }
+}
+
+class Foo<T: Show>(t: T) {
+  static fun build<C: Wrapper<T>>(c: C): Foo<T> {
+    Foo(c.get())
+  }
+
+  fun get(): String {
+    this.t.toString()
+  }
+}
+
+fun main(): void {
+  print_raw(Foo::build(ConcreteWrapper("Pass\n")).get())
+}

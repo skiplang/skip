@@ -1,0 +1,11 @@
+mutable base class Hide {
+  readonly fun doIt(): Int;
+}
+mutable class Foo<T: () -> Int>(mutable v: T) extends Hide {
+  readonly fun doIt(): Int {
+    this.v()
+  }
+}
+fun no(foo: readonly Hide): void {
+  _ = foo.doIt()
+}

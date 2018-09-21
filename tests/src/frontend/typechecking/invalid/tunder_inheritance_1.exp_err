@@ -1,0 +1,22 @@
+File "./typechecking/invalid/tunder_inheritance_1.sk", line 7, characters 7-9:
+Invalid override for the field 'hello' on child 'Bar' for parent 'Foo'
+5 | }
+6 |
+7 | class Bar() extends Foo {
+  |       ^^^
+8 |   fun hello(x: Int): String {
+
+File "./typechecking/invalid/tunder_inheritance_1.sk", line 2, characters 25-25:
+The type: _[0]
+1 | base class Foo {
+2 |   overridable fun hello(_): String {
+  |                         ^
+3 |     "default"
+
+File "./typechecking/invalid/tunder_inheritance_1.sk", line 8, characters 16-18:
+Is not a subtype of: Int
+ 6 |
+ 7 | class Bar() extends Foo {
+ 8 |   fun hello(x: Int): String {
+   |                ^^^
+ 9 |     x.toString()

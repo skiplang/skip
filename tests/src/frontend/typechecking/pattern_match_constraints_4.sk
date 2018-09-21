@@ -1,0 +1,18 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+class Inv<T>()
+base class Bar<T>
+class Foo<T: Int>(x: T) extends Bar<Inv<T>>
+
+fun tester<T: Int>(_: Bar<Inv<T>>): void {
+  void
+}
+fun matcher<T>(x: Bar<T>): Int {
+  x match {
+  | o @ Foo(v) ->
+    tester(o);
+    v
+  }
+}

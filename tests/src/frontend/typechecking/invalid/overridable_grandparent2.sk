@@ -1,0 +1,13 @@
+base class Foo {
+  fun foo(): void {
+    void
+  }
+}
+
+base class Bar extends Foo
+
+class Baz() extends Foo {
+  fun foo(): void {
+    void
+  }
+}

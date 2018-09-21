@@ -1,0 +1,457 @@
+@test
+fun testCollect(): void {
+  values = Range(0, 10);
+  assertEqual(Array::createFromItems(values), values.collect(Array));
+  assertEqual(Vector::createFromItems(values), values.collect(Vector));
+  assertEqual(Set::createFromItems(values), values.collect(Set));
+  assertEqual(
+    UnorderedSet::createFromItems(values),
+    values.collect(UnorderedSet),
+  );
+  items = values.map(x -> ("" + x, x));
+  assertEqual(Map::createFromItems(items), items.collect(Map));
+  assertEqual(
+    UnorderedMap::createFromItems(items),
+    items.collect(UnorderedMap),
+  );
+}
+
+@test
+fun testArray(): void {
+  seq = n ~> {
+    Array::createFromItems(Range(0, n))
+  };
+  (OrderedSeqTest(seq)).test();
+  (UnorderedSeqTest(seq)).test();
+}
+@test
+fun testVector(): void {
+  seq = n ~> {
+    Vector::createFromItems(Range(0, n))
+  };
+  (OrderedSeqTest(seq)).test();
+  (UnorderedSeqTest(seq)).test();
+}
+
+@test
+fun testUnorderedSet(): void {
+  seq = n ~> {
+    UnorderedSet::createFromItems(Range(0, n))
+  };
+  (UnorderedSeqTest(seq)).test();
+}
+
+@test
+fun testSet(): void {
+  seq = n ~> {
+    Set::createFromItems(Range(0, n))
+  };
+  (OrderedSeqTest(seq)).test();
+  (UnorderedSeqTest(seq)).test();
+}
+
+@test
+// Test the default Seq method implementations using a local
+// Seq subclass that only implements values() and no other
+// methods
+fun testSeq(): void {
+  seq = n ~> {
+    View(Range(0, n))
+  };
+  (OrderedSeqTest(seq)).test();
+  (UnorderedSeqTest(seq)).test();
+}
+
+mutable class View<+T, S: Sequence<T>>(source: S) extends Sequence<T> {
+  readonly fun size(): Int {
+    this.source.size()
+  }
+
+  readonly fun values(): mutable Iterator<T> {
+    this.source.values()
+  }
+}
+
+// Tests that an ordered Seq implementation iterates its values in order
+// by iterating over sequences representing consecutive ints in the range [0, n).
+class OrderedSeqTest(make: Int ~> Sequence<Int>) {
+  fun test(): void {
+    this.sanity();
+    this.all();
+    this.any();
+    this.drop();
+    this.dropWhile();
+    this.each();
+    this.filter();
+    this.filterNone();
+    this.find();
+    this.findIndex();
+    this.flatMap();
+    this.flatten();
+    this.map();
+    this.reduce();
+    this.take();
+    this.takeWhile();
+    this.zip();
+    this.zipWith();
+    this.sum();
+    this.max();
+    this.maxBy();
+    this.min();
+    this.minBy();
+  }
+
+  // Test the raw values to make sure this.make is the values [0..n)
+  fun sanity(): void {
+    assertEqual(this.make(5).size(), 5);
+    assertEqual(sum(this.make(5)), 10)
+  }
+
+  fun all(): void {
+    assertTrue(this.make(10).all(i -> i >= 0));
+    assertFalse(this.make(10).all(i -> i > 0))
+  }
+
+  fun any(): void {
+    assertTrue(this.make(10).any(i -> i <= 0));
+    assertFalse(this.make(10).any(i -> i < 0))
+  }
+
+  fun drop(): void {
+    assertEqual(sum(this.make(10).drop(10)), 0);
+    assertEqual(sum(this.make(10).drop(5)), 35)
+  }
+
+  fun dropWhile(): void {
+    assertEqual(sum(this.make(10).dropWhile(i -> i < 5)), 35)
+  }
+
+  fun filter(): void {
+    even = i -> i % 2 == 0;
+    assertEqual(sum(this.make(10).filter(even)), 20)
+  }
+
+  fun filterNone(): void {
+    items = this.make(10)
+      .map(x -> if (x % 2 == 0) Some(x) else None())
+      .filterNone();
+    assertEqual(sum(items), 20)
+  }
+
+  fun find(): void {
+    assertEqual(this.make(10).find(i -> i == 5).fromSome(), 5)
+  }
+
+  fun findIndex(): void {
+    assertEqual(this.make(10).findIndex(i -> i == 8), Some(8));
+    assertEqual(this.make(10).findIndex(i -> i == 20), None());
+  }
+
+  fun reduce(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.make(10).reduce(f, 1), 23357000)
+  }
+
+  fun each(): void {
+    n = 1;
+    f = i -> !n = (n + 2) * (i + 1);
+    this.make(10).each(f);
+    assertEqual(n, 23357000)
+  }
+
+  fun sum(): void {
+    assertEqual(this.make(0).sumInt(), 0);
+    assertEqual(this.make(0).map(x -> x.toFloat()).sumFloat(), 0.0);
+    assertEqual(this.make(10).sumInt(), 45);
+    assertEqual(this.make(10).map(x -> x.toFloat()).sumFloat(), 45.0);
+  }
+
+  fun max(): void {
+    assertTrue(this.make(0).max().isNone());
+    assertEqual(this.make(10).max().fromSome(), 9);
+    assertEqual(this.make(10).drop(5).max().fromSome(), 9);
+    assertEqual(this.make(10).take(5).max().fromSome(), 4);
+  }
+
+  fun maxBy(): void {
+    assertTrue(this.make(0).maxBy(id).isNone());
+    assertEqual(this.make(10).maxBy(id).fromSome(), 9);
+    assertEqual(this.make(10).maxBy(x ~> 10 - x).fromSome(), 0); // invert
+  }
+
+  fun min(): void {
+    assertTrue(this.make(0).min().isNone());
+    assertEqual(this.make(10).min().fromSome(), 0);
+    assertEqual(this.make(10).drop(5).min().fromSome(), 5);
+    assertEqual(this.make(10).take(5).min().fromSome(), 0);
+  }
+
+  fun minBy(): void {
+    assertTrue(this.make(0).minBy(id).isNone());
+    assertEqual(this.make(10).minBy(id).fromSome(), 0);
+    assertEqual(this.make(10).minBy(x ~> 10 - x).fromSome(), 9); // invert
+  }
+
+  fun map(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.make(10).map(i -> i + 1).reduce(f, 1), 177093422)
+  }
+
+  fun flatMap(): void {
+    assertEqual(sum(this.make(5).flatMap(i -> this.make(i + 1))), 20);
+  }
+
+  fun flatten(): void {
+    assertEqual(sum(this.make(5).map(i -> this.make(i + 1)).flatten()), 20);
+  }
+
+  fun take(): void {
+    assertEqual(sum(this.make(10).take(0)), 0);
+    assertEqual(sum(this.make(10).take(5)), 10)
+  }
+
+  fun takeWhile(): void {
+    assertEqual(sum(this.make(10).takeWhile(i -> i < 5)), 10)
+  }
+
+  fun zip(): void {
+    accpair = (n, xy) -> {
+      (x, y) = xy;
+      n + x + y
+    };
+    assertEqual(this.make(10).zip(this.make(10)).reduce(accpair, 0), 90);
+    assertEqual(this.make(10).zip(this.make(100)).reduce(accpair, 0), 90);
+    assertEqual(this.make(100).zip(this.make(10)).reduce(accpair, 0), 90);
+  }
+
+  fun zipWith(): void {
+    f = (x, y) -> x + y;
+    assertEqual(sum(this.make(10).zipWith(this.make(10), f)), 90);
+  }
+}
+
+// Tests that a unordered Seq implementation iterates its values in a stable
+// order (though that may differ from their original insertion order) by
+// testing that each operator iterates over the values of the sequence in the
+// same order as each().
+//
+// To test this, composition operators compare their results against
+// the same operator applied to the results of writing the items to
+// a vector via each().
+class UnorderedSeqTest(make: Int ~> Sequence<Int>) {
+  fun test(): void {
+    this.sanity();
+    this.all();
+    this.any();
+    this.drop();
+    this.dropWhile();
+    this.filter();
+    this.find();
+    this.findIndex();
+    this.reduce();
+    this.each();
+    this.map();
+    this.take();
+    this.takeWhile();
+    this.zip();
+    this.zipWith();
+    this.sum();
+    this.max();
+    this.maxBy();
+    this.min();
+    this.minBy();
+  }
+
+  // Test the raw values to make sure this.make is the values [0..n)
+  fun sanity(): void {
+    assertEqual(this.make(5).size(), 5);
+    assertEqual(sum(this.make(5)), 10)
+  }
+
+  fun all(): void {
+    assertTrue(this.make(10).all(i -> i >= 0));
+    assertFalse(this.make(10).all(i -> i > 0))
+  }
+
+  fun any(): void {
+    assertTrue(this.make(10).any(i -> i <= 0));
+    assertFalse(this.make(10).any(i -> i < 0))
+  }
+
+  fun drop(): void {
+    seq = this.make(10).drop(5);
+    fixed = fix(seq);
+    assertEqual(sum(seq), sum(fixed))
+  }
+
+  fun dropWhile(): void {
+    seq = this.make(10).dropWhile(i -> i >= 5);
+    fixed = fix(seq);
+    assertEqual(sum(seq), sum(fixed))
+  }
+
+  fun filter(): void {
+    even = i -> i % 2 == 0;
+    f = (x, y) -> (x + 2) * (y + 1);
+    seq = this.make(10).filter(even);
+    fixed = fix(seq);
+    assertEqual(seq.reduce(f, 1), fixed.reduce(f, 1))
+  }
+
+  fun filterNone(): void {
+    items = this.make(10)
+      .map(x -> if (x % 2 == 0) Some(x) else None())
+      .filterNone();
+    assertEqual(sum(items), 20)
+  }
+
+  fun find(): void {
+    vector1 = mutable Vector[];
+    vector2 = mutable Vector[];
+    res1 = this.make(10).find(i -> {
+      vector1.push(i);
+      i == 5
+    });
+    res2 = fix(this.make(10)).find(i -> {
+      vector2.push(i);
+      i == 5
+    });
+    assertEqual(res1.fromSome(), 5);
+    assertEqual(res2.fromSome(), 5);
+    assertTrue(vector1 == vector2); // same items should be yielded
+  }
+
+  fun findIndex(): void {
+    // Same indices should be yielded
+    assertEqual(
+      this.make(10).findIndex(i -> i == 8).fromSome(),
+      fix(this.make(10)).findIndex(i -> i == 8).fromSome(),
+    );
+    assertEqual(this.make(10).findIndex(i -> i == 20).isSome(), false);
+  }
+
+  fun flatMap(): void {
+    seq = n -> this.make(n);
+    fixed = n -> fix(this.make(n));
+    assertEqual(
+      sum(seq(5).flatMap(i -> seq(i + 1))),
+      sum(fixed(5).flatMap(i -> fixed(i + 1))),
+    );
+  }
+
+  fun flatten(): void {
+    seq = n -> this.make(n);
+    fixed = n -> fix(this.make(n));
+    assertEqual(
+      sum(seq(5).map(i -> seq(i + 1)).flatten()),
+      sum(fixed(5).map(i -> fixed(i + 1)).flatten()),
+    );
+  }
+
+  fun reduce(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    seq = this.make(10);
+    fixed = fix(seq);
+    assertEqual(seq.reduce(f, 1), fixed.reduce(f, 1))
+  }
+
+  fun each(): void {
+    set = mutable UnorderedSet[];
+    this.make(10).each(set.add);
+    assertEqual(set.size(), 10);
+    set.clear();
+    this.make(100).each(set.add);
+    assertEqual(set.size(), 100);
+  }
+
+  fun sum(): void {
+    assertEqual(this.make(0).sumInt(), 0);
+    assertEqual(this.make(0).map(x -> x.toFloat()).sumFloat(), 0.0);
+    assertEqual(this.make(10).sumInt(), 45);
+    assertEqual(this.make(10).map(x -> x.toFloat()).sumFloat(), 45.0);
+  }
+
+  fun max(): void {
+    assertTrue(this.make(0).max().isNone());
+    seq = this.make(10);
+    fixed = fix(seq);
+    assertEqual(seq.max().fromSome(), 9);
+    assertEqual(seq.drop(5).max().fromSome(), fixed.drop(5).max().fromSome());
+    assertEqual(seq.take(5).max().fromSome(), fixed.take(5).max().fromSome());
+  }
+
+  fun maxBy(): void {
+    assertTrue(this.make(0).maxBy(id).isNone());
+    assertEqual(this.make(10).maxBy(id).fromSome(), 9);
+    assertEqual(this.make(10).maxBy(x ~> 10 - x).fromSome(), 0); // invert
+  }
+
+  fun min(): void {
+    assertTrue(this.make(0).min().isNone());
+    seq = this.make(10);
+    fixed = fix(seq);
+    assertEqual(seq.min().fromSome(), 0);
+    assertEqual(seq.drop(5).min().fromSome(), fixed.drop(5).min().fromSome());
+    assertEqual(seq.take(5).min().fromSome(), fixed.take(5).min().fromSome());
+  }
+
+  fun minBy(): void {
+    assertTrue(this.make(0).minBy(id).isNone());
+    assertEqual(this.make(10).minBy(id).fromSome(), 0);
+    assertEqual(this.make(10).minBy(x ~> 10 - x).fromSome(), 9); // invert
+  }
+
+  fun map(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    seq = this.make(10);
+    fixed = fix(seq);
+    assertEqual(
+      seq.map(i -> i + 1).reduce(f, 1),
+      fixed.map(i -> i + 1).reduce(f, 1),
+    )
+  }
+
+  fun take(): void {
+    seq = this.make(10).take(5);
+    fixed = fix(seq);
+    assertEqual(sum(seq), sum(fixed))
+  }
+
+  fun takeWhile(): void {
+    seq = this.make(10).takeWhile(i -> i >= 5);
+    fixed = fix(seq);
+    assertEqual(sum(seq), sum(fixed))
+  }
+
+  fun zip(): void {
+    accpair = (n, xy) -> {
+      (x, y) = xy;
+      n + x + y
+    };
+    seq10 = this.make(10);
+    seq100 = this.make(100);
+    fixed10 = fix(seq10);
+    fixed100 = fix(seq100);
+    reduce = x -> x.reduce(accpair, 0);
+
+    assertEqual(reduce(seq10.zip(seq10)), reduce(fixed10.zip(fixed10)));
+    assertEqual(reduce(seq10.zip(seq100)), reduce(fixed10.zip(fixed100)));
+    assertEqual(reduce(seq100.zip(seq10)), reduce(fixed100.zip(fixed10)));
+  }
+
+  fun zipWith(): void {
+    f = (x, y) -> x + y;
+    seq = this.make(10);
+    fixed = fix(seq);
+    assertEqual(sum(seq.zipWith(seq, f)), sum(fixed.zipWith(fixed, f)));
+  }
+}
+
+// helpers
+fun sum(items: Sequence<Int>): Int {
+  items.reduce((x, y) -> x + y, 0)
+}
+
+fun fix(items: Sequence<Int>): Sequence<Int> {
+  Vector::createFromItems(items)
+}

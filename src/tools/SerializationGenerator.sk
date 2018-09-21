@@ -1,0 +1,840 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Given an input source .sk file
+// Generates an output .sk file which adds extension methods
+// to each class marked with an @serialize annotation.
+
+module alias PT = ParseTree;
+
+fun main(): void {
+  args = arguments();
+  source = args.size() match {
+  | 0 -> read_stdin()
+  | 1 -> FileSystem.readTextFile(args.get(0))
+  | _ ->
+    print_error_ln("Expected 0 or 1 arguments.");
+    exit(1)
+  };
+  try {
+    parseResults = SkipParser.parseSource(source, false);
+    idGenerator = SerializationGenerator.makeIdGenerator();
+    generator = mutable SerializationGenerator.SerializationGenerator{
+      writer => IndentedWriter.createOnStdout(),
+      idGenerator,
+    };
+    generator.visit(parseResults.tree)
+  } catch {
+  | exception ->
+    print_error_ln(exception.getMessage());
+    exit(1)
+  }
+}
+
+module SerializationGenerator;
+
+fun modifierIsSerialize(modifier: ParseTree): Bool {
+  (modifier is PT.AnnotationTree _) &&
+    (modifier as PT.AnnotationTree _).name.getId() == "serialize"
+}
+
+type ParseTree = PT.ParseTree;
+
+fun makeIdGenerator(): () -> String {
+  x = -1;
+  () -> {
+    !x = x + 1;
+    "temp" + x;
+  }
+}
+
+mutable class SerializationGenerator{
+  idGenerator: () -> String,
+} extends PT.ParseTreeVisitor uses IndentedWriter.Writer {
+  mutable fun visit(tree: ParseTree): void {
+    tree match {
+    | PT.ModuleTree{name} ->
+      this.writeLine(`module ${name.getTokenString()};`);
+      this.writeLine();
+      this.visitChildren(tree)
+    | PT.ModuleEndTree _ -> this.writeLine(`module end;`)
+    | PT.ClassDeclarationTree{
+      modifiers,
+      name,
+      typeParameters,
+      constructor,
+      body,
+    } ->
+      if (!modifiers.getList().any(modifierIsSerialize)) return void;
+      isBase = !modifiers.getModifierName(PredefinedName.base).isEmpty();
+      invariant(
+        !isBase ||
+          ctorParamsAreEmpty(
+            constructor as PT.ClassConstructorDeclarationTree _,
+          ),
+      );
+      className = name.getTokenString();
+      extend = if (isBase) Some(className) else None();
+      allChildrenEmpty = if (isBase) {
+        Some(this.allChildrenEmptyParams(body))
+      } else {
+        None()
+      };
+      this.writeClass(
+        modifiers,
+        body,
+        constructor,
+        typeParameters,
+        className,
+        isBase,
+        extend,
+        allChildrenEmpty,
+      )
+    | _ -> this.visitChildren(tree)
+    }
+  }
+
+  mutable fun writeClass(
+    modifiers: ParseTree,
+    body: ParseTree,
+    constructor: ParseTree,
+    typeParameters: ParseTree,
+    className: String,
+    isBase: Bool,
+    extend: ?String,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    generics = if (!typeParameters.isEmpty()) {
+      (typeParameters as PT.TypeParametersTree _).elements
+        .getList()
+        .map((x) -> (x as PT.TypeParameterTree _).name.getTokenString())
+        .collect(Vector)
+    } else {
+      Vector[]
+    };
+    parametersTree = (constructor as PT.ClassConstructorDeclarationTree _).parameters;
+    (parameters, isNamed) = if (parametersTree is PT.NamedParametersTree _) {
+      (
+        (parametersTree as PT.NamedParametersTree _).parameters
+          .getList()
+          .collect(Vector),
+        true,
+      )
+    } else {
+      (
+        (parametersTree as PT.PositionalParametersTree _).parameters
+          .getList()
+          .collect(Vector),
+        false,
+      )
+    };
+    this.writeLine("");
+    this.writeClassHeader(modifiers, className, isBase);
+    this.writeLine(` {`);
+    this.indent();
+    this.writeClassMetaField(className, generics, isBase, allChildrenEmpty);
+    this.outdent();
+    this.writeLine(`}`);
+    this.writeLine("");
+    if (isBase && !allChildrenEmpty.fromSome()) {
+      this.writeBaseMetaClass(className);
+      this.writeLine("");
+    };
+    this.writeClassMetaClass(
+      className,
+      body,
+      generics,
+      parameters,
+      isNamed,
+      isBase,
+      extend,
+      allChildrenEmpty,
+    );
+    if (isBase && !allChildrenEmpty.fromSome()) {
+      this.writeChildrenClasses(
+        body,
+        modifiers,
+        typeParameters,
+        extend,
+        allChildrenEmpty,
+      )
+    }
+  }
+
+  mutable fun writeBaseMetaClass(className: String): void {
+    this.writeLine(`base class Base${className}MetaClass`);
+    this.writeLine(`  extends MetaClass<${className}>`);
+    this.writeLine(`  uses Serialization.Serializer<${className}> {}`);
+  }
+
+  mutable fun writeChildrenClasses(
+    body: ParseTree,
+    modifiers: ParseTree,
+    typeParameters: ParseTree,
+    extend: ?String,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    for (member in body.getList()) {
+      member match {
+      | PT.ChildrenTree{childClasses} ->
+        for (x in childClasses.getList()) {
+          childClass = x as PT.ChildClassTree _;
+          constructor = childClass.constructor;
+          className = childClass.name.getTokenString();
+          this.writeClass(
+            modifiers,
+            body,
+            constructor,
+            typeParameters,
+            className,
+            false,
+            extend,
+            allChildrenEmpty,
+          )
+        }
+      | _ -> void
+      }
+    }
+  }
+
+  mutable fun writeClassHeader(
+    modifiers: PT.ParseTree,
+    className: String,
+    isBase: Bool,
+  ): void {
+    this.write(`extension `);
+    for (modifier in modifiers.getList().filter(modifier ~>
+      !modifierIsSerialize(modifier)
+    )) {
+      if (isBase || modifier.getTokenString() != "base") {
+        this.write(`${modifier.getTokenString()} `)
+      }
+    };
+    this.write(`class `);
+    this.write(className);
+  }
+
+  mutable fun writeClassMetaField(
+    className: String,
+    generics: Vector<String>,
+    isBase: Bool,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    if (isBase) {
+      this.write("overridable ")
+    };
+    metaType = if (isBase && !allChildrenEmpty.fromSome()) {
+      `Base${className}MetaClass`
+    } else {
+      `${className}MetaClass`
+    };
+    numArgs = generics.size();
+    if (numArgs == 0) {
+      this.writeLine(`const meta: ${metaType} = ${className}MetaClass();`)
+    } else {
+      metaGenerics = generics
+        .map((x) -> `U${x}, C${x}: MetaClass<U${x}>`)
+        .join(", ");
+      metaArgs = generics.map((x) -> `itemClass${x}: C${x}`).join(", ");
+      metaClassGenerics = generics.map((x) -> `U${x}, C${x}`).join(", ");
+      metaClassArgs = generics.map((x) -> `itemClass${x}`).join(", ");
+      this.writeLine(
+        `static fun meta<${metaGenerics}>(${metaArgs}): ` +
+          `${metaType}<${metaClassGenerics}> {`,
+      );
+      this.indent();
+      this.writeLine(`${className}MetaClass(${metaClassArgs})`);
+      this.outdent();
+      this.writeLine("}");
+    }
+  }
+
+  mutable fun writeClassMetaClass(
+    className: String,
+    body: ParseTree,
+    generics: Vector<String>,
+    parameters: Vector<ParseTree>,
+    isNamed: Bool,
+    isBase: Bool,
+    extend: ?String,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    numArgs = generics.size();
+    classGenerics = if (numArgs == 0) {
+      ""
+    } else {
+      "<" + generics.map((x) -> `${x}, C${x}: MetaClass<${x}>`).join(", ") + ">"
+    };
+    originalGenerics = if (numArgs == 0) {
+      ""
+    } else {
+      "<" + generics.map((x) -> `${x}`).join(", ") + ">"
+    };
+    classArgs = generics.map((x) -> `itemClass${x}: C${x}`).join(", ");
+    classConstraints = if (numArgs == 0) {
+      ""
+    } else {
+      "[" +
+        generics
+          .map((x) -> `C${x}: Serialization.Serializer<${x}>`)
+          .join(", ") +
+        "]"
+    };
+    this.writeLine(`class ${className}MetaClass${classGenerics}(${classArgs})`);
+    this.write(`  extends MetaClass<${className}${originalGenerics}>`);
+    if (extend.isSome() && !allChildrenEmpty.fromSome()) {
+      this.writeLine(`, Base${extend.fromSome()}MetaClass {`)
+    } else {
+      this.writeLine("");
+      this.writeLine(
+        `  uses Serialization.Serializer<${className}${originalGenerics}>${classConstraints} {`,
+      )
+    };
+    this.indent();
+    this.writeClassDescription(className, generics);
+    this.writeClassSerialize(
+      className,
+      body,
+      generics,
+      parameters,
+      isBase,
+      extend,
+      allChildrenEmpty,
+    );
+    this.writeClassDeserialize(
+      className,
+      body,
+      generics,
+      parameters,
+      isNamed,
+      isBase,
+      allChildrenEmpty,
+    );
+    this.outdent();
+    this.writeLine("}");
+  }
+
+  mutable fun writeClassDescription(
+    className: String,
+    generics: Vector<String>,
+  ): void {
+    this.writeLine(`fun description(): String {`);
+    this.indent();
+    numArgs = generics.size();
+    classGenerics = if (numArgs == 0) {
+      ""
+    } else {
+      "<" +
+        generics
+          .map((x) -> "${" + `this.itemClass${x}.description()` + "}")
+          .join(", ") +
+        ">"
+    };
+    this.writeLine(`\`${className}${classGenerics}\``);
+    this.outdent();
+    this.writeLine("}");
+    this.writeLine("");
+    this.writeLine(`fun expectedType(): String {`);
+    this.indent();
+    this.writeLine("this.description()");
+    this.outdent();
+    this.writeLine("}");
+    this.writeLine("");
+  }
+
+  mutable fun writeClassSerialize(
+    className: String,
+    body: ParseTree,
+    generics: Vector<String>,
+    parameters: Vector<ParseTree>,
+    isBase: Bool,
+    baseName: ?String,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    numArgs = generics.size();
+    classGenerics = if (numArgs == 0) {
+      ""
+    } else {
+      "<" + generics.map((x) -> `${x}`).join(", ") + ">"
+    };
+    typeConstraints = if (numArgs == 0) {
+      ""
+    } else {
+      "[" +
+        generics
+          .map((x) -> `C${x}: Serialization.Serializer<${x}>`)
+          .join(", ") +
+        "]"
+    };
+    valueType = baseName match {
+    | Some(name) -> name
+    | None() -> className
+    };
+    this.writeLine(
+      `fun serialize${typeConstraints}(_value: ${valueType}${classGenerics}, ` +
+        `writer: mutable Serialization.Writer): void {`,
+    );
+    if (isBase) {
+      leaves = this.getChildrenOfBaseClass(body);
+      this.indent();
+      this.writeLine("_value match {");
+      for (leaf in leaves) {
+        if (allChildrenEmpty.fromSome()) {
+          this.writeLine(`| ${leaf}() -> writer.writeType("${leaf}")`);
+        } else {
+          this.writeLine(
+            `| ${leaf} _ -> writer.writeVariant("${leaf}", _value, ${leaf}::meta)`,
+          );
+        }
+      };
+      this.writeLine("}");
+    } else {
+      this.indent();
+      if (baseName.isSome()) {
+        this.writeLine("_childValue = _value match {");
+        this.writeLine(`| x @ ${className} _ -> x`);
+        this.writeLine(
+          `| _ -> throw Serialization.NotExpectedClassError("${className}")`,
+        );
+        this.writeLine("};");
+      };
+      valueName = if (baseName.isSome()) "_childValue" else "_value";
+      this.writeLine(
+        `record = writer.writeRecord(Array[${parameters
+          .map(this.getParameterField)
+          .map((x) -> `"${x}"`)
+          .join(", ")}]);`,
+      );
+      for (parameter in parameters) {
+        fieldName = this.getParameterField(parameter);
+        this.writeLine(
+          `record.writeItem("${fieldName}", ${valueName}.${fieldName}, ${this.serializeType(
+            parameter.getParameterTypeSpecifier(),
+            generics,
+          )});`,
+        );
+      };
+      this.writeLine(`record.end();`);
+    };
+    this.outdent();
+    this.writeLine("}");
+    this.writeLine("")
+  }
+
+  mutable fun writeClassDeserialize(
+    className: String,
+    body: ParseTree,
+    generics: Vector<String>,
+    parameters: Vector<ParseTree>,
+    isNamed: Bool,
+    isBase: Bool,
+    allChildrenEmpty: ?Bool,
+  ): void {
+    numArgs = generics.size();
+    classGenerics = if (numArgs == 0) {
+      ""
+    } else {
+      "<" + generics.map((x) -> `${x}`).join(", ") + ">"
+    };
+    typeConstraints = if (numArgs == 0) {
+      ""
+    } else {
+      "[" +
+        generics
+          .map((x) -> `C${x}: Serialization.Serializer<${x}>`)
+          .join(", ") +
+        "]"
+    };
+    this.write(
+      `fun deserialize${typeConstraints}(reader: mutable Serialization.Reader): `,
+    );
+    this.writeLine(`${className}${classGenerics} {`);
+    this.indent();
+    if (isBase) {
+      leaves = this.getChildrenOfBaseClass(body);
+      if (allChildrenEmpty.fromSome()) {
+        this.writeLine(`childName = reader.readType();`);
+        this.writeLine(`childName match {`);
+        for (leaf in leaves) {
+          this.writeLine(`| "${leaf}" -> ${leaf}()`)
+        };
+        this.writeLine(
+          `| _ -> throw Serialization.NotChildClassError("${className}", childName)`,
+        );
+        this.writeLine("}");
+      } else {
+        this.writeLine("(childName, data, onEnd) = reader.readVariant();");
+        this.writeLine("result = childName match {");
+        for (leaf in leaves) {
+          this.writeLine(`| "${leaf}" -> ${leaf}::meta.deserialize(data)`)
+        };
+        this.writeLine(
+          `| _ -> throw Serialization.NotChildClassError("${className}", childName)`,
+        );
+        this.writeLine("};");
+        this.writeLine("onEnd();");
+        this.writeLine("result")
+      }
+    } else {
+      typeSpecifiers = parameters.map((x) -> x.getParameterTypeSpecifier());
+      typeHeadStrings = typeSpecifiers.map((x) -> {
+        x match {
+        | ParseTree.TypeNameTree{name} -> name.getTokenString()
+        | ParseTree.GenericTypeNameTree{name} ->
+          (name as ParseTree.TypeNameTree _).name.getTokenString()
+        | ParseTree.OptionTypeSpecifierTree{question} ->
+          question.getTokenString()
+        | _ ->
+          throw Serialization.TypeNotImplementedError(
+            SkipPrinter.printTreeToString(x),
+          )
+        };
+      });
+      typeStrings = parameters.map((x) ->
+        SkipPrinter.printTreeToString(x.getParameterTypeSpecifier())
+      );
+      defaultValues = parameters.map((x) -> {
+        defaultValue = x.getParameterDefaultValue();
+        defaultValue match {
+        | PT.EmptyTree{} -> None()
+        | tree @ PT.InitializerTree{} ->
+          Some(SkipPrinter.printTreeToString(tree.value))
+        | _ -> throw Serialization.UnrecognizedDefaultValueError()
+        }
+      });
+      this.writeLeafClassReadRecord(
+        parameters,
+        typeStrings,
+        typeHeadStrings,
+        generics,
+        typeSpecifiers,
+        defaultValues,
+      );
+      this.writeLeafClassReturnObject(
+        parameters,
+        typeHeadStrings,
+        className,
+        isNamed,
+        defaultValues,
+      );
+    };
+    this.outdent();
+    this.writeLine("}")
+  }
+
+  mutable fun getChildrenOfBaseClass(body: ParseTree): Vector<String> {
+    childrenVec = mutable Vector<String>[];
+    for (member in body.getList()) {
+      member match {
+      | PT.ChildrenTree{childClasses} ->
+        for (child in childClasses.getList()) {
+          childName = (child as PT.ChildClassTree _).name.getTokenString();
+          childrenVec.push(childName)
+        }
+      | _ -> void
+      }
+    };
+    childrenVec.chill()
+  }
+
+  mutable fun allChildrenEmptyParams(body: ParseTree): Bool {
+    body
+      .getList()
+      .map(member -> {
+        member match {
+        | PT.ChildrenTree{childClasses} ->
+          childClasses
+            .getList()
+            .map(child ->
+              ctorParamsAreEmpty(
+                ((child as PT.ChildClassTree _)
+                  .constructor as PT.ClassConstructorDeclarationTree _),
+              )
+            )
+            .all(id)
+        | _ -> true
+        }
+      })
+      .all(id)
+  }
+
+  mutable fun writeLeafClassReadRecord(
+    parameters: Vector<ParseTree>,
+    typeStrings: Vector<String>,
+    typeHeadStrings: Vector<String>,
+    generics: Vector<String>,
+    typeSpecifiers: Vector<ParseTree>,
+    defaultValues: Vector<?String>,
+  ): void {
+    this.writeLine(
+      `record = reader.readRecord(Array[${parameters
+        .map(this.getParameterField)
+        .map((x) -> `"${x}"`)
+        .join(", ")}]);`,
+    );
+    for ((i, defaultValue, typeString, typeHeadString) in Sequence::zip4(
+      Range(0, parameters.size()),
+      defaultValues,
+      typeStrings,
+      typeHeadStrings,
+    )) {
+      variableName = this.getParameterVariable(typeHeadString, i, defaultValue);
+      variableType = this.getParameterVariableType(
+        typeString,
+        typeHeadString,
+        defaultValue,
+      );
+      this.writeLine(
+        `${variableName}: ${variableType} = ${this.getDefaultArgs(
+          typeHeadString,
+          defaultValue,
+        )};`,
+      );
+    };
+    this.writeLine(`loop {`);
+    this.indent();
+    this.writeLine(`record.readKey() match {`);
+    for ((
+      i,
+      parameter,
+      typeHeadString,
+      typeSpecifier,
+      defaultValue,
+    ) in Sequence::zip5(
+      Range(0, parameters.size()),
+      parameters,
+      typeHeadStrings,
+      typeSpecifiers,
+      defaultValues,
+    )) {
+      fieldName = this.getParameterField(parameter);
+      variableName = this.getParameterVariable(typeHeadString, i, defaultValue);
+      variableRead = this.getParameterVariableRead(
+        typeSpecifier,
+        typeHeadString,
+        generics,
+        defaultValue,
+      );
+      this.writeLine(
+        `| Some("${fieldName}") -> !${variableName} = ${variableRead}`,
+      )
+    };
+    this.writeLine(`| None() -> break void`);
+    this.write("| Some(string) -> throw Serialization.FieldNotInClassError(");
+    this.write("string, ");
+    this.writeLine(
+      parameters
+        .map((x) -> `"${this.getParameterField(x)}"`)
+        .sorted()
+        .collect(Array)
+        .toString() + ")",
+    );
+    this.writeLine("};");
+    this.outdent();
+    this.writeLine("};");
+    this.writeLine(`record.end();`);
+  }
+
+  mutable fun writeLeafClassReturnObject(
+    parameters: Vector<ParseTree>,
+    typeHeadStrings: Vector<String>,
+    className: String,
+    isNamed: Bool,
+    defaultValues: Vector<?String>,
+  ): void {
+    maybeParams = Sequence::zip3(
+      Range(0, parameters.size()),
+      defaultValues,
+      typeHeadStrings,
+    ).filter((val) -> !this.isDefaultType(val.i2, val.i1));
+    if (maybeParams.size() > 0) {
+      this.writeLine(
+        `(${maybeParams
+          .map((val) ->
+            this.getParameterVariable(
+              val.i2/* typeHeadString */ ,
+              val.i0/* i */ ,
+              val.i1, /* defaultValue */
+            )
+          )
+          .join(", ")}) match {`,
+      );
+      this.write(
+        `| (${maybeParams
+          .map((val) -> `Some(${this.getParameterVariableNoDefault(val.i0)})`)
+          .join(", ")}) -> `,
+      );
+      this.writeClassDeclaration(parameters, isNamed, className);
+      this.writeLine("");
+      for (i in Range(0, maybeParams.size())) {
+        matcher = Range(0, maybeParams.size()).map((x) ->
+          if (x == i) {
+            `${None()}`
+          } else {
+            `_`
+          }
+        ).join(", ");
+        this.writeLine(
+          `| (${matcher}) -> throw Serialization.RecordMissingFieldError(` +
+            `"${className}", "${this.getParameterField(parameters[i])}")`,
+        )
+      };
+      this.writeLine("}")
+    } else {
+      this.writeClassDeclaration(parameters, isNamed, className);
+      this.writeLine("")
+    };
+  }
+
+  mutable fun serializeType(
+    typeSpecifier: ParseTree,
+    generics: Vector<String>,
+  ): String {
+    typeString = SkipPrinter.printTreeToString(typeSpecifier);
+    if (typeSpecifier is PT.TypeNameTree _) {
+      typeName = (typeSpecifier as PT.TypeNameTree _).name.getTokenString();
+      if (generics.contains(typeName)) {
+        `this.itemClass${typeName}`
+      } else {
+        `${typeName}::meta`;
+      }
+    } else if (typeSpecifier is PT.GenericTypeNameTree _) {
+      genericType = typeSpecifier as PT.GenericTypeNameTree _;
+      typeName = (genericType.name as PT.TypeNameTree _).name.getTokenString();
+      args = genericType.arguments.getList().map((x) ->
+        this.serializeType(x, generics)
+      );
+      `${typeName}::meta(${args.join(", ")})`
+    } else if (typeSpecifier is PT.OptionTypeSpecifierTree _) {
+      optionType = typeSpecifier as PT.OptionTypeSpecifierTree _;
+      typeName = optionType.elementType;
+      `Option::meta(${this.serializeType(typeName, generics)})`
+    } else {
+      throw Serialization.TypeNotImplementedError(typeString)
+    }
+  }
+
+  const defaultArgs: Map<String, String> = Map[
+    "Option" => "None()",
+    "?" => "None()",
+    "Vector" => "Vector[]",
+    "Map" => "Map[]",
+  ];
+
+  mutable fun getParameterField(param: ParseTree): String {
+    if (param is PT.NamedParameterTree _) {
+      (param as PT.NamedParameterTree _).name.getTokenString()
+    } else {
+      positional = param as PT.PositionalParameterTree _;
+      positional.nameColon match {
+      | x @ PT.ParameterNameColonTree{} -> x.name.getTokenString()
+      | _ -> throw Serialization.UnnamedPositionalParameterError()
+      }
+    }
+  }
+
+  mutable fun getDefaultType(typeHeadString: String): ?String {
+    static::defaultArgs.keys().find((x) -> typeHeadString == x)
+  }
+
+  mutable fun getDefaultArgs(
+    typeHeadString: String,
+    defaultValue: ?String,
+  ): String {
+    defaultValue match {
+    | None() ->
+      this.getDefaultType(typeHeadString)
+        .map((x) -> static::defaultArgs[x])
+        .default("None()")
+    | Some(value) -> value
+    }
+  }
+
+  mutable fun isDefaultType(
+    typeHeadString: String,
+    defaultValue: ?String,
+  ): Bool {
+    this.getDefaultType(typeHeadString).isSome() || defaultValue.isSome()
+  }
+
+  mutable fun getParameterVariable(
+    typeHeadString: String,
+    i: Int,
+    defaultValue: ?String,
+  ): String {
+    if (this.isDefaultType(typeHeadString, defaultValue)) {
+      this.getParameterVariableNoDefault(i)
+    } else {
+      `tempMaybe${i}`
+    }
+  }
+
+  mutable fun getParameterVariableNoDefault(i: Int): String {
+    `temp${i}`
+  }
+
+  mutable fun getParameterVariableType(
+    typeString: String,
+    typeHeadString: String,
+    defaultValue: ?String,
+  ): String {
+    if (this.isDefaultType(typeHeadString, defaultValue)) {
+      typeString
+    } else {
+      "?" + typeString
+    }
+  }
+
+  mutable fun getParameterVariableRead(
+    typeSpecifier: ParseTree,
+    typeHeadString: String,
+    generics: Vector<String>,
+    defaultValue: ?String,
+  ): String {
+    if (this.isDefaultType(typeHeadString, defaultValue)) {
+      `record.readValue(${this.serializeType(typeSpecifier, generics)})`
+    } else {
+      `Some(record.readValue(${this.serializeType(typeSpecifier, generics)}))`
+    }
+  }
+
+  mutable fun writeClassDeclaration(
+    parameters: Vector<ParseTree>,
+    isNamed: Bool,
+    className: String,
+  ): void {
+    (open, close) = if (isNamed) {
+      ("{", "}")
+    } else {
+      ("(", ")")
+    };
+    classArgs = Sequence::zip2(Range(0, parameters.size()), parameters)
+      .map((val) -> {
+        namedPortion = if (isNamed) {
+          `${this.getParameterField(val.i1)} => `
+        } else {
+          ""
+        };
+        namedPortion + this.getParameterVariableNoDefault(val.i0)
+      })
+      .join(", ");
+    this.write(`${className}${open}${classArgs}${close}`);
+  }
+}
+
+fun ctorParamsAreEmpty(ctorParams: PT.ClassConstructorDeclarationTree): Bool {
+  ((ctorParams.parameters is PT.PositionalParametersTree _) &&
+    (ctorParams.parameters as PT.PositionalParametersTree _).parameters
+      .getList()
+      .isEmpty()) ||
+    ((ctorParams.parameters is PT.NamedParametersTree _) &&
+      (ctorParams.parameters as PT.NamedParametersTree _).parameters
+        .getList()
+        .isEmpty())
+}
+
+module end;

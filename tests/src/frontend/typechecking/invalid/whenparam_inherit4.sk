@@ -1,0 +1,14 @@
+base class P {
+  children =
+  | C()
+}
+
+base class Foo<T> {
+  fun foo[T: C](): T;
+}
+
+class Bar<T>() extends Foo<T> {
+  fun foo[T: P](): T {
+    C()
+  }
+}

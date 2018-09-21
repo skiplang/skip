@@ -1,0 +1,15 @@
+class Foo() {
+  memoized fun no<T: readonly Show>(T): void {
+    void
+  }
+}
+
+mutable class X(mutable v: Int) uses Show {
+  readonly fun toString(): String {
+    this.v.toString()
+  }
+}
+
+fun no(): void {
+  Foo().no(mutable X(42))
+}

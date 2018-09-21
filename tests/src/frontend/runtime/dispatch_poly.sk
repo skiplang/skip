@@ -1,0 +1,16 @@
+base class MyBase<T: frozen> {
+  fun swap(t: T): T;
+}
+
+class Child<T: frozen>() extends MyBase<(T, T)> {
+  fun swap(t: (T, T)): (T, T) {
+    (x, y) = t;
+    (y, x)
+  }
+}
+
+fun main(): void {
+  c: MyBase<(Int, Int)> = Child();
+  (x, y) = c.swap((3, 4));
+  print_raw(x.toString() + " " + y + "\n")
+}

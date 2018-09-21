@@ -1,0 +1,59 @@
+@test
+fun testCreateWithStateAndClone(): void {
+  seed = Random::createWithState(123, 456);
+  rng = seed.clone();
+  v1 = rng.next();
+  assertEqual(v1, 579);
+  v2 = rng.next();
+  assertEqual(v2, 4431571926312075699);
+  v3 = rng.next();
+  assertEqual(v3, -1612580728535389485);
+  v4 = rng.next();
+  assertEqual(v4, 4468099366319113814);
+  v5 = rng.next();
+  assertEqual(v5, 167286530559998105);
+}
+
+@test
+fun testMCreateWithState(): void {
+  rng = Random::mcreateWithState(123, 456);
+  v1 = rng.next();
+  assertEqual(v1, 579);
+  v2 = rng.next();
+  assertEqual(v2, 4431571926312075699);
+  v3 = rng.next();
+  assertEqual(v3, -1612580728535389485);
+  v4 = rng.next();
+  assertEqual(v4, 4468099366319113814);
+  v5 = rng.next();
+  assertEqual(v5, 167286530559998105);
+}
+
+@test
+fun testRandom(): void {
+  rng = Random::mcreateWithState(123, 456);
+  assertEqual(rng.random(5, 10), 5);
+  assertEqual(rng.random(5, 10), 6);
+  assertEqual(rng.random(5, 10), 6);
+  assertEqual(rng.random(5, 10), 5);
+  assertEqual(rng.random(5, 10), 9);
+  assertEqual(rng.random(5, 10), 5);
+  assertEqual(rng.random(5, 10), 8);
+  assertEqual(rng.random(5, 10), 8);
+  assertEqual(rng.random(5, 10), 7);
+}
+
+@test
+fun testMCreate(): void {
+  rng = Random::mcreate(123);
+  v1 = rng.next();
+  assertEqual(v1, -5845996954327320409);
+  v2 = rng.next();
+  assertEqual(v2, -7067533951832699568);
+  v3 = rng.next();
+  assertEqual(v3, 6933927313333725840);
+  v4 = rng.next();
+  assertEqual(v4, 2548671180159802337);
+  v5 = rng.next();
+  assertEqual(v5, 7454317728132883171);
+}

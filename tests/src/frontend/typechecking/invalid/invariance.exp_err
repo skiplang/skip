@@ -1,0 +1,32 @@
+File "./typechecking/invalid/invariance.sk", line 11, characters 9-11:
+Invalid argument
+ 9 | fun main(): void {
+10 |   ref = mutable MyRef(Some("hello"));
+11 |   store(ref);
+   |         ^^^
+12 |   print_raw(
+
+File "./typechecking/invalid/invariance.sk", line 5, characters 30-36:
+The invariant type: Option<String>
+3 | mutable class MyRef<+T>(mutable value: T)
+4 |
+5 | fun store(ref: mutable MyRef<?String>): void {
+  |                              ^^^^^^^
+6 |   ref.!value = None()
+
+File "./typechecking/invalid/invariance.sk", line 10, characters 23-35:
+Is incompatible with the invariant type: Some<String>
+ 8 |
+ 9 | fun main(): void {
+10 |   ref = mutable MyRef(Some("hello"));
+   |                       ^^^^^^^^^^^^^
+11 |   store(ref);
+
+File "./typechecking/invalid/invariance.sk", line 10, characters 23-35:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Option<String>
+ 8 |
+ 9 | fun main(): void {
+10 |   ref = mutable MyRef(Some("hello"));
+   |                       ^^^^^^^^^^^^^
+11 |   store(ref);

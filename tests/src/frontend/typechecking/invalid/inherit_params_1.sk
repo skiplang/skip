@@ -1,0 +1,3 @@
+base class A final {f: Int}
+base class B{g: Int}
+class C extends A, B

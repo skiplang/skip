@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_Ref.sk", line 19, characters 9-11:
+Invalid argument
+17 |
+18 |   // This assignment should not be allowed; B is not an A!
+19 |   r.set(B());
+   |         ^^^
+20 |
+
+File "./typechecking/invalid/mutable_Ref.sk", line 19, characters 9-11:
+The type: B
+17 |
+18 |   // This assignment should not be allowed; B is not an A!
+19 |   r.set(B());
+   |         ^^^
+20 |
+
+File "./typechecking/invalid/mutable_Ref.sk", line 16, characters 19-21:
+Is not a subtype of: A
+14 | fun main(): void {
+15 |   // This correctly infers the type is mutable Ref<A>.
+16 |   r = mutable Ref(A());
+   |                   ^^^
+17 |
+
+File "./typechecking/invalid/mutable_Ref.sk", line 16, characters 19-21:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: X
+14 | fun main(): void {
+15 |   // This correctly infers the type is mutable Ref<A>.
+16 |   r = mutable Ref(A());
+   |                   ^^^
+17 |

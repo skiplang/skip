@@ -1,0 +1,7 @@
+File "./typechecking/invalid/as_operator_runtime_error_4.sk", line 6, characters 12-16:
+If you want an explicit upcast (which isn't always necessary), try adding a type annotation instead, e.g. '(_ : Foo)'
+4 | fun main(): void {
+5 |   x = A();
+6 |   _ = x as Foo _
+  |            ^^^^^
+7 | }

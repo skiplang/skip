@@ -1,0 +1,10 @@
+fun main(): void {
+  lam = () -> {
+    try {
+      "Pass\n"
+    } catch {
+    | Exception _ -> "Fail"
+    }
+  };
+  print_raw(lam());
+}

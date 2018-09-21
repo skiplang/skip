@@ -1,0 +1,19 @@
+base class R {
+  children =
+  | L()
+  | T()
+}
+
+base class F {
+  children =
+  | A(R)
+}
+
+fun main(): void {
+  print_raw(
+    (A(L()), void) match {
+    | (A(L()), _) -> "a"
+    | (A _, _) -> "b"
+    },
+  )
+}

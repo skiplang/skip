@@ -1,0 +1,11 @@
+mutable class Foo(mutable x: Int) {
+  readonly fun ffoo(): void {
+    void
+  }
+}
+
+fun main(): void {
+  rfoo: readonly Foo = Foo(42);
+  rfoo.ffoo();
+  print_string("Pass")
+}

@@ -1,0 +1,19 @@
+base class F {
+  children =
+  | I(Int)
+  | B(Bool)
+}
+
+class Test() {
+  type Foo = F;
+
+  fun bar(x: F): void {
+    x match {
+    | this::Foo _ -> void
+    | I(Int _) -> void
+    }
+  }
+}
+fun test(): String {
+  "Fail\n"
+}

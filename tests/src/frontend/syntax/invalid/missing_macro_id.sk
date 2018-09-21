@@ -1,0 +1,9 @@
+class C {
+  macro fun m(): void {
+    #
+  }
+}
+
+fun main(): void {
+  print_string("FAIL");
+}

@@ -1,0 +1,25 @@
+File "./typechecking/invalid/same_tparams_10.sk", line 2, characters 3-11:
+The value returned from the function is incompatible with the return type 'mutable Ref<Int>'
+1 | fun no<T: mutable Ref<Int>>(x: T): mutable Ref<Int> {
+2 |   freeze(x)
+  |   ^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/same_tparams_10.sk", line 1, characters 32-32:
+The type: frozen T
+1 | fun no<T: mutable Ref<Int>>(x: T): mutable Ref<Int> {
+  |                                ^
+2 |   freeze(x)
+
+File "./typechecking/invalid/same_tparams_10.sk", line 1, characters 36-51:
+Is not a subtype of: mutable Ref<Int>
+1 | fun no<T: mutable Ref<Int>>(x: T): mutable Ref<Int> {
+  |                                    ^^^^^^^^^^^^^^^^
+2 |   freeze(x)
+
+File "./typechecking/invalid/same_tparams_10.sk", line 1, characters 36-51:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Ref<Int>
+1 | fun no<T: mutable Ref<Int>>(x: T): mutable Ref<Int> {
+  |                                    ^^^^^^^^^^^^^^^^
+2 |   freeze(x)

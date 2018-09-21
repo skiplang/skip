@@ -1,0 +1,6 @@
+trait Equality {
+  readonly fun ==(other: inst): Bool;
+  overridable readonly fun !=(other: inst): Bool {
+    !(this == other)
+  }
+}

@@ -1,0 +1,83 @@
+base class A
+class B() extends A
+class C() extends A
+class D() extends A
+
+@no_inline
+fun strB(): String {
+  "B"
+}
+@no_inline
+fun strC(): String {
+  "C"
+}
+@no_inline
+fun strD(): String {
+  "D"
+}
+@no_inline
+fun strE(): String {
+  "E"
+}
+
+@no_inline
+fun test1(a: A): String {
+  b = strB();
+  c = strC();
+  d = strD();
+
+  a match {
+  | B() -> b
+  | C() -> c
+  | D() -> d
+  }
+}
+
+@no_inline
+fun test2(a: A, flag: Bool): String {
+  b = strB();
+  c = strC();
+  d = strD();
+
+  s1 = "1";
+  s2 = "2";
+
+  if (flag) {
+    !s1 = a match {
+    | B() -> b
+    | C() -> c
+    | D() -> d
+    }
+  } else {
+    !s2 = strE();
+  };
+
+  s1 + "." + s2
+}
+
+fun main(): void {
+  b = B();
+  c = C();
+  d = D();
+
+  print_raw(
+    (test1(b) +
+      ", " +
+      test1(c) +
+      ", " +
+      test1(d) +
+      "\n" +
+      test2(b, true) +
+      ", " +
+      test2(c, true) +
+      ", " +
+      test2(d, true) +
+      "\n" +
+      test2(b, false) +
+      ", " +
+      test2(c, false) +
+      ", " +
+      test2(d, false) +
+      "\n"),
+  )
+}

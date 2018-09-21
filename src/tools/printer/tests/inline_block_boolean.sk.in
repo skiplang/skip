@@ -1,0 +1,6 @@
+fun next(): ?T {
+  while(this.base.next() match {
+    | Some(x) -> !this.p(x) || { !found = Some(x); false }
+    | None() -> false
+  }) void;
+}

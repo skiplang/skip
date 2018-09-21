@@ -1,0 +1,5 @@
+const foo: String = "foo";
+
+fun no(): String {
+  foo()
+}

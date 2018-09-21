@@ -1,0 +1,19 @@
+base class B {
+  overridable fun m(x: Int, other: B): Int {
+    other.m(x, this)
+  }
+}
+
+class X() extends B
+
+class Y() extends B {
+  fun m(x: Int, _: B): Int {
+    -x
+  }
+}
+
+fun main(): void {
+  x = X();
+  y = Y();
+  print_raw(x.m(10, y).toString() + "\n")
+}

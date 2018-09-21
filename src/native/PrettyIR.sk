@@ -1,0 +1,2259 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module PrettyIR;
+
+// Pretty IR is a module for pretty-printing the IR. It was originally
+// forked from AsmOutput.sk. In particular, the PrettyDefBuilder framework
+// was copied and tweaked for IR printing. The intention is to allow these
+// two modules to diverge according to their own unique requirements.
+
+// out.print format characters:
+//
+// %A: Instr: pretty type attribute, if any (e.g. "zeroext " or "").
+// %d: Int: decimal integer digits
+// %D: InstrWithPos, InstrID, Pos: Debug info for Pos
+// %n: Instr, Block: pretty name (no leading % for blocks)
+// %N: Instr: pretty type followed by pretty name
+// %s: Bool, Char, Int, String: simple toString() text
+// %t: type for a use (e.g. %foo* for a global %foo struct)
+// %T: type for the definition (e.g. %foo for a global %foo struct)
+// %x: Int: 16 hexadecimal digits
+
+// Types that can write themselves to an PrettyDefBuilder.
+private trait PrettyWritable {
+  readonly fun prettyWrite(out: mutable PrettyDefBuilder): void;
+}
+
+// Types that can write themselves to an PrettyDefBuilder controlled by a
+// given formatting character.
+trait PrettyFormattable extends PrettyWritable {
+  readonly fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void;
+
+  overridable readonly fun prettyWrite(out: mutable PrettyDefBuilder): void {
+    this.prettyFormat(out, 's')
+  }
+}
+
+trait PrettyFormatTree {
+  readonly fun prettyPrint(
+    out: mutable PrettyDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void;
+}
+
+// Consumes and emits format string characters up to the first format
+// specifier, then emits this.val using that format specifier.
+value class PrettyFormatLeaf<T: readonly PrettyFormattable>(
+  val: T,
+) uses PrettyFormatTree {
+  fun prettyPrint(
+    out: mutable PrettyDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void {
+    this.val.prettyFormat(out, out.printUntilFormatChar(fmt))
+  }
+}
+
+value class PrettyFormatInner<
+  T1: readonly PrettyFormatTree,
+  T2: readonly PrettyFormatTree,
+>(
+  lhs: T1,
+  rhs: T2,
+) uses PrettyFormatTree {
+  fun prettyPrint(
+    out: mutable PrettyDefBuilder,
+    fmt: mutable String.StringIterator,
+  ): void {
+    this.lhs.prettyPrint(out, fmt);
+    this.rhs.prettyPrint(out, fmt)
+  }
+}
+
+value class PrettyFormat<T: readonly PrettyFormatTree>(
+  fmt: String,
+  val: T,
+) uses PrettyWritable {
+  fun prettyWrite(out: mutable PrettyDefBuilder): void {
+    fmt = this.fmt.getIter();
+    this.val.prettyPrint(out, fmt);
+    if (!out.printUntilMaybeFormatChar(fmt).isNone()) {
+      out.die("Not enough arguments for format string")
+    }
+  }
+
+  fun /<U: readonly PrettyFormattable>(
+    rhs: U,
+  ): PrettyFormat<PrettyFormatInner<T, PrettyFormatLeaf<U>>> {
+    PrettyFormat(this.fmt, PrettyFormatInner(this.val, PrettyFormatLeaf(rhs)))
+  }
+}
+
+extension class .String uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    text = out.text;
+    spec match {
+    | 's' -> text.writeString(this)
+    | 'r' ->
+      text.writeChar('\"');
+      for (b in UTF8String::make(this).utf8) {
+        if (
+          b >= 0x20 /* ' ' */ &&
+          b < 0x7F &&
+          b != 0x22 /* '\"' */ &&
+          b != 0x5c
+        /* '\\' */ ) {
+          text.writeChar(Char::fromCode(b))
+        } else {
+          text.writeChar('\\');
+          text.writeHex(b, 2)
+        }
+      };
+      text.writeChar('\"')
+    | _ -> out.die(`Bad format for String: "${spec}"`)
+    }
+  }
+
+  fun /<T: readonly PrettyFormattable>(
+    rhs: T,
+  ): PrettyFormat<PrettyFormatLeaf<T>> {
+    PrettyFormat(this, PrettyFormatLeaf(rhs))
+  }
+}
+
+extension class .Bool uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 's' -> out.text.writeString(if (this) "true" else "false")
+    | _ -> out.die(`Bad format for Bool: "${spec}"`)
+    }
+  }
+}
+
+extension class .Char uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 'c' | 's' -> out.text.writeChar(this)
+    | _ -> out.die(`Bad format for Char: "${spec}"`)
+    }
+  }
+}
+
+extension class .Int uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 'd' | 's' -> out.text.writeInt(this)
+    | 'x' -> out.text.writeHex(this, 16)
+    | _ -> out.die(`Bad format for Int: "${spec}"`)
+    }
+  }
+}
+
+extension base class .Pos uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    if (spec != 'D') {
+      this.die(`Debug info must be written using %D, not %${spec}`)
+    };
+    out.writeDebug(this, false)
+  }
+}
+
+private fun prettyFormatInstr(
+  instr: Instr,
+  out: mutable PrettyDefBuilder,
+  spec: Char,
+): void {
+  spec match {
+  | 'A' -> prettyWriteTypeCallAttribute(out, instr.typ, false, true)
+  | 'N' -> prettyWriteTypeAndName(instr, out)
+  | 'n' -> prettyWriteName(instr, out)
+  | 't' -> prettyWriteTypeName(out, instr.typ)
+  | _ -> out.die(`Bad format for Instr: "${spec}"`)
+  }
+}
+
+extension base class .Instr uses PrettyFormattable {
+  overridable fun prettyFormat(
+    out: mutable PrettyDefBuilder,
+    spec: Char,
+  ): void {
+    prettyFormatInstr(this, out, spec)
+  }
+}
+
+extension base class .InstrWithPos {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 'D' -> this.pos.prettyFormat(out, spec)
+    | _ -> prettyFormatInstr(this, out, spec)
+    }
+  }
+}
+
+extension class .InstrID uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    out.optinfo().getInstr(this).prettyFormat(out, spec)
+  }
+}
+
+extension class .Block uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 'N' -> out.print("label %%%n" / this)
+    | 'n' -> debugWriteBlockName(this, out)
+    | _ -> out.die(`Bad format for Block: "${spec}"`)
+    }
+  }
+}
+
+extension class .BlockID uses PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    out.optinfo().getBlock(this).prettyFormat(out, spec)
+  }
+}
+
+extension class .Function uses PrettyFormattable {
+  fun getPrettyDefID(): PrettyDefID {
+    // PrettyDefID preserves same numeric values for all existing SFunctionID.
+    PrettyDefID(this.id.id)
+  }
+
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 'D' ->
+      // Debug for a Function is special, creating the diSubprogram entry.
+      out.writeDebug(this.pos, true)
+    | 'n' ->
+      // PrettyDefID uses the same numbers for all existing SFunctionID
+      out.print('@');
+      out.writeRef(this.getPrettyDefID())
+    | 't' ->
+      t = this.funType;
+
+      // NOTE: LLVM function types cannot have parameter/return attributes.
+      prettyWriteReturnTypeName(out, t.returnType, false);
+      out.print(" (");
+      t.params.eachWithIndex((i, p) -> {
+        if (i > 0) out.print(", ");
+        prettyWriteTypeName(out, p)
+      });
+      out.print(") *")
+    | 'N' -> out.print("%t %n" / this / this)
+    | _ -> out.die(`Bad format for Function: "${spec}"`)
+    }
+  }
+}
+
+value class PrettyDefID() uses TypeSafeID<Int>, PrettyFormattable {
+  fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    out.common.defs[this].prettyFormat(out, spec)
+  }
+
+  fun writeGetPointer(out: mutable PrettyDefBuilder, byteOffset: Int): void {
+    if (byteOffset != 0) {
+      out.print("getelementptr (i8, i8* ");
+    };
+
+    out.print("bitcast (%N to i8*)" / this);
+
+    if (byteOffset != 0) {
+      out.print(", i64 %d)" / byteOffset)
+    }
+  }
+}
+
+mutable class PrettyDefIDToPrettyDef extends
+  OptimizerInfo.InsertableIDMap<PrettyDefID, PrettyDef>,
+{
+  mutable fun allocID(): PrettyDefID {
+    PrettyDefID(this.allocIndex())
+  }
+}
+
+// Common base class for PrettyDef and PrettyDefBuilder, factoring out common
+// fields.
+mutable private base class PrettyDefBase{
+  // Symbol we would like to use. If it turns out to conflict it will
+  // be disambiguated by adding a numeric suffix. If two PrettyDefs end
+  // up getting shared (merged into one), this symbol may contain too
+  // much detail (such as Tparam names) to use for both shared functions.
+  // In that case we will try to fall back to sharedSymbol.
+  symbol: String,
+
+  // Symbol to use for a family of collapsed values.
+  // This removes specific type names that would be misleading for the
+  // different defs sharing this object.
+  sharedSymbol: ?String = None(),
+
+  // Typically "@" or "%".
+  symbolPrefix: String = "@",
+
+  canShare: Bool,
+
+  typeString: ?String,
+  typeRef: ?PrettyDefID,
+} extends HasID<PrettyDefID> uses PrettyFormattable {
+  readonly fun prettyFormat(out: mutable PrettyDefBuilder, spec: Char): void {
+    spec match {
+    | 't' | 'T' | 'n' | 'N' -> void
+    | _ -> out.die(`Bad format for PrettyDef: "${spec}"`)
+    };
+
+    if (spec == 't' || spec == 'T' || spec == 'N') {
+      (this.typeString, this.typeRef) match {
+      | (Some(str), None()) -> out.print(str)
+      | (None(), Some(ref)) ->
+        out.print(out.common.defs[ref].symbolPrefix);
+        out.writeRef(ref)
+      | _ -> out.die("AsmBuilder has no type to emit")
+      };
+
+      if (spec != 'T') {
+        // The type of a global is always a pointer.
+        out.print("*")
+      }
+    };
+
+    if (spec == 'N') {
+      out.print(' ')
+    };
+
+    if (spec == 'n' || spec == 'N') {
+      out.print(this.symbolPrefix);
+      out.writeRef(this.id)
+    };
+  }
+}
+
+// A top-level assembly definition like a function on string constant.
+// These are connected together in a graph.
+class PrettyDef{
+  text: String,
+  refs: Array<(Int, PrettyDefID)>,
+  debug: Array<(Int, Pos, Bool)>,
+} extends PrettyDefBase {
+  fun write(
+    out: mutable TextOutputStream.StringTextOutputStream,
+    metadata: mutable Metadata,
+  ): void {
+    refs = this.refs;
+    dbg = this.debug;
+
+    refsIndex = 0;
+    debugIndex = 0;
+
+    // Text index of next upcoming special value to emit.
+    next = 0;
+
+    funPos = (None() : ?FunPos);
+
+    i = 0;
+
+    writeExternal = () -> {
+      if (refsIndex < refs.size()) {
+        (charIndex, ref) = refs[refsIndex];
+        if (charIndex == i) {
+          // Write out the symbol for the referenced object.
+          out.write(metadata.defs[ref].symbol);
+          !refsIndex = refsIndex + 1;
+        }
+      };
+
+      if (debugIndex < dbg.size()) {
+        (charIndex, pos, isDISubprogram) = dbg[debugIndex];
+
+        if (charIndex == i) {
+          metadataID = if (isDISubprogram) {
+            fp = FunPos{
+              name => this.symbol,
+              pos => pos match {
+              | range @ FileRange _ -> range
+              | _ -> pos.die("Function positions must be FileRange")
+              },
+              id => SFunctionID(this.id.id),
+            };
+            !funPos = Some(fp);
+            metadata.diSubprogram(fp).id
+          } else {
+            // The diSubprogram should come first so we should have
+            // created a FunPos already.
+            metadata.diLocation(
+              pos,
+              funPos.fromSome("Did not see diSubprogram"),
+            ).id
+          };
+
+          out.write("!dbg !");
+          out.writeInt(metadataID);
+
+          !debugIndex = debugIndex + 1;
+        }
+      };
+
+      // Locate the next upcoming special value.
+      min(
+        if (refsIndex == refs.size()) Int::max else refs[refsIndex].i0,
+        if (debugIndex == dbg.size()) Int::max else dbg[debugIndex].i0,
+      )
+    };
+
+    for (c in this.text.getIter()) {
+      if (i == next) {
+        // NOTE: We assume we do not have two refs at the same char offset,
+        // etc. as that wouldn't be syntactically valid anyway. We could
+        // easily change this to a loop if we want.
+        !next = writeExternal()
+      };
+
+      out.writeChar(c);
+
+      !i = i + 1
+    };
+
+    last = writeExternal();
+    invariant(last == Int::max, "Unexpected additional ref")
+  }
+}
+
+// An object that builds up an PrettyDef. You can append text,
+// references to other PrettyDefs, and debug info references to it.
+mutable private base class PrettyDefBuilder{
+  text: mutable TextOutputStream.StringTextOutputStream = mutable TextOutputStream.StringTextOutputStream{},
+  refs: mutable Vector<(Int, PrettyDefID)> = mutable Vector[],
+  debug: mutable Vector<(Int, Pos, Bool)> = mutable Vector[],
+  common: mutable PrettyIR,
+} extends PrettyDefBase {
+  // Writes characters up to and including the next % format specifier,
+  // leaving any remaining characters.
+  mutable fun print<T: readonly PrettyWritable>(val: T): void {
+    val.prettyWrite(this)
+  }
+
+  readonly fun pos(): Pos {
+    this.common.pos
+  }
+
+  overridable mutable fun optinfo(): mutable OptimizerInfo {
+    this.die("Not in function, cannot get optinfo")
+  }
+
+  readonly fun env(): GlobalEnv {
+    this.common.env
+  }
+
+  readonly fun die(msg: String): _ {
+    this.pos().die(msg)
+  }
+
+  mutable fun finish(): PrettyDefID {
+    def = PrettyDef{
+      id => this.id,
+      text => this.text.toString(),
+      refs => this.refs.toArray(),
+      debug => this.debug.toArray(),
+      canShare => this.canShare,
+      symbol => this.symbol,
+      symbolPrefix => this.symbolPrefix,
+      sharedSymbol => this.sharedSymbol,
+      typeString => this.typeString,
+      typeRef => this.typeRef,
+    };
+    this.common.defs.set(def.id, def);
+    def.id
+  }
+
+  mutable fun writeDebug(pos: Pos, isDISubprogram: Bool): void {
+    this.debug.push((this.text.size(), pos, isDISubprogram))
+  }
+
+  mutable fun writeRef(ref: PrettyDefID): void {
+    this.refs.push((this.text.size(), ref))
+  }
+
+  mutable fun printUntilMaybeFormatChar(
+    fmt: mutable String.StringIterator,
+  ): ?Char {
+    result = (None() : ?Char);
+
+    prevWasPercent = false;
+    text = this.text;
+
+    while ({
+      fmt.next() match {
+      | None() ->
+        if (prevWasPercent) {
+          this.die("Format string ends with unescaped %")
+        };
+        false
+      | Some(c) ->
+        (prevWasPercent, c) match {
+        | (false, '%') ->
+          !prevWasPercent = true;
+          true
+        | (true, '%')
+        | (false, _) ->
+          text.writeChar(c);
+          !prevWasPercent = false;
+          true
+        | (true, _) ->
+          !result = Some(c);
+          false
+        }
+      }
+    }) void;
+
+    result
+  }
+
+  mutable fun printUntilFormatChar(fmt: mutable String.StringIterator): Char {
+    this.printUntilMaybeFormatChar(fmt).fromSome(
+      "Too many arguments for format string",
+    )
+  }
+
+  mutable fun writeQuotedIdentifier(id: String, number: Int = -1): void {
+    if (!needsQuotes(id)) {
+      this.print(id);
+      if (number >= 0) {
+        this.print(".%d" / number)
+      }
+    } else {
+      this.print(
+        "%r" /
+          (id +
+            if (number >= 0) {
+              "." + number
+            } else {
+              ""
+            }),
+      )
+    }
+  }
+}
+
+mutable class FunPrettyDefBuilder{
+  optinfo_: mutable OptimizerInfo,
+  // A unique counter chosen to not interfere with any Block or Instr IDs.
+  mutable prettySuffixCounter: Int = -1,
+} extends PrettyDefBuilder {
+  // Return a new function-unique IR identifier.
+  mutable fun optinfo(): mutable OptimizerInfo {
+    this.optinfo_
+  }
+
+  mutable fun prettyIdentifier(prefixHint: String = ""): String {
+    (if (prefixHint.isEmpty()) {
+      "r"
+    } else {
+      prettyText(prefixHint) + "."
+    }) + this.prettyCounter()
+  }
+
+  mutable fun prettyCounter(): Int {
+    v = this.prettySuffixCounter;
+    if (v < 0) {
+      this.die("Asking for unique IR identifier but it wasn't configured")
+    };
+    this.!prettySuffixCounter = v + 1;
+    v
+  }
+}
+
+mutable class StructPrettyDefBuilder extends PrettyDefBuilder
+
+// These versions don't compile yet because of no fall-throughs.
+
+// private fun isLegalAsmIDHead(c: Char): Bool {
+//   c match {
+//     |'$'|'-'|'_'|'.'
+//     |'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'
+//     |'N'|'O'|'P'|'Q'|'R'|'S'|'T'|'U'|'V'|'W'|'X'|'Y'|'Z'
+//     |'a'|'b'|'c'|'d'|'e'|'f'|'g'|'h'|'i'|'j'|'k'|'l'|'m'
+//     |'n'|'o'|'p'|'q'|'r'|'s'|'t'|'u'|'v'|'w'|'x'|'y'|'z' -> true
+//     | _ -> false
+//   }
+// }
+
+// private fun isLegalAsmIDTail(c: Char): Bool {
+//   c match {
+//     |'0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9' -> true
+//     | _ -> isLegalAsmIDHead(c)
+//   }
+// }
+
+private fun isCharInSet(c: Char, hi: Int, lo: Int): Bool {
+  code = c.code();
+  if (code < 128) {
+    mask = if (code >= 64) {
+      hi
+    } else {
+      lo
+    };
+    mask.shr(code.and(63)).and(1) != 0
+  } else {
+    false
+  }
+}
+
+// Can this be the first character of an identifier, per LLVM rules?
+private fun isLegalAsmIDHead(c: Char): Bool {
+  // [-a-zA-Z$._]
+  isCharInSet(c, 0x07fffffe87fffffe, 0x0000601000000000)
+}
+
+// Can this be the second or later character of an identifier, per LLVM rules?
+private fun isLegalAsmIDTail(c: Char): Bool {
+  // [-a-zA-Z$._0-9]
+  isCharInSet(c, 0x07fffffe87fffffe, 0x03ff601000000000)
+}
+
+private fun needsQuotes(s: String): Bool {
+  si = s.getIter();
+  si.next() match {
+  | None() -> false
+  | Some(c) -> !isLegalAsmIDHead(c) || !si.all(isLegalAsmIDTail)
+  }
+}
+
+// This needs to be made reversible and deal correctly with name clashes.
+// See T22100866
+private fun mangle(name: String): String {
+  String::tabulate(name.length(), i -> {
+    name[i] match {
+    | '+' | '-' | '.' | ':' -> '_'
+    | '!' -> 'N'
+    | '=' -> 'E'
+    | '<' -> 'L'
+    | '>' -> 'G'
+    | c @ _ -> c
+    };
+  })
+}
+
+private const pad8: ConstantInt = kByteConstants[0];
+private const pad16: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt16,
+  value => 0,
+};
+private const pad32: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt32,
+  value => 0,
+};
+private const pad64: ConstantInt = ConstantInt{
+  id => InstrID::none,
+  typ => tInt,
+  value => 0,
+};
+
+// Return an N-bit padding constant zero value.
+private fun getPad(bitSize: Int): ConstantInt {
+  bitSize match {
+  | 8 -> pad8
+  | 16 -> pad16
+  | 32 -> pad32
+  | 64 -> pad64
+  | _ -> invariant_violation("Impossible bit size " + bitSize)
+  }
+}
+
+private value class LLVMStructField(
+  typ: ScalarType,
+  // If 1, not an array, just typ; else a repeat count [arraySize x typ]
+  count: Int,
+) uses Hashable, Equality {
+  fun ==(other: LLVMStructField): Bool {
+    this.count == other.count && this.typ == other.typ
+  }
+}
+
+// Returns the largest power of two that divides evenly into n, but no
+// more than maxAlign. If n is zero, returns maxAlign.
+private fun computeAlignment(n: Int, maxAlign: Int): Int {
+  tmp = n.or(maxAlign);
+  tmp.and(-tmp);
+}
+
+// This takes a sequence of constant values and their bit offsets and
+// returns struct fields that has a few properties:
+//
+// - All alignment padding is explicit (no "struct holes").
+// - All values are 1-, 2-, 4- or 8 bytes. So incoming bit values get
+//   grouped into bytes or larger integers as needed, etc.
+private fun createStaticImageFields(
+  getField: Int ~> ?StaticImageField,
+  env: GlobalEnv,
+): Array<Constant> {
+  fields = mutable Vector<Constant>[];
+
+  // The index of the next field to emit.
+  i = 0;
+
+  // Current bit offset as we append. Always a multiple of 8.
+  bitOffset = 0;
+
+  // Utility function to extract the bit size of a given Constant.
+  valueBitSize = instr -> instr.typ.getScalarType(env).bitSize;
+
+  while (
+    getField(i) match {
+    | None() -> false
+    | Some(StaticImageField(value, vbo)) ->
+      invariant(vbo >= bitOffset, "Bit offset ordering problem");
+
+      // Integers can tolerate shifting around within an entire int64, and
+      // we need that to handle arbitrary bitfields someday, but everything
+      // else should be padded out exactly to its starting offset.
+      isConstantInteger = value.constantInteger().isSome();
+      containingBitOffset = if (isConstantInteger) {
+        vbo.and(-64)
+      } else {
+        invariant(vbo.and(7) == 0, "Unexpectedly not byte aligned");
+        vbo
+      };
+
+      // Insert padding zeroes as needed to reach this field's start.
+      while (bitOffset < containingBitOffset) {
+        // Make sure the padding is aligned. If bitOffset is currently aligned
+        // mod 16 bits, we can't insert padding larger than int16, etc.
+        curAlign = computeAlignment(bitOffset, 64);
+        padBitSize = min(curAlign, containingBitOffset - bitOffset);
+        fields.push(getPad(padBitSize));
+        !bitOffset = bitOffset + padBitSize
+      };
+
+      if (!isConstantInteger) {
+        !i = i + 1
+      } else {
+        // Keep absorbing integer values into a larger integer value, e.g.
+        // a collection of adjacent 1-bit values can get grouped into an
+        // int8 or larger value, etc.
+        //
+        // But we must respect the alignment of the integers we
+        // are emitting. So if we are starting out on a block aligned mod
+        // 8 bits, only consume enough upcoming integer fields to fill out
+        // the rest of those 8 bits and emit an int8. And if aligned mod 16,
+        // only fill in at most 16 bits, etc., up to a maximum of 64.
+        endBitOffset = bitOffset + computeAlignment(bitOffset, 64);
+
+        firstIntegerFieldIndex = i;
+
+        // Integer value being built up.
+        intBits = 0;
+
+        while (
+          getField(i) match {
+          | None() -> false
+          | Some(StaticImageField(nextValue, nextBitOffset)) ->
+            nextBitSize = valueBitSize(nextValue);
+
+            if (nextBitOffset + nextBitSize > endBitOffset) {
+              // This does not fit inside the biggest integer we can emit.
+              invariant(
+                nextBitOffset >= endBitOffset,
+                "Value spans an alignment boundary",
+              );
+              invariant(i > firstIntegerFieldIndex, "Failed to emit int");
+              false
+            } else {
+              nextValue.constantInteger() match {
+              | None() -> false
+              | Some(nextInt) ->
+                // Absorb another upcoming integer value (little endian).
+                low = zext(nextInt, nextBitSize);
+                !intBits = intBits.or(low.shl(nextBitOffset - bitOffset));
+                !i = i + 1;
+                true
+              }
+            }
+          }
+        ) void;
+
+        // At this point, 'i' refers to the first field yet to be processed.
+
+        // Our new value is at least this big.
+        latestEnd = getField(i - 1) match {
+        | Some(latest) -> latest.bitOffset + valueBitSize(latest.value)
+        | None() -> invariant_violation("field out of range")
+        };
+        minBitSize = latestEnd - bitOffset;
+
+        // Figure out what size field to use. If we have 19 bits,
+        // really that must become an LLVM i32, etc.
+        newBitSize = if (minBitSize <= 8) {
+          8
+        } else if (minBitSize <= 16) {
+          16
+        } else if (minBitSize <= 32) {
+          32
+        } else if (minBitSize <= 64) {
+          64
+        } else {
+          invariant_violation("Impossible bit size")
+        };
+
+        // Grow the integer to reduce padding entries before the next field
+        // when possible. For example, if we are emitting a 64-bit aligned
+        // int8, and the next field is a 64-bit aligned pointer, we can
+        // zero-extend the int8 to int64 rather than later inserting
+        // 56 bits of padding zeroes before the next field. Either works,
+        // of course, this is just more concise.
+        getField(i) match {
+        | None() -> void
+        | Some(StaticImageField(_, nextBitStart)) ->
+          while (
+            newBitSize < 64 &&
+            bitOffset + newBitSize * 2 <= nextBitStart
+          ) !newBitSize = newBitSize * 2
+        };
+
+        pad = getPad(newBitSize);
+        !value = if (intBits == 0) {
+          pad
+        } else {
+          // ConstantInts canonicalize their values by sign-extending.
+          pad with {value => sext(intBits, newBitSize)}
+        }
+      };
+
+      fields.push(value);
+
+      !bitOffset = bitOffset + valueBitSize(value);
+
+      true
+    }
+  ) void;
+
+  fields.toArray()
+}
+
+// Helper for createStaticImage.
+private fun createStaticImagePrettyDef{
+  fields: Array<Constant>,
+  common: mutable PrettyIR,
+  symbolNameHint: String,
+  minByteAlignment: Int,
+  id: ?PrettyDefID,
+}: PrettyDefID {
+  env = common.env;
+
+  // The overall alignment must be good enough for all fields.
+  fieldBitAlignment = minByteAlignment * 8;
+  bitSize = 0;
+
+  for (field in fields) {
+    st = field.typ.getScalarType(env);
+    !fieldBitAlignment = max(fieldBitAlignment, st.bitAlignment);
+    !bitSize = bitSize + st.bitSize
+  };
+
+  // To minimize cache misses, we might as well align objects based on
+  // their size. So a 32-byte object should be aligned mod 32 since
+  // that wastes no space, a 48-byte object should be aligned mod
+  // 16, etc.
+  paddedBitSize = roundUp(bitSize, fieldBitAlignment);
+  bitAlignment = max(
+    fieldBitAlignment,
+    computeAlignment(paddedBitSize, 4096 * 8),
+  );
+
+  key = (bitAlignment, fields);
+  common.images.maybeGet(key) match {
+  | Some(old) ->
+    // If they demanded a certain ID, but an equivalent image already
+    // exists, just direct their ID to the existing image.
+    id match {
+    | Some(x) -> common.defs.set(x, common.defs[old])
+    | None() -> void
+    };
+    old
+  | _ ->
+    // Produce an array of LLVM field types.
+    typesBuf = mutable Vector[];
+
+    j = 0;
+    while (j < fields.size()) {
+      st = fields[j].typ.getScalarType(env);
+
+      // Count how many fields in a row have the same LLVM type name.
+      k = j;
+      while ({
+        !k = k + 1;
+        k < fields.size() && st == fields[k].typ.getScalarType(env)
+      }) void;
+
+      // Make an array for a run of 3 or more to keep the type concise.
+      count = if (k - j >= 3) {
+        k - j
+      } else {
+        1
+      };
+      typesBuf.push(LLVMStructField(st, count));
+      !j = j + count
+    };
+
+    types = typesBuf.toArray();
+
+    structType = common.uniqueStructType(types);
+
+    out = mutable StructPrettyDefBuilder{
+      id => id match {
+      | Some(x) -> x
+      | None() -> common.defs.allocID()
+      },
+      canShare => true,
+      symbol => symbolNameHint,
+      typeString => None(),
+      typeRef => Some(structType),
+      common,
+    };
+
+    // Handle circular references using a temporary placeholder.
+    // It's good enough to emit references to, and we'll replace it
+    // with the real out.finish() later.
+    common.images.set(key, out.finish());
+
+    out.print("%n = private unnamed_addr constant %T {" / out / out);
+
+    // Index into "values" array for the next field.
+    i = 0;
+
+    for (ft in types) {
+      if (i > 0) out.print(',');
+      out.print("\n  ");
+
+      scalarType = ft.typ;
+
+      if (ft.count != 1) {
+        // Use array notation.
+        out.print("[%s x %s] [" / ft.count / scalarType.toString());
+
+        // As a readability hack try to dump ranges of integers on one line.
+        // TODO: Maybe also do this if they are all null, etc., or even
+        // see how long the line is.
+        newlines = (scalarType.kind != IntegerScalarKind());
+
+        (separator, nextSeparator, end) = if (newlines) {
+          ("\n    ", ",\n    ", "\n  ]")
+        } else {
+          (" ", ", ", " ]")
+        };
+
+        for (_ in Range(0, ft.count)) {
+          out.print("%s%N" / separator / fields[i]);
+          !i = i + 1;
+          !separator = nextSeparator
+        };
+
+        out.print(end)
+      } else {
+        out.print("%N" / fields[i]);
+        !i = i + 1
+      }
+    };
+
+    out.print("\n}, align %s\n" / (bitAlignment / 8));
+
+    out
+      .pos()
+      .invariant(i == fields.size(), "Struct type did not consume all values");
+
+    out.finish()
+  }
+}
+
+private fun createStaticImage{
+  getField: Int ~> ?StaticImageField,
+  common: mutable PrettyIR,
+  symbolNameHint: String = ".image",
+  minByteAlignment: Int = 1,
+  id: ?PrettyDefID = None(),
+}: PrettyDefID {
+  fields = createStaticImageFields(getField, common.env);
+  createStaticImagePrettyDef{
+    id,
+    fields,
+    common,
+    symbolNameHint,
+    minByteAlignment,
+  }
+}
+
+// Turns a String into some human-readable text for an LLVM symbol.
+fun prettyText(s: String): String {
+  limit = 30;
+
+  // LLVM does not strictly require this mangling, but WASM does.
+  mangle(
+    if (s.length() <= limit) {
+      s
+    } else {
+      s.sub(0, limit)
+    },
+  )
+}
+
+// Emits "zeroext" for types that need zero extension in the calling
+// convention. Someday we will probably need "signext" too.
+fun prettyWriteTypeCallAttribute(
+  out: mutable PrettyDefBuilder,
+  t: Type,
+  spaceBefore: Bool,
+  spaceAfter: Bool,
+): void {
+  t.maybeGetScalarType(out.env()) match {
+  | Some(p) if (p.kind == IntegerScalarKind() && p.bitSize < 32) ->
+    if (spaceBefore) out.print(' ');
+    out.print("zeroext");
+    if (spaceAfter) out.print(' ')
+  | _ -> void
+  }
+}
+
+fun prettyWriteTypeName(out: mutable PrettyDefBuilder, t: Type): void {
+  example = t.exampleSClass(out.env());
+  example.maybeGetScalarType() match {
+  | Some(p) -> out.print(p.llvmTypeName)
+  | None() ->
+    if (t == tVoid) {
+      out.print("void")
+    } else if (example.isReturnTuple()) {
+      prettyWriteReturnTypeName(out, example.fields.map(f -> f.typ))
+    } else {
+      out.pos().die(`Do not know what LLVM type to use for ${t}`)
+    }
+  }
+}
+
+fun prettyWriteReturnTypeName(
+  out: mutable PrettyDefBuilder,
+  types: Array<Type>,
+  writeAttributes: Bool = true,
+): void {
+  types.size() match {
+  | 0 -> out.print("void")
+  | 1 ->
+    if (writeAttributes) {
+      prettyWriteTypeCallAttribute(out, types[0], false, true)
+    };
+    prettyWriteTypeName(out, types[0])
+  | _ ->
+    out.print("{");
+    types.eachWithIndex((i, t) -> {
+      if (i > 0) out.print(", ");
+      prettyWriteTypeName(out, t)
+    });
+    out.print("}")
+  }
+}
+
+trait DIEntry extends TypeSafeID<Int>, PrettyFormattable {
+  readonly fun toString(): String {
+    "!" + this.id
+  }
+  readonly fun prettyFormat(out: mutable PrettyDefBuilder, _spec: Char): void {
+    out.print("!%d" / this.id)
+  }
+}
+
+value class DIFile() uses DIEntry
+
+value class DICompileUnit() uses DIEntry
+
+value class DISubprogram() uses DIEntry
+
+value class DILocation() uses DIEntry {
+  const none: DILocation = DILocation(-1);
+}
+
+private type Filename = String;
+private type Line = Int;
+private type Column = Int;
+private type InlinedAt = DILocation;
+
+// LLVM metadata memoization cache
+//
+// This class handles the metadata for LLVM output.  Note that in general when
+// llc complains about the !dbg metadata it will have already rewritten the
+// indexes internally and so the numbers won't match what we wrote.
+// So an error like this:
+//
+//   !dbg attachment points at wrong subprogram for function
+//   !105 = distinct !DISubprogram(name: "<generic_function:Vector::push>", scope: !3, file: !3, line: 78, type: !55, isLocal: false, isDefinition: true, isOptimized: false, unit: !2)
+//   void (i8*, i8*)* @"sk.Vector::push.q2"
+//     %r45 = getelementptr inbounds i8, i8* %this.0, i64 8, !dbg !84
+//
+// may have actually originally been written as (note the different !dbg label):
+//
+//     %r45 = getelementptr inbounds i8, i8* %this.0, i64 8, !dbg !56
+mutable class Metadata{
+  // List of LLVM metadata
+  metadata: mutable Vector<String> = mutable Vector[],
+
+  diFileCache: mutable UnorderedMap<Filename, DIFile> = mutable UnorderedMap[],
+
+  // TODO: Right now we only support a single generic subroutine type.  Once we
+  // fix FileRange so we know what function we're in then this should turn
+  // into a Map.
+  mutable diSubroutineTypeCache: Int = -1,
+
+  diCompileUnitCache: mutable UnorderedMap<
+    DIFile,
+    DICompileUnit,
+  > = mutable UnorderedMap[],
+
+  diSubprogramCache: mutable UnorderedMap<
+    (DIFile, PrettyDefID),
+    DISubprogram,
+  > = mutable UnorderedMap[],
+
+  diLocationCache: mutable UnorderedMap<
+    (DISubprogram, Line, Column, InlinedAt),
+    DILocation,
+  > = mutable UnorderedMap[],
+
+  // !llvm.module.flags
+  // Values are indices for the desired flag (see addModuleIntFlag()).
+  moduleFlags: mutable Vector<Int> = mutable Vector[],
+
+  defs: readonly PrettyDefIDToPrettyDef,
+} {
+  static fun create(defs: readonly PrettyDefIDToPrettyDef): mutable Metadata {
+    metadata = mutable Metadata{defs};
+
+    // Reserve the slot for kEmptyBlockIndex since we may have already
+    // handed it out.
+    emptyBlockIndex = metadata.add(() -> "!{}");
+    invariant(
+      emptyBlockIndex == PrettyIR.Metadata::kEmptyBlockIndex,
+      "Did not get expected empty block index",
+    );
+
+    metadata.addModuleIntFlag("Dwarf Version", 4);
+    metadata.addModuleIntFlag("Debug Info Version", 3);
+
+    metadata
+  }
+
+  mutable fun add(f: () -> String): Int {
+    idx = this.metadata.size();
+    this.metadata.push(f());
+    idx
+  }
+
+  // A DIFile represents a file.  We copy clang's method of emitting the source
+  // file as the name the user passed to the compiler and the directory as the
+  // $PWD.
+  mutable fun diFile(filename: String): DIFile {
+    this.diFileCache.getOrAdd(filename, () -> {
+      DIFile(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf2(
+            "!DIFile(filename: %r, directory: %r)",
+            filename,
+            getcwd(),
+          );
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  // A DICompileUnit represents compilation information for a file.
+  mutable fun diCompileUnit(file: DIFile): DICompileUnit {
+    this.diCompileUnitCache.getOrAdd(file, () -> {
+      DICompileUnit(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf1(
+            "distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: %s, " +
+              "emissionKind: FullDebug)",
+            file,
+          );
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  // DISubprogram for function definition and location scope.  Note that the
+  // DISubprogram must be unique for each function that gets written out.
+  mutable fun diSubprogram(funPos: FunPosBase): DISubprogram {
+    file = this.diFile(funPos.pos.filename);
+
+    // Canonicalize the SFunctionID to handle sharing.
+    origID = PrettyDefID(funPos.id.id);
+    id = this.defs.maybeGet(origID) match {
+    | Some(x) -> x.id
+    | None() -> origID
+    };
+
+    key = (file, id);
+    this.diSubprogramCache.getOrAdd(key, () -> {
+      unit = this.diCompileUnit(file);
+      if (this.diSubroutineTypeCache == -1) {
+        emptyIdx = this.add(() -> "!{}");
+        this.!diSubroutineTypeCache = this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf1("!DISubroutineType(types: !%s)", emptyIdx);
+          str.toString()
+        });
+      };
+      DISubprogram(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf6(
+            "distinct !DISubprogram(name: %r, scope: %s, file: %s, line: %s, type: !%s, unit: %s)",
+            funPos.name,
+            file,
+            file,
+            funPos.pos.startPosition().line() + 1,
+            this.diSubroutineTypeCache,
+            unit,
+          );
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  mutable fun diRawLocation(
+    funPos: FunPosBase,
+    pos: Pos,
+    inlinedAt: DILocation = DILocation::none,
+  ): DILocation {
+    scope = this.diSubprogram(funPos);
+    start = pos.startPosition();
+
+    // Correct 0-based internal convention to 1-based LLVM convention.
+    line = start.line() + 1;
+    col = start.column() + 1;
+
+    key = (scope, line, col, inlinedAt);
+    this.diLocationCache.getOrAdd(key, () -> {
+      DILocation(
+        this.add(() -> {
+          str = mutable TextOutputStream.StringTextOutputStream{};
+          str.printf2("!DILocation(scope: %s, line: %s", scope, line);
+          if (col < 65536) str.printf1(", column: %s", col);
+          if (inlinedAt != DILocation::none) {
+            str.printf1(", inlinedAt: %s", inlinedAt)
+          };
+          str.write(")");
+          str.toString()
+        }),
+      )
+    })
+  }
+
+  // Fetch a DILocation for a Pos given a specific function
+  // specialization.  DILocation tags MUST have a scope which matches up with
+  // the DISubprogram scope on their owning function or llc will complain about
+  // 'attachment points at wrong subprogram for function'.
+  mutable fun diLocation(pos: Pos, funPos: FunPosBase): DILocation {
+    pos match {
+    | ip @ InlinedPos _ ->
+      inlinedAt = this.diRawLocation(funPos, ip.inlinedAt);
+      this.diRawLocation(ip.origFun, ip, inlinedAt)
+    | _ -> this.diRawLocation(funPos, pos)
+    }
+  }
+
+  mutable fun addModuleIntFlag(key: String, value: Int): void {
+    this.moduleFlags.push(
+      this.add(() -> {
+        str = mutable TextOutputStream.StringTextOutputStream{};
+        str.printf2("!{i32 2, !%r, i32 %s}", key, value);
+        str.toString()
+      }),
+    )
+  }
+
+  // LLVM metadata index for !{}
+  const kEmptyBlockIndex: Int = 0;
+}
+
+/*FIXME: private*/
+mutable class .PrettyIR{
+  mutable env: GlobalEnv,
+
+  // Skip String -> LLVM expression.
+  strings: mutable UnorderedMap<
+    LongUTF8String,
+    PrettyDefID,
+  > = mutable UnorderedMap[],
+
+  // Precomputed constants for byte values.
+  private mutable cachedByteConstants: Array<ConstantInt> = Array[],
+
+  // C String incl. '\0' if desired -> PrettyDefID.
+  cstrings: mutable UnorderedMap<
+    UTF8String,
+    PrettyDefID,
+  > = mutable UnorderedMap[],
+
+  images: mutable UnorderedMap<
+    (Int, Array<Constant>),
+    PrettyDefID,
+  > = mutable UnorderedMap[],
+
+  structTypes: mutable UnorderedMap<
+    Array<LLVMStructField>,
+    PrettyDefID,
+  > = mutable UnorderedMap[],
+
+  // The creationOrder of the last StaticImage object we emitted.
+  // We emit them in increasing creationOrder, and this lets us detect
+  // whether a particular StaticImage has already been "shipped".
+  mutable lastStaticImageEmitted: Int = -1,
+
+  // Pos of last resort, reset for each function.
+  mutable pos: Pos = FileRange.builtin,
+
+  // Function being emitted.
+  mutable maybeOptinfo: ?mutable OptimizerInfo = None(),
+
+  // Cached string for the LLVM type of the @skip.globals array.
+  private mutable globalsType: ?String = None(),
+
+  // Cached image for the mega vtable.
+  megaVTableImage: PrettyDefID,
+
+  defs: mutable PrettyDefIDToPrettyDef,
+
+  // External functions for which we already have a declaration.
+  // Due to generics we may have multiple Functions internally that all map
+  // to the same external C++ function (when it is carefully designed to
+  // not care about the Tparams) and this combines them into one PrettyDef
+  // since really they are the same function.
+  externs: mutable UnorderedMap<String, PrettyDefID> = mutable UnorderedMap[],
+} {
+  static fun make{env: GlobalEnv}: mutable PrettyIR {
+    // Make new IDs from this.defs not overlap with SFunctionID.
+    defs = mutable PrettyDefIDToPrettyDef{pos => FileRange.builtin};
+    for (_ in Range(0, env.sfuns.size())) _ = defs.allocID();
+    mutable PrettyIR{env, defs, megaVTableImage => defs.allocID()}
+  }
+
+  mutable fun resetForNewFunction(pos: Pos): void {
+    this.!pos = pos
+  }
+
+  mutable fun doneWithFunction(): void {
+    this.!pos = FileRange.builtin
+  }
+
+  mutable fun uniqueStructType(fields: Array<LLVMStructField>): PrettyDefID {
+    key = fields;
+    this.structTypes.maybeGet(key) match {
+    | Some(x) -> x
+    | None() ->
+      // Choose a default struct name based on the hash, so we tend to
+      // get reproducible names from run to run. We multiply to spread
+      // out the hash bits across the digits we choose to print.
+      sstr = mutable TextOutputStream.StringTextOutputStream{};
+      sstr.write("struct.");
+      numDigits = 12;
+      shift = 64 - (numDigits * 4);
+      sstr.writeHex(
+        (fields.hash() * 0xc4ceb9fe1a85ec53).ushr(shift),
+        numDigits,
+      );
+
+      out = mutable StructPrettyDefBuilder{
+        id => this.defs.allocID(),
+        canShare => true,
+        symbol => sstr.toString(),
+        symbolPrefix => "%",
+        common => this,
+        typeRef => None(),
+        typeString => None(),
+      };
+
+      // Insert into the table now to someday handle circular types.
+      this.structTypes.add(key, out.id);
+
+      lineStart = 0;
+
+      out.print("%n = type { " / out);
+
+      fields.eachWithIndex((i, sf) -> {
+        if (i > 0) {
+          textSize = out.text.size();
+          if (textSize - lineStart > 60) {
+            // Insert newlines occasionally for big types.
+            out.print(",\n  ");
+            !lineStart = textSize + 2
+          } else {
+            out.print(", ")
+          }
+        };
+        typeStr = sf.typ.toString();
+        if (sf.count == 1) {
+          out.print(typeStr)
+        } else {
+          out.print("[%s x %s]" / sf.count / typeStr)
+        }
+      });
+
+      out.print(" }\n");
+
+      out.finish()
+    }
+  }
+
+  // Interns a global static image of an object and returns an LLVM
+  // expression pointing just after the vtable.
+  mutable fun prettyWriteConstantObject(
+    out: mutable PrettyDefBuilder,
+    obj: ConstantObject,
+  ): void {
+    sc = obj.typ.exampleSClass(this.env);
+
+    vtable = ConstantMegaVTableMember{
+      id => InstrID::none,
+      typ => tNonGCPointer,
+      value => (this.env.vtables.fromSome().classByteOffsets[sc.id] +
+        VTable.kFrozenMask),
+    };
+
+    header = if (vtableByteSize == 8) {
+      Array[StaticImageField(vtable, 0)]
+    } else {
+      // All object pointers (right after vtable) are aligned mod 8.
+      Array[StaticImageField(pad32, 0), StaticImageField(vtable, 32)]
+    };
+
+    headerSize = header.size();
+    vtableField = header[headerSize - 1];
+    firstFieldBitOffset = vtableField.bitOffset + vtableByteSize * 8;
+
+    layout = sc.layout match {
+    | Some(l) -> l
+    | _ -> sc.pos.die("Missing layout for " + sc)
+    };
+
+    // Create a function that gets the Nth field of the image we are making.
+    getField = i ~> {
+      if (i.ult(headerSize)) {
+        Some(header[i])
+      } else if (i.ult(headerSize + obj.values.size())) {
+        l = layout[i - headerSize];
+        Some(
+          StaticImageField(
+            obj.values[sc.getFieldIndex(l.name, sc.pos)],
+            firstFieldBitOffset + l.bitOffset,
+          ),
+        )
+      } else if (i < 0) {
+        sc.pos.die("Attempt to get static image field with negative index " + i)
+      } else {
+        None()
+      }
+    };
+
+    image = createStaticImage{
+      getField,
+      common => this,
+      minByteAlignment => 8,
+      symbolNameHint => ".image." + prettyText(sc.toString()),
+    };
+
+    // Point to the first array slot (i.e. right after the vtable).
+    image.writeGetPointer(out, firstFieldBitOffset / 8)
+  }
+
+  // Interns a global static image of an Array and emits an LLVM
+  // expression pointing just after the vtable.
+  mutable fun prettyWriteConstantArray(
+    out: mutable PrettyDefBuilder,
+    cfv: ConstantArray,
+  ): void {
+    sc = cfv.typ.exampleSClass(this.env);
+    logicalOrderedValues = cfv.values;
+    size = cfv.size;
+
+    sizeConst = ConstantInt{id => InstrID::none, typ => tInt32, value => size};
+
+    vtable = ConstantMegaVTableMember{
+      id => InstrID::none,
+      typ => tNonGCPointer,
+      value => (this.env.vtables.fromSome().classByteOffsets[sc.id] +
+        VTable.kFrozenMask),
+    };
+
+    header = if (vtableByteSize == 8) {
+      Array[
+        StaticImageField(pad32, 0),
+        StaticImageField(sizeConst, 32),
+        StaticImageField(vtable, 64),
+      ]
+    } else {
+      Array[StaticImageField(sizeConst, 0), StaticImageField(vtable, 32)]
+    };
+
+    headerSize = header.size();
+    vtableField = header[headerSize - 1];
+    firstSlotBitOffset = vtableField.bitOffset + vtableByteSize * 8;
+
+    // Create the values and layout for the array elements.
+    getField = if (logicalOrderedValues.isEmpty()) {
+      header.maybeGet
+    } else {
+      slotInfo = sc.arraySlot.fromSome("should be an array");
+
+      // Sort so we emit the fields in physical, not logical, order.
+      valsPerSlot = slotInfo.types.size();
+      pieceOrder = Array::fillBy(valsPerSlot, id).sortedBy(x ~>
+        slotInfo.bitOffsets[x]
+      );
+
+      // Create a function that gets the Nth field of the image we are making.
+      i ~> {
+        if (i.ult(headerSize)) {
+          Some(header[i])
+        } else if (i.ult(headerSize + logicalOrderedValues.size())) {
+          x = i - headerSize;
+          slotIndex = x / valsPerSlot;
+          pieceIndex = x % valsPerSlot;
+
+          permute = pieceOrder[pieceIndex];
+
+          Some(
+            StaticImageField(
+              logicalOrderedValues[slotIndex * valsPerSlot + permute],
+              (firstSlotBitOffset +
+                slotIndex * slotInfo.bitSize +
+                slotInfo.bitOffsets[permute]),
+            ),
+          )
+        } else if (i < 0) {
+          sc.pos.die(
+            "Attempt to get static image field with negative index " + i,
+          )
+        } else {
+          None()
+        }
+      }
+    };
+
+    image = createStaticImage{
+      getField,
+      common => this,
+      minByteAlignment => 8,
+      symbolNameHint => ".image." + prettyText(sc.toString()),
+    };
+
+    // Point to the first array slot (i.e. right after the vtable).
+    image.writeGetPointer(out, firstSlotBitOffset / 8)
+  }
+
+  // Interns a global static image of an struct and emits an LLVM
+  // expression pointing to its first byte.
+  mutable fun prettyWriteConstantStruct(
+    out: mutable PrettyDefBuilder,
+    obj: ConstantStruct,
+  ): void {
+    image = createStaticImage{
+      getField => obj.values.maybeGet,
+      common => this,
+      minByteAlignment => obj.byteAlignment,
+      symbolNameHint => ".struct." + obj.hash().and(Int::max),
+    };
+
+    image.writeGetPointer(out, 0)
+  }
+}
+
+private fun prettyWriteVTableRef(
+  byteOffset: Int,
+  out: mutable PrettyDefBuilder,
+): void {
+  out.common.megaVTableImage.writeGetPointer(out, byteOffset)
+}
+
+private fun prettyWriteNameConstantString(
+  value: UTF8String,
+  out: mutable PrettyDefBuilder,
+): void {
+  out.print(`"${value}"`); // XXX escape?
+}
+
+private fun prettyWriteName(instr: Instr, out: mutable PrettyDefBuilder): void {
+  instr match {
+  | ConstantBool{value} -> out.print(if (value) '1' else '0')
+  | ConstantChar{value} -> out.print(value.code())
+  | ConstantCodeLabel _ ->
+    // Rather than create a special type just for blockaddress, just die
+    // here -- I expect these will only be emitted by code calling
+    // prettyWriteTypeAndName anyway.
+    out.die("ConstantCodePointer only supports prettyWriteTypeAndName")
+  | cfv @ ConstantArray _ -> out.common.prettyWriteConstantArray(out, cfv)
+  | ConstantFloat{value} ->
+    text = value.toString();
+    if (
+      value.isNaN() ||
+      value == Float::inf ||
+      value == -Float::inf ||
+      text.contains("e")
+    ) {
+      // We need to use hex syntax on the raw IEEE value for special numbers.
+      // TODO: Should we just do this always? Do we trust host
+      // formatting for denorms?
+      out.print("0x%x" / value.toBits())
+    } else {
+      out.print(text)
+    }
+  | ConstantFun{value} ->
+    subf = out.env().getFunction(value, out.pos());
+    out.print("%n" / subf)
+  | ConstantGlobalSingleton _ -> out.print("@skip.globals")
+  | ConstantInt{value} -> out.print(value)
+  | ConstantMegaVTableMember{value} -> prettyWriteVTableRef(value, out)
+  | ConstantPointer{value} ->
+    if (value == 0) {
+      out.print("null")
+    } else {
+      out.print("inttoptr (i%s %s to i8*)" / ptrBitSize / value)
+    }
+  | obj @ ConstantObject _ -> out.common.prettyWriteConstantObject(out, obj)
+  | ConstantString{value} -> prettyWriteNameConstantString(value, out)
+  | struct @ ConstantStruct _ ->
+    out.common.prettyWriteConstantStruct(out, struct)
+  | ConstantVoid _ -> out.die("Cannot name void input value.")
+  | ConstantVTable{value, frozen_} ->
+    byteOffset = (
+      out.env().vtables.fromSome().classByteOffsets[value] +
+      (if (frozen_) VTable.kFrozenMask else 0)
+    );
+    prettyWriteVTableRef(byteOffset, out)
+
+  // TODO: More of these should just die, as they don't make sense.
+
+  | Alloca _
+  | BlockParam _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | CallFunction _
+  | CallMethod _
+  | Cast _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | FunParam _
+  | GetConst _
+  | GetCurrentAwaitable _
+  | GetField _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCtz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntSwitch _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | InvokeFunction _
+  | InvokeMethod _
+  | LandingPad _
+  | Load _
+  | LoadVTableEntry _
+  | LocalGC _
+  | NamedCall _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _
+  | RawCallBase _
+  | Reinterpret _
+  | SetField _
+  | SignExtend _
+  | Store _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | StringSwitch _
+  | Suspend _
+  | Truncate _
+  | TupleExtract _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | ArrayUnsafeSet _
+  | With _
+  | Yield _
+  | ZeroExtend _ ->
+    if (instr.prettyName.isEmpty()) {
+      out.print("%%r%s" / instr.idValue())
+    } else {
+      out.print('%');
+      out.writeQuotedIdentifier(instr.prettyName, instr.idValue())
+    }
+
+  | AsyncReturn{pos}
+  | If{pos}
+  | IndirectJump{pos}
+  | Jump{pos}
+  | Return{pos}
+  | Throw{pos}
+  | TypeSwitch{pos}
+  | Unreachable{pos}
+  | YieldBreak{pos} ->
+    pos.die("Asking for name for unexpected Instr " + instr)
+  }
+}
+
+private fun prettyWriteTypeAndName(
+  instr: Instr,
+  out: mutable PrettyDefBuilder,
+): void {
+  instr match {
+  | ConstantCodeLabel{function, tag, case} ->
+    f = out.env().getFunction(function, FileRange.builtin);
+
+    if (
+      !f.blocks.any(b -> {
+        b.terminator() match {
+        | ijump @ IndirectJump{successors} if (tag == ijump.tag) ->
+          out.print("i8* blockaddress(%n, " / f);
+          target = successors[case].target;
+          if (
+            !f.blocks.any(b2 -> {
+              if (b2.id == target) {
+                out.print("%%%n" / b2);
+                true
+              } else {
+                false
+              }
+            })
+          ) {
+            f.die("Failed to find indirect branch block " + target)
+          };
+
+          out.print(")");
+
+          // We found it, stop looping.
+          true
+        | _ -> false
+        }
+      })
+    ) {
+      // Weird -- it seems that the indirect jump that wanted this
+      // entry has been optimized away after the vtables were set up?
+      out.print("i8* null")
+    }
+  | ConstantFun{value} ->
+    // Currently, anyone calling this function expects an i8* rather
+    // than a function type so we must introduce a cast.
+    subf = out.env().getFunction(value, out.pos());
+    out.print("i8* bitcast (%N to i8*)" / subf)
+  | ConstantVoid _ -> out.print("void")
+  | _ -> out.print("%t %n" / instr / instr)
+  }
+}
+
+private fun debugWriteName(instr: Instr, out: mutable PrettyDefBuilder): void {
+  instr match {
+  | ConstantCodeLabel{function, tag, case} ->
+    out.print(
+      "ConstantCodeLabel(%s, %r, %s)" / function.toString() / tag / case,
+    )
+  | ConstantArray{typ, values, size} ->
+    out.print("%s(%s(size=%s" / instr.opname() / typ.toString() / size);
+    for (v in values) {
+      out.print(", ");
+      debugWriteName(v, out)
+    };
+    out.print("))")
+  | ConstantFun{value} ->
+    out.print(out.env().getFunction(value, out.pos()).toString())
+  | ConstantObject{typ, values} ->
+    out.print("%s(%s(" / instr.opname() / typ.toString());
+    values.eachWithIndex((i, v) -> {
+      if (i > 0) out.print(", ");
+      debugWriteName(v, out)
+    });
+    out.print("))")
+  | ConstantStruct{values} ->
+    out.print("ConstantStruct[" / instr.opname());
+    values.eachWithIndex((i, v) -> {
+      if (i > 0) out.print(", ");
+      out.print("(");
+      debugWriteName(v.value, out);
+      out.print(", %s)" / v.bitOffset)
+    });
+    out.print("]")
+  | ConstantVoid _ -> out.print("void")
+  | ConstantVTable{value, frozen_} ->
+    out.print(
+      "VTable(%s %s)" /
+        (if (frozen_) {
+          "frozen"
+        } else {
+          "mutable"
+        }) /
+        out.env().sclasses[value].toString(),
+    )
+  | v @ SimpleConstantBase _ -> out.print(v.valueToString())
+
+  | Alloca _
+  | AsyncReturn _
+  | BlockParam _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | CallFunction _
+  | CallMethod _
+  | Cast _
+  | ConstantGlobalSingleton _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | FunParam _
+  | GetCurrentAwaitable _
+  | GetField _
+  | GetConst _
+  | If _
+  | IndirectJump _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCtz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntSwitch _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | InvokeFunction _
+  | InvokeMethod _
+  | LocalGC _
+  | Jump _
+  | LandingPad _
+  | Load _
+  | LoadVTableEntry _
+  | NamedCall _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _
+  | RawCallBase _
+  | Reinterpret _
+  | Return _
+  | SetField _
+  | SignExtend _
+  | Store _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | StringSwitch _
+  | Suspend _
+  | Throw _
+  | Truncate _
+  | TupleExtract _
+  | TypeSwitch _
+  | Unreachable _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | ArrayUnsafeSet _
+  | With _
+  | Yield _
+  | YieldBreak _
+  | ZeroExtend _ ->
+    out.print("%n" / instr)
+  }
+}
+
+private fun writeBlacklist(
+  sep: String,
+  blacklist: Array<SFunctionID>,
+  out: mutable PrettyDefBuilder,
+): String {
+  if (!blacklist.isEmpty()) {
+    out.print("%sblacklist=(" / sep);
+    !sep = ", ";
+
+    blacklist.eachWithIndex((i, b) -> {
+      if (i > 0) out.print(", ");
+      out.print(b.toString())
+    });
+    out.print(")")
+  };
+
+  sep
+}
+
+private fun debugWriteSwitchOperands(
+  switch: Terminator,
+  sep: String,
+  out: mutable PrettyDefBuilder,
+): void {
+  optinfo = out.optinfo();
+
+  switch.successors.eachWithIndex((i, s) -> {
+    out.print("%s[" / sep);
+    !sep = ", ";
+
+    if (i == 0) {
+      out.print("<default>")
+    } else {
+      switch match {
+      | IntSwitch{cases} -> out.print(cases[i - 1])
+      | StringSwitch{cases} ->
+        debugWriteName(optinfo.getInstr(cases[i - 1]), out)
+      | TypeSwitch{cases} -> out.print(cases[i - 1].id)
+      | _ -> switch.pos.die("Expected switch")
+      }
+    };
+
+    out.print(", ");
+    debugWriteBlockName(optinfo.getBlock(s.target), out);
+    out.print("(");
+    s.args.eachWithIndex((j, arg) -> {
+      if (j > 0) {
+        out.print(", ")
+      };
+      debugWriteName(optinfo.getInstr(arg), out)
+    });
+    out.print(")]")
+  })
+}
+
+private fun debugWriteExtraOperands(
+  instr: Stmt,
+  out: mutable PrettyDefBuilder,
+  sep: String,
+): void {
+  optinfo = out.optinfo();
+
+  instr match {
+  | CallBase{blacklist} -> _ = writeBlacklist(sep, blacklist, out)
+  | _ -> void
+  };
+
+  instr match {
+  | Alloca{byteSize, byteAlignment, zero} ->
+    out.print("%s%s, %s, %s" / sep / byteSize / byteAlignment / zero)
+  | Cast{typ}
+  | Reinterpret{typ} ->
+    out.print("%s%s" / sep / typ.toString())
+  | GetField{field} -> out.print("%s%r" / sep / field)
+  | SetField{field} -> out.print("%s%r" / sep / field)
+  | gc @ GetConst _ -> out.print("%s%r" / sep / gc.globalFieldName())
+  | t @ IntSwitch _ -> debugWriteSwitchOperands(t, sep, out)
+  | t @ StringSwitch _ -> debugWriteSwitchOperands(t, sep, out)
+  | TupleExtract{index} -> out.print("%s%s" / sep / index)
+
+  | t @ TypeSwitch _ -> debugWriteSwitchOperands(t, sep, out)
+  | Freeze{nop} -> out.print("%s%s" / sep / nop)
+  | v @ Terminator _ ->
+    for (s in v.successors) {
+      out.print(sep);
+      !sep = ", ";
+
+      debugWriteBlockName(optinfo.getBlock(s.target), out);
+      out.print("(");
+      s.args.eachWithIndex((i, arg) -> {
+        if (i > 0) out.print(", ");
+        debugWriteName(optinfo.getInstr(arg), out)
+      });
+      out.print(")")
+    }
+  | v @ With _ ->
+    for (f in v.fieldAssignments) {
+      (name, value) = f;
+      out.print("%s%r => " / sep / name);
+      debugWriteName(optinfo.getInstr(value), out);
+      !sep = ", "
+    }
+  | v @ LoadOrStore _ ->
+    out.print("%s%s, %s" / sep / v.bitOffset / v.addrByteAlignment)
+  | v @ LoadVTableEntry _ -> out.print("%s%s" / sep / v.offset.toString())
+  | ObstackAlloc{zero} -> out.print("%s%s" / sep / zero)
+  | ArrayAlloc{size} -> out.print("%s%s" / sep / size.toString())
+  | ArrayUnsafeGet{tupleIndex}
+  | ArrayUnsafeSet{tupleIndex} ->
+    if (tupleIndex >= 0) {
+      out.print("%s%s" / sep / tupleIndex)
+    }
+
+  | SimpleUnaryStmt _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | CallFunction _
+  | CallMethod _
+  | FloatAdd _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | GetCurrentAwaitable _
+  | IntAdd _
+  | IntAnd _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntXor _
+  | LocalGC _
+  | NamedCall _
+  | Object _
+  | ObstackNote _
+  | ObstackUsage _
+  | RawCallBase _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | ArrayNew _
+  | Yield _ ->
+    void
+  }
+}
+
+private fun debugWrite(instr: Stmt, out: mutable PrettyDefBuilder): void {
+  optinfo = out.optinfo();
+
+  out.print("  ");
+  if (instr.typ != tVoid) {
+    debugWriteName(instr, out);
+    out.print(": %s = " / instr.typ.toGroupedString(true))
+  };
+  out.print(instr.opname());
+
+  // It reads better if we print out the function/method name first.
+  sep = instr match {
+  | CallFunctionBase{name, pos} ->
+    out.print(" %r" / out.env().getFunction(name, pos).toString());
+    ", "
+  | CallMethodBase{method} ->
+    out.print(" %r" / method);
+    ", "
+  | NamedCall{name} ->
+    out.print(" %r" / name);
+    ", "
+  | _ -> " "
+  };
+
+  instr.visitNonBlockArgInputs(
+    input -> {
+      out.print(sep);
+      !sep = ", ";
+      if (!optinfo.idToInstr.contains(input)) {
+        out.print("[[[ERROR! Missing Instr " + input + "]]]")
+      } else {
+        debugWriteName(optinfo.getInstr(input), out)
+      }
+    },
+    optinfo,
+  );
+  debugWriteExtraOperands(instr, out, sep);
+  out.print(" ; %s\n" / instr.pos.toString());
+}
+
+private fun debugWriteBlockName(b: Block, out: mutable PrettyDefBuilder): void {
+  if (b.prettyName.isEmpty()) {
+    out.print("b%s" / b.idValue())
+  } else {
+    out.writeQuotedIdentifier("b" + b.idValue() + "." + b.prettyName)
+  }
+}
+
+private fun debugWriteBlock(b: Block, out: mutable PrettyDefBuilder): void {
+  optinfo = out.optinfo();
+
+  debugWriteBlockName(b, out);
+  out.print(':');
+  sep = " ; ";
+
+  if (!b.params.isEmpty()) {
+    out.print("%sparams=(" / sep);
+    !sep = ", ";
+
+    b.params.eachWithIndex((i, param) -> {
+      if (i > 0) out.print(", ");
+      debugWriteName(param, out);
+      out.print(": %s" / param.typ.toGroupedString(true))
+    });
+
+    out.print(")")
+  };
+
+  if (optinfo.dominatorTreeComputed()) {
+    out.print("%sdominator=" / sep);
+    !sep = ", ";
+
+    d = optinfo.getDominator(b.id);
+    if (d.id >= 0) {
+      debugWriteBlockName(optinfo.getBlock(d), out)
+    } else {
+      out.print("<none>")
+    }
+  };
+
+  out.print("\n");
+  for (i in b.instrs) {
+    try {
+      debugWrite(i, out)
+    } catch {
+    | ex @ OptimizerInfo.IDNotFound _ ->
+      // Struggle on displaying malformed IR as best we can (helpful
+      // to debug bugs in that IR).
+      out.print(
+        "\n*** ERROR Displaying Instr %s (%s): %s\n" /
+          i.id.toString() /
+          i.opname() /
+          ex.getMessage(),
+      )
+    }
+  }
+}
+
+fun debugWriteFunction(f: Function, env: GlobalEnv): void {
+  optinfo = OptimizerInfo::make(f);
+
+  // Force creation of dominator tree so it shows up in the debug output.
+  _ = optinfo.getDominator(f.blocks[0].id);
+
+  common = PrettyIR::make{env};
+  common.resetForNewFunction(f.pos);
+  name = f.toString();
+
+  out = mutable FunPrettyDefBuilder{
+    id => common.defs.allocID(),
+    canShare => false,
+    symbol => name,
+    common,
+    typeString => None(),
+    typeRef => None(),
+    optinfo_ => optinfo,
+    prettySuffixCounter => max(
+      optinfo.idToInstr.size(),
+      optinfo.idToBlock.size(),
+    ),
+  };
+
+  out.print("; %s" / name);
+
+  if (!f.annotations.isEmpty()) {
+    ann = f.annotations.collect(Array).sorted();
+    out.print(": annotations: [" + ann.join(", ") + "]")
+  };
+
+  out.print("\nfun %s(" / name);
+  f.params.eachWithIndex((i, p) -> {
+    if (i > 0) out.print(", ");
+    debugWriteName(p, out);
+    out.print(": %s" / p.typ.toGroupedString(true))
+  });
+  out.print(
+    "): %s { ; %s\n" /
+      f.funType.aggregateReturnType.toString() /
+      f.pos.toString(),
+  );
+
+  if (true) {
+    for (b in f.blocks) debugWriteBlock(b, out)
+  } else {
+    // More readable, but less honest since it skips dead blocks.
+    for (b in optinfo.reversePostorder()) {
+      debugWriteBlock(optinfo.getBlock(b), out)
+    }
+  };
+
+  out.print("}\n");
+
+  def = common.defs[out.finish()];
+
+  sstr = mutable TextOutputStream.StringTextOutputStream{};
+  sstr.write("\n\n");
+
+  metadata = mutable Metadata{defs => common.defs};
+
+  def.write(sstr, metadata);
+
+  print_error(sstr.toString());
+}

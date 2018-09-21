@@ -1,0 +1,13 @@
+@test
+fun testGlob(): void {
+  assertEqual(Glob.toRegex("abc"), "abc");
+  assertEqual(Glob.toRegex("ab*d"), "ab.*d");
+  assertEqual(Glob.toRegex("a[bc]d"), "a[bc]d");
+  assertEqual(Glob.toRegex("a?b"), "a.b");
+  assertEqual(Glob.toRegex("a\\?b"), "a\\?b");
+  assertEqual(Glob.toRegex("a\\*b"), "a\\*b");
+  assertEqual(Glob.toRegex("a[^bc]d"), "a[\\^bc]d");
+  assertEqual(Glob.toRegex("a[!bc]d"), "a[^bc]d");
+  assertEqual(Glob.toRegex("a\\\\b"), "a\\\\b");
+  assertEqual(Glob.toRegex("a{b"), "a\\{b");
+}

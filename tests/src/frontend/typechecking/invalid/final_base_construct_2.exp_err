@@ -1,0 +1,15 @@
+File "./typechecking/invalid/final_base_construct_2.sk", line 5, characters 7-9:
+Possible base class instantiation
+3 | fun main(): void {
+4 |   b: Class<B> = B;
+5 |   _ = b();
+  |       ^^^
+6 |   print_raw("No")
+
+File "./typechecking/invalid/final_base_construct_2.sk", line 5, characters 7-7:
+To create an instance from this Class<_> object: it must be 'static' in an instance method. Or a Concrete<_> object in a deferred context
+3 | fun main(): void {
+4 |   b: Class<B> = B;
+5 |   _ = b();
+  |       ^
+6 |   print_raw("No")

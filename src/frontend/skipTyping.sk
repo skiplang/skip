@@ -1,0 +1,5838 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* Type checking. */
+/*****************************************************************************/
+module alias N = SkipNamedAst;
+
+module alias TAstUtils = SkipTypedAstUtils;
+
+module alias TUtils = SkipTypingUtils;
+
+module alias Ast = SkipAst;
+
+module alias TAst = SkipTypedAst;
+
+module alias Types = SkipTypes;
+
+module alias Exhaustive = SkipExhaustivePatterns;
+
+module alias P = BufferedPrinter;
+
+module SkipTyping;
+
+const invalid_argument_message: String = "Invalid argument";
+
+const ERR_LOOP_CONDITION: String = "Invalid loop condition";
+const ERR_LOOP_RESULT: String = "Incompatible loop results";
+
+class Dot_expr_info{
+  field_decl: FileRange,
+  elt_kind: N.Elt_kind,
+  field_assignable: ?FileRange,
+  field_targs: Array<N.Type_>,
+  field_type: N.Type_,
+  obj_ty: N.Type_,
+}
+
+/*****************************************************************************/
+/* Exhaustive Patterns */
+/*****************************************************************************/
+fun make_exhaustive_pattern_env(
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+): mutable Exhaustive.Env {
+  generating_counterexamples = false;
+  sort_named_params = false;
+  sk_this = env.this_class;
+  typing_env = env;
+  typing_acc = acc;
+  counterexample_depth = 5;
+  class_sets = mutable UnorderedMap[];
+  ex_env = mutable Exhaustive.Env{
+    generating_counterexamples,
+    sort_named_params,
+    typing_env,
+    typing_acc,
+    counterexample_depth,
+    sk_this,
+    class_sets,
+  };
+  ex_env
+}
+
+fun print_pattern(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+  ety: TAst.Type_,
+  pat: (FileRange, SkipNamedAst.Pattern_),
+): String {
+  eenv = make_exhaustive_pattern_env(env, acc);
+  Exhaustive.print_pattern(
+    eenv,
+    "",
+    pattern(next_id, env, acc, acc.level, TUtils.InitPat(ety), pat).i1,
+  )
+}
+
+fun check_exhaustive_match(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+  pos: FileRange,
+  ty: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  eenv = make_exhaustive_pattern_env(env, acc);
+  Exhaustive.check_exhaustive_match(next_id, eenv, pos, ty, mbl)
+}
+
+fun check_exhaustive_match_is(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+  pos: FileRange,
+  ty: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  eenv = make_exhaustive_pattern_env(env, acc);
+  Exhaustive.check_exhaustive_match_is(next_id, eenv, pos, ty, mbl)
+}
+
+fun check_exhaustive_match_as(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+  pos: FileRange,
+  ty: TAst.Type_,
+  mbl: List<TAst.Match_branch>,
+): void {
+  eenv = make_exhaustive_pattern_env(env, acc);
+  Exhaustive.check_exhaustive_match_as(next_id, eenv, pos, ty, mbl)
+}
+
+fun check_exhaustive_try(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: SkipTypingUtils.Acc,
+  pos: FileRange,
+  mbl: List<TAst.Match_branch>,
+): void {
+  eenv = make_exhaustive_pattern_env(env, acc);
+  Exhaustive.check_exhaustive_try(next_id, eenv, pos, mbl)
+}
+
+/*****************************************************************************/
+/* Helper function. */
+/*****************************************************************************/
+
+fun subst_rhs(
+  fdtsubst: SMap<N.Type_>,
+  objsubst: SMap<N.Type_>,
+  acc: TUtils.Acc,
+  ty: N.Type_,
+): N.Type_ {
+  TUtils.type_subst(fdtsubst, acc, TUtils.type_subst(objsubst, acc, ty))
+}
+
+fun subst_fdt(
+  subst: SMap<N.Type_>,
+  acc: TUtils.Acc,
+  tyl: List<N.Type_>,
+): List<N.Type_> {
+  tyl.map(cur1 -> TUtils.type_subst(subst, acc, cur1))
+}
+
+fun sadd<Ta>(acc: SSet, n: N.Name, _value: Ta): SSet {
+  acc.set(n.i1)
+}
+
+fun reportLocalsErrors(errors: List<SkipError.Trace>): void {
+  errors match {
+  | List.Nil() -> void
+  | _ -> SkipError.independent_errors(errors)
+  }
+}
+
+/*****************************************************************************/
+/* Constraint check wrappers function. */
+/*****************************************************************************/
+
+fun solve_constraints(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+): TUtils.Acc {
+  acc.constraints.solve(next_id, env, acc)
+}
+
+fun solve_constraints_msg(
+  next_id: () -> Int,
+  msg: String,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+): TUtils.Acc {
+  acc.constraints.solve_msg(next_id, msg, env, acc)
+}
+
+/* solves the constraitns up to the last constraint (judged by length of the
+ * constraints)
+ */
+fun solve_call_constraints(
+  next_id: () -> Int,
+  last_constraint: Int,
+  last_tvar: Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+): TUtils.Acc {
+  acc.constraints.solve_at_call(next_id, last_constraint, last_tvar, env, acc)
+}
+
+/*****************************************************************************/
+/* The main entry point */
+/*****************************************************************************/
+fun makeEnv(): TUtils.Env {
+  TUtils.Env{
+    locals => SortedMap[],
+    this_class => None(),
+    orig_this_class => None(),
+    deferred_body => false,
+    check_exhaustive_match => true,
+    tracked_context => true,
+    frozen_level => TUtils.LNone(),
+    kind => None(),
+    return_type => TUtils.RNotAllowed(""),
+    yield_type => TUtils.YNotAllowed(""),
+    sk_async => None(),
+    break_type => None(),
+  }
+}
+
+/*****************************************************************************/
+/* Building definitions for parallel processing. */
+/*****************************************************************************/
+
+fun programToDefinitions(
+  classDefs: UMap<SkipAst.Class_def>,
+  constDefs: UMap<SkipAst.Const_def>,
+  funDefs: UMap<SkipAst.Fun_def>,
+): Vector<SkipAst.Definition> {
+  result = mutable Vector<SkipAst.Definition>[];
+  for (x in classDefs) result.push(SkipAst.DClass(x));
+  for (x in constDefs) result.push(SkipAst.DConst(x));
+  for (x in funDefs) result.push(SkipAst.DFun(x));
+  freeze(result)
+}
+
+/*****************************************************************************/
+/* The main entry point */
+/*****************************************************************************/
+fun program(prog: SkipAst.Program): SkipTypedAst.Program {
+  for (ta in prog.type_defs) {
+    SkipNaming.check_type_alias(ta)
+  };
+  tya_defs = prog.type_defs.map((_, ta) -> SkipNaming.type_alias(ta));
+  defs = programToDefinitions(prog.class_defs, prog.const_defs, prog.fun_defs);
+  defsOrErrors = defs.parallelMap(def ~> {
+    SkipError.doWithError(() -> {
+      def match {
+      | SkipAst.DClass(x) -> SkipTypedAst.DClass(class_def(x.name))
+      | SkipAst.DConst(x) -> SkipTypedAst.DConst(global_const_def(x.name))
+      | SkipAst.DFun(x) -> SkipTypedAst.DFun(fun_def(x.name))
+      | _ -> invariant_violation("ICE: unexpected definition type")
+      }
+    })
+  });
+  errors = mutable Vector[];
+  class_defs = UMap[];
+  const_defs = UMap[];
+  fun_defs = UMap[];
+  for (defOrError in defsOrErrors) {
+    defOrError match {
+    | Success(def) ->
+      def match {
+      | SkipTypedAst.DClass(x) -> !class_defs = class_defs.add(x.name, x)
+      | SkipTypedAst.DConst(x) -> !const_defs = const_defs.add(x.name, x)
+      | SkipTypedAst.DFun(x) -> !fun_defs = fun_defs.add(x.name, x)
+      }
+    | Failure(x) -> errors.push(x)
+    }
+  };
+
+  SkipNaming.maybeGetFun("main").each(main -> {
+    N.unfold_tnamed(main.return_) match {
+    | (_, N.Tapply(N.Mchilled(), (_, "Void"), tya)) if (tya.isEmpty()) -> void
+    | (_, N.Tawaitable _) ->
+      SkipError.error(
+        main.return_.i0,
+        "main must return void: 'fun main(): void {'. " +
+          "The normal way to call an asynchronous function is to prepend the call with 'await'. " +
+          "But in order to call the very first asynchronous function, you need to wrap the call with 'awaitSynchronously()'.",
+      )
+    | _ ->
+      SkipError.error(
+        main.return_.i0,
+        "main must return void: 'fun main(): void {'",
+      )
+    }
+  });
+
+  if (errors.size() == 0) {
+    TAst.Program{fun_defs, const_defs, class_defs, tya_defs}
+  } else {
+    throw SkipError.SkipErrorException{errors => freeze(errors).flatten()}
+  }
+}
+
+fun const_def(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  type: N.Type_,
+  v: N.Expr,
+): TAst.Expr {
+  next_id = sk_create_counter();
+  (!acc, v1) = expr(next_id, env, acc, v);
+  v_type = TAstUtils.get_type(v1);
+  TUtils.is_mutable(acc, type, false) match {
+  | N.Efrozen() -> void
+  | N.EffectiveNotFrozen(fr) ->
+    SkipError.errorl(
+      List[
+        (
+          type.i0,
+          "Constants cannot contain mutable values; they must be frozen.",
+        ),
+        (fr, "Not frozen because of this position."),
+      ],
+    )
+  };
+  type1 = TUtils.contra_promote(env, acc, type);
+  (!acc, _) = TUtils.join(
+    next_id,
+    env,
+    type1.i0,
+    "Invalid type",
+    acc,
+    type1,
+    v_type,
+  );
+  !acc = solve_lambdas(next_id, env, acc);
+  !acc = solve_constraints(next_id, env, acc);
+  TUtils.expand_expr(env, acc, v1)
+}
+
+memoized fun global_const_def(constName: N.Name): TAst.Const_def {
+  cst = SkipNaming.getConst(constName);
+  env = makeEnv();
+  (pos, _) = constName;
+  acc = TUtils.empty_acc;
+  annotations = cst.annotations;
+  native_ = cst.native_;
+  visibility = cst.visibility;
+  name = cst.name;
+  type = cst.type;
+  value = cst.value;
+  source = cst.source;
+  from_ = cst.from_;
+  invariant(cst.deferred_.isNone(), "ICE deferred global const");
+  deferred_ = None();
+  value match {
+  | N.Abstract() -> SkipError.error(pos, "Unexpected abstract const")
+  | _ -> void
+  };
+  value1 = {
+    value match {
+    | N.Native() -> None()
+    | N.Abstract() -> SkipError.error(name.i0, "No value defined")
+    | N.Implemented(v) -> Some(const_def(env, acc, type, v))
+    }
+  };
+  TAst.Const_def{
+    native_,
+    annotations,
+    visibility,
+    name,
+    type => TUtils.expand_type(env, acc, type),
+    value => value1,
+    source,
+    from_,
+    deferred_,
+  }
+}
+
+fun class_const(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  cst: N.Const_def,
+): TAst.Const_def {
+  mkcon = () -> class_const_(env, acc, cst);
+  this_class = env.this_class.fromSome();
+  source = cst.source.fromSome();
+  if (this_class.i1 != source.i1) {
+    add_source_info_on_error(this_class, source, cst.name, mkcon)
+  } else {
+    mkcon()
+  }
+}
+
+fun class_const_(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  cst: N.Const_def,
+): TAst.Const_def {
+  annotations = cst.annotations;
+  native_ = cst.native_;
+  visibility = cst.visibility;
+  name = cst.name;
+  type = cst.type;
+  value = cst.value;
+  source = cst.source;
+  from_ = cst.from_;
+  deferred_ = cst.deferred_;
+  value1 = {
+    value match {
+    | N.Abstract()
+    | N.Native() ->
+      None()
+    | N.Implemented(v) ->
+      orig_this_class = {
+        assert(source.isSome());
+        source
+      };
+      !env = env with {orig_this_class};
+      Some(const_def(env, acc, type, v))
+    }
+  };
+  res = TAst.Const_def{
+    native_,
+    annotations,
+    visibility,
+    name,
+    type => TUtils.expand_type(env, acc, type),
+    value => value1,
+    source,
+    from_,
+    deferred_,
+  };
+  reportLocalsErrors(cst.localsErrors);
+  res
+}
+
+// true if method is copied down from a superclass, and the situation is
+// simple enough that we can guarantee equivalent behavior if we omit
+// the copy.
+//
+// TODO kill this with fire. There are plans to completely kill copydown
+// but it is a multi-step process
+// This optimization can lead to unsound behavior if combined with lower bounds
+// on generics. And there are possibly other holes around contravariance
+fun method_is_copydown(name: N.Name, met: N.Method_def): Bool {
+  // inherited...
+  name != met.source &&
+    // ...and not abstract
+    !(met.body is N.Abstract()) &&
+    // ...and not algebraic
+    !met.algebraic &&
+    // ...and not static
+    !(met.kind is N.FKStatic(_)) &&
+    // ...and not deferred
+    met.deferred_.isNone() &&
+    // ...and not macro
+    met.macro_.isNone() &&
+    {
+      source = SkipNaming.getClass(met.source);
+      // ...and source is a class, not a trait
+      !(source.kind is Ast.KTrait()) &&
+        // ...with no deferred fields of any kind
+        // this is conservative: most methods that interact with deferred things
+        // will themselves be deferred. But this ensure we're safe w.r.t. legacy
+        !source.fields.any((_, f) -> f.deferred_.isSome()) &&
+        // ...and no abstract type constants
+        // since overridable type constants change the typing environment
+        // of a subclass, we copy methods down from classes that define them.
+        // (not all such methods are currently required to be deferred)
+        !source.types.any((_, tyd) -> tyd.body is N.TydAbstract _) &&
+        // ...and no `this` type references
+        // our current approach to modeling the `this` type relies on copying
+        // down methods, so we copy methods down in any class whose code mentions
+        // the `this` type explicitly.
+        !source.is_self_parameterized
+    }
+}
+
+memoized fun class_def(className: SkipAst.Name): TAst.Class_def {
+  cd = SkipNaming.getClass(className);
+  env = makeEnv();
+  next_id = sk_create_counter();
+  depth = cd.depth;
+  native_ = cd.native_;
+  kind = cd.kind;
+  value = cd.value;
+  data = cd.data;
+  mutable_ = cd.mutable_;
+  name = cd.name;
+  tparams = cd.tparams;
+  params = cd.params;
+  extends_ = cd.extends_;
+  use = cd.use;
+  types = cd.types;
+  consts = cd.consts;
+  is_self_parameterized = cd.is_self_parameterized;
+  methods = cd.methods.filter((_, m) -> !method_is_copydown(cd.name, m));
+  fields = cd.fields;
+  children_ = cd.children_;
+  concrete_children = cd.concrete_children;
+  annotations = cd.annotations;
+  !env = env with {this_class => Some(cd.name)};
+  acc = TUtils.empty_acc;
+  !acc = TUtils.bind_tparam_constraints(env, acc, cd.tparams);
+  tmp_env = TUtils.bind_this_and_static(N.FKChilled(), env, cd);
+  extends_1 = make_extend(next_id, tmp_env, acc, "extend", extends_);
+  use1 = make_extend(next_id, tmp_env, acc, "use", use);
+  (params1, consts1, methods1, types1) = SkipError.do4WithError(
+    () -> maybeClassParameters(next_id, env, acc, params),
+    () -> consts.mapWithErrors((_, c) -> class_const(env, acc, c)),
+    () -> methods.mapWithErrors((_, m) -> method_def(next_id, env, acc, m)),
+    () -> types.mapWithErrors((_, t) -> type_def(env, acc, t)),
+  );
+  !acc = cd.extends_.reduce(
+    (acc, n, tya, par) ->
+      check_implement(next_id, "extend", env, acc, cd, n, tya, par),
+    acc,
+  );
+  !acc = cd.use.reduce(
+    (acc, n, tya, par) ->
+      check_implement(next_id, "use", env, acc, cd, n, tya, par),
+    acc,
+  );
+  methods2 = methods1.map((_, met) -> {
+    acc.generic_maps.maybeGet(met.name.i1) match {
+    | None() -> met
+    | Some(parent_mappings) -> met with {generic_mapping => parent_mappings}
+    }
+  });
+  SkipTypedAstRename.class_def(
+    TAst.Class_def{
+      depth,
+      native_,
+      kind,
+      value,
+      data,
+      mutable_,
+      name,
+      tparams,
+      params => params1,
+      extends_ => extends_1,
+      use => use1,
+      types => types1,
+      methods => methods2,
+      fields,
+      annotations,
+      children_,
+      concrete_children,
+      consts => consts1,
+      is_self_parameterized,
+    },
+  )
+}
+
+/* While items in classes, we sometimes hit an error in a member that was
+ * inherited. This captures the exception and adds additional context
+ */
+fun add_source_info_on_error<T>(
+  child: N.Name,
+  parent: N.Name,
+  mem_name: N.Name,
+  mk: () -> T,
+): T {
+  try {
+    mk()
+  } catch {
+  | e @ SkipError.SkipErrorException _ ->
+    msg =
+      "In '" +
+      child.i1 +
+      "'s version of the member '" +
+      mem_name.i1 +
+      "' inherited from '" +
+      parent.i1 +
+      "'";
+    trace = (child.i0, msg);
+    !e.errors = e.errors.map(err ->
+      err with {traces => List.Cons(trace, err.traces)}
+    );
+    throw e
+  }
+}
+
+fun con_body(x: ?TAst.Expr): TAst.Expr_body {
+  x match {
+  | None() -> TAst.Abstract()
+  | Some(e) -> TAst.Implemented(e)
+  }
+}
+
+memoized fun type_def(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  tyd: N.Type_def,
+): TAst.Type_def {
+  next_id = sk_create_counter();
+  mktyd = () -> type_def_(next_id, env, acc, tyd);
+  this_class = env.this_class.fromSome();
+  source = tyd.source;
+  if (this_class.i1 != source.i1) {
+    add_source_info_on_error(this_class, source, tyd.name, mktyd)
+  } else {
+    mktyd()
+  }
+}
+
+fun type_def_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  tyd: N.Type_def,
+): TAst.Type_def {
+  check_tyd_default(next_id, tyd.name.i0, env, acc, tyd.body);
+  visibility = tyd.visibility;
+  name = tyd.name;
+  tparams = tyd.tparams;
+  body = tyd.body;
+  source = tyd.source;
+  TAst.Type_def{
+    annotations => tyd.annotations,
+    visibility,
+    name,
+    tparams,
+    body,
+    source,
+  }
+}
+
+fun check_tyd_default(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  x: N.Cla_tyd,
+): void {
+  x match {
+  | N.TydDefined _
+  | N.TydAbstract(None(), _)
+  | N.TydAbstract(_, None()) ->
+    void
+  | N.TydAbstract(Some(tyd_type), Some(tyd_default)) ->
+    (acc1, tyd_type1) = TUtils.instantiate(next_id, env, acc, tyd_type);
+    tyd_type2 = TUtils.contra_promote(env, acc1, tyd_type1);
+    (acc2, tyd_default1) = TUtils.instantiate(next_id, env, acc1, tyd_default);
+    tyd_default2 = TUtils.promote(env, acc2, tyd_default1);
+    (_acc, _ty) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid default type",
+      acc2,
+      tyd_type2,
+      tyd_default2,
+    )
+  }
+}
+
+fun make_extend(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  verb: String,
+  parents: N.ParentMap,
+): UMap<TAst.Parent> {
+  parentsm = UMap[];
+  for ((parName, parTargs, parInfo) in parents) {
+    !parentsm = make_extend_(
+      next_id,
+      env,
+      acc,
+      verb,
+      parentsm,
+      parName,
+      parTargs,
+      parInfo.effective_source,
+      parInfo.inherited_source,
+      parInfo.conditions,
+    );
+  };
+  parentsm.map((_, p) ->
+    p with {targs => p.targs.map(ty -> TUtils.expand_type(env, acc, ty))}
+  )
+}
+
+fun make_extend_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  verb: String,
+  parents: UMap<TAst.Parent>,
+  parName: N.Name,
+  parTargs: Array<N.Type_>,
+  effective_source: N.Name,
+  inherited_source: N.Name,
+  conditions: Array<Array<N.Whenclause>>,
+): UMap<TAst.Parent> {
+  // This addition message is done here instead of on the join
+  // incase an error happens during promotion
+  try {
+    make_extend__(
+      next_id,
+      env,
+      acc,
+      parents,
+      parName,
+      parTargs,
+      effective_source,
+      inherited_source,
+      conditions,
+    )
+  } catch {
+  | e @ SkipError.SkipErrorException _ ->
+    this_class = env.this_class.fromSome();
+    msg = `For the child: '${this_class.i1}', invalid ${verb} of the parent: '${
+      parName.i1
+    }'`;
+    if (this_class.i1 != inherited_source.i1) {
+      !msg = msg + ` via the parent: '${inherited_source.i1}'`
+    };
+    trace = (this_class.i0, msg);
+    !e.errors = e.errors.map(err ->
+      err with {traces => List.Cons(trace, err.traces)}
+    );
+    throw e
+  }
+}
+
+fun make_extend__(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  parents: UMap<TAst.Parent>,
+  parName: N.Name,
+  tyl: Array<N.Type_>,
+  parEffectiveSource: N.Name,
+  parInheritedSource: N.Name,
+  conditions: Array<Array<N.Whenclause>>,
+): UMap<TAst.Parent> {
+  fr = parName.i0;
+  tparams = SkipNaming.getClass(parName).tparams;
+  !acc = TUtils.bind_tparam_constraints(env, acc, tparams);
+  sk_this = env.this_class.fromSome().i1;
+  ty = (fr, N.Tapply(N.Mchilled(), parName, tyl));
+  (cstr_acc, ty1) = TUtils.instantiate(next_id, env, acc, ty);
+  !tyl = ty1 match {
+  | (_, N.Tapply(_, _, new_tyl)) -> new_tyl
+  | _ -> invariant_violation("ICE no tapply for make_extend")
+  };
+  invariant(!conditions.isEmpty(), "ICE empty conditions");
+  for (conds in conditions) {
+    facc = TUtils.add_whenparams(next_id, env, cstr_acc, conds);
+    _ = solve_constraints(next_id, env, facc);
+  };
+  parents.maybeGet(parName) match {
+  | None() ->
+    parent = TAst.Parent{
+      inherited_source => parInheritedSource,
+      effective_source => parEffectiveSource,
+      targs => tyl,
+    };
+    parents.add(parName, parent)
+  | Some(prev) ->
+    inherited_source = if (prev.inherited_source.i1 == sk_this) {
+      prev.inherited_source
+    } else {
+      parInheritedSource
+    };
+    effective_source = if (prev.effective_source.i1 == sk_this) {
+      prev.effective_source
+    } else {
+      parEffectiveSource
+    };
+    !tyl = tyl.map(ty -> TUtils.promote(env, acc, ty));
+    prev_extend_type = (fr, N.Tapply(N.Mchilled(), parName, prev.targs));
+    prom_prev_extend_type = TUtils.promote(env, acc, prev_extend_type);
+    (_, targs) = merge_extend(
+      next_id,
+      env,
+      acc,
+      fr,
+      parName,
+      tyl,
+      prom_prev_extend_type,
+      conditions,
+    );
+    new_parent = TAst.Parent{inherited_source, effective_source, targs};
+    parents.set(parName, new_parent)
+  }
+}
+
+fun merge_extend(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  curName: N.Name,
+  curTargs: Array<N.Type_>,
+  prev: N.Type_,
+  conditions: Array<Array<N.Whenclause>>,
+): (N.Name, Array<N.Type_>) {
+  for (conds in conditions) {
+    facc = TUtils.add_whenparams(next_id, env, acc, conds);
+    exty = (pos, N.Tapply(N.Mchilled(), curName, curTargs));
+    current = TUtils.promote(env, facc, exty);
+    (!prev, !curName, !curTargs) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Incompatible extend",
+      facc,
+      current,
+      prev,
+    ) match {
+    | (_, joined @ (_, N.Tpromoted(_, _, _, _, name, targs))) ->
+      (joined, name, targs)
+    | (_, joined @ (_, N.Tset(_, _, _, elts))) if (!elts.isEmpty()) ->
+      elt = elts[0];
+      (joined, elt.name, elt.targs)
+    | _ -> invariant_violation("ICE no tset/promoted for merge_extend")
+    }
+  } else {
+    (curName, curTargs)
+  }
+}
+
+memoized fun fun_def(funName: SkipAst.Name): TAst.Fun_def {
+  fd = SkipNaming.getFun(funName);
+  named_fun_def(fd)
+}
+
+fun named_fun_def(fd: SkipNamedAst.Fun_def): TAst.Fun_def {
+  env = makeEnv();
+  next_id = sk_create_counter();
+  acc = TUtils.empty_acc;
+  native_ = fd.native_;
+  memoized_ = fd.memoized_;
+  async_ = fd.async_;
+  untracked_ = fd.untracked_;
+  visibility = fd.visibility;
+  annotations = fd.annotations;
+  name = fd.name;
+  tparams = fd.tparams;
+  params = fd.params;
+  return_ = fd.return_;
+  body = fd.body;
+  !acc = TUtils.bind_tparam_constraints(env, acc, tparams);
+  params1 = fun_parameters(next_id, env, acc, params);
+  (!env, !acc) = TUtils.bind_params(env, acc, params1);
+  params2 = expand_fun_parameter_types(env, acc, params1);
+  body1 = method_body(
+    next_id,
+    env,
+    acc,
+    async_,
+    untracked_,
+    memoized_,
+    None(),
+    params2,
+    return_,
+    body,
+    fd.yields,
+  );
+  res = SkipTypedAstRename.fun_def(
+    TAst.Fun_def{
+      native_,
+      memoized_,
+      async_,
+      untracked_,
+      visibility,
+      annotations,
+      name,
+      tparams,
+      params => params2,
+      return_ => TUtils.expand_type(env, acc, return_),
+      body => body1,
+      yields => fd.yields,
+    },
+  );
+  reportLocalsErrors(fd.localsErrors);
+  res
+}
+
+// Verify that 'ty' is a legal return type for an memoized function.
+//
+// We allow only frozen return types, or ^t (outer most only) if t is frozen
+private fun assert_legal_memo_return_type(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  sk_async: ?FileRange,
+  case_fr: FileRange,
+  error_fr: FileRange,
+  ty: N.Type_,
+): void {
+  scrubbed = Types.unfold_type(acc.subst, ty) match {
+  | (afr, N.Tawaitable _) if (sk_async is None()) ->
+    SkipError.errorl(
+      List[
+        (error_fr, "Invalid return type to a memoized function"),
+        (
+          afr,
+          "To memoize this awaitable value, the function must be declared as 'async'",
+        ),
+        (case_fr, "Try declaring this function as 'async' here"),
+      ],
+    )
+
+  | (_, N.Tawaitable(_, inner)) -> inner
+  | _ -> ty
+  };
+  assert_frozen_type(
+    env,
+    acc,
+    case_fr,
+    "memoized",
+    error_fr,
+    "Invalid return type. The return type to a '",
+    scrubbed,
+    false,
+  )
+}
+
+// Record the return type and, if applicable, yield type, in env.
+fun setReturnType(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty: N.Type_,
+  yields: ?FileRange,
+): TUtils.Env {
+  !env.return_type = TUtils.RType(ty);
+
+  // Record the type of values to yield. Generators must return exactly
+  // "mutable Iterator<T>", and each yield must yield a T. We cannot
+  // tolerate returning subclasses of Iterator, because the back end will
+  // codegen a subclass of Iterator for the generator's implementation.
+  yields match {
+  | Some(yieldPos) ->
+    var = TUtils.fresh(next_id, (yieldPos, void));
+    iterTy = TUtils.make_tapply(
+      env,
+      acc,
+      yieldPos,
+      N.Mmutable(yieldPos),
+      (yieldPos, "Iterator"),
+      Array[var],
+    );
+    it_ty = TUtils.inv_promote(env, acc, iterTy);
+    (!acc, expected) = TUtils.join(
+      next_id,
+      env,
+      yieldPos,
+      "Generators must return 'mutable Iterator<_>'\nThis function is a generator because of 'yield'",
+      acc,
+      TUtils.promote(env, acc, ty),
+      it_ty,
+    );
+    env with {
+      return_type => TUtils.RType(expected),
+      yield_type => TUtils.YType(TUtils.promote(env, acc, var)),
+    }
+  | _ -> env
+  }
+}
+
+fun method_body(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  sk_async: ?FileRange,
+  sk_untracked: ?FileRange,
+  sk_memoized: ?FileRange,
+  sk_deferred: ?FileRange,
+  params: Parameters<TAst.Parameter>,
+  return_ty: N.Type_,
+  x: N.Expr_body,
+  yields: ?FileRange,
+): TAst.Expr_body {
+  !env = setReturnType(next_id, env, acc, return_ty, yields);
+
+  /* Check for invalid async/memoized functions with mutable types */
+  is_untracked = sk_untracked is Some _;
+  is_deferred = sk_deferred is Some _;
+  sk_async match {
+  | Some(pos) if (!is_untracked && !is_deferred) ->
+    params.each(p ->
+      assert_frozen_type(
+        env,
+        acc,
+        pos,
+        "async",
+        p.type.i0,
+        "Invalid parameter. All parameters to a '",
+        p.type,
+        true,
+      )
+    )
+
+  | _ -> void
+  };
+  (sk_memoized, sk_untracked) match {
+  | (Some(mfr), Some(ufr)) ->
+    SkipError.errorl(
+      List[
+        (ufr, "A function cannot be both 'memoized' and 'untracked'"),
+        (mfr, "Declared 'memoized' here"),
+      ],
+    )
+  | (Some(pos), None()) if (!is_deferred) ->
+    params.each(p -> {
+      assert_frozen_type(
+        env,
+        acc,
+        pos,
+        "memoized",
+        p.name.i0,
+        "Invalid parameter. All parameters to a '",
+        p.type,
+        false,
+      )
+    });
+    assert_legal_memo_return_type(
+      env,
+      acc,
+      sk_async,
+      pos,
+      return_ty.i0,
+      return_ty,
+    )
+  | _ -> void
+  };
+  /* Handle the method body */
+  x match {
+  | N.Native() ->
+    check_return_ty(next_id, env, acc, sk_async, return_ty);
+    TAst.Native()
+  | N.Abstract() ->
+    check_return_ty(next_id, env, acc, sk_async, return_ty);
+    TAst.Abstract()
+  | N.Implemented(body) ->
+    TAst.Implemented(
+      method_body_(next_id, env, acc, sk_async, sk_untracked, return_ty, body),
+    )
+  }
+}
+
+/* Our inference for whenclauses adding constraints is relatively weak
+ * Due to conditional constraints on traits. The conditional usage exits early
+ * if there are any unresolved type variables, and often we don't have enough
+ * information to solve them eagerly like is necessary here. As such, we have
+ * this error message
+ */
+const SOLVABLE_CONDITIONS_EDGE: String = "Note that implementations are not needed if the conditional constraints on the method are impossible to satisfy.\nBut due to conditional trait usage, we were unable to determine if the conditions on this method are possible to satisfy";
+
+fun check_method_defined(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  met: N.Method_def,
+): void {
+  thiscd = env.this_class match {
+  | None() -> return void
+  | Some(n) -> SkipNaming.getClass(n)
+  };
+  // method's can be abstract for base classes or traits
+  if (!(thiscd.kind is Ast.KClass())) return void;
+  // only perform the check on abstract methods in kclasses
+  if (!(met.body is N.Abstract())) return void;
+
+  error = (base: List<(FileRange, String)>) ~> {
+    msg = `Missing implementation for the method ${met.name.i1}`;
+    msgl = List.Cons(
+      (thiscd.name.i0, msg),
+      List.Cons((met.name.i0, "Defined here"), base),
+    );
+    SkipError.errorl(msgl)
+  };
+
+  // Cannot define an abstract method in the kclass
+  if (thiscd.name.i1 == met.source.i1) error(List.Nil());
+
+  conditionsSolvable = TUtils.solvableWhenparams(
+    next_id,
+    met.name.i0,
+    env,
+    acc,
+    thiscd,
+    met.whenparams,
+  );
+
+  // If the conditions are solvable by some tparams, error
+  conditionsSolvable match {
+  | Some(true) -> error(List.Nil())
+  | None() -> error(List[(met.name.i0, SOLVABLE_CONDITIONS_EDGE)])
+  | Some(false) -> void
+  }
+}
+
+fun method_body_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  sk_async: ?FileRange,
+  sk_untracked: ?FileRange,
+  return_ty: N.Type_,
+  body: N.Expr,
+): TAst.Expr {
+  env1 = env with {sk_async, tracked_context => !sk_untracked.isSome()};
+  (pos, _) = body;
+  (acc1, fun_body) = expr(next_id, env1, acc, body);
+  body_ty = TAstUtils.get_type(fun_body);
+  body_ty1 = make_return_type(env1, body_ty);
+  (!acc, return_ty1) = TUtils.instantiate(next_id, env1, acc1, return_ty);
+  return_ty2 = TUtils.contra_promote(env1, acc, return_ty1);
+  (!acc, _) = TUtils.join(
+    next_id,
+    env1,
+    pos,
+    "The value returned from the function is incompatible with the return type '" +
+      Types.to_string(env.this_class, acc.subst, return_ty) +
+      "'",
+    acc,
+    body_ty1,
+    return_ty2,
+  );
+  !acc = solve_lambdas(next_id, env1, acc);
+  !acc = solve_constraints(next_id, env1, acc);
+  fun_body1 = TUtils.expand_expr(env1, acc, fun_body);
+  fun_body1
+}
+
+fun check_return_ty(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  _sk_async: ?FileRange,
+  return_ty: N.Type_,
+): void {
+  (!acc, _return_ty) = TUtils.instantiate(next_id, env, acc, return_ty);
+  _ = solve_constraints(next_id, env, acc)
+}
+
+fun method_def(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  met: N.Method_def,
+): TAst.Method_def {
+  mkmet = () -> {
+    res = method_def_(next_id, env, acc, met);
+    reportLocalsErrors(met.localsErrors);
+    res
+  };
+  this_class = env.this_class.fromSome();
+  source = met.source;
+  if (!met.algebraic && this_class.i1 != source.i1) {
+    add_source_info_on_error(this_class, source, met.name, mkmet)
+  } else {
+    mkmet()
+  }
+}
+
+fun method_def_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  met: N.Method_def,
+): TAst.Method_def {
+  visibility = met.visibility;
+  annotations = met.annotations;
+  overridable_ = met.overridable_;
+  memoized_ = met.memoized_;
+  async_ = met.async_;
+  untracked_ = met.untracked_;
+  kind = met.kind;
+  native_ = met.native_;
+  from_ = met.from_;
+  source = met.source;
+  name = met.name;
+  tparams = met.tparams;
+  params = met.params;
+  return_ = met.return_;
+  body = met.body;
+  algebraic = met.algebraic;
+  deferred_ = met.deferred_;
+  this_name = env.this_class.fromSome();
+  (_, this_str) = this_name;
+  !env = env with {
+    kind => Some(kind),
+    deferred_body => deferred_.isSome(),
+    check_exhaustive_match => (this_str == met.from_.i1),
+    orig_this_class => Some(
+      if (met.macro_.isSome()) {
+        env.this_class.fromSome()
+      } else {
+        source
+      },
+    ),
+  };
+  !acc = TUtils.bind_tparam_constraints(env, acc, met.tparams);
+  !acc = TUtils.add_whenparams(next_id, env, acc, met.whenparams);
+  check_method_defined(next_id, env, acc, met);
+  cd = SkipNaming.getClass(this_name);
+  (pos, _) = name;
+  !env = TUtils.bind_this_and_static(kind, env, cd);
+  env_params = env with {
+    return_type => TUtils.RNotAllowed(
+      ". Early return is not allowed in default arguments",
+    ),
+    yield_type => TUtils.YNotAllowed(
+      ". Yield is not allowed in default arguments",
+    ),
+  };
+  params1 = fun_parameters(next_id, env_params, acc, params);
+  (!env, !acc) = TUtils.bind_params(env, acc, params1);
+  params2 = expand_fun_parameter_types(env, acc, params1);
+  body1 = method_body(
+    next_id,
+    env,
+    acc,
+    async_,
+    untracked_,
+    memoized_,
+    deferred_,
+    params2,
+    return_,
+    body,
+    met.yields,
+  );
+  whenparams = met.whenparams;
+  this_type = TUtils.bind_this_type(kind, env, cd);
+  this_type match {
+  | None() -> void
+  | Some _ if (untracked_.isSome()) -> void
+  | Some(this_ty) -> check_async_memo_mut(acc, async_, memoized_, this_ty)
+  };
+  implicit_param = {
+    this_type match {
+    | Some(ty) ->
+      (
+        TUtils.expand_type(env, acc, ty),
+        (pos, "this"),
+        TAstUtils.default_binding_info,
+      )
+    | None() ->
+      (
+        TUtils.expand_type(env, acc, TUtils.bind_static_type(env, cd)),
+        (pos, "static"),
+        TAstUtils.default_binding_info,
+      )
+    }
+  };
+  TAst.Method_def{
+    visibility,
+    annotations,
+    overridable_,
+    memoized_,
+    async_,
+    native_,
+    untracked_,
+    kind,
+    from_,
+    source,
+    name,
+    tparams,
+    whenparams,
+    params => params2,
+    return_ => TUtils.expand_type(env, acc, return_),
+    body => body1,
+    algebraic,
+    implicit_param,
+    deferred_,
+    generic_mapping => SortedMap[],
+    yields => met.yields,
+  }
+}
+
+fun make_return_type(env: TUtils.Env, ty: TAst.Type_): N.Type_ {
+  env.sk_async match {
+  | None() -> ty
+  | Some(pos) -> (pos, N.Tawaitable(Ast.Vplus(), ty))
+  }
+}
+
+fun check_async_memo_mut(
+  acc: TUtils.Acc,
+  async_: ?FileRange,
+  memoized_: ?FileRange,
+  this_ty: N.Type_,
+): void {
+  if (async_.isNone() && memoized_.isNone()) return void;
+
+  (case_pos, case_type) = (async_, memoized_) match {
+  | (Some(pos), _) -> (pos, "async")
+  | (_, Some(pos)) -> (pos, "memoized")
+  | _ -> invariant_violation("ICE imposible match check_async_memo_mut")
+  };
+
+  TUtils.is_mutable(acc, this_ty, async_.isSome()) match {
+  | N.Efrozen() -> void
+  | N.EffectiveNotFrozen(fr) ->
+    SkipError.errorl(
+      List[
+        (
+          case_pos,
+          case_type +
+            " methods cannot take mutable inputs. This method much be marked 'frozen' to make 'this' frozen",
+        ),
+        (fr, "this was not 'frozen' because of the type at this position"),
+      ],
+    )
+  }
+}
+
+fun assert_frozen_type(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  case_pos: FileRange,
+  case_str: String,
+  error_pos: FileRange,
+  error_start: String,
+  ty: N.Type_,
+  for_async: Bool,
+): void {
+  unfolded = Types.unfold_type(acc.subst, ty);
+  // Tanything comes from type constants, and we can ignore this case
+  // since they will be rechecked in children
+  is_tany = unfolded is (_, N.Tanything());
+  is_frozen = TUtils.is_mutable(acc, ty, for_async) is N.Efrozen();
+  if (!is_tany && !is_frozen) {
+    ty_pos = ty.i0;
+    suggested_fix = TUtils.suggested_frozen_fix(unfolded, "Try ");
+    msg = error_start + case_str + "' function must be frozen";
+    case_msg = "The function was declared '" + case_str + "' here";
+    ty_msg =
+      "The following type is not frozen: " +
+      Types.to_string(env.this_class, acc.subst, ty);
+    SkipError.errorl(
+      List.Cons(
+        (error_pos, msg),
+        List.Cons(
+          (case_pos, case_msg),
+          List.Cons((ty_pos, ty_msg), suggested_fix),
+        ),
+      ),
+    )
+  }
+}
+
+/*****************************************************************************/
+/* Class parameters */
+/*****************************************************************************/
+fun maybeClassParameters(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  mcp: N.MaybeClassParams,
+): ?TAst.Class_params {
+  mcp match {
+  | N.NoParams()
+  | N.NativeConstruct _ ->
+    None()
+  | N.HasParams(cp) -> Some(class_parameters(next_id, env, acc, cp))
+  }
+}
+
+fun class_parameters(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  cp: N.Class_params,
+): TAst.Class_params {
+  pos = cp.pos;
+  final_ = cp.final_;
+  params = cp.params;
+  visibility = cp.visibility;
+  source = cp.source;
+  params1 = class_fields(next_id, env, acc, params);
+  params2 = expand_fun_parameter_types(env, acc, params1);
+  TAst.Class_params{pos, final_, params => params2, visibility, source}
+}
+
+/*****************************************************************************/
+/* Function parameters */
+/*****************************************************************************/
+fun class_fields(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params: Parameters<N.Parameter>,
+): Parameters<TAst.Parameter> {
+  params.map(x -> class_field(next_id, env, acc, x))
+}
+
+fun class_field(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  par: N.Parameter,
+): TAst.Parameter {
+  mkpar = () -> class_field_(next_id, env, acc, par);
+  this_class = env.this_class.fromSome();
+  source = par.source.fromSome();
+  if (this_class.i1 != source.i1) {
+    add_source_info_on_error(this_class, source, par.name, mkpar)
+  } else {
+    mkpar()
+  }
+}
+
+fun class_field_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  par: N.Parameter,
+): TAst.Parameter {
+  orig_this_class = {
+    assert(par.source.isSome());
+    par.source
+  };
+  env1 = env with {orig_this_class};
+  fun_param(next_id, env1, acc, par)
+}
+
+fun fun_parameters(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params: Parameters<N.Parameter>,
+): Parameters<TAst.Parameter> {
+  params.map(x -> fun_param(next_id, env, acc, x))
+}
+
+fun fun_param(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  param: N.Parameter,
+): TAst.Parameter {
+  annotations = param.annotations;
+  visibility = param.visibility;
+  name = param.name;
+  type = param.type;
+  index = param.index;
+  mutable_ = param.mutable_;
+  deferred_ = param.deferred_;
+  (!acc, type1) = TUtils.instantiate(next_id, env, acc, type);
+  !acc = solve_constraints(next_id, env, acc);
+  value = fun_param_value(next_id, env, acc, param, type1);
+  res = TAst.Parameter{
+    annotations,
+    visibility,
+    name,
+    type => type1,
+    value,
+    index,
+    mutable_,
+    deferred_,
+    frozen_ => TAstUtils.default_binding_info,
+  };
+  reportLocalsErrors(param.localsErrors);
+  res
+}
+
+fun expand_fun_parameter_type(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  param: TAst.Parameter,
+): TAst.Parameter {
+  type = TUtils.expand_type(env, acc, param.type);
+  param with {type}
+}
+
+fun expand_fun_parameter_types(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  x: Parameters<TAst.Parameter>,
+): Parameters<TAst.Parameter> {
+  x.map(cur -> expand_fun_parameter_type(env, acc, cur))
+}
+
+fun fun_param_value(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  param: N.Parameter,
+  type: N.Type_,
+): ?TAst.Expr {
+  param.value match {
+  | None() -> None()
+  | Some(e @ (pos, _)) ->
+    (acc1, e1) = expr(next_id, env, acc, e);
+    e_ty = TAstUtils.get_type(e1);
+    type1 = TUtils.contra_promote(env, acc1, type);
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid default value",
+      acc1,
+      type1,
+      e_ty,
+    );
+    !acc = solve_lambdas(next_id, env, acc);
+    !acc = solve_constraints(next_id, env, acc);
+    e2 = TUtils.expand_expr(env, acc, e1);
+    Some(e2)
+  }
+}
+
+// Grabs the class referred to inside the Class<_> object's type argument
+fun inner_type_for_class(
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty: N.Type_,
+): N.Type_ {
+  inner_type_for_class_opt(acc, ty) match {
+  | None() ->
+    SkipError.errorl(
+      List[
+        (pos, "'class' can only be called on objects"),
+        (
+          ty.i0,
+          "This expression has type: " +
+            Types.to_string(env.this_class, acc.subst, ty),
+        ),
+      ],
+    )
+  | Some(inner) -> inner
+  }
+}
+
+fun inner_type_for_class_opt(acc: TUtils.Acc, ty: N.Type_): ?N.Type_ {
+  ty.i1 match {
+  | N.Tset _
+  | N.Tpromoted _
+  | N.Tapply _ ->
+    Some(inner_type_for_class_add_outer_frozen(acc, ty))
+
+  | N.Tparam(_, _, id, _) ->
+    uppers = acc.tparam_constraints.findUppers(id);
+    if (uppers.any(ty -> inner_type_for_class_opt(acc, ty).isSome())) {
+      Some(ty)
+    } else {
+      None()
+    }
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything()
+  | N.Tfun _
+  | N.Tawaitable _
+  | N.Tlambda _ ->
+    None()
+
+  | N.Tvar(id) ->
+    acc.subst.maybeGet(id).flatMap(t -> inner_type_for_class_opt(acc, t))
+  | N.Tnamed(n, inner) ->
+    inner_type_for_class_opt(acc, inner).map(t -> (ty.i0, N.Tnamed(n, t)))
+  | N.Tdefault(inner) -> inner_type_for_class_opt(acc, inner)
+  }
+}
+
+/* For the inner argument to a Class<_> object, it makes it immutable at the
+ * first layer
+ * So we want Class<mutable Foo<mutable X>> to become Class<Foo<mutable X>>
+ */
+fun inner_type_for_class_add_outer_frozen(
+  acc: TUtils.Acc,
+  ty: N.Type_,
+): N.Type_ {
+  ty match {
+  | (fr, ts @ N.Tset _) -> (fr, ts with {mode => N.Mchilled()})
+  | (fr, tp @ N.Tpromoted _) -> (fr, tp with {mode => N.Mchilled()})
+  | (fr, N.Tapply(_, n, tyl)) -> (fr, N.Tapply(N.Mchilled(), n, tyl))
+
+  // Important to preserve the tnamed for this and static
+  | (fr, N.Tnamed(n, inner)) ->
+    (fr, N.Tnamed(n, inner_type_for_class_add_outer_frozen(acc, inner)))
+  | (_, N.Tdefault(inner)) -> inner_type_for_class_add_outer_frozen(acc, inner)
+  | (_, N.Tvar(i)) -> inner_type_for_class_add_outer_frozen(acc, acc.subst[i])
+
+  | (_, N.Tparam _)
+  | (_, N.Tfrozen _)
+  | (_, N.TnonNullable _)
+  | (_, N.Tanything())
+  | (_, N.Tawaitable _)
+  | (_, N.Tfun _)
+  | (_, N.Tlambda _) ->
+    invariant_violation(
+      "ICE bad class object inner_type_for_class_add_outer_frozen",
+    )
+  }
+}
+
+fun call_or_constructor_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  pos: FileRange,
+  acc: TUtils.Acc,
+  mut: ?FileRange,
+  f: TAst.Expr,
+  args_ty: Parameters<(Int, N.Type_, FileRange)>,
+  args: TAst.Call_args,
+): (TUtils.Acc, TAst.Expr) {
+  Types.unfold_type(acc.subst, TAstUtils.get_type(f)) match {
+  | tfun_ty @ (_, N.Tfun _) ->
+    check_no_mutable(mut, f.i1.i0);
+    tfun_call(next_id, pos, env, acc, f, tfun_ty, args_ty, args)
+  | (_, N.Tlambda(_, id, _, tfun_ty)) if (acc.lambdas.containsKey(id)) ->
+    check_no_mutable(mut, f.i1.i0);
+    lam = acc.lambdas[id];
+    (!acc, ecall) = tfun_call(
+      next_id,
+      pos,
+      env,
+      acc,
+      f,
+      tfun_ty,
+      args_ty,
+      args,
+    );
+    !acc = lambda(next_id, false, env, acc, lam with {lam_type => tfun_ty});
+    (acc, ecall)
+  | (_, N.Tlambda(_, _, _, fty)) ->
+    f1 = (fty, f.i1);
+    call_or_constructor_(next_id, env, pos, acc, mut, f1, args_ty, args)
+  | (_, N.Tparam(_, _, param_id, _)) ->
+    tfun = acc.tparam_constraints
+      .findUppers(param_id)
+      .foldl(
+        (opt, ty) ->
+          (opt, Types.unfold_type(acc.subst, ty)) match {
+          | (Some _, _) -> opt
+          | (_, (uty @ (_, N.Tfun _))) -> Some(uty)
+          | _ -> None()
+          },
+        (None() : ?N.Type_),
+      );
+    tfun match {
+    | None() -> constructor_call(next_id, pos, env, acc, mut, f, args, args_ty)
+    | Some(tfun_ty) ->
+      check_no_mutable(mut, f.i1.i0);
+      promty = TUtils.promote(env, acc, tfun_ty);
+      !f = (promty, (pos, TAst.Annotated(f, promty)));
+      tfun_call(next_id, pos, env, acc, f, tfun_ty, args_ty, args)
+    }
+  | _ -> constructor_call(next_id, pos, env, acc, mut, f, args, args_ty)
+  }
+}
+
+fun check_tracking(
+  pos: FileRange,
+  env: TUtils.Env,
+  tracking: Array<N.Tracking_modifier>,
+): void {
+  if (
+    env.tracked_context &&
+    !tracking.isEmpty() &&
+    tracking[0] is N.Funtracked()
+  ) {
+    SkipError.error(
+      pos,
+      "Cannot call an untracked function from a tracked context",
+    )
+  }
+}
+
+fun check_args_length<T>(
+  pos: FileRange,
+  param_tya: Array<N.Type_>,
+  args_tya: Array<T>,
+): void {
+  paramsz = param_tya.size();
+  argssz = args_tya.size();
+  argssz.compare(paramsz) match {
+  | EQ() -> void
+  | GT() ->
+    SkipError.error(
+      pos,
+      `Too many arguments, expected ${paramsz} but got ${argssz}`,
+    )
+  | LT() ->
+    for (i in Range(argssz, paramsz)) {
+      param_tya[i] match {
+      | (_, N.Tdefault(_)) -> void
+      | _ ->
+        SkipError.error(
+          pos,
+          `Missing arguments, expected ${paramsz} but got ${argssz}`,
+        )
+      }
+    }
+  }
+}
+
+fun join_args(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  param_tyl: Array<N.Type_>,
+  args_tyl: Array<(Int, N.Type_, FileRange)>,
+  invalid_arg_msg: String,
+): (TUtils.Acc, Array<(?(FileRange, String), TAst.Ordered_expr)>) {
+  paramsz = param_tyl.size();
+  argssz = args_tyl.size();
+  sz = min(paramsz, argssz);
+  for (i in Range(0, sz)) {
+    param = param_tyl[i];
+    (_, arg, argpos) = args_tyl[i];
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      argpos,
+      invalid_arg_msg,
+      acc,
+      param,
+      arg,
+    );
+  };
+  add_args = Array::fillBy(max(0, paramsz - sz), idx -> {
+    argidx = idx + sz;
+    (parampos, ty) = param_tyl[argidx] match {
+    | (parampos, N.Tdefault(ty)) -> (parampos, ty)
+    | _ -> invariant_violation("ICE missing a default arg")
+    };
+    darg = (ty, (parampos, TAst.DefaultArg()));
+    (None(), (argidx, darg))
+  });
+  (acc, add_args)
+}
+
+fun call(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params_ty: Parameters<N.Type_>,
+  args: Parameters<(Int, N.Type_, FileRange)>,
+  invalid_arg_msg: String,
+): (TUtils.Acc, Array<(?N.Name, TAst.Ordered_expr)>) {
+  call_(next_id, pos, env, acc, params_ty, args, invalid_arg_msg)
+}
+
+fun call_(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params_ty: Parameters<N.Type_>,
+  args: Parameters<(Int, N.Type_, FileRange)>,
+  invalid_arg_msg: String,
+): (TUtils.Acc, Array<(?N.Name, TAst.Ordered_expr)>) {
+  (params_ty, args) match {
+  | (Positional(tyl), Positional(args1)) ->
+    tyl1 = tyl.map(cur1 -> TUtils.contra_promote(env, acc, cur1));
+    check_args_length(pos, tyl1, args1);
+    join_args(next_id, env, acc, tyl1, args1, invalid_arg_msg)
+  | (Named(ty_map), Named(args1)) ->
+    maxArg = args1.reduce((cur, _, i__) -> max(i__.i0, cur), 0);
+    argIdx = maxArg;
+    add_args = mutable Vector[];
+    for (name => param in ty_map) {
+      (namefr, namestr) = name;
+      args1.maybeGet(name) match {
+      | None() ->
+        param match {
+        | (parampos, N.Tdefault(ty)) ->
+          darg = (ty, (parampos, TAst.DefaultArg()));
+          add_args.push((Some((namefr, namestr)), (argIdx, darg)));
+          !argIdx = argIdx + 1
+        | _ ->
+          msg = `The parameter ${namestr} is missing`;
+          SkipError.errorl(List[(pos, "Invalid arguments"), (namefr, msg)])
+        }
+      | Some((_, arg, pos1)) ->
+        contraparam = TUtils.contra_promote(env, acc, param);
+        (!acc, _) = TUtils.join(
+          next_id,
+          env,
+          pos1,
+          invalid_arg_msg,
+          acc,
+          contraparam,
+          arg,
+        )
+      }
+    };
+    args1.each((name, _) ->
+      if (!ty_map.containsKey(name)) SkipError.error(name.i0, "Undefined name")
+    );
+    (acc, add_args.collect(Array))
+  | (Named _, Positional _) -> SkipError.error(pos, "Expected named arguments")
+  | (Positional _, Named _) ->
+    SkipError.error(pos, "Expected positional arguments")
+  }
+}
+
+fun tfun_call(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  f: TAst.Expr,
+  tfun_ty: N.Type_,
+  args_ty: Parameters<(Int, N.Type_, FileRange)>,
+  args: TAst.Call_args,
+): (TUtils.Acc, TAst.Expr) {
+  (tracking, params_ty, return_ty) = tfun_ty match {
+  | (_, N.Tfun(_, (_, tracking), _targs, params_ty, rty)) ->
+    (tracking, params_ty, rty)
+  | _ -> invariant_violation("ICE no tfun tfun_call")
+  };
+  (acc1, add_args) = call(
+    next_id,
+    pos,
+    env,
+    acc,
+    params_ty,
+    args_ty,
+    invalid_argument_message,
+  );
+  args1 = TUtils.add_default_arguments(add_args, args);
+  e = (pos, TAst.Call(f, args1));
+  check_tracking(pos, env, tracking);
+  (acc1, (return_ty, e))
+}
+
+fun constructor_call(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  mut: ?FileRange,
+  f: TAst.Expr,
+  args: TAst.Call_args,
+  args_ty: Parameters<(Int, N.Type_, FileRange)>,
+): (TUtils.Acc, TAst.Expr) {
+  mode = mut match {
+  | None() -> N.Mchilled()
+  | Some(mfr) -> N.Mmutable(mfr)
+  };
+  f_ty = TAstUtils.get_type(f);
+  this_ty = maybe_static_ty(env, acc, f_ty);
+  tvar = (pos, TUtils.fresh_(next_id));
+  tobject = this_ty match {
+  | Some _ -> TUtils.make_tobject(env, acc, pos, tvar)
+  | None() -> TUtils.make_tconcrete(env, acc, pos, tvar)
+  };
+  (!acc, _ty) = TUtils.join(
+    next_id,
+    env,
+    pos,
+    "Not a function, so expected a constructor call",
+    acc,
+    f_ty,
+    tobject,
+  );
+  (underlying_class, class_targs) = untapply(pos, acc, tvar);
+  cd = SkipNaming.getClass(underlying_class);
+  check_constructor_call(env, pos, cd);
+  check_deferred_construct(
+    env,
+    pos,
+    f.i1.i0,
+    tobject_kind(acc, f_ty),
+    this_ty.isSome(),
+    cd,
+  );
+  check_mutable_constructor_call(pos, mut, cd);
+  (!acc, params_ty) = TUtils.instantiate_object_with_targs(
+    pos,
+    class_targs,
+    env,
+    acc,
+    mode,
+    underlying_class,
+  );
+  invalid_arg_msg = constructor_invalid_argument_message(mut, cd);
+  (!acc, add_args) = call(
+    next_id,
+    pos,
+    env,
+    acc,
+    params_ty.fromSome(),
+    args_ty,
+    invalid_arg_msg,
+  );
+  !args = TUtils.add_default_arguments(add_args, args);
+  instance_ty_ = add_instantiation_mode(acc, mode, tvar);
+  (
+    acc,
+    (
+      (pos, instance_ty_),
+      ({
+        cd.kind match {
+        | Ast.KTrait() -> invariant_violation("ICE ktrait in constructor_call")
+        | Ast.KClass() ->
+          (pos, TAst.Object(underlying_class, class_targs, args))
+        | Ast.KBase() ->
+          (
+            pos,
+            TAst.DynamicConstruction(f, underlying_class, class_targs, args),
+          )
+        }
+      }),
+    ),
+  )
+}
+
+fun check_constructor_call(
+  env: TUtils.Env,
+  pos: FileRange,
+  cd: N.Class_def,
+): void {
+  (_, cname) = cd.name;
+  cp = {
+    (cd.kind, cd.params) match {
+    | (Ast.KClass(), N.HasParams(cp)) -> cp
+    | (Ast.KTrait(), _)
+    | (Ast.KClass(), N.NoParams())
+    | (Ast.KBase(), N.NoParams()) ->
+      SkipError.error(pos, `'${cname}' does not have a constructor`)
+    | (Ast.KClass(), N.NativeConstruct(nfr))
+    | (Ast.KBase(), N.NativeConstruct(nfr)) ->
+      cmsg = `Cannot instantiate '${cname}' via a constructor call as it was declared native`;
+      nmsg = "Declared 'native' here";
+      SkipError.errorl(List[(pos, cmsg), (nfr, nmsg)])
+    | (Ast.KBase(), N.HasParams(cp)) ->
+      cp.final_ match {
+      | Some _ -> cp
+      | None() ->
+        msg1 = `Invalid Concrete<_> instantiation for ${cname}. To instanatiate a Concrete<_> of a base class, the constructor must be final`;
+        msg2 = "The constructor was declared as non-final here";
+        SkipError.errorl(List[(pos, msg1), (cp.pos, msg2)])
+      }
+    }
+  };
+  source = cp.source;
+  visibility = cp.visibility;
+  msg = () ~> "Invalid constructor call for class " + cd.name.i1;
+  check_visibility(env, pos, cd.name, source, msg, visibility)
+}
+
+fun untapply(
+  pos: FileRange,
+  acc: TUtils.Acc,
+  ty: N.Type_,
+): (N.Name, Array<TAst.Type_>) {
+  Types.unfold_type(acc.subst, ty) match {
+  | (_, N.Tset(_, _, _, elts)) if (!elts.isEmpty()) ->
+    elt = elts[0];
+    (elt.name, elt.targs)
+  | (_, N.Tpromoted(_, _, _, _, n, tyl))
+  | (_, N.Tapply(_, n, tyl)) ->
+    (n, tyl)
+  | (_, N.Tnamed(_, ty1)) -> untapply(pos, acc, ty1)
+  | _ -> SkipError.error(pos, "Expected a function or Class")
+  }
+}
+
+fun add_instantiation_mode(
+  acc: TUtils.Acc,
+  mode: N.Modality,
+  ty: N.Type_,
+): N.Type__ {
+  Types.unfold_type(acc.subst, ty) match {
+  | (_, tp @ N.Tpromoted _) -> tp with {mode}
+  | (_, ts @ N.Tset _) -> ts with {mode}
+  | (fr, _) -> SkipError.error(fr, "ICE bad construction")
+  }
+}
+
+fun strip_tdefault_from_indirect_call(
+  acc: TUtils.Acc,
+  e: TAst.Expr,
+): (TUtils.Acc, TAst.Expr) {
+  (ty, (pos, e__)) = e;
+  if (is_direct_call(e__)) {
+    (acc, e)
+  } else {
+    (acc1, ty1) = strip_tdefault(acc, ty);
+    (acc1, (ty1, (pos, e__)))
+  }
+}
+
+/* default arguments are only available on direct calls, not lambda/eta expanded
+ * calls
+ */
+fun is_direct_call(x: TAst.Expr__): Bool {
+  x match {
+  | TAst.Annotated((_, (_, e__)), _) -> is_direct_call(e__)
+  | TAst.Fun _
+  | TAst.Object _
+  | TAst.DynamicConstruction _
+  | TAst.Dot _
+  | TAst.StaticDot _ ->
+    true
+  | _ -> false
+  }
+}
+
+fun strip_tdefault(acc: TUtils.Acc, ty: TAst.Type_): (TUtils.Acc, TAst.Type_) {
+  ty1 = strip_tdefault_(ty);
+  subst = acc.subst.map((_, t) -> strip_tdefault_(t));
+  (acc with {subst}, ty1)
+}
+
+fun strip_tdefault_(ty: TAst.Type_): N.Type_ {
+  N.type_map(
+    (x -> {
+      x match {
+      | (_, N.Tdefault(ty_)) -> ty_
+      | x1 -> x1
+      }
+    }),
+    ty,
+  )
+}
+
+fun check_no_mutable(mut: ?FileRange, fr: FileRange): void {
+  mut match {
+  | None() -> void
+  | Some(mfr) ->
+    SkipError.errorl(
+      List[(mfr, "Invalid 'mutable'"), (fr, "Expected a object instantiation")],
+    )
+  }
+}
+
+// Gets what kind of class object, Class/Base/Concrete
+fun tobject_kind(acc: TUtils.Acc, ty: N.Type_): String {
+  maybe_tobject_kind(acc, ty).fromSome()
+}
+
+fun maybe_tobject_kind(acc: TUtils.Acc, ty: N.Type_): ?String {
+  N.unfold_tnamed(Types.unfold_type(acc.subst, ty)) match {
+  | (_, N.Tset(_, _, _, elts)) if (!elts.isEmpty()) ->
+    (_, s) = elts[0].name;
+    if (TAstUtils.is_class_object(s)) Some(s) else None()
+  | (_, N.Tapply(_, (_, s), _))
+  | (_, N.Tpromoted(_, _, _, _, (_, s), _)) if (TAstUtils.is_class_object(s)) ->
+    Some(s)
+  | (_, N.Tparam(_, _, id, _)) ->
+    acc.tparam_constraints
+      .findUppers(id)
+      .foldl(
+        (cur, ty) ->
+          cur match {
+          | Some("Concrete") -> cur
+          | _ ->
+            (cur, maybe_tobject_kind(acc, ty)) match {
+            | (_, res @ Some("Concrete")) -> res
+            | (c @ Some("Class"), _)
+            | (_, c @ Some("Class")) ->
+              c
+            | (s @ Some _, _)
+            | (_, s @ Some _) ->
+              s
+            | (None(), None()) -> None()
+            }
+          },
+        (None() : ?String),
+      )
+  | _ -> None()
+  }
+}
+
+/*****************************************************************************/
+/* Let bindings. */
+/*****************************************************************************/
+fun expr_bind(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  var_name: N.Name,
+  rvalue: N.Expr,
+  e: N.Expr,
+): (TUtils.Acc, TAst.Expr) {
+  (pos, _) = var_name;
+  (acc1, rvalue1) = expr(next_id, env, acc, rvalue);
+  ty = TAstUtils.get_type(rvalue1);
+  rvalue2 = (ty, rvalue1.i1);
+  (env1, acc2) = TUtils.bind_local_var(env, acc1, ty, var_name);
+  (acc3, e1) = expr(next_id, env1, acc2, e);
+  var = (ty, var_name, TAstUtils.default_binding_info);
+  (acc3, (e1.i0, (pos, TAst.Bind(var, rvalue2, e1))))
+}
+
+fun expr_annotation(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty_inferred: N.Type_,
+  x: ?N.Type_,
+): (TUtils.Acc, N.Type_) {
+  x match {
+  | None() -> (acc, ty_inferred)
+  | Some(ty_annotated) ->
+    (acc1, cty) = TUtils.instantiate(next_id, env, acc, ty_annotated);
+    cty1 = TUtils.contra_promote(env, acc1, cty);
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid annotation",
+      acc1,
+      cty1,
+      ty_inferred,
+    );
+    (acc3, ty) = TUtils.instantiate(next_id, env, acc2, ty_annotated);
+    ty1 = TUtils.promote(env, acc3, ty);
+    (acc3, ty1)
+  }
+}
+
+/*****************************************************************************/
+/* Expressions. */
+/*****************************************************************************/
+
+// states for iterative expr()
+// Bind, Seq and Call nodes are processed on a data stack -
+//
+private base class ExprState {
+  children =
+  | NExpr{expr: N.Expr}
+  | BindState{pos: FileRange, binding: TAst.Binding, value: TAst.Expr}
+  | SeqState{left: TAst.Expr}
+  | CallState{
+    pos: FileRange,
+    mut: ?FileRange,
+    targs: Array<N.Type_>,
+    args: N.Call_args,
+    last_lambda_id: Int,
+    last_constraint: Int,
+    last_tvar: Int,
+  }
+}
+
+fun expr(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  x_: N.Expr,
+): (TUtils.Acc, TAst.Expr) {
+  initial: ExprState = NExpr{expr => x_};
+  stack = mutable Vector[initial];
+  res: ?TAst.Expr = None();
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | nx @ NExpr _ ->
+      nx.expr match {
+      | (pos, N.Bind(var_name, rvalue, e)) ->
+        if (env.locals.containsKey(var_name.i1)) {
+          SkipError.error(var_name.i0, already_bound_msg(var_name))
+        } else {
+          (!acc, value) = expr(next_id, env, acc, rvalue);
+          ty = TAstUtils.get_type(value);
+          (!env, !acc) = TUtils.bind_local_var(env, acc, ty, var_name);
+          binding = (ty, var_name, TAstUtils.default_binding_info);
+          stack.push(BindState{pos, binding, value});
+          stack.push(NExpr{expr => e})
+        }
+      | (_, N.Seq(e1, e2)) ->
+        (!acc, e11) = expr(next_id, env, acc, e1);
+        e1_pos = TAstUtils.expr_pos(e11);
+        ty1 = TAstUtils.get_type(e11);
+        ty2 = TUtils.make_tvoid(e1_pos, Ast.Vminus());
+        (!acc, _) = TUtils.join(
+          next_id,
+          env,
+          e1_pos,
+          "Non-void expressions must be the last expression in an expression sequence. Either use the expression result, or bind it to a variable whose name starts with '_'.",
+          acc,
+          ty1,
+          ty2,
+        );
+        stack.push(SeqState{left => e11});
+        stack.push(NExpr{expr => e2})
+      | (
+        pos,
+        N.Binop((bpos, bop), e1, e2),
+      ) if (!(bop is N.Ampamp _) && !(bop is N.Barbar _)) ->
+        name = (
+          pos,
+          bop match {
+          | N.Eqeq() -> "=="
+          | N.Diff() -> "!="
+          | N.Lt() -> "<"
+          | N.Lte() -> "<="
+          | N.Gt() -> ">"
+          | N.Gte() -> ">="
+          | N.Plus() -> "+"
+          | N.Minus() -> "-"
+          | N.Star() -> "*"
+          | N.Slash() -> "/"
+          | N.Percent() -> "%"
+          | N.Barbar()
+          | N.Ampamp() ->
+            invariant_violation("ICE && || not already covered")
+          },
+        );
+        e3 = (
+          pos,
+          N.Call(
+            None(),
+            (bpos, N.Dot(e1, name)),
+            Array[],
+            Positional(Array[(0, e2)]),
+          ),
+        );
+        stack.push(NExpr{expr => e3})
+      | (pos, N.Call(mut, nbase, targs, args)) ->
+        last_lambda_id = acc.last_lambda_id();
+        last_constraint = acc.constraints.typing_size();
+        last_tvar = next_id();
+        magic_call(next_id, pos, env, acc, mut, nbase, args) match {
+        | Some((acc1, call)) ->
+          !acc = acc1;
+          !res = Some((TUtils.promote(env, acc, call.i0), call.i1))
+        | None() ->
+          stack.push(
+            CallState{
+              pos,
+              mut,
+              targs,
+              args,
+              last_lambda_id,
+              last_constraint,
+              last_tvar,
+            },
+          );
+          stack.push(NExpr{expr => nbase})
+        }
+      | x ->
+        (!acc, e) = expr_(next_id, env, acc, x);
+        !res = Some((TUtils.promote(env, acc, e.i0), e.i1))
+      }
+    | b @ BindState _ ->
+      cont = res.fromSome();
+      ty = TAstUtils.get_type(cont);
+      !res = Some((ty, (b.pos, TAst.Bind(b.binding, b.value, cont))))
+    | s @ SeqState _ ->
+      right = res.fromSome();
+      rty = TAstUtils.get_type(right);
+      pos = TAstUtils.expr_pos(right);
+      !res = Some((rty, (pos, TAst.Seq(s.left, right))))
+    | c @ CallState _ ->
+      base = res.fromSome();
+      (!acc, call) = finish_call(next_id, env, acc, base, c);
+      ty = TUtils.promote(env, acc, call.i0);
+      !res = Some((ty, call.i1))
+    }
+  };
+  (acc, res.fromSome())
+}
+
+fun finish_call(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  base: TAst.Expr,
+  c: CallState,
+): (TUtils.Acc, TAst.Expr) {
+  (!acc, !base) = strip_tdefault_from_indirect_call(acc, base);
+  t = TAstUtils.get_type(base);
+  !acc = explicit_targs(next_id, c.pos, env, acc, t, c.targs);
+  (!acc, typed_args) = call_args(next_id, env, acc, c.args);
+  args_ty = typed_args.map(i_e -> {
+    (i, e) = i_e;
+    (i, TAstUtils.get_type(e), TAstUtils.expr_pos(e))
+  });
+  (!acc, call) = call_or_constructor_(
+    next_id,
+    env,
+    c.pos,
+    acc,
+    c.mut,
+    base,
+    args_ty,
+    typed_args,
+  );
+  !acc = solve_call_constraints(
+    next_id,
+    c.last_constraint,
+    c.last_tvar,
+    env,
+    acc,
+  );
+  !acc = solve_new_lambdas(
+    next_id,
+    c.last_lambda_id,
+    env,
+    acc,
+    acc.lambda_list,
+  );
+  (acc, call)
+}
+
+fun magic_call(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  mut: ?FileRange,
+  base: N.Expr,
+  args: N.Call_args,
+): ?(TUtils.Acc, TAst.Expr) {
+  (base, args) match {
+  | ((_, N.Var((_, "freeze"))), Positional(arga)) if (arga.size() == 1) ->
+    check_no_mutable(mut, base.i0);
+    (_, e) = arga[0];
+    (!acc, e1) = expr(next_id, env, acc, e);
+    old_ty = TAstUtils.get_type(e1);
+    if (Types.has_unresolved(acc.subst, old_ty)) {
+      SkipError.errorl(
+        List[
+          (
+            old_ty.i0,
+            "Invalid freeze on unresolved type. This type has type parameters that are not yet resolved.",
+          ),
+          (e1.i1.i0, "Try annotating this expression"),
+        ],
+      )
+    };
+    ty = TUtils.freeze(pos, acc, old_ty);
+    e2 = (pos, TAst.Freeze(e1));
+    Some((acc, (ty, e2)))
+  | ((_, N.Var((_, "class"))), Positional(arga)) if (arga.size() == 1) ->
+    check_no_mutable(mut, base.i0);
+    (_, e) = arga[0];
+    (acc1, e1) = expr(next_id, env, acc, e);
+    ty = inner_type_for_class(pos, env, acc1, TAstUtils.get_type(e1));
+    tclass = TUtils.make_tconcrete(env, acc1, pos, ty);
+    e2 = (pos, TAst.GetClass(e1));
+    Some((acc1, (tclass, e2)))
+  | ((_, N.Var((_, "show"))), Positional(arga)) if (arga.size() == 1) ->
+    check_no_mutable(mut, base.i0);
+    (_, e) = arga[0];
+    (acc1, e1) = expr(next_id, env, acc, e);
+    ty = Types.fill_vars(acc1.subst, TAstUtils.get_type(e1));
+    TUtils.debug_type(acc1, ty);
+    print_newline();
+    acc1.tparam_constraints.debug(acc1);
+    print_newline();
+    print_newline();
+    ty1 = (pos, N.Tanything());
+    e2 = (pos, TAst.Literal(SkipAst.VoidLiteral()));
+    Some((acc1, (ty1, e2)))
+  | (
+    (_, N.Var((_, "unsafe_chill_trust_me"))),
+    Positional(arga),
+  ) if (arga.size() == 1) ->
+    check_no_mutable(mut, base.i0);
+    (_, e) = arga[0];
+    (acc1, e1) = expr(next_id, env, acc, e);
+    ty = TUtils.user_chill(pos, env, acc, e1.i0);
+    Some((acc1, (ty, (pos, TAst.Annotated(e1, ty)))))
+  | _ -> None()
+  }
+}
+
+fun already_bound_msg(var_name: N.Name): String {
+  `${var_name.i1} is already bound in this scope. ` +
+    `A name may be bound only once in a given scope. ` +
+    `Use '!${var_name.i1} = ...' to assign a new value to an ` +
+    `existing name.`
+}
+
+fun literal(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  l: Ast.LiteralValue,
+): (TUtils.Acc, (N.Type_, (FileRange, Ast.LiteralValue))) {
+  ty = TUtils.make_tapply(
+    env,
+    acc,
+    pos,
+    N.Mchilled(),
+    (pos, TUtils.literal_type_name(l)),
+    Array[],
+  );
+  (acc, (ty, (pos, l)))
+}
+
+fun expr_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  e: N.Expr,
+): (TUtils.Acc, TAst.Expr) {
+  (pos, e_) = e;
+  e_ match {
+  | N.Literal(l) ->
+    (acc1, (ty, (pos1, l1))) = literal(env, acc, pos, l);
+    (acc1, (ty, (pos1, TAst.Literal(l1))))
+  | N.Var(n) ->
+    pos1 = n.i0;
+    env.locals.maybeGet(n.i1) match {
+    | Some((vty, level)) ->
+      (!acc, vty_fixed) = check_local_mutable(env, acc, pos1, level, vty);
+      (acc, (vty_fixed, (pos1, TAst.Local(n))))
+    | None() if (SkipNaming.maybeGetFun(n.i1).isSome()) ->
+      fd = SkipNaming.getFun(n);
+      (acc1, subst, targs) = TUtils.mk_tparams(next_id, pos1, acc, fd.tparams);
+      tracking = SkipNaming.make_tfun_tracking(fd.untracked_);
+      params_ty = TUtils.make_params_type(
+        subst,
+        acc.tparam_constraints,
+        fd.params,
+      );
+      rty = TUtils.type_subst(subst, acc, fd.return_);
+      ty = (
+        pos1,
+        N.Tfun(
+          Ast.Vnone(),
+          (Array[N.Fpure()], tracking),
+          targs,
+          params_ty,
+          rty,
+        ),
+      );
+      e1 = (pos1, TAst.Fun(n, targs));
+      (acc1, (ty, e1))
+    | None() if (SkipNaming.maybeGetConst(n.i1).isSome()) ->
+      ty = SkipNaming.getConst(n).type;
+      (acc, (ty, (pos1, TAst.Const(n))))
+    | None() ->
+      /* TODO: reinsert this
+      didYouMeanTypos = SkipDidYouMean.didYouMeanTypos(
+      sk_smap_key_list(env.locals)
+        .concat(sk_umap_key_list(env.consts))
+        .concat(sk_umap_key_list(env.funs)),
+      n.i1,
+      );
+      */
+      SkipError.error(n.i0, "Unbound variable: " + n.i1)
+    }
+  | N.If(e1, e2, e3) ->
+    (acc1, e11) = expr(next_id, env, acc, e1);
+    e1_pos = TAstUtils.expr_pos(e11);
+    ty1 = TAstUtils.get_type(e11);
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      e1_pos,
+      "Invalid condition",
+      acc1,
+      ty1,
+      TUtils.make_tbool(e1_pos, Ast.Vminus()),
+    );
+    (acc3, e21) = expr(next_id, env, acc2, e2);
+    (acc4, e31) = expr(next_id, env, acc3, e3);
+    ty21 = TAstUtils.get_type(e21);
+    ty3 = TAstUtils.get_type(e31);
+    (acc5, ty) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Incompatible branches",
+      acc4,
+      ty21,
+      ty3,
+    );
+    e4 = (pos, TAst.If(e11, e21, e31));
+    (acc5, (ty, e4))
+  | N.Call _ -> invariant_violation("ICE call covered in expr")
+  | N.ArrayGet(e1, args) ->
+    e1_get = (pos, N.Dot(e1, (pos, "get")));
+    expr(next_id, env, acc, (pos, N.Call(None(), e1_get, Array[], args)))
+
+  | N.Object(mut, name, tyl, args) ->
+    cd = SkipNaming.getClass(name);
+    check_mutable_constructor_call(pos, mut, cd);
+    mode = mut match {
+    | None() -> N.Mchilled()
+    | Some(mfr) -> N.Mmutable(mfr)
+    };
+    (acc1, (params_ty, object_ty, targs)) = TUtils.instantiate_object(
+      pos,
+      next_id,
+      env,
+      acc,
+      mode,
+      name,
+    );
+    acc2 = explicit_targs(next_id, pos, env, acc1, object_ty, tyl);
+    params_ty1 = {
+      params_ty match {
+      | None() ->
+        SkipError.error(
+          pos,
+          Types.to_string(env.this_class, acc2.subst, object_ty) +
+            " does not have a constructor",
+        )
+      | Some(params_ty_) -> params_ty_
+      }
+    };
+    (acc3, args1) = call_args(next_id, env, acc2, args);
+    args_types = args1.map(i_e -> {
+      (i, e1) = i_e;
+      (i, TAstUtils.get_type(e1), TAstUtils.expr_pos(e1))
+    });
+    invalid_arg_msg = constructor_invalid_argument_message(mut, cd);
+    (acc4, add_args) = call(
+      next_id,
+      pos,
+      env,
+      acc3,
+      params_ty1,
+      args_types,
+      invalid_arg_msg,
+    );
+    args2 = TUtils.add_default_arguments(add_args, args1);
+    invariant(cd.kind == Ast.KClass(), "Kind was checked in naming");
+    check_constructor_call(env, pos, cd);
+    e1 = (pos, TAst.Object(name, targs, args2));
+    (acc4, (object_ty, e1))
+  | N.Annotated(e1, ty_annotated) ->
+    acc_e2 = expr(next_id, env, acc, e1);
+    (acc1, e2) = acc_e2;
+    (e_ty, _) = e2;
+    (acc2, ty) = expr_annotation(
+      next_id,
+      pos,
+      env,
+      acc1,
+      e_ty,
+      Some(ty_annotated),
+    );
+    (acc2, (ty, (pos, TAst.Annotated(e2, ty))))
+  | N.Bind _ -> invariant_violation("ICE bind covered in expr")
+  | N.Seq _ -> invariant_violation("ICE seq covered in expr")
+  | N.Assign(name, rvalue) ->
+    (acc1, rvalue1) = expr(next_id, env, acc, rvalue);
+    lvalue_ty = {
+      name match {
+      | (pos1, "_") -> (pos1, N.Tanything())
+      | (pos1, nstr) if (!env.locals.containsKey(nstr)) ->
+        SkipError.error(pos1, "Unbound local")
+      | (pos_local, nstr) ->
+        (local_type, local_level) = env.locals[nstr];
+        check_local_assign(env, pos_local, local_level);
+        local_type
+      }
+    };
+    rvalue_ty = TAstUtils.get_type(rvalue1);
+    lvalue_ty1 = TUtils.contra_promote(env, acc1, lvalue_ty);
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid assignment",
+      acc1,
+      lvalue_ty1,
+      rvalue_ty,
+    );
+    ty = TUtils.make_tvoid(pos, Ast.Vplus());
+    e1 = (pos, TAst.Assign((lvalue_ty1, name), rvalue1));
+    (acc2, (ty, e1))
+  | N.Await(e1 @ (e_pos, _)) ->
+    (acc1, e2) = expr(next_id, env, acc, e1);
+    e_ty = TAstUtils.get_type(e2);
+    tv = TUtils.fresh(next_id, (pos, void));
+    obs = (e_pos, N.Tawaitable(Ast.Vplus(), tv));
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Expected an awaitable type. That is a type prefixed by: ^",
+      acc1,
+      e_ty,
+      obs,
+    );
+    (acc2, (tv, (pos, TAst.Await(e2))))
+  | N.Return(ret_expr) ->
+    env.return_type match {
+    | TUtils.RNotAllowed(msg) ->
+      SkipError.error(pos, "Invalid context for early return" + msg)
+    | TUtils.RType(expected_ty) ->
+      (!acc, typed_ret_expr) = expr(next_id, env, acc, ret_expr);
+      e_ty = TAstUtils.get_type(typed_ret_expr);
+      ret_ty = make_return_type(env, e_ty);
+      !expected_ty = TUtils.contra_promote(env, acc, expected_ty);
+      (!acc, _) = TUtils.join(
+        next_id,
+        env,
+        pos,
+        "Invalid return type",
+        acc,
+        expected_ty,
+        ret_ty,
+      );
+      (acc, ((pos, N.Tanything()), (pos, TAst.Return(typed_ret_expr))))
+    }
+  | N.Yield(yield_expr) ->
+    expected_ty = env.yield_type.getType(pos);
+    (!acc, typed_yield_expr) = expr(next_id, env, acc, yield_expr);
+    yield_ty = TAstUtils.get_type(typed_yield_expr);
+    !expected_ty = TUtils.contra_promote(env, acc, expected_ty);
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid yield type",
+      acc,
+      expected_ty,
+      yield_ty,
+    );
+    tvoid = TUtils.make_tvoid(pos, Ast.Vplus());
+    (acc, (tvoid, (pos, TAst.Yield(typed_yield_expr))))
+  | N.YieldBreak() ->
+    // Use this just for error checking.
+    _ = env.yield_type.getType(pos);
+    (acc, ((pos, N.Tanything()), (pos, TAst.YieldBreak())))
+  | N.Classname(name, tyl) ->
+    (acc1, cd, oty) = TUtils.instantiate_object_type(
+      pos,
+      next_id,
+      acc,
+      N.Mchilled(),
+      name,
+    );
+    acc2 = explicit_targs(next_id, pos, env, acc1, oty, tyl);
+    ty = TUtils.classname_ty(false, env, acc2, pos, cd, oty);
+    (acc2, (ty, (pos, TAst.Classname(name))))
+  | N.StaticDot(obj, field) ->
+    (acc1, obj1) = expr(next_id, env, acc, obj);
+    obj_ty = TAstUtils.get_type(obj1);
+    obj_pos = TAstUtils.expr_pos(obj1);
+    tobject = TUtils.make_tobject(
+      env,
+      acc1,
+      pos,
+      TUtils.fresh(next_id, (pos, void)),
+    );
+    (_acc, _ty) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid static access",
+      acc1,
+      TAstUtils.get_type(obj1),
+      tobject,
+    );
+    (acc2, dot, source) = expr_dot(
+      next_id,
+      true,
+      env,
+      acc1,
+      pos,
+      obj_ty,
+      obj_pos,
+      field,
+    );
+    obj_ty1 = dot.obj_ty;
+    field_targs = dot.field_targs;
+    elt_kind = dot.elt_kind;
+    field_type = dot.field_type;
+    obj_expr = (obj_ty1, obj1.i1);
+    field_type1 = add_field_targs(acc2, field_type, field_targs);
+    e1 = (
+      field_type1,
+      (
+        pos,
+        TAst.StaticDot(
+          TAst.Dot_info{obj_expr, field, field_targs, source, elt_kind},
+        ),
+      ),
+    );
+    (acc2, e1)
+  | N.Dot(obj, field) ->
+    (acc1, obj1) = expr(next_id, env, acc, obj);
+    bind_dot(next_id, env, acc1, pos, obj1, field)
+  | N.Pipe(e1, e2) ->
+    (acc1, e11) = expr(next_id, env, acc, e1);
+    (acc2, e21) = expr(next_id, env, acc1, e2);
+    ty1 = TAstUtils.get_type(e11);
+    ty2 = TAstUtils.get_type(e21);
+    ret_ty = TUtils.fresh(next_id, (pos, void));
+    ty_expect = (
+      pos,
+      N.Tfun(
+        Ast.Vplus(),
+        (Array[N.Fmutable()], Array[N.Funtracked()]),
+        Array[],
+        Positional(Array[ty1]),
+        ret_ty,
+      ),
+    );
+    (acc3, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid pipe",
+      acc2,
+      ty2,
+      ty_expect,
+    );
+    (acc3, (ret_ty, (pos, TAst.Call(e21, Positional(Array[(0, e11)])))))
+  | N.Binop((_, op @ N.Barbar()), e1, e2)
+  | N.Binop((_, op @ N.Ampamp()), e1, e2) ->
+    (acc1, e11) = expr(next_id, env, acc, e1);
+    e1_pos = TAstUtils.expr_pos(e11);
+    ty1 = TAstUtils.get_type(e11);
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      e1_pos,
+      "Expected Bool",
+      acc1,
+      ty1,
+      TUtils.make_tbool(e1_pos, Ast.Vminus()),
+    );
+    (acc3, e21) = expr(next_id, env, acc2, e2);
+    e2_pos = TAstUtils.expr_pos(e21);
+    ty2 = TAstUtils.get_type(e21);
+    (acc4, _) = TUtils.join(
+      next_id,
+      env,
+      e2_pos,
+      "Expected Bool",
+      acc3,
+      ty2,
+      TUtils.make_tbool(e2_pos, Ast.Vminus()),
+    );
+    e3 = (pos, convert_or_and(op, e11, e21));
+    (acc4, (TUtils.make_tbool(pos, Ast.Vplus()), e3))
+  | N.Binop _ -> invariant_violation("ICE binop covered in expr")
+  | N.Throw(e1) ->
+    (e_pos, _) = e1;
+    (acc1, e2) = expr(next_id, env, acc, e1);
+    e_ty = TAstUtils.get_type(e2);
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      e_pos,
+      "Invalid throw",
+      acc1,
+      TUtils.make_texn(e_pos, Ast.Vminus()),
+      e_ty,
+    );
+    ret_ty = (pos, N.Tanything());
+    (acc2, (ret_ty, (pos, TAst.Throw(e2))))
+  | N.Async(fvs, async_block) ->
+    block_type = TUtils.fresh(next_id, (pos, void));
+    !env = env with {
+      return_type => TUtils.RType(block_type),
+      break_type => None(),
+      yield_type => TUtils.YNotAllowed("Yield not allowed in an async block"),
+      frozen_level => TUtils.LAsyncBlock(pos, acc.level),
+    };
+    (!acc, typed_block) = expr(next_id, env, acc, async_block);
+    ty = TAstUtils.get_type(typed_block);
+    (!acc, !ty) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid async",
+      acc,
+      ty,
+      block_type,
+    );
+    !ty = (pos, N.Tawaitable(Ast.Vnone(), ty));
+    bindings = add_binding_info(env, fvs);
+    (acc, (ty, (pos, TAst.Async(bindings, typed_block))))
+  | N.Unop((upos, uop), e1) ->
+    uop match {
+    | N.Not() ->
+      name = (pos, "!");
+      e2 = (
+        pos,
+        N.Call(None(), (upos, N.Dot(e1, name)), Array[], Positional(Array[])),
+      );
+      expr(next_id, env, acc, e2)
+    | N.Uminus() ->
+      name = (pos, "negate");
+      e2 = (
+        pos,
+        N.Call(None(), (upos, N.Dot(e1, name)), Array[], Positional(Array[])),
+      );
+      expr(next_id, env, acc, e2)
+    }
+  | N.Lambda(ml, params, captured, e1, yields) ->
+    lambda_id = next_id();
+    variance = Ast.Vplus();
+    mods = Types.promote_tfun_modifiers(ml);
+    ((explicit_params, acc1), lam_params) = lam_parameters(
+      next_id,
+      env,
+      acc,
+      params,
+    );
+    params_ty = lam_params.map(p -> p.i1);
+    tvar = (pos, N.Tvar(lambda_id));
+    fty = (pos, N.Tfun(variance, mods, Array[], params_ty, tvar));
+    lamty = (pos, N.Tlambda(variance, lambda_id, mods, fty));
+    lambda = TUtils.Lambda{
+      lam_id => lambda_id,
+      lam_pos => pos,
+      lam_locals => env.locals,
+      lam_captured => captured,
+      lam_type => lamty,
+      lam_params,
+      lam_explicit_param_ty => explicit_params,
+      lam_body => e1,
+      lam_frozen_level => if (N.is_pure(mods)) {
+        TUtils.LPureLambda(pos, acc1.level)
+      } else {
+        env.frozen_level
+      },
+      lam_tfun_modifiers => mods,
+      yields,
+    };
+    lambda_list = List.Cons((lambda_id, lambda), acc1.lambda_list);
+    lambdas = acc1.lambdas.set(lambda_id, lambda);
+    acc2 = acc1 with {lambda_list, lambdas};
+    (acc2, (lamty, (pos, TAst.LazyLambda(lambda_id))))
+  | N.Is(lhs_expr, pat) ->
+    ebool = b -> (pat.i0, N.Literal(SkipAst.BoolLiteral(b)));
+    branch1 = (List[pat], None(), ebool(true));
+    branch2 = (List[(pat.i0, N.Pat_var((pat.i0, "_")))], None(), ebool(false));
+    mbl = List[branch1, branch2];
+    (!acc, lhs) = expr(next_id, env, acc, lhs_expr);
+    e_ty = TAstUtils.get_type(lhs);
+    rty = TUtils.make_tbool(pos, SkipAst.Vminus());
+    (!acc, mbl1, !rty) = match_branch_list(next_id, e_ty, rty, env, acc, mbl);
+    lhs_pos = (pos, TAst.Match(lhs, mbl1));
+    if (env.check_exhaustive_match) {
+      check_exhaustive_match_is(next_id, env, acc, pos, e_ty, mbl1)
+    };
+    (acc, (rty, lhs_pos))
+  | N.As(lhs_expr, pat) ->
+    (!acc, lhs) = expr(next_id, env, acc, lhs_expr);
+    e_ty = TAstUtils.get_type(lhs);
+    rty = TUtils.fresh(next_id, (pos, void));
+    identifier = sk_new_var_name(next_id, pat.i0);
+    matches_branch = (
+      List[(pat.i0, N.Pat_as(pat, identifier))],
+      None(),
+      (pat.i0, N.Var(identifier)),
+    );
+    e_string = s -> N.Literal(SkipAst.StringLiteral(s));
+    actualTyString = (
+      pos,
+      e_string(SkipTypes.to_string(env.this_class, acc.subst, e_ty)),
+    );
+    expectedTyString = (
+      pos,
+      e_string(print_pattern(next_id, env, acc, e_ty, pat)),
+    );
+    obj_call_args = Positional(
+      Array[(0, actualTyString), (1, expectedTyString)],
+    );
+    obj_expr = N.Object(
+      None(),
+      (pat.i0, TUtils.invalidCastError),
+      Array[],
+      obj_call_args,
+    );
+    throw_expr = (pat.i0, N.Throw((pat.i0, obj_expr)));
+    throw_branch = (
+      List[(pat.i0, N.Pat_var((pat.i0, "_")))],
+      None(),
+      throw_expr,
+    );
+    mbl = List[matches_branch, throw_branch];
+    (!acc, mbl1, !rty) = match_branch_list(next_id, e_ty, rty, env, acc, mbl);
+    lhs_pos = (pos, TAst.Match(lhs, mbl1));
+    if (env.check_exhaustive_match) {
+      check_exhaustive_match_as(next_id, env, acc, pos, e_ty, mbl1)
+    };
+    (acc, (rty, lhs_pos))
+  | N.Match(match_expr, mbl) ->
+    (acc1, e1) = expr(next_id, env, acc, match_expr);
+    e_ty = TAstUtils.get_type(e1);
+    rty = TUtils.fresh(next_id, (pos, void));
+    (acc2, mbl1, rty1) = match_branch_list(next_id, e_ty, rty, env, acc1, mbl);
+    e2 = (pos, TAst.Match(e1, mbl1));
+    if (env.check_exhaustive_match) {
+      check_exhaustive_match(next_id, env, acc2, pos, e_ty, mbl1)
+    };
+    (acc2, (rty1, e2))
+  | N.Try(match_expr, mbl) ->
+    (acc1, e1) = expr(next_id, env, acc, match_expr);
+    e_ty = TAstUtils.get_type(e1);
+    pat_ty = TUtils.make_texn(pos, Ast.Vplus());
+    (acc2, mbl1, e_ty1) = match_branch_list(
+      next_id,
+      pat_ty,
+      e_ty,
+      env,
+      acc1,
+      mbl,
+    );
+    e2 = (pos, TAst.Try(e1, mbl1));
+    if (env.check_exhaustive_match) {
+      check_exhaustive_try(next_id, env, acc2, pos, mbl1)
+    };
+    (acc2, (e_ty1, e2))
+  | N.Concurrent _ -> invariant_violation("TODO concurrent")
+  | N.Array(mut, tyl, el) ->
+    mode = mut match {
+    | None() -> N.Mchilled()
+    | Some(mfr) -> N.Mmutable(mfr)
+    };
+    elt_pos = if (el.isEmpty()) pos else el[0].i0;
+    (acc1, el1) = el.mapAcc((acc, x) -> expr(next_id, env, acc, x), acc);
+    elt_ty = ((pos, N.Tanything()) : N.Type_);
+    (acc2, elt_ty1) = el1.foldl(
+      ((acc_ty, cur) -> array_element(next_id, env, pos, acc_ty, cur)),
+      (acc1, elt_ty),
+    );
+    explicit_ty = tyl.size() match {
+    | 0 -> TUtils.fresh(next_id, (elt_pos, void))
+    | 1 -> tyl[0]
+    | _ -> SkipError.error(tyl[1].i0, "Unexpected type argument")
+    };
+    explicit_ty1 = TUtils.contra_promote(env, acc2, explicit_ty);
+    (acc3, elt_ty2) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid annotation",
+      acc2,
+      explicit_ty1,
+      elt_ty1,
+    );
+    array_targs = Array[elt_ty2];
+    array_ty = TUtils.make_tapply(
+      env,
+      acc3,
+      pos,
+      mode,
+      (pos, "Array"),
+      array_targs,
+    );
+    e1 = (pos, TAst.Array(el1));
+    (acc3, (array_ty, e1))
+  | N.With(obj, updates) ->
+    (acc1, obj1) = expr(next_id, env, acc, obj);
+    obj_ty = TAstUtils.get_type(obj1);
+    obj_pos = TAstUtils.expr_pos(obj1);
+    (acc2, updates1) = updates.mapAcc(
+      (acc2, field_name, i_rvalue) -> {
+        (field_pos, _) = field_name;
+        (i, rvalue) = i_rvalue;
+        (acc3, rvalue1) = expr(next_id, env, acc2, rvalue);
+        (acc4, dot, source) = expr_dot(
+          next_id,
+          false,
+          env,
+          acc3,
+          pos,
+          obj_ty,
+          obj_pos,
+          field_name,
+        );
+        obj_ty1 = dot.obj_ty;
+        _targs = dot.field_targs;
+        elt_kind = dot.elt_kind;
+        field_type = dot.field_type;
+        if (!(elt_kind is N.EProperty())) {
+          SkipError.error(field_pos, "Can only bind to class properties")
+        };
+        cd = SkipNaming.getClass(source);
+        cp = cd.params.fromHasParams("with field deconstruction");
+        visibility = cp.visibility;
+        msg = () ~>
+          "Invalid binding of property " +
+            field_name.i1 +
+            " for class " +
+            source.i1;
+        vis_msg = () ~>
+          "Changing this property constructs a new object, so it is limited by the constructor visibility. ";
+        check_visibility(
+          env,
+          field_pos,
+          source,
+          cp.source,
+          msg,
+          visibility,
+          vis_msg,
+        );
+        field_type1 = TUtils.contra_promote(env, acc4, field_type);
+        rvalue_type = TAstUtils.get_type(rvalue1);
+        (acc5, _) = TUtils.join(
+          next_id,
+          env,
+          field_pos,
+          "Invalid binding",
+          acc4,
+          field_type1,
+          rvalue_type,
+        );
+        (acc5, (i, rvalue1, source, Some(obj_ty1)))
+      },
+      acc1,
+    );
+    (acc2, (obj_ty, (pos, TAst.With(obj1, updates1))))
+  | N.AssignField(obj, field_name, rvalue) ->
+    (acc1, obj1) = expr(next_id, env, acc, obj);
+    (acc2, rvalue1) = expr(next_id, env, acc1, rvalue);
+    obj_ty = TAstUtils.get_type(obj1);
+    obj_pos = TAstUtils.expr_pos(obj1);
+    TUtils.is_mutable(acc2, obj_ty, false) match {
+    | N.Mmutable _ -> void
+    | _ ->
+      SkipError.errorl(
+        List[
+          (TAstUtils.expr_pos(obj1), "Expected a mutable object"),
+          (
+            obj_ty.i0,
+            "This expression has type: " +
+              Types.to_string(env.this_class, acc2.subst, obj_ty),
+          ),
+        ],
+      )
+    };
+    (acc3, dot, source) = expr_dot(
+      next_id,
+      false,
+      env,
+      acc2,
+      pos,
+      obj_ty,
+      obj_pos,
+      field_name,
+    );
+    !obj_ty = dot.obj_ty;
+    !obj1.i0 = obj_ty;
+    _targs = dot.field_targs;
+    elt_kind = dot.elt_kind;
+    field_type = dot.field_type;
+    field_assignable = dot.field_assignable;
+    field_decl = dot.field_decl;
+    if (field_assignable.isNone()) {
+      msg1 =
+        "Field `" +
+        field_name.i1 +
+        "` is not assignable. Assignable fields must be prefixed with 'mutable'";
+      SkipError.errorl(
+        List[(field_name.i0, msg1), (field_decl, "It is defined here")],
+      )
+    };
+    if ({
+      elt_kind match {
+      | N.EProperty() -> false
+      | _ -> true
+      }
+    }) {
+      SkipError.error(pos, "Can only assign to class properties")
+    };
+    field_ty = TUtils.contra_promote(env, acc3, field_type);
+    rvalue_type = TAstUtils.get_type(rvalue1);
+    (acc4, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid assignment",
+      acc3,
+      field_ty,
+      rvalue_type,
+    );
+    sk_void = TUtils.make_tvoid(pos, Ast.Vplus());
+    (
+      acc4,
+      (sk_void, (pos, TAst.AssignField(obj1, source, field_name, rvalue1))),
+    )
+  | N.TemplateLiteral(args) ->
+    (acc3, args1) = args.map_foldl(
+      (acc, i_e) -> {
+        (i, ex) = i_e;
+
+        // Convert to e.toString()
+        ex_pos = ex.i0;
+        toStringExpr = (
+          ex_pos,
+          N.Call(
+            None(),
+            (ex_pos, N.Dot(ex, (ex_pos, "toString"))),
+            Array[],
+            Positional::create(),
+          ),
+        );
+
+        (acc1, e1) = expr(next_id, env, acc, toStringExpr);
+        e1_pos = TAstUtils.expr_pos(e1);
+        (acc2, _) = TUtils.join(
+          next_id,
+          env,
+          e1_pos,
+          "Invalid template literal expression",
+          acc1,
+          e1.i0,
+          TUtils.make_tstring(e1_pos, Ast.Vminus()),
+        );
+
+        (acc2, (i, e1))
+      },
+      acc,
+    );
+    tyString = TUtils.make_tstring(pos, Ast.Vplus());
+    (acc3, (tyString, (pos, TAst.TemplateLiteral(args1))))
+  | N.Continue() ->
+    if (env.break_type is None()) {
+      SkipError.error(pos, "Unexpected 'continue' found outside a loop")
+    };
+    (acc, ((pos, N.Tanything()), (pos, TAst.Continue())))
+  | N.Break(neb) ->
+    env.break_type match {
+    | None() -> SkipError.error(pos, "Unexpected 'break' found outside a loop")
+    | Some(break_type) ->
+      (!acc, eb) = expr(next_id, env, acc, neb);
+      (ty, (ebfr, _)) = eb;
+      (!acc, _) = TUtils.join(
+        next_id,
+        env,
+        ebfr,
+        ERR_LOOP_RESULT,
+        acc,
+        ty,
+        break_type,
+      );
+      (acc, ((pos, N.Tanything()), (pos, TAst.Break(eb))))
+    }
+  | N.Loop(nbody) ->
+    (!acc, break_type, body) = loop_body(next_id, pos, env, acc, nbody);
+    (acc, (break_type, (pos, TAst.Loop(body))))
+  | N.DoWhile(nbody, ncondition, nwoBreak) ->
+    (!acc, break_type, body) = loop_body(next_id, pos, env, acc, nbody);
+    (!acc, condition) = expr(next_id, env, acc, ncondition);
+    conditionFr = condition.i1.i0;
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      conditionFr,
+      ERR_LOOP_CONDITION,
+      acc,
+      TUtils.make_tbool(conditionFr, Ast.Vminus()),
+      condition.i0,
+    );
+    (!acc, woBreak) = expr(next_id, env, acc, nwoBreak);
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      woBreak.i1.i0,
+      ERR_LOOP_RESULT,
+      acc,
+      woBreak.i0,
+      break_type,
+    );
+    (acc, (break_type, (pos, TAst.DoWhile(body, condition, woBreak))))
+  | N.While(ncondition, nbody, nwoBreak) ->
+    (!acc, condition) = expr(next_id, env, acc, ncondition);
+    conditionFr = condition.i1.i0;
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      conditionFr,
+      ERR_LOOP_CONDITION,
+      acc,
+      TUtils.make_tbool(conditionFr, Ast.Vminus()),
+      condition.i0,
+    );
+    (!acc, break_type, body) = loop_body(next_id, pos, env, acc, nbody);
+    (!acc, woBreak) = expr(next_id, env, acc, nwoBreak);
+    (!acc, _) = TUtils.join(
+      next_id,
+      env,
+      woBreak.i1.i0,
+      ERR_LOOP_RESULT,
+      acc,
+      woBreak.i0,
+      break_type,
+    );
+    (acc, (break_type, (pos, TAst.While(condition, body, woBreak))))
+  }
+}
+
+// Keep this in sync with bind_dot.
+fun get_field_type(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  obj_ty: TAst.Type_,
+  field: N.Name,
+): TAst.Type_ {
+  (acc2, dot, _) = expr_dot(
+    next_id,
+    false,
+    env,
+    acc,
+    pos,
+    obj_ty,
+    pos,
+    field,
+    true, /* is pattern */
+  );
+  field_targs = dot.field_targs;
+  field_type = dot.field_type;
+  add_field_targs(acc2, field_type, field_targs);
+}
+
+// Keep this in sync with get_field_type above.
+fun bind_dot(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  obj: TAst.Expr,
+  field: N.Name,
+): (TUtils.Acc, TAst.Expr) {
+  obj_ty = TAstUtils.get_type(obj);
+  obj_pos = TAstUtils.expr_pos(obj);
+  (acc2, dot, source) = expr_dot(
+    next_id,
+    false,
+    env,
+    acc,
+    pos,
+    obj_ty,
+    obj_pos,
+    field,
+  );
+  obj_ty1 = dot.obj_ty;
+  field_targs = dot.field_targs;
+  elt_kind = dot.elt_kind;
+  field_type = dot.field_type;
+  obj_expr = (obj_ty1, obj.i1);
+  field_type1 = add_field_targs(acc2, field_type, field_targs);
+  e1 = (
+    field_type1,
+    (
+      pos,
+      TAst.Dot(TAst.Dot_info{obj_expr, field, field_targs, source, elt_kind}),
+    ),
+  );
+  (acc2, e1)
+}
+
+fun convert_or_and(op: N.Binop_, e1: TAst.Expr, e2: TAst.Expr): TAst.Expr__ {
+  op match {
+  | N.Barbar() -> TAst.Barbar(e1, e2)
+  | N.Ampamp() -> TAst.Ampamp(e1, e2)
+  | _ -> invariant_violation("bad convert to and or")
+  }
+}
+
+fun lam_parameters(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params: Parameters<N.Lam_parameter>,
+): ((Bool, TUtils.Acc), Parameters<(N.Name, N.Type_)>) {
+  params.map_foldl(
+    (bacc, x) -> lam_parameter(next_id, env, bacc, x),
+    (false, acc),
+  )
+}
+
+fun lam_parameter(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  bacc: (Bool, TUtils.Acc),
+  n_ty: N.Lam_parameter,
+): ((Bool, TUtils.Acc), (N.Name, N.Type_)) {
+  // Bool is unnneded since if one parameter is annotated, they all are
+  (_, acc) = bacc;
+  (n, tyopt) = n_ty;
+  tyopt match {
+  | None() -> ((false, acc), (n, TUtils.fresh(next_id, n)))
+  | Some(ty) ->
+    (!acc, !ty) = TUtils.instantiate(next_id, env, acc, ty);
+    ((true, acc), (n, ty))
+  }
+}
+
+fun check_mutable_constructor_call(
+  fr: FileRange,
+  mut: ?FileRange,
+  cd: N.Class_def,
+): void {
+  (cd.mutable_, mut) match {
+  | (None(), Some(mfr)) ->
+    SkipError.errorl(
+      List[
+        (mfr, "Invalid mutable instantiation"),
+        (fr, cd.name.i1 + " has no mutable fields, field values, or methods"),
+        (cd.name.i0, "It is defined here"),
+      ],
+    )
+  | _ -> void
+  }
+}
+
+/*****************************************************************************/
+/* Adds explicit targs to a type. */
+/*****************************************************************************/
+fun add_field_targs(
+  acc: TUtils.Acc,
+  fun_type: N.Type_,
+  targs: Array<N.Type_>,
+): TAst.Type_ {
+  Types.unfold_type(acc.subst, fun_type) match {
+  | (pos, N.Tfun(var, x, _, y, z)) -> (pos, N.Tfun(var, x, targs, y, z))
+  | ty -> ty
+  }
+}
+
+fun explicit_targs(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty1: N.Type_,
+  explicit_targs: Array<N.Type_>,
+): TUtils.Acc {
+  if (explicit_targs.isEmpty()) return acc;
+
+  Types.unfold_type(acc.subst, ty1) match {
+  | (_, N.Tfun(_, _, fun_targs, _, _)) ->
+    size = fun_targs.size();
+    if (size != explicit_targs.size()) {
+      size_str = size.toString();
+      msg = "Invalid arity, expected " + size_str + " type parameters";
+      SkipError.error(pos, msg)
+    };
+    bind_explicit_targs(next_id, env, acc, explicit_targs, fun_targs)
+  | (_, N.Tset(Ast.Vplus(), _, _, elts)) if (!elts.isEmpty()) ->
+    class_targs = elts[0] match {
+    | N.InterElt{name => (_, "Concrete"), targs} ->
+      invariant(targs.size() == 1, "ICE malformed concrete");
+      (targs[0].i1 as N.Tset(Ast.Vplus(), _, _, _)).elts[0].targs
+    | _ -> elts[0].targs
+    };
+    bind_explicit_targs(next_id, env, acc, explicit_targs, class_targs)
+
+  | (_, N.Tpromoted(_, _, _, _, _, class_targs))
+  | (_, N.Tapply(_, _, class_targs)) ->
+    bind_explicit_targs(next_id, env, acc, explicit_targs, class_targs)
+  | _ ->
+    print_error(ty1.i0.toString() + "\n");
+    TUtils.debug_type(acc, ty1);
+    invariant_violation("explicit targs failed")
+  }
+}
+
+fun bind_explicit_targs(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  explicit_targs: Array<N.Type_>,
+  targs: Array<N.Type_>,
+): TUtils.Acc {
+  explicit_targs.zipReduce(
+    targs,
+    (facc, explicit_targ, targ) -> {
+      (pos, _) = explicit_targ;
+      (!facc, _ty) = TUtils.join(
+        next_id,
+        env,
+        pos,
+        "Invalid type argument",
+        facc,
+        explicit_targ,
+        targ,
+      );
+      facc
+    },
+    acc,
+  )
+}
+
+/*****************************************************************************/
+/* Function used to solve lambda types introduced during a call. */
+/*****************************************************************************/
+fun solve_new_lambdas(
+  next_id: () -> Int,
+  last_id: Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  x: List<(Int, TUtils.Lambda)>,
+): TUtils.Acc {
+  x match {
+  | List.Nil() -> acc
+  | List.Cons((lam_id, _), _) if (lam_id == last_id) -> acc
+  | List.Cons((_, lbd), rl) ->
+    acc1 = {
+      try {
+        lambda(next_id, true, env, acc, lbd)
+      } catch {
+      | TUtils.Delay() -> acc
+      }
+    };
+    solve_new_lambdas(next_id, last_id, env, acc1, rl)
+  }
+}
+
+/*****************************************************************************/
+/* Primitives checking that mutable locals are not captured in pure lambdas */
+/*****************************************************************************/
+fun check_local_assign(
+  env: TUtils.Env,
+  pos_local: FileRange,
+  local_level: TUtils.Level,
+): void {
+  local_msg = (pos_local, "Cannot modify this local");
+  env.frozen_level match {
+  | TUtils.LPureLambda(
+    pos_closure,
+    lambda_level,
+  ) if (local_level < lambda_level) ->
+    emsg = "Because this closure was declared as pure (~>)\nTry '->' instead";
+    SkipError.errorl(List[local_msg, (pos_closure, emsg)])
+  | TUtils.LAsyncBlock(pos_block, block_level) if (local_level < block_level) ->
+    emsg =
+      "Because of this `async` block." +
+      "\nInside, locals cannot be modified and mutables cannot be captured";
+    SkipError.errorl(List[local_msg, (pos_block, emsg)])
+  | TUtils.LIfBlock(pos_block, block_level) if (local_level < block_level) ->
+    emsg =
+      "Because of this `when` block." +
+      "\nInside, locals cannot be modified and mutables are captured as readonly";
+    SkipError.errorl(List[local_msg, (pos_block, emsg)])
+  | _ -> void
+  }
+}
+
+private fun check_local_mutable(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos_local: FileRange,
+  local_level: TUtils.Level,
+  ty: N.Type_,
+): (TUtils.Acc, N.Type_) {
+  mode = env.frozen_level match {
+  | TUtils.LNone() ->
+    N.Efrozen() // bypass the check
+  | TUtils.LAsyncBlock _ -> TUtils.is_mutable(acc, ty, true)
+  | _ -> TUtils.is_mutable(acc, ty, false)
+  };
+  (env.frozen_level, mode) match {
+  | (TUtils.LNone(), _)
+  | (_, N.Efrozen()) ->
+    (acc, ty)
+  | (ifblock @ TUtils.LIfBlock _, mut @ N.EffectiveNotFrozen _) ->
+    (acc, check_if_block_mutable(ifblock, acc, pos_local, local_level, mut, ty))
+  | (flevel @ TUtils.NoMutableFrozenLevel _, N.EffectiveNotFrozen _) ->
+    !acc = check_local_mutable_add_constraint(
+      flevel,
+      acc,
+      pos_local,
+      local_level,
+      ty,
+    );
+    (acc, ty)
+  }
+}
+
+private fun check_local_mutable_add_constraint(
+  flevel: TUtils.NoMutableFrozenLevel,
+  acc: TUtils.Acc,
+  pos_local: FileRange,
+  local_level: TUtils.Level,
+  ty: N.Type_,
+): TUtils.Acc {
+  flevel match {
+  | TUtils.LAsyncBlock(_, block_level)
+  | TUtils.LPureLambda(
+    _,
+    block_level,
+  ) if (local_level < block_level) ->
+    !acc.constraints = acc.constraints.add_local_check(flevel, pos_local, ty);
+    acc
+  | _ -> acc
+  }
+}
+
+private fun check_if_block_mutable(
+  ifblock: TUtils.LIfBlock,
+  acc: TUtils.Acc,
+  pos_local: FileRange,
+  local_level: TUtils.Level,
+  mutability: N.EffectiveNotFrozen,
+  ty: N.Type_,
+): N.Type_ {
+  if (local_level >= ifblock.level) {
+    return ty
+  };
+
+  mutability match {
+  | N.Echilled(N.Mreadonly _, _) -> ty
+  | _ ->
+    try {
+      Types.to_readonly_exn(pos_local, acc.subst, acc.tparam_constraints, ty)
+    } catch {
+    | Types.MutLambdaToReadonly _ ->
+      local_msg = (pos_local, TUtils.check_mutable_local_msg);
+      mut_msg = (mutability.fr, TUtils.check_mutable_error_msg(mutability));
+      emsg =
+        "Because of this 'if' block." +
+        "\nInside mutable locals are viewed as readonly, but mutable lambdas cannot be made readonly";
+      SkipError.errorl(List[local_msg, mut_msg, (ifblock.fr, emsg)])
+    | Types.AwaitableToReadonly _ ->
+      local_msg = (pos_local, TUtils.check_mutable_local_msg);
+      mut_msg = (mutability.fr, TUtils.check_mutable_error_msg(mutability));
+      emsg =
+        "Because of this 'if' block." +
+        "\nInside mutable locals are viewed as readonly, but awaitables cannot be made readonly\nTry using 'await' in an async context to remove the awaitable";
+      SkipError.errorl(List[local_msg, mut_msg, (ifblock.fr, emsg)])
+    }
+  }
+}
+
+fun array_element(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  fr: FileRange,
+  acc_elty: (TUtils.Acc, N.Type_),
+  next_elt: TAst.Expr,
+): (TUtils.Acc, N.Type_) {
+  (elt_ty2, _) = next_elt;
+  (acc, elt_ty1) = acc_elty;
+  (!acc, joined) = TUtils.join(
+    next_id,
+    env,
+    fr,
+    "Incompatible vector values",
+    acc,
+    elt_ty1,
+    elt_ty2,
+  );
+  (acc, joined)
+}
+
+fun match_branch_list(
+  next_id: () -> Int,
+  ety: TAst.Type_,
+  rty: TAst.Type_,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  x: List<N.Match_branch>,
+): (TUtils.Acc, List<TAst.Match_branch>, TAst.Type_) {
+  x match {
+  | List.Nil() -> (acc, List[], rty)
+  | List.Cons(pa, mbl) ->
+    (acc1, mbl1, rty1) = match_branch_list(next_id, ety, rty, env, acc, mbl);
+    (acc2, pa1, rty2) = patterns_action(next_id, ety, rty1, env, acc1, pa);
+    (acc2, List.Cons(pa1, mbl1), rty2)
+  }
+}
+
+fun get_mut_pat(acc: TUtils.Acc, ety: N.Type_): (N.Modality, N.Type_) {
+  Types.unfold_type(acc.subst, ety) match {
+  | (pos, N.Tapply(mode @ N.MnotFrozen _, n, tyl)) ->
+    (mode, (pos, N.Tapply(N.Mchilled(), n, tyl)))
+  | (pos, N.Tpromoted(v, mode @ N.MnotFrozen _, ps, ts, n, tyl)) ->
+    (mode, (pos, N.Tpromoted(v, N.Mchilled(), ps, ts, n, tyl)))
+  | (pos, N.Tset(v, mode @ N.MnotFrozen _, ts, elts)) ->
+    (mode, (pos, N.Tset(v, N.Mchilled(), ts, elts)))
+  | x -> (N.Mchilled(), x)
+  }
+}
+
+fun pattern_guard(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pguard: N.Expr,
+): (TUtils.Acc, TAst.Expr) {
+  (pos, guard) = pguard;
+  env1 = env with {frozen_level => TUtils.LIfBlock(pos, acc.level)};
+  (acc1, guard1) = expr(next_id, env1, acc, (pos, guard));
+  e_pos = TAstUtils.expr_pos(guard1);
+  e_ty = TAstUtils.get_type(guard1);
+  (acc2, _) = TUtils.join(
+    next_id,
+    env1,
+    e_pos,
+    "Invalid when condition",
+    acc1,
+    TUtils.make_tbool(e_pos, Ast.Vminus()),
+    e_ty,
+  );
+  (acc2, guard1)
+}
+
+fun patterns_action(
+  next_id: () -> Int,
+  ety: TAst.Type_,
+  rty: TAst.Type_,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  branch: N.Match_branch,
+): (TUtils.Acc, TAst.Match_branch, TAst.Type_) {
+  (pats, maybe_guard, action) = branch;
+  prev_upper_bounds = acc.tparam_constraints;
+  ((!env, !acc), pats1) = patterns(next_id, env, acc, ety, pats);
+  (!acc, maybe_guard1) = maybe_guard match {
+  | None() -> (acc, None())
+  | Some(x) ->
+    (acc2, x2) = pattern_guard(next_id, env, acc, x);
+    (acc2, Some(x2))
+  };
+  (!acc, action1) = expr(next_id, env, acc, action);
+  (action_ty, (action_pos, _)) = action1;
+  (!acc, rty1) = TUtils.join(
+    next_id,
+    env,
+    action_pos,
+    "Invalid branch",
+    acc,
+    action_ty,
+    rty,
+  );
+  new_existential_upper_bounds = acc.tparam_constraints.filter(id ->
+    !prev_upper_bounds.hasTparam(id)
+  );
+  tparam_constraints = prev_upper_bounds.merge(new_existential_upper_bounds);
+  (acc with {tparam_constraints}, (pats1, maybe_guard1, action1), rty1)
+}
+
+fun patterns(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ety: TAst.Type_,
+  pats: List<N.Pattern>,
+): ((TUtils.Env, TUtils.Acc), List<TAst.Pattern>) {
+  einfo = TUtils.InitPat(ety);
+  pat_level = acc.level;
+  pats.map_foldl(
+    ((env_acc, pat) -> {
+      (env1, acc1) = env_acc;
+      pattern(next_id, env1, acc1, pat_level, einfo, pat)
+    }),
+    (env, acc),
+  )
+}
+
+fun pattern(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pat_level: Int,
+  einfo: TUtils.PatInfo,
+  pos_pat: N.Pattern,
+): ((TUtils.Env, TUtils.Acc), TAst.Pattern) {
+  (pos, pat) = pos_pat;
+  ((env1, acc1), tpat) = pattern_(
+    next_id,
+    env,
+    acc,
+    pat_level,
+    einfo,
+    pos,
+    pat,
+  );
+  check_no_existential_in_local(acc1, tpat);
+  ((env1, acc1), tpat)
+}
+
+// return simple static expr converted to pattern, or error trace
+fun pattern_from_expr(expr: N.Expr): Result<N.Pattern_, SkipError.Trace> {
+  fail_msg = "Constant must be initialized to a literal or static object expression, or a static reference to another such constant.";
+  expr.i1 match {
+  | N.Literal(value) -> Success(N.Pat_literal(value))
+  | N.Var(name) ->
+    SkipNaming.maybeGetConst(name.i1) match {
+    | Some(def) -> pattern_from_const(def)
+    | None() -> Failure((expr.i0, fail_msg))
+    }
+  | N.Object(mut, name, _, args) ->
+    cd = SkipNaming.getClass(name);
+    mut match {
+    | Some(pos) -> Failure((pos, "Constant is initialized to a mutable value"))
+    | None() ->
+      cd.params match {
+      | N.NoParams() ->
+        Success(N.Pat_type(N.Tid_object(name), None(), Ast.Complete()))
+      | N.NativeConstruct _ ->
+        Failure((expr.i0, "Constant initializer calls native constructor"))
+      | N.HasParams(cp) if (args.size() != cp.params.size()) ->
+        Failure((expr.i0, "Constant initializer uses default argument(s)"))
+      | N.HasParams(
+        cp,
+      ) if (!cp.params.all(p ~> p.visibility.i1 is N.VPublic())) ->
+        Failure((expr.i0, "Constant initializer uses non-public field(s)"))
+      | _ ->
+        arg_results = args.map(a ~> pattern_from_expr(a.i1));
+        arg_results.find(a ~> a is Failure _) match {
+        | Some(fail) -> fail
+        | None() ->
+          arg_pats = Some(arg_results.map(a ~> (expr.i0, a.fromSuccess())));
+          Success(N.Pat_type(N.Tid_object(name), arg_pats, Ast.Complete()))
+        }
+      }
+    }
+  | N.Annotated(e, _) -> pattern_from_expr(e)
+  | N.StaticDot(cls_expr, field) ->
+    cls_expr match {
+    | (_, N.Classname(cls_name, _)) ->
+      cd = SkipNaming.getClass(cls_name);
+      cd.consts.maybeGet(field) match {
+      | Some(def) -> pattern_from_const(def)
+      | None() ->
+        msg = `Could not find static member '${field.i1}' on class '${
+          cls_name.i1
+        }'`;
+        Failure((field.i0, msg))
+      }
+    | _ -> Failure((expr.i0, fail_msg))
+    }
+  | _ -> Failure((expr.i0, fail_msg))
+  }
+}
+
+// return const's static RHS converted to pattern, or error trace
+fun pattern_from_const(def: N.Const_def): Result<N.Pattern_, SkipError.Trace> {
+  def.value match {
+  | N.Abstract() ->
+    Failure((def.name.i0, "Abstract constants cannot be used in patterns"))
+  | N.Native() ->
+    Failure((def.name.i0, "Native constants cannot be used in patterns"))
+  | N.Implemented(expr) -> pattern_from_expr(expr)
+  }
+}
+
+fun pattern_(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pat_level: TUtils.Level,
+  einfo: TUtils.PatInfo,
+  pos: FileRange,
+  x: N.Pattern_,
+): ((TUtils.Env, TUtils.Acc), TAst.Pattern) {
+  check_pattern(pos, env, acc, einfo, x);
+  ety = einfo.ty;
+  x match {
+  | N.Pat_const(named_expr) ->
+    (!acc, typed_expr) = expr(next_id, env, acc, named_expr);
+    typed_expr match {
+    | (_, (_, TAst.Const(name))) ->
+      // for constants with simple static initializers, convert initializer
+      // to pattern and swap it in. for others, raise error.
+      pattern_from_const(SkipNaming.getConst(name)) match {
+      | Success(pat_) ->
+        pattern_(next_id, env, acc, pat_level, einfo, pos, pat_)
+      | Failure(trace) ->
+        SkipError.errorl(
+          List[(pos, "Ineligible constant used in pattern:"), trace],
+        )
+      }
+    | _ ->
+      SkipError.error(
+        pos,
+        "Invalid constant pattern. Did you mean to match a class instance?\nFor example, for class 'MyObject' use 'MyObject _' to match against all instances of that type",
+      )
+    }
+  | N.Pat_var(var_name) ->
+    (env1, acc1, var) = bind_pattern_local(
+      next_id,
+      env,
+      acc,
+      ety,
+      pos,
+      var_name,
+    );
+    (fixed_ty, _, _) = var;
+    ((env1, acc1), (fixed_ty, (pos, TAst.Pat_var(var))))
+  | N.Pat_literal(l) ->
+    (acc1, (ty, (_, l1))) = literal(env, acc, pos, l);
+    pat = (pos, TAst.Pat_literal(l1));
+    (acc2, _) = TUtils.join(
+      next_id,
+      env,
+      pos,
+      "Invalid literal pattern",
+      acc1,
+      ety,
+      ty,
+    );
+    ((env, acc2), (ty, pat))
+  | N.Pat_type(tid, field_pats, _) ->
+    obj_name = obj_name_of_tid(tid);
+    ((env1, acc1), object_ty, castType, pos1, params) = object_pattern(
+      next_id,
+      pos,
+      env,
+      acc,
+      pat_level,
+      ety,
+      obj_name,
+      field_pats,
+    );
+    pat_ = (pos1, TAst.Pat_type(type_identifier(tid), castType, params));
+    ((env1, acc1), (object_ty, pat_))
+  | N.Pat_as(pat, var_name) ->
+    ((env1, acc1), pat1) = pattern(next_id, env, acc, pat_level, einfo, pat);
+    ty = TAstUtils.get_type_of_pattern(pat1);
+    (env2, acc2, var) = bind_pattern_local(
+      next_id,
+      env1,
+      acc1,
+      ty,
+      pos,
+      var_name,
+    );
+    (final_ty, _, _) = var;
+    pat_as = (pos, TAst.Pat_as(pat1, var));
+    ((env2, acc2), (final_ty, pat_as))
+  }
+}
+
+fun type_identifier(ti: N.Type_identifier): TAst.Type_identifier {
+  ti match {
+  | N.Tid_object(n) -> TAst.Tid_object(n)
+  | N.Tid_static(x, y) -> TAst.Tid_static(x, y)
+  }
+}
+
+fun obj_name_of_tid(x: N.Type_identifier): N.Name {
+  x match {
+  | N.Tid_object(n) -> n
+  | N.Tid_static(_, n) -> n
+  }
+}
+
+fun object_pattern_args(
+  next_id: () -> Int,
+  pos: FileRange,
+  obj_name: N.Name,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pat_level: Int,
+  params_info: ?Parameters<TUtils.NestedPat>,
+  obj_ty: TAst.Type_,
+  field_pats: ?Parameters<N.Pattern>,
+): ((TUtils.Env, TUtils.Acc), ?Parameters<TAst.ParamPattern>) {
+  (params_info, field_pats) match {
+  | (_, None()) -> ((env, acc), None())
+  | (None(), _) ->
+    SkipError.error(
+      pos,
+      obj_name.i1 +
+        " does not have a constructor and cannot be matched against. You must use _",
+    )
+  | (Some(params_info1), Some(field_pats1)) ->
+    info_pats = {
+      (params_info1, field_pats1) match {
+      | (Positional(params_infol), Positional(field_patsl)) ->
+        expected = params_infol.size();
+        actual = field_patsl.size();
+        if (expected != actual) {
+          msg =
+            "Incorrect number of positional arguments in pattern. Expected " +
+            expected +
+            " found " +
+            actual;
+          SkipError.error(pos, msg)
+        };
+        params_info1.combine(field_pats1)
+      | (Named(params_info_map), Named(field_pats2)) ->
+        Named(
+          field_pats2.map((name, field_pat) ->
+            (params_info_map[name], field_pat)
+          ),
+        )
+      | (Positional _, Named _) ->
+        SkipError.error(
+          pos,
+          "Expected positional arguments in pattern. Found named arguments.",
+        )
+      | (Named _, Positional _) ->
+        SkipError.error(
+          pos,
+          "Expected named arguments in pattern. Found positional arguments.",
+        )
+      }
+    };
+    ((env1, acc1), result) = info_pats.map_foldl(
+      (env_acc, info_pat) -> {
+        (env1, acc1) = env_acc;
+        (info, pat) = info_pat;
+        type_pat_arg(next_id, pat_level, env1, acc1, info, obj_ty, pat)
+      },
+      (env, acc),
+    );
+    ((env1, acc1), Some(result))
+  }
+}
+
+fun type_pat_arg(
+  next_id: () -> Int,
+  pat_level: Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  info: TUtils.NestedPat,
+  obj_ty: TAst.Type_,
+  pat: N.Pattern,
+): ((TUtils.Env, TUtils.Acc), TAst.ParamPattern) {
+  ty = info.ty;
+  prom_param_ty = TUtils.promote(env, acc, ty);
+  field_ty = get_field_type(next_id, env, acc, pat.i0, obj_ty, info.name);
+  ((!env, !acc), res_pat) = pattern(
+    next_id,
+    env,
+    acc,
+    pat_level,
+    info with {ty => prom_param_ty},
+    pat,
+  );
+  ((env, acc), (field_ty, res_pat))
+}
+
+fun object_pattern(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pat_level: Int,
+  obj_ty: N.Type_,
+  obj_name: N.Name,
+  field_pats: ?Parameters<N.Pattern>,
+): (
+  (TUtils.Env, TUtils.Acc),
+  TAst.Type_,
+  TAst.Type_,
+  FileRange,
+  ?Parameters<TAst.ParamPattern>,
+) {
+  (
+    env1,
+    acc1,
+    (params_ty, object_ty, castType),
+  ) = TUtils.instantiate_pattern_object(
+    next_id,
+    pos,
+    env,
+    acc,
+    obj_ty,
+    obj_name,
+  );
+  ((env2, acc2), field_pats1) = object_pattern_args(
+    next_id,
+    pos,
+    obj_name,
+    env1,
+    acc1,
+    pat_level,
+    params_ty,
+    castType,
+    field_pats,
+  );
+  ((env2, acc2), object_ty, castType, pos, field_pats1)
+}
+
+fun call_args(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  params: N.Call_args,
+): (TUtils.Acc, TAst.Call_args) {
+  params.map_foldl((acc, x) -> ordered_expr(next_id, env, acc, x), acc)
+}
+
+fun ordered_expr(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  i_e: N.Ordered_expr,
+): (TUtils.Acc, TAst.Ordered_expr) {
+  (i, e) = i_e;
+  (acc1, e1) = expr(next_id, env, acc, e);
+  (acc1, (i, e1))
+}
+
+// Join types across cross patern binding
+fun bind_pattern_local(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  param_ty: N.Type_,
+  pos: FileRange,
+  var_name: N.Name,
+): (TUtils.Env, TUtils.Acc, TAst.Binding) {
+  arg_ty = TUtils.fresh(next_id, var_name);
+  (acc1, _) = TUtils.join_exn(next_id, env, acc, param_ty, arg_ty);
+  (_, str_var_name) = var_name;
+  (acc2, new_ty) = {
+    env.locals.maybeGet(str_var_name) match {
+    | Some((prev_ty, _level)) ->
+      prom_prev_ty = TUtils.promote(env, acc1, prev_ty);
+      prom_arg_ty = TUtils.promote(env, acc1, arg_ty);
+      (acc2, join_ty) = TUtils.join(
+        next_id,
+        env,
+        pos,
+        "Invalid cross pattern binding of local variable " + str_var_name,
+        acc1,
+        prom_prev_ty,
+        prom_arg_ty,
+      );
+      (acc2, join_ty)
+    | _ -> (acc1, arg_ty)
+    }
+  };
+  (res_env, res_acc) = TUtils.bind_local_var(env, acc2, new_ty, var_name);
+  (res_env, res_acc, (new_ty, var_name, TAstUtils.default_binding_info))
+}
+
+fun inaccessible_field_in_pattern_message(fieldName: String): String {
+  "Invalid pattern match against the field '" +
+    fieldName +
+    "' due to visibility. Try replacing this pattern with '_'";
+}
+
+fun check_pattern(
+  fr: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  einfo: TUtils.PatInfo,
+  x: N.Pattern_,
+): void {
+  (einfo, x) match {
+  | (TUtils.InitPat _, _) -> void
+  | (_, N.Pat_var(n))
+  | (_, N.Pat_as(_, n)) if (SkipNaming.is_wildcard_name(n)) ->
+    void
+  | (np @ TUtils.NestedPat _, _) ->
+    msg = () ~> inaccessible_field_in_pattern_message(np.name.i1);
+    check_visibility(env, fr, np.class_name, np.source, msg, np.visibility)
+  };
+  x match {
+  | N.Pat_type _ -> check_concrete_pat_type(fr, env, acc, einfo.ty)
+  | _ -> void
+  }
+}
+
+/* In the native back end, we specialize all generics currently. As such
+ * unknown type arguments cause a big problem with determining the size
+ * of the values stored therein. To make this actually compileable, we block
+ * these unknown type arguments from leaking during the pattern match.
+ * We accomplish this by making sure the type doesn't appear in the type of any
+ * new local bound in the pattern
+ */
+fun msg_no_existential_params(cname: String): String {
+  "Invalid pattern binding. Cannot pattern match against this parameters of an object with unknown type parameters.\nTry replacing with '" +
+    cname +
+    " _'"
+}
+
+const msg_no_existential_in_local: String = "Invalid pattern binding. Cannot bind this expression to a local.\nTry replacing with '_'";
+
+fun check_no_existential_in_local(acc: TUtils.Acc, pat: TAst.Pattern): void {
+  pat match {
+  | (ty, (fr, TAst.Pat_type(tid, _castType, Some _))) ->
+    cname = tid match {
+    | TAst.Tid_object((_, s)) -> s
+    | TAst.Tid_static(((_, root), (_, id)), _) -> root + "::" + id
+    };
+    check_existential_binding_ty(fr, acc, msg_no_existential_params(cname), ty)
+  | (_, (fr, TAst.Pat_var(binding)))
+  | (_, (fr, TAst.Pat_as(_, binding))) ->
+    if (!SkipNaming.is_wildcard_name(binding.i1)) {
+      check_existential_binding_ty(
+        fr,
+        acc,
+        msg_no_existential_in_local,
+        binding.i0,
+      )
+    }
+  | _ -> void
+  }
+}
+
+fun check_existential_binding_ty(
+  fr: FileRange,
+  acc: TUtils.Acc,
+  msg: String,
+  ty: N.Type_,
+): void {
+  N.type_iter(
+    x -> check_existential_inner(fr, acc, msg, x),
+    Types.unfold_type(acc.subst, ty),
+  )
+}
+
+fun check_existential_inner(
+  fr: FileRange,
+  acc: TUtils.Acc,
+  msg: String,
+  ty: N.Type_,
+): void {
+  Types.unfold_type(acc.subst, ty) match {
+  | (tyfr, N.Tparam(_, _, id, _)) if (id.startsWith(TUtils.unknown_prefix)) ->
+    check_pat_type_tparam(acc, id) match {
+    | None() -> void
+    | Some _ ->
+      SkipError.errorl(
+        List[
+          (fr, msg),
+          (
+            tyfr,
+            "This type parameter was unknown when downcasting from the parent type.\nAnd it has no concrete upper bounds (base or normal classes).\nAs such, the type cannot be inferred and cannot be interacted with.",
+          ),
+        ],
+      )
+    }
+  | _ ->
+    // called from type_iter, so unfolded cases will be covered later
+    void
+  }
+}
+
+fun check_concrete_pat_type(
+  fr: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty: N.Type_,
+): void {
+  Types.unfold_type(acc.subst, ty).i1 match {
+  // Nonsense types that will be covered elsewhere
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything()
+  | N.Tlambda _
+  | N.Tfun _
+  | N.Tawaitable _
+  // Concrete types
+  // Don't need to check for traits since if our ety is a trait we must be in a
+  // trait class, and in that case it won't have a valid child
+  | N.Tapply _
+  | N.Tpromoted _
+  | N.Tset _ ->
+    void
+
+  | N.Tparam(_, _, id, name) ->
+    check_pat_type_tparam(acc, id) match {
+    | None() -> void
+    | Some(has_trait) ->
+      msg = if (has_trait) {
+        "This generic was constrained by a trait, but to"
+      } else {
+        "This generic was not constrained by a concrete type. To"
+      };
+      SkipError.errorl(
+        List[
+          (fr, "Invalid match against the generic '" + name.i1 + "'"),
+          (
+            name.i0,
+            msg +
+              " perform a structural pattern match, this generic needs to be constrained by a class (normal or base)",
+          ),
+        ],
+      )
+    }
+  | N.Tdefault(inner) -> check_concrete_pat_type(fr, env, acc, inner)
+  | N.Tvar _
+  | N.Tnamed _ ->
+    invariant_violation("bad unfold")
+  }
+}
+
+fun check_pat_type_tparam(acc: TUtils.Acc, id: String): ?Bool {
+  TUtils.has_concrete_type_for_matching_tparam(
+    acc.tparam_constraints,
+    acc.subst,
+    id,
+  )
+}
+
+fun loop_body(
+  next_id: () -> Int,
+  fr: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  nbody: N.Expr,
+): (TUtils.Acc, N.Type_, TAst.Expr) {
+  break_type = (fr, TUtils.fresh_(next_id));
+  body_env = env with {break_type => Some(break_type)};
+  (!acc, body) = expr(next_id, body_env, acc, nbody);
+  tvoid = TUtils.make_tvoid(body.i1.i0, Ast.Vminus());
+  (!acc, _) = TUtils.join(
+    next_id,
+    body_env,
+    fr,
+    "Invalid loop body. The body of loops is discarded so it must have type 'void'\nIf you want the loop to have result, use 'break'",
+    acc,
+    body.i0,
+    tvoid,
+  );
+  (acc, break_type, body)
+}
+
+/*****************************************************************************/
+/* Methods and fields access (general case, will be specialized). */
+/*****************************************************************************/
+base class DotResult {
+  children =
+  | DotNone()
+  | DotError(List<(FileRange, String)>)
+  | DotFound(acc: TUtils.Acc, info: Dot_expr_info, source: N.Name)
+
+  fun wrapClassObject(env: TUtils.Env, fr: FileRange, tobject: N.Name): this
+  | DotNone()
+  | DotError _ ->
+    this
+  | DotFound _ ->
+    wrapped = (fr, N.Tapply(N.Mchilled(), tobject, Array[this.info.obj_ty]));
+    !this.info.obj_ty = TUtils.promote(env, this.acc, wrapped);
+    this
+
+  fun updateTparam(
+    env: TUtils.Env,
+    tparam_id: String,
+    tparam_name: String,
+  ): this
+  | DotNone()
+  | DotError _ ->
+    this
+  | DotFound _ ->
+    obj_ty = TUtils.promote(env, this.acc, this.info.obj_ty);
+    !this.info.obj_ty = TUtils.reset_tparam_bounds_for_tset_tpromoted(
+      SortedMap[tparam_id => tparam_name],
+      obj_ty,
+    );
+    this
+
+  fun promote(env: TUtils.Env): this
+  | DotNone()
+  | DotError _ ->
+    this
+  | DotFound _ ->
+    !this.info.obj_ty = TUtils.promote(env, this.acc, this.info.obj_ty);
+    !this.info.field_type = TUtils.promote(env, this.acc, this.info.field_type);
+    this
+}
+
+fun expr_dot(
+  next_id: () -> Int,
+  sk_static: Bool,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  obj_ty: TAst.Type_,
+  obj_pos: FileRange,
+  field_name: N.Name,
+  is_pattern: Bool = false,
+): (TUtils.Acc, Dot_expr_info, TAst.Name) {
+  result = ExprDot::start(
+    next_id,
+    sk_static,
+    env,
+    acc,
+    pos,
+    obj_ty,
+    obj_pos,
+    field_name,
+    is_pattern,
+  );
+  result match {
+  | DotError(errors) -> SkipError.errorl(errors)
+  | DotNone() ->
+    (ty_pos, _) = obj_ty;
+    ty_str = Types.to_string(env.this_class, acc.subst, obj_ty);
+    field_map = field_map_for_error(env, acc, sk_static, obj_ty);
+    didYouMeanTypos = SkipDidYouMean.findTypos(field_map, field_name.i1);
+    msg1 = `The field ${field_name.i1} is undefined${SkipDidYouMean.formatTypos(
+      didYouMeanTypos,
+    )}`;
+    msg2 = `For the expression of type ${ty_str}`;
+    SkipError.errorl(
+      List[(pos, msg1), (ty_pos, msg2)],
+      SkipDidYouMean.createFix(pos, field_name.i0, didYouMeanTypos),
+    )
+  | DotFound(after_acc, info, name) -> (after_acc, info, name)
+  }
+}
+
+mutable class ExprDot(
+  next_id: () -> Int,
+  sk_static: Bool,
+  env: TUtils.Env,
+  dot_fr: FileRange,
+  obj_fr: FileRange,
+  original_object_ty: N.Type_,
+  field_name: N.Name,
+  is_pattern: Bool,
+) {
+  static fun start(
+    next_id: () -> Int,
+    sk_static: Bool,
+    env: TUtils.Env,
+    acc: TUtils.Acc,
+    dot_fr: FileRange,
+    original_object_ty: N.Type_,
+    obj_fr: FileRange,
+    field_name: N.Name,
+    is_pattern: Bool,
+  ): DotResult {
+    exprDot = mutable ExprDot(
+      next_id,
+      sk_static,
+      env,
+      dot_fr,
+      obj_fr,
+      original_object_ty,
+      field_name,
+      is_pattern,
+    );
+    result = exprDot.entry(acc, original_object_ty);
+    result.promote(env)
+  }
+
+  private mutable fun entry(acc: TUtils.Acc, obj_ty: TAst.Type_): DotResult {
+    is_static = this.sk_static;
+    Types.unfold_type(acc.subst, obj_ty) match {
+    | (_, N.Tapply(_, name, tya))
+    | (_, N.Tpromoted(_, _, _, _, name, tya)) if (is_static) ->
+      if (TAstUtils.is_class_object(name.i1)) {
+        invariant(tya.size() == 1, "ICE malformed class object ExprDot.entry");
+        this.static_find(obj_ty.i0, name, acc, tya[0])
+      } else {
+        DotNone()
+      }
+    | (_, N.Tset(_, _, _, elts)) if (is_static) ->
+      filtered = elts.values().filter(elt ->
+        TAstUtils.is_class_object(elt.name.i1)
+      );
+      for (elt in filtered) {
+        targs = elt.targs;
+        invariant(
+          targs.size() == 1,
+          "ICE malformed class object ExprDot.entry",
+        );
+        result = this.static_find(obj_ty.i0, elt.name, acc, targs[0]);
+        if (result is DotFound _) break result
+      } else {
+        DotNone()
+      }
+    | (_, N.Tparam(_, _, tparam_id, tparam_name)) if (is_static) ->
+      upper_tyl = acc.tparam_constraints.findUppers(tparam_id);
+      result: DotResult = DotNone();
+      _ = upper_tyl.any(ty -> {
+        !result = this.entry(acc, ty);
+        result is DotFound _
+      });
+      result.updateTparam(this.env, tparam_id, tparam_name.i1)
+    | _ if (is_static) ->
+      // should only happen from tparam upperbounds
+      // since we join going into StaticDot
+      DotNone()
+    | unfolded -> this.find(None(), None(), acc, unfolded)
+    }
+  }
+
+  private mutable fun static_find(
+    fr: FileRange,
+    tobject: N.Name,
+    acc: TUtils.Acc,
+    inner_ty: N.Type_,
+  ): DotResult {
+    result = this.find(Some(tobject), None(), acc, inner_ty);
+    result.wrapClassObject(this.env, fr, tobject)
+  }
+
+  private mutable fun find(
+    tobject: ?N.Name,
+    tparam: ?N.Type_,
+    acc: TUtils.Acc,
+    obj_ty: TAst.Type_,
+  ): DotResult {
+    Types.unfold_type(acc.subst, obj_ty) match {
+    | (_, N.Tapply(mode, n, tyl))
+    | (_, N.Tpromoted(_, mode, _, _, n, tyl)) ->
+      this.tapply(tobject, tparam, acc, obj_ty.i0, mode, n, tyl)
+    | (_, N.Tset(_, mode, _, elts)) ->
+      result: DotResult = DotNone();
+      _ = elts.any(elt -> {
+        !result = this.tapply(
+          tobject,
+          tparam,
+          acc,
+          obj_ty.i0,
+          mode,
+          elt.name,
+          elt.targs,
+        );
+        result is DotFound _
+      });
+      result
+    | tp @ (_, N.Tparam(frozen_, _, tparam_id, tparam_name)) ->
+      !tparam = Some(tp);
+      freeze_upper = Types.should_freeze_upper(
+        acc.tparam_constraints,
+        acc.subst,
+        frozen_,
+        tparam_id,
+      );
+      result: DotResult = DotNone();
+      _ = acc.tparam_constraints.findUppers(tparam_id).any(upper_ty -> {
+        fixed_ty = Types.maybe_freeze_upper_bound(
+          acc.subst,
+          acc.tparam_constraints,
+          freeze_upper,
+          upper_ty,
+        );
+        !result = this.find(tobject, tparam, acc, fixed_ty);
+        result is DotFound _
+      });
+      result.updateTparam(this.env, tparam_id, tparam_name.i1)
+    | (_, N.Tanything()) ->
+      msg = `Could not infer the type of the object. Cannot access the field: ${
+        this.field_name.i1
+      }. Try adding an annotation to your lambda`;
+      DotError(List[(this.obj_fr, msg)])
+    | ty ->
+      str_ty = Types.to_string(this.env.this_class, acc.subst, ty);
+      ty_msg = ty match {
+      | (_, N.Tfun(_, _, _, fty_params, _)) ->
+        if (fty_params.size() == 0) {
+          "a function value. Did you omit '()'?"
+        } else {
+          "a function value of type " + str_ty
+        }
+      | _ -> "a value of type " + str_ty
+      };
+      DotError(List[(this.obj_fr, "Expected an object, not " + ty_msg)])
+    }
+  }
+
+  private mutable fun tapply(
+    tobject: ?N.Name,
+    tparam: ?N.Type_,
+    acc: TUtils.Acc,
+    tpos: FileRange,
+    mode: N.Modality,
+    name: N.Name,
+    obj_targs: Array<N.Type_>,
+  ): DotResult {
+    cd = SkipNaming.getClass(name);
+    if (!cd.fields.containsKey(this.field_name)) return DotNone();
+
+    (_, field_str) = this.field_name;
+    (field_decl, fdt) = cd.fields.getRawOrCrash(field_str);
+    if (!this.is_pattern) {
+      // Field visibility for patterns is checked elsewhere.
+      // We don't check here because we may be creating a Dot for a field
+      // pattern which isn't used (aka starts with an '_').
+      check_field_visibility(
+        this.env,
+        this.dot_fr,
+        cd.name,
+        this.field_name,
+        fdt,
+      );
+    };
+    eltk = fdt.eltk;
+    type = fdt.type;
+
+    (!acc, objsubst, fdtsubst, field_targs) = build_fdt_subst(
+      this.next_id,
+      acc,
+      this.dot_fr,
+      cd,
+      fdt,
+      obj_targs,
+    );
+    check_field_kind(
+      this.dot_fr,
+      field_decl,
+      field_str,
+      this.sk_static,
+      mode,
+      fdt,
+    );
+    check_deferred_call(
+      this.env,
+      acc,
+      this.dot_fr,
+      this.original_object_ty,
+      field_str,
+      fdt,
+      tobject,
+    );
+    !type = if (this.sk_static || !(eltk is N.EMethod _)) {
+      type
+    } else {
+      fix_fdt_tfun_purity_modifiers(mode, type)
+    };
+    !type = (eltk, mode) match {
+    | (N.EProperty(), N.Mreadonly _) ->
+      Types.to_readonly(this.dot_fr, acc.subst, acc.tparam_constraints, type)
+    | (N.EProperty(), N.Mchilled()) ->
+      Types.chill(this.dot_fr, acc.subst, acc.tparam_constraints, type)
+    | _ -> type
+    };
+    !type = TUtils.type_subst(objsubst, acc, type);
+    !type = TUtils.type_subst(fdtsubst, acc, type);
+    !type = specialize_tparam(cd, tparam, type);
+
+    info = Dot_expr_info{
+      obj_ty => (tpos, N.Tapply(mode, name, obj_targs)),
+      field_targs,
+      elt_kind => eltk,
+      field_type => type,
+      field_assignable => fdt.assignable,
+      field_decl,
+    };
+    DotFound(acc, info, name)
+  }
+}
+
+fun field_map_for_error(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  sk_static: Bool,
+  obj_ty: N.Type_,
+): Map<String, String> {
+  m = field_kind_map_for_error(env, acc, sk_static, obj_ty);
+  filter_static = if (sk_static) {
+    (_, v) -> v.i1 is N.FKStatic _
+  } else {
+    (_, v) -> v.i1 is N.FKDynamic _
+  };
+  m
+    .filter(filter_static)
+    .items()
+    .map(item -> (item.i0, item.i1.i0))
+    .collect(Map)
+}
+
+fun field_kind_map_for_error(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  sk_static: Bool,
+  obj_ty: N.Type_,
+): SMap<(String, N.FieldKind)> {
+  Types.unfold_type(acc.subst, obj_ty) match {
+  | (_, N.Tapply(_, name, tya))
+  | (_, N.Tpromoted(_, _, _, _, name, tya)) if (
+    sk_static &&
+    TAstUtils.is_class_object(name.i1)
+  ) ->
+    invariant(tya.size() == 1, "ICE class object with wrong arity?");
+    field_kind_map_for_error(env, acc, false, tya[0])
+  | (_, N.Tset(_, _, _, elts)) if (sk_static) ->
+    classobj_elts = elts.filter(elt -> TAstUtils.is_class_object(elt.name.i1));
+    classobj_elts.foldl(
+      (s, elt) -> {
+        tya = elt.targs;
+        invariant(tya.size() == 1, "ICE class object without targs");
+
+        res = field_kind_map_for_error(env, acc, false, tya[0]);
+        res.mergeWith(s, combine_fields_for_error)
+      },
+      SortedMap[],
+    )
+  | (_, N.Tapply(_, name, _))
+  | (_, N.Tpromoted(_, _, _, _, name, _)) ->
+    find_fields_for_error(name)
+  | (_, N.Tset(_, _, _, elts)) ->
+    elts.foldl(
+      (s, elt) -> {
+        res = find_fields_for_error(elt.name);
+        res.mergeWith(s, combine_fields_for_error)
+      },
+      SortedMap[],
+    )
+  | (_, N.Tparam(_, _, i, _)) ->
+    acc.tparam_constraints
+      .findUppers(i)
+      .foldl(
+        (s, ty) -> {
+          res = field_kind_map_for_error(env, acc, sk_static, ty);
+          res.mergeWith(s, combine_fields_for_error)
+        },
+        SortedMap[],
+      )
+  | _ -> SortedMap[]
+  }
+}
+
+fun find_fields_for_error(name: N.Name): SMap<(String, N.FieldKind)> {
+  cd = SkipNaming.getClass(name);
+  fieldsMap = cd.fields.reduce(
+    (m, name, fdt) -> m.set(name.i1, (name.i1, fdt.kind)),
+    SortedMap[],
+  );
+  cd.methods.reduce(
+    (m, name, mdt) -> {
+      (pos, s) = name;
+      synonyms = getAnnotationParams(mdt.annotations, "@synonym", pos);
+      synonyms.reduce(
+        (acc, synonym) -> {
+          acc.set(synonym, (s, mdt.kind))
+        },
+        m,
+      );
+    },
+    fieldsMap,
+  )
+}
+
+fun combine_fields_for_error(
+  _k: String,
+  v1: ?(String, N.FieldKind),
+  v2: ?(String, N.FieldKind),
+): ?(String, N.FieldKind) {
+  v1 match {
+  | None() ->
+    v2 match {
+    | None() ->
+      invariant_violation("ICE both none for combine_fields_for_error")
+    | Some _ -> v2
+    }
+  | Some(x) ->
+    v2 match {
+    | None() -> v1
+    | Some(y) ->
+      (x.i1, y.i1) match {
+      | (N.FKStatic _, N.FKStatic _)
+      | (N.FKDynamic _, N.FKDynamic _) ->
+        v1
+      | _ -> invariant_violation("ICE mismatched kind combine_fields_for_error")
+      }
+    }
+  }
+}
+
+/*****************************************************************************/
+/* Helpers for methods and fields access on a specific object type. */
+/*****************************************************************************/
+
+fun build_fdt_subst(
+  next_id: () -> Int,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  cd: N.Class_def,
+  fdt: N.Field_type,
+  obj_targs: Array<N.Type_>,
+): (TUtils.Acc, SMap<N.Type_>, SMap<N.Type_>, Array<N.Type_>) {
+  tidents = cd.tparams.map(N.tparam_ident);
+  obj_subst = N.make_subst(pos, tidents, obj_targs);
+  tparams = fdt.tparams.map(cur1 -> TUtils.tparam_subst(obj_subst, acc, cur1));
+  (acc1, fdtsubst, targs) = TUtils.mk_tparams(next_id, pos, acc, tparams);
+  acc2 = add_whenparam_constraints(
+    pos,
+    acc1,
+    obj_subst,
+    fdtsubst,
+    fdt.whenparams,
+  );
+  (acc2, obj_subst, fdtsubst, targs)
+}
+
+fun add_whenparam_constraints(
+  pos: FileRange,
+  acc: TUtils.Acc,
+  objsubst: SMap<N.Type_>,
+  fdtsubst: SMap<N.Type_>,
+  whenparams: Array<N.Whenclause>,
+): TUtils.Acc {
+  constraints = whenparams.reduce(
+    (cons, wc) -> {
+      subtype = subst_rhs(fdtsubst, objsubst, acc, wc.i0);
+      supertypes = wc.i1.map(x -> subst_rhs(fdtsubst, objsubst, acc, x));
+      cons.add(pos, subtype, supertypes)
+    },
+    acc.constraints,
+  );
+  !acc.constraints = constraints;
+  acc
+}
+
+fun fix_fdt_tfun_purity_modifiers(mode: N.Modality, type: N.Type_): N.Type_ {
+  (pos, type_) = type;
+  type_ match {
+  | N.Tfun(
+    var,
+    (npurity, tracking),
+    tyl,
+    paramty,
+    rty,
+  ) if (npurity.size() == 1 && npurity[0] is N.Fmutable()) ->
+    purity = mode match {
+    | N.Mchilled() -> Array[N.Fpure()]
+    | N.MnotFrozen _ -> Array[N.Fmutable()]
+    };
+    (pos, N.Tfun(var, (purity, tracking), tyl, paramty, rty))
+  | N.Tnamed(name, ty) ->
+    (pos, N.Tnamed(name, fix_fdt_tfun_purity_modifiers(mode, ty)))
+  | _ ->
+    TUtils.debug_type(TUtils.empty_acc, type);
+    invariant_violation("Internal Error. Expected Tfun for EMethod type")
+  }
+}
+
+/*****************************************************************************/
+/* Checking that the field can be accessed (visibility). */
+/*****************************************************************************/
+fun check_field_visibility(
+  env: TUtils.Env,
+  pos: FileRange,
+  class_name: N.Name,
+  field_name: N.Name,
+  fdt: N.Field_type,
+): void {
+  (_, field_str) = field_name;
+  msg = () ~> "Cannot access " + field_str;
+  check_visibility(env, pos, class_name, fdt.source, msg, fdt.visibility)
+}
+
+fun check_visibility(
+  env: TUtils.Env,
+  pos: FileRange,
+  class_name: N.Name,
+  source_name: N.Name,
+  msg: () ~> String,
+  x: N.Visibility,
+  vis_msg: () ~> String = () ~> "",
+): void {
+  x match {
+  | (vis_pos, N.VPrivate()) ->
+    check_private(env, pos, vis_pos, source_name, msg, vis_msg)
+  | (vis_pos, N.VProtected()) ->
+    check_protected(env, pos, vis_pos, class_name, msg, vis_msg)
+  | (_, N.VPublic()) -> void
+  }
+}
+
+fun check_private(
+  env: TUtils.Env,
+  pos: FileRange,
+  vis_pos: FileRange,
+  source_name: N.Name,
+  msg: () ~> String,
+  vis_msg: () ~> String,
+): void {
+  env.orig_this_class match {
+  | Some((_, org_this_str)) if (org_this_str == source_name.i1) -> void
+  | _ ->
+    SkipError.errorl(
+      List[(pos, msg()), (vis_pos, vis_msg() + "It was declared as private")],
+    )
+  }
+}
+
+fun check_protected(
+  env: TUtils.Env,
+  pos: FileRange,
+  vis_pos: FileRange,
+  class_name: N.Name,
+  msg: () ~> String,
+  vis_msg: () ~> String,
+): void {
+  (_, class_str) = class_name;
+  env.this_class match {
+  | Some(
+    this_name,
+  ) if ({
+    this_class = SkipNaming.getClass(this_name);
+    this_name1 = this_class.name;
+    class_str == this_name1.i1 ||
+      this_class.extends_.any((n, _, _) -> class_str == n.i1)
+  }) ->
+    void
+  | _ ->
+    SkipError.errorl(
+      List[(pos, msg()), (vis_pos, vis_msg() + "It was declared as protected")],
+    )
+  }
+}
+
+/*****************************************************************************/
+/* Checking that the field can be accessed (when it's mutable). */
+/*****************************************************************************/
+fun check_field_kind(
+  pos: FileRange,
+  decl_fr: FileRange,
+  field_str: String,
+  sk_static: Bool,
+  mode: N.Modality,
+  fdt: N.Field_type,
+): void {
+  (mode, fdt.kind) match {
+  | (_, N.FKDynamic _) if (sk_static) ->
+    SkipError.errorl(
+      List[
+        (pos, "Invalid static access"),
+        (decl_fr, `'${field_str}' was not declared as a static element`),
+      ],
+    )
+  | (_, N.FKStatic(static_fr)) if (!sk_static) ->
+    SkipError.errorl(
+      List[
+        (pos, "Invalid instance access"),
+        (static_fr, `'${field_str}' was declared as a static element.`),
+      ],
+    )
+  | (N.Mchilled(), N.FKMutable(mut_fr))
+  | (N.Mreadonly _, N.FKMutable(mut_fr)) ->
+    msg = mode match {
+    | N.Mchilled() -> "Cannot access a mutable member on an non-mutable object"
+    | N.Mreadonly _ -> "Cannot access a mutable method on a readonly object"
+    | _ -> invariant_violation("ICE impposible match")
+    };
+    SkipError.errorl(
+      List[
+        (pos, msg),
+        (mut_fr, "This is where this method was declared as mutable"),
+      ],
+    )
+  | (m @ N.MnotFrozen _, N.FKFrozen(fro_fr)) ->
+    SkipError.errorl(
+      List[
+        (pos, "Cannot call a frozen method on a " + m + " object"),
+        (fro_fr, "This is where the method was annotated as 'frozen'"),
+      ],
+    )
+  | (m @ N.MnotFrozen _, N.FKChilled()) ->
+    SkipError.errorl(
+      List[
+        (pos, "Cannot call this method on a " + m + " object"),
+        (decl_fr, "Try annotating '" + field_str + "' method as 'readonly'"),
+      ],
+    )
+  | (N.Mchilled(), N.FKFrozen _) // constraints added via whenparams
+  | (N.Mmutable _, N.FKMutable _)
+  | (_, N.FKReadonly _)
+  | (_, N.FKStatic _)
+  | (N.Mchilled(), N.FKChilled()) ->
+    void
+  }
+}
+
+fun specialize_tparam(
+  cd: N.Class_def,
+  tparam: ?(FileRange, N.Type__),
+  ty: N.Type_,
+): N.Type_ {
+  tparam match {
+  | Some(sk_this) -> specialize_trait(cd, sk_this, ty)
+  | _ -> ty
+  }
+}
+
+fun specialize_trait(
+  cd: N.Class_def,
+  sk_this: (FileRange, N.Type__),
+  ty: N.Type_,
+): N.Type_ {
+  cd.kind match {
+  | Ast.KTrait() -> TUtils.subst_tapply_this(cd.name, sk_this, ty)
+  | _ -> ty
+  }
+}
+
+fun specialize_this_type(
+  parent: N.Class_def,
+  child: N.Class_def,
+  new_this_ty: (FileRange, N.Type__),
+  ty: N.Type_,
+): N.Type_ {
+  (parent.kind, child.kind) match {
+  | (Ast.KTrait(), _) ->
+    (_, old_this_str) = parent.name;
+    TUtils.substitute_inst_and_this(old_this_str, new_this_ty, ty)
+  | _ -> ty
+  }
+}
+
+/*****************************************************************************/
+/* Lambda */
+/*****************************************************************************/
+/* TODO lambdas are currently solved in the order they are written
+ * we should instead solve lambdas in a dependencies order, that is if one
+ * lambda is used inside another, the captured lambda should be sovled first
+ */
+fun solve_lambdas(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+): TUtils.Acc {
+  todos = acc.lambdas.reduce(
+    ((acc1, _, ty) -> List.Cons(ty, acc1)),
+    (List[] : List<TUtils.Lambda>),
+  );
+  if (todos.isEmpty()) {
+    acc
+  } else {
+    acc1 = solve_lambdas(
+      next_id,
+      env,
+      todos.foldl(((acc1, lbd) -> lambda(next_id, false, env, acc1, lbd)), acc),
+    );
+    assert(acc1.lambdas.isEmpty());
+    acc1
+  }
+}
+
+fun lambda(
+  next_id: () -> Int,
+  can_delay: Bool,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  lam: TUtils.Lambda,
+): TUtils.Acc {
+  lam_pos = lam.lam_pos;
+  lam_type = lam.lam_type;
+  lam_explicit_param_ty = lam.lam_explicit_param_ty;
+  Types.unfold_type(acc.subst, lam_type) match {
+  | (_, N.Tlambda(_, _, _, lam_type1)) ->
+    lambda(next_id, can_delay, env, acc, lam with {lam_type => lam_type1})
+  | (fpos, N.Tfun(_, ml, _, args, rty)) ->
+    lam_locals = lam.lam_locals;
+    lam_captured = lam.lam_captured;
+    lam_params = lam.lam_params;
+    lam_body = lam.lam_body;
+    if (
+      can_delay &&
+      Types.has_unresolved_parameters(acc.subst, args) &&
+      !lam_explicit_param_ty
+    ) {
+      throw TUtils.Delay()
+    } else {
+      !env = env with {
+        break_type => None(),
+        frozen_level => lam.lam_frozen_level,
+        locals => lam_locals,
+      };
+      !env = setReturnType(next_id, env, acc, rty, lam.yields);
+      ordered_args = args.map(t -> (0, TUtils.promote(env, acc, t), t.i0));
+      params_ty = lam_params.map(p -> p.i1);
+      (!env, !acc) = lam_params.foldl(
+        (ea, p) -> TUtils.bind_local_var(ea.i0, ea.i1, p.i1, p.i0),
+        (env, acc),
+      );
+      (!acc, _) = call(
+        next_id,
+        lam_pos,
+        env,
+        acc,
+        params_ty,
+        ordered_args,
+        invalid_argument_message,
+      );
+      (!acc, elam_body) = expr(next_id, env, acc, lam_body);
+      e_ty = TAstUtils.get_type(elam_body);
+      bindings = add_binding_info(env, lam_captured);
+      elam_params = lam_params.map(p ->
+        (p.i1, p.i0, TAstUtils.default_binding_info)
+      );
+      e = (lam_pos, TAst.Lambda(elam_params, bindings, elam_body, lam.yields));
+      ef_ty = (
+        lam_pos,
+        N.Tfun(Ast.Vnone(), lam.lam_tfun_modifiers, Array[], params_ty, e_ty),
+      );
+      rf_ty = (fpos, N.Tfun(Ast.Vnone(), ml, Array[], params_ty, rty));
+      ef_ty1 = TUtils.promote(env, acc, ef_ty);
+      rf_ty1 = TUtils.contra_promote(env, acc, rf_ty);
+      (!acc, _) = TUtils.join(
+        next_id,
+        env,
+        lam_pos,
+        "Invalid lambda type",
+        acc,
+        ef_ty1,
+        rf_ty1,
+      );
+      fty = (
+        lam_pos,
+        N.Tfun(Ast.Vnone(), lam.lam_tfun_modifiers, Array[], params_ty, rty),
+      );
+      lambdas = acc.lambdas.remove(lam.lam_id);
+      !acc = acc with {lambdas};
+      lambda_bodies = acc.lambda_bodies.set(lam.lam_id, (fty, e));
+      acc with {lambda_bodies}
+    }
+  | (_, N.TnonNullable _)
+  | (_, N.Tfrozen _)
+  | (_, N.Tanything()) ->
+    if (can_delay) {
+      throw TUtils.Delay()
+    } else {
+      SkipError.error(lam_pos, "Unused lambda")
+    }
+  | ty @ (tpos, _) ->
+    tystr = Types.to_string(env.this_class, acc.subst, ty);
+    SkipError.errorl(
+      List[
+        (lam_pos, "Invalid lambda usage. This is a function"),
+        (tpos, "It is incompatible with " + tystr),
+      ],
+    )
+  }
+}
+
+fun has_explicit_lambda_param_types(
+  lam_params: Parameters<(N.Name, ?N.Type_)>,
+): Bool {
+  lam_params.all(x -> {
+    (_, ty_opt) = x;
+    ty_opt.isSome()
+  })
+}
+
+fun add_binding_info(
+  env: TUtils.Env,
+  fvs: SMap<FileRange>,
+): SMap<TAst.Binding> {
+  fvs
+    .items()
+    .filter(k_fr -> env.locals.containsKey(k_fr.i0))
+    .map(k_fr -> {
+      (k, fr) = k_fr;
+      (ty, _) = env.locals[k];
+      n = (fr, k);
+      binding = (
+        ty,
+        n,
+        TAst.Binding_info{captured => false, updated => false, read => false},
+      );
+      (k, binding)
+    }) |> SortedMap::createFromIterator
+}
+
+/*****************************************************************************/
+/* Check implements.
+ * Verifies if a class is subtype of another.
+ */
+/*****************************************************************************/
+fun check_missing_fields(
+  _env: TUtils.Env,
+  child_class: N.Class_def,
+  parent_class: N.Class_def,
+): void {
+  child_types = child_class.types.reduce(sadd, SSet[]);
+  parent_types = parent_class.types.reduce(sadd, SSet[]);
+  for (parent_name in parent_types.difference(child_types)) {
+    (pos, name) = child_class.name;
+    tyd = parent_class.types.getOrCrash(parent_name);
+    (parent_pos, _) = tyd.name;
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          "The class " + name + " doesn't implement the type " + parent_name,
+        ),
+        (parent_pos, "Defined here"),
+      ],
+    )
+  };
+  child_fields = child_class.fields.reduce(sadd, SSet[]);
+  parent_fields = parent_class.fields.reduce(sadd, SSet[]);
+  for (parent_name in parent_fields.difference(child_fields)) {
+    (pos, name) = child_class.name;
+    tyd = parent_class.fields.getOrCrash(parent_name);
+    (parent_pos, _) = tyd.type;
+    SkipError.errorl(
+      List[
+        (pos, "The class " + name + " doesn't implement " + parent_name),
+        (parent_pos, "Defined here"),
+      ],
+    )
+  }
+}
+
+fun check_implement(
+  next_id: () -> Int,
+  _extend_str: String,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  child_class: N.Class_def,
+  parent_name: N.Name,
+  childs_parent_targs: Array<N.Type_>,
+  parent_info: N.Parent,
+): TUtils.Acc {
+  if (parent_info.effective_source.i1 != child_class.name.i1) return acc;
+
+  child_name = child_class.name;
+  (pos, _) = child_name;
+  parent_class = SkipNaming.getClass(parent_name);
+  check_missing_fields(env, child_class, parent_class);
+  parent_tparam_idents = parent_class.tparams.map(N.tparam_ident);
+  parent_subst = N.make_subst(pos, parent_tparam_idents, childs_parent_targs);
+  old_tparam_constriants = acc.tparam_constraints;
+  !acc = TUtils.bind_tparam_constraints(env, acc, parent_class.tparams);
+  initial_tparam_constriants = acc.tparam_constraints;
+  for (conds in parent_info.conditions) {
+    !acc = TUtils.add_whenparams(next_id, env, acc, conds);
+    !acc = check_fields(
+      next_id,
+      pos,
+      env,
+      acc,
+      child_class,
+      child_class.fields,
+      parent_subst,
+      parent_class,
+      parent_class.fields,
+    );
+    !acc.tparam_constraints = initial_tparam_constriants
+  };
+  !acc.tparam_constraints = old_tparam_constriants;
+  acc
+}
+
+fun check_field_tparams_make_subst<Ta, Tb>(
+  next_id: () -> Int,
+  fr: FileRange,
+  tparams: Array<(Ta, String, N.Name, Tb)>,
+): SMap<N.Type_> {
+  targs = tparams.map(tp -> {
+    (_, _, n, _) = tp;
+    TUtils.fresh(next_id, n)
+  });
+  tparam_idents = tparams.map(N.tparam_ident);
+  N.make_subst(fr, tparam_idents, targs)
+}
+
+fun check_field_tparams_add_constraints<Ta, Tb>(
+  acc: TUtils.Acc,
+  fdt_subst: SMap<N.Type_>,
+  tparams: Array<(Ta, String, N.Name, Tb)>,
+): TUtils.Acc {
+  tparams.foldl(
+    (acc, tp) -> {
+      (_, id, n, _) = tp;
+      tvar = fdt_subst[id];
+      cstrl = acc.tparam_constraints.findUppers(id);
+      if (cstrl.isEmpty()) acc else {
+        cstrl_fixed = cstrl.map(x -> TUtils.type_subst(fdt_subst, acc, x));
+        !acc.constraints = acc.constraints.add(n.i0, tvar, cstrl_fixed);
+        acc
+      }
+    },
+    acc,
+  )
+}
+
+fun check_fields(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  child_class: N.Class_def,
+  child_fields: UMap<N.Field_type>,
+  parent_subst: SMap<N.Type_>,
+  parent_class: N.Class_def,
+  parent_fields: UMap<N.Field_type>,
+): TUtils.Acc {
+  child_fields.reduce(
+    (acc, name, child_field) -> {
+      original_tparam_constraints = acc.tparam_constraints;
+      !acc = TUtils.bind_tparam_constraints(env, acc, child_field.tparams);
+      after_child_fdt_tparam_constraints = acc.tparam_constraints;
+      child_kind = child_field.kind;
+      child_deferred = child_field.deferred_;
+      child_ty = child_field.type;
+      parent_fields.maybeGetRaw(name.i1) match {
+      | None() ->
+        !acc = TUtils.add_whenparams(next_id, env, acc, child_field.whenparams);
+        (!acc, _child_ty1) = TUtils.instantiate(next_id, env, acc, child_ty);
+        !acc = solve_constraints(next_id, env, acc);
+        acc with {
+          constraints => TUtils.Constraints::empty,
+          tparam_constraints => original_tparam_constraints,
+        }
+      | Some((_, parent_field)) if (parent_field.deferred_.isSome()) ->
+        !acc = TUtils.add_whenparams(next_id, env, acc, child_field.whenparams);
+        (!acc, _child_ty1) = TUtils.instantiate(next_id, env, acc, child_ty);
+        !acc = solve_constraints(next_id, env, acc);
+        acc with {
+          constraints => TUtils.Constraints::empty,
+          tparam_constraints => original_tparam_constraints,
+        }
+      | Some((pfr, parent_field)) ->
+        parent_kind = parent_field.kind;
+        parent_deferred = parent_field.deferred_;
+        _parent_kind = parent_field.kind;
+        parent_ty = parent_field.type;
+        check_compatible_kind(
+          parent_ty.i0,
+          parent_kind,
+          name.i0,
+          child_kind,
+          child_class,
+        );
+        check_implement_deferred(
+          parent_ty.i0,
+          parent_deferred,
+          name.i0,
+          child_deferred,
+        );
+        f_psubst = (acc, x) -> TUtils.type_subst(parent_subst, acc, x);
+        childs_view_parent_whenparams = parent_field.whenparams.map(x -> {
+          (ty, tyl) = x;
+          (f_psubst(acc, ty), tyl.map(ty -> f_psubst(acc, ty)))
+        });
+        parent_tparams = parent_field.tparams.map(tparam -> {
+          (v, i, n, tyl) = tparam;
+          (v, i, n, tyl.map(ty -> f_psubst(acc, ty)))
+        });
+        !acc = TUtils.bind_tparam_constraints(env, acc, parent_tparams);
+        !acc = TUtils.add_whenparams(
+          next_id,
+          env,
+          acc,
+          childs_view_parent_whenparams,
+        );
+        all_child_whenparams = childs_view_parent_whenparams.concat(
+          child_field.whenparams,
+        );
+        !acc = TUtils.add_whenparams(next_id, env, acc, all_child_whenparams);
+        sk_this = TUtils.make_this_type(
+          env,
+          acc,
+          N.Mchilled(),
+          child_class.name,
+          child_class.tparams,
+        );
+        parent_ty1 = specialize_this_type(
+          parent_class,
+          child_class,
+          sk_this,
+          parent_ty,
+        );
+        parent_ty2 = f_psubst(acc, parent_ty1);
+        parent_ty3 = TUtils.contra_promote(env, acc, parent_ty2);
+        child_subst = check_field_tparams_make_subst(
+          next_id,
+          pos,
+          child_class.tparams,
+        );
+        child_fdtsubst = check_field_tparams_make_subst(
+          next_id,
+          pos,
+          child_field.tparams,
+        );
+        constraint_child_subst = child_fdtsubst.reduce(
+          (m, id, ty) -> m.add(id, ty),
+          child_subst,
+        );
+        !acc = check_field_tparams_add_constraints(
+          acc,
+          constraint_child_subst,
+          child_class.tparams,
+        );
+        !acc = check_field_tparams_add_constraints(
+          acc,
+          constraint_child_subst,
+          child_field.tparams,
+        );
+        child_ty1 = TUtils.type_subst(child_fdtsubst, acc, child_ty);
+        child_ty2 = TUtils.promote(env, acc, child_ty1);
+        child_ty3 = TUtils.type_contra_tparam_subst(
+          child_subst,
+          acc,
+          child_ty2,
+        );
+        root_msg =
+          " for the field '" +
+          name.i1 +
+          "' on child '" +
+          child_class.name.i1 +
+          "' for parent '" +
+          parent_class.name.i1 +
+          "'";
+        msg = "Invalid override" + root_msg;
+        (!acc, _) = TUtils.join(
+          next_id,
+          env,
+          pos,
+          msg,
+          acc,
+          child_ty3,
+          parent_ty3,
+        );
+        child_fdtsubst_expanded = child_fdtsubst.map((_, x) ->
+          TUtils.expand_type(env, acc, x)
+        );
+        !acc = add_generic_map(
+          parent_class.name,
+          name,
+          acc,
+          child_fdtsubst_expanded,
+        );
+        check_default_args(pos, acc, name, parent_ty3, child_ty3);
+        !acc = solve_constraints_msg(
+          next_id,
+          msg + ". Constraint not satisfied",
+          env,
+          acc,
+        );
+        !acc = acc with {
+          constraints => TUtils.Constraints::empty,
+          tparam_constraints => after_child_fdt_tparam_constraints,
+        };
+        !acc = check_whenparams(
+          next_id,
+          env,
+          acc,
+          pfr,
+          root_msg,
+          parent_kind,
+          child_class.tparams,
+          child_fdtsubst_expanded,
+          childs_view_parent_whenparams,
+          child_field.whenparams,
+          child_field.source.i1 == child_class.name.i1,
+        );
+        acc with {
+          constraints => TUtils.Constraints::empty,
+          tparam_constraints => original_tparam_constraints,
+        }
+      }
+    },
+    acc,
+  )
+}
+
+fun add_generic_map(
+  parent_name: N.Name,
+  field_name: N.Name,
+  acc: TUtils.Acc,
+  subst: SMap<N.Type_>,
+): TUtils.Acc {
+  generic_map = acc.generic_maps;
+  method_map = generic_map.maybeGet(field_name.i1) match {
+  | None() -> SortedMap[]
+  | Some(x) -> x
+  };
+  method_map2 = method_map.set(parent_name.i1, subst);
+  generic_map2 = generic_map.set(field_name.i1, method_map2);
+  acc with {generic_maps => generic_map2}
+}
+
+fun check_default_args(
+  pos: FileRange,
+  acc: TUtils.Acc,
+  name: N.Name,
+  parent_ty: N.Type_,
+  child_ty: N.Type_,
+): void {
+  unfold = x -> Types.unfold_type(acc.subst, x);
+  (unfold(parent_ty), unfold(child_ty)) match {
+  | (
+    (_, N.Tfun(_, _, _, parent_args, _)),
+    (_, N.Tfun(_, _, _, child_args, _)),
+  ) ->
+    (parent_args, child_args) match {
+    | (Named(parent_m), Named(child_m)) ->
+      parent_m.each((n, parent_arg) ->
+        check_default_arg(pos, name, parent_arg, child_m[n])
+      )
+    | (Positional(parent_l), Positional(child_l)) ->
+      for (x in parent_l.zip(child_l)) {
+        (parent, child) = x;
+        check_default_arg(pos, name, parent, child)
+      }
+    | _ -> invariant_violation("ICE mismatched args check_default_args")
+    }
+  | ((_, N.Tfun _), _)
+  | (_, (_, N.Tfun _)) ->
+    invariant_violation("not tfun check_default_args")
+  | _ -> void
+  }
+}
+
+fun check_default_arg(
+  pos: FileRange,
+  name: (FileRange, String),
+  parent_arg: N.Type_,
+  child_arg: N.Type_,
+): void {
+  (parent_arg, child_arg) match {
+  | ((_, N.Tdefault _), (_, N.Tdefault _)) -> void
+  | ((def_pos, N.Tdefault _), (not_def_pos, _))
+  | ((not_def_pos, _), (def_pos, N.Tdefault _)) ->
+    msg1 =
+      "Presence of default arguments did not match for the method: " + name.i1;
+    SkipError.errorl(
+      List[
+        (pos, msg1),
+
+        (def_pos, "This parameter has a default argument"),
+
+        (not_def_pos, "This parameter does not have a default argument"),
+      ],
+    )
+  | _ -> void
+  }
+}
+
+/*****************************************************************************/
+/* Computes the "inst type" of a type-class before we can check if the
+ * overriding is correct.
+ */
+/*****************************************************************************/
+/* Returns "Some inst_type" when inst must be treated differently than "this".
+ */
+fun make_inst(
+  child_field: N.Field_type,
+  child_class: N.Class_def,
+): ?(N.Name, Array<N.Type_>) {
+  inst_name = child_field.source;
+  source_cd = SkipNaming.getClass(inst_name);
+  source_cd.kind match {
+  | Ast.KTrait() -> None()
+  | Ast.KBase()
+  | Ast.KClass() ->
+    Some(
+      if (inst_name.i1 == child_class.name.i1) {
+        make_inst_from_class(inst_name)
+      } else {
+        make_inst_from_extends(inst_name, child_class.extends_)
+      },
+    )
+  }
+}
+
+fun make_inst_from_class(inst_name: N.Name): (N.Name, Array<N.Type_>) {
+  cd = SkipNaming.getClass(inst_name);
+  targs = cd.tparams.map(tparam -> {
+    (_, i, x, tyl) = tparam;
+    if (!tyl.isEmpty()) invariant_violation("TODO make_inst_from_class");
+    (x.i0, N.Tparam(None(), Ast.Vnone(), i, x))
+  });
+  (inst_name, targs)
+}
+
+fun make_inst_from_extends(
+  inst_name: N.Name,
+  m: N.ParentMap,
+): (N.Name, Array<N.Type_>) {
+  for ((parName, parTargs, _) in m) {
+    if (inst_name.i1 == parName.i1) {
+      break (parName, parTargs)
+    }
+  } else {
+    invariant_violation("make_inst_from_extends no extends")
+  }
+}
+
+/* To check conditional constraitns, we check that the child's constraints are
+ * satisfied, in the context of the parent. In other words, introduce all the
+ * constraitns known to the parent, then solve the child's constraitns on its
+ * method, as if it was being called
+ */
+fun check_whenparams(
+  next_id: () -> Int,
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  fr: FileRange,
+  root_msg: String,
+  parent_kind: N.FieldKind,
+  child_tparams: Array<N.Type_parameter>,
+  child_fdtsubst_expanded: SMap<N.Type_>,
+  childs_view_parent_whenparams: Array<N.Whenclause>,
+  child_whenparams: Array<N.Whenclause>,
+  child_is_source: Bool,
+): TUtils.Acc {
+  // if the child didn't define the method,
+  // skip the check since the whenparams MUST be compatible with the parent
+  // It might be possible that they are inherently contradictory,
+  // but that is ok since it means it won't be callable
+  // when upcasting to the parent
+  if (!child_is_source) return acc;
+
+  // add whenparams for frozen preservation
+  !acc = parent_kind match {
+  | N.FKFrozen(frozen_fr) ->
+    tfrozenl = Array[(frozen_fr, N.Tfrozen(Ast.Vminus()))];
+    frozen_child_tparams = child_tparams.map(tp -> {
+      (_, id, n, _) = tp;
+      ((n.i0, N.Tparam(None(), Ast.Vplus(), id, n)), tfrozenl)
+    });
+    TUtils.add_whenparams(next_id, env, acc, frozen_child_tparams)
+  | _ -> acc
+  };
+  !acc = TUtils.add_whenparams(
+    next_id,
+    env,
+    acc,
+    childs_view_parent_whenparams,
+  );
+  filtered_subst = child_fdtsubst_expanded.filter((_, ty) ->
+    ty.i1 match {
+    | N.Tanything() -> false
+    | _ -> true
+    }
+  );
+  !acc = child_whenparams.foldl(
+    (acc, wp) -> {
+      subty = TUtils.type_subst(filtered_subst, acc, wp.i0);
+      supertys = wp.i1.map(x -> TUtils.type_subst(filtered_subst, acc, x));
+      constraints = acc.constraints.add(fr, subty, supertys);
+      acc with {constraints}
+    },
+    acc,
+  );
+  !acc = solve_constraints_msg(
+    next_id,
+    "Invalid conditional type override" +
+      root_msg +
+      ".\nWith additional constraints on the child's method,\n these constraints must be satisfied when upcasting a child to the parent's type,\n and then adding any additional constraints from the parent's version of the method",
+    env,
+    acc,
+  );
+  acc
+}
+
+fun check_compatible_kind(
+  parent_pos: FileRange,
+  parent_kind: N.FieldKind,
+  child_pos: FileRange,
+  child_kind: N.FieldKind,
+  child_class: N.Class_def,
+): void {
+  (parent_kind, child_kind) match {
+  | (N.FKStatic(static_fr), N.FKDynamic _) ->
+    SkipError.errorl(
+      List[
+        (child_pos, "Invalid instance member"),
+        (
+          static_fr,
+          "Because of this definition, where it was declared as a static member",
+        ),
+      ],
+    )
+  | (N.FKDynamic _, N.FKStatic(static_fr)) ->
+    SkipError.errorl(
+      List[
+        (static_fr, "Invalid static member"),
+        (
+          parent_pos,
+          "Because of this definition, where it was declared as an instance member",
+        ),
+      ],
+    )
+  // same field kinds are ok
+  | (N.FKStatic _, N.FKStatic _)
+  | (N.FKMutable _, N.FKMutable _)
+  | (N.FKReadonly _, N.FKReadonly _)
+  // chilled and frozen are equivalent, any mismatch will be caught by
+  // the constraints added to the tparams for frozen
+  | (N.FKChilledThis _, N.FKChilledThis _)
+  // chilled|frozen overriden by chilled or readonly
+  | (N.FKChilledThis _, N.FKReadonly _)
+  // mutable overriden by readonly
+  | (N.FKMutable _, N.FKReadonly _) ->
+    void
+  // mutable|readonly overriden by chilled
+  | (N.FKMutable _, N.FKChilled _)
+  | (N.FKReadonly _, N.FKChilled _) if (child_class.isChilledOnly()) ->
+    void
+  // chilled|mutable|readonly overriden by frozen
+  | (N.FKMutable _, N.FKChilledThis _)
+  | (N.FKReadonly _, N.FKChilledThis _) if (child_class.isFrozenOnly()) ->
+    void
+  | _ ->
+    pfr = parent_kind match {
+    | N.FKMutable(fr)
+    | N.FKReadonly(fr)
+    | N.FKFrozen(fr) ->
+      fr
+    | _ -> parent_pos
+    };
+    cfr = child_kind match {
+    | N.FKMutable(fr)
+    | N.FKReadonly(fr)
+    | N.FKFrozen(fr) ->
+      fr
+    | _ -> child_pos
+    };
+    (parent_kind, child_kind) match {
+    | (N.FKChilled(), N.FKChilled()) ->
+      invariant_violation("ICE impossible match")
+    | (N.FKChilled _, _) ->
+      SkipError.errorl(
+        List[
+          (cfr, `Invalid '${child_kind}' member. Try removing that modifier`),
+          (
+            pfr,
+            "Because of this definition, where it was declared as an unmodified instance member",
+          ),
+        ],
+      )
+    | (_, N.FKChilled _) ->
+      SkipError.errorl(
+        List[
+          (
+            cfr,
+            `Invalid instance member. Try adding the '${parent_kind}' modifier`,
+          ),
+          (
+            pfr,
+            `Because of this definition, where it was declared as an '${parent_kind}' member`,
+          ),
+        ],
+      )
+    | _ ->
+      SkipError.errorl(
+        List[
+          (cfr, `Invalid '${child_kind}' member`),
+          (
+            pfr,
+            `Because of this definition, where it was declared as an '${parent_kind}' member`,
+          ),
+        ],
+      )
+    }
+  }
+}
+
+fun check_implement_deferred(
+  parent_pos: FileRange,
+  parent_deferred: ?FileRange,
+  _child_pos: FileRange,
+  child_deferred: ?FileRange,
+): void {
+  (parent_deferred, child_deferred) match {
+  | (None(), None())
+  | (Some _, Some _) ->
+    void
+  | (None(), Some(pos)) ->
+    SkipError.errorl(
+      List[
+        (pos, "Invalid deferred"),
+
+        (
+          parent_pos,
+          "Cannot make an element deferred if it was not deferred in the parent",
+        ),
+      ],
+    )
+  | (Some _, None()) -> void
+  }
+}
+
+/* Currently, deferred calls can be used under a few circumstances
+ * - On Concrete<_> if its 'static', since that means it must be in a KClass
+ * - On a Concrete<C> class object in a deferred method
+ * - On static in a deferred context
+ * - if dynamic on 'this', since it will be rechecked in the child
+ * - if dynamic in a deferred context
+ *
+ * TODO these rules are very confusing. We should reuse the 'macro' keyword to
+ * mean body-deffered. and keep deferred just for the signature. So if you
+ * want the body to do some weird deferred things, you use 'macro'
+ */
+fun check_deferred_call(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  pos: FileRange,
+  obj_ty: TAst.Type_,
+  field_str: String,
+  fdt: N.Field_type,
+  tobject_opt: ?N.Name,
+): void {
+  is_deferred_ = fdt.deferred_.isSome();
+  is_abstract = fdt.abstract.isSome();
+  if (!is_deferred_ && !is_abstract) {
+    return void
+  };
+  tobject_opt match {
+  | None() ->
+    assert(fdt.kind is N.FKDynamic _);
+    fdt.deferred_ match {
+    | _ if (env.deferred_body) ->
+      // deferred body
+      void
+    | _ if (TUtils.is_this_ty(env, acc, obj_ty)) ->
+      // this
+      void
+    | None() ->
+      // must have been abstract
+      void
+    | Some(deferred_pos) ->
+      msg2 =
+        "'" +
+        field_str +
+        "' was declared as 'deferred' and can only be called " +
+        " from a 'deferred' method or from 'this'";
+      SkipError.errorl(
+        List[(pos, "Invalid call of deferred method"), (deferred_pos, msg2)],
+      )
+    }
+  | Some((_, tobject)) ->
+    is_tystatic = is_static_ty(env, acc, obj_ty);
+    tystatic_in_deferred_context = is_tystatic && env.deferred_body;
+    assert(fdt.kind is N.FKStatic _);
+    (tobject, fdt.deferred_, fdt.abstract) match {
+    | ("Concrete", _, _) if (is_tystatic) ->
+      // clasof(this)
+      void
+    | ("Concrete", _, _) if (env.deferred_body) ->
+      // deferred method
+      void
+    | ("Class", _, _) if (tystatic_in_deferred_context) ->
+      // deferred static methods
+      void
+    | ("Concrete", None(), Some _) ->
+      // abstract method on concrete
+      void
+    | (_, Some(deferred_pos), _) ->
+      msg2 =
+        "'" +
+        field_str +
+        "' was declared as 'deferred'. It can" +
+        " be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method";
+      SkipError.errorl(
+        List[(pos, "Invalid deferred call"), (deferred_pos, msg2)],
+      )
+    | ("Base", _, Some(abs_pos))
+    | ("Class", _, Some(abs_pos)) ->
+      msg2 =
+        "'" +
+        field_str +
+        "' is abstract. It can" +
+        " be used only from 'static' or a Concrete<_> object";
+      SkipError.errorl(List[(pos, "Invalid abstract call"), (abs_pos, msg2)])
+    | (_, None(), None())
+    | (_, None(), Some _) ->
+      invariant_violation("ICE impossible match for check_deferred_call")
+    }
+  }
+}
+
+fun is_static_ty(env: TUtils.Env, acc: TUtils.Acc, ty: TAst.Type_): Bool {
+  maybe_static_ty(env, acc, ty) match {
+  | Some _ -> true
+  | None() -> false
+  }
+}
+
+fun maybe_static_ty(
+  env: TUtils.Env,
+  acc: TUtils.Acc,
+  ty: TAst.Type_,
+): ?N.Type_ {
+  env.this_class match {
+  | None() -> None()
+  | Some((_, this_cstr)) -> maybe_static_ty_(this_cstr, acc, ty)
+  }
+}
+
+fun maybe_static_ty_(
+  this_cstr: String,
+  acc: TUtils.Acc,
+  ty: TAst.Type_,
+): ?N.Type_ {
+  ty match {
+  | (_, N.Tnamed(N.NStatic((_, cstr)), ty1)) if (this_cstr == cstr) -> Some(ty1)
+  | (_, N.Tnamed(_, t)) -> maybe_static_ty_(this_cstr, acc, t)
+  | (_, N.Tvar(i)) -> maybe_static_ty_(this_cstr, acc, acc.subst[i])
+  | _ -> None()
+  }
+}
+
+/* To make an instance from a non-concrete 'Class' object, it must be 'static'
+ * in an instance method or deferred context. Or 'Concrete' in a deferred
+ * context
+ */
+fun check_deferred_construct(
+  env: TUtils.Env,
+  pos: FileRange,
+  cpos: FileRange,
+  tobject_kind: String,
+  is_tystatic: Bool,
+  cd: N.Class_def,
+): void {
+  (tobject_kind, cd.kind) match {
+  | (_, Ast.KTrait())
+  | ("Base", Ast.KClass()) ->
+    invariant_violation("check_deferred_construct impossible case")
+  | ("Class", Ast.KClass()) -> void
+  | ("Concrete", Ast.KClass()) -> void
+  | ("Base", Ast.KBase()) ->
+    SkipError.errorl(
+      List[
+        (pos, "Possible base class instantiation"),
+        (
+          cpos,
+          "Cannot directly instantiate a Base<_> object as base classes do not have instances",
+        ),
+      ],
+    )
+  | ("Concrete", Ast.KBase())
+  | ("Class", Ast.KBase()) ->
+    cp = cd.params.fromHasParams("checked in check_constructor_call");
+    deferred_field = cp.params.foldl(
+      (cur, par) ->
+        (cur, par.deferred_) match {
+        | (df @ Some _, _)
+        | (_, df @ Some _) ->
+          df
+        | (None(), None()) -> None()
+        },
+      (None() : ?FileRange),
+    );
+    is_tystatic_in_instance = is_tystatic && (env.kind is Some(N.FKDynamic _));
+    msg = "To create an instance from this Class<_> object: it must be 'static' in an instance method. Or a Concrete<_> object in a deferred context";
+    (tobject_kind, deferred_field) match {
+    | _ if (is_tystatic_in_instance) -> void
+    | ("Concrete", None()) -> void
+    | ("Concrete", Some _) if (env.deferred_body) -> void
+    | ("Class", _) if (is_tystatic && env.deferred_body) -> void
+    | (_, Some(def_pos)) ->
+      SkipError.errorl(
+        List[
+          (pos, "Invalid object instantation. This constructor is deferred"),
+          (def_pos, "It is 'deferred' because of this field"),
+          (cpos, msg),
+        ],
+      )
+    | _ ->
+      SkipError.errorl(
+        List[(pos, "Possible base class instantiation"), (cpos, msg)],
+      )
+    }
+  | (_, Ast.KClass())
+  | (_, Ast.KBase()) ->
+    invariant_violation("malformed tobject_kind")
+  }
+}
+
+fun constructor_invalid_argument_message(
+  mut: ?FileRange,
+  cd: N.Class_def,
+): String {
+  cname = cd.name.i1;
+  mutability_msg = (mut, cd.mutable_) match {
+  | (_, None()) -> ""
+  | (Some _, _) -> "a mutable "
+  | (None(), _) -> "a "
+  };
+  "Invalid argument to the construction of " +
+    mutability_msg +
+    "'" +
+    cname +
+    "'"
+}

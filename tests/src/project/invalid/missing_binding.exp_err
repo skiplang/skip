@@ -1,0 +1,5 @@
+File "invalid/missing_binding/skip.project.json"
+Missing binding for variable 'var'
+
+File "invalid/missing_binding/skip.project.json"
+Referenced from

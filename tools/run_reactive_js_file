@@ -1,0 +1,7 @@
+# run_js_file [--no-unhandled-exception-stack] sk-to-js-file [args...]
+
+# Runs converted skip code reactively. Main produces a sequence of values
+# rather than a single value.
+
+NODE="${NODE:-node}"
+$NODE --stack_size=8192 $(dirname "$0")/../jslib/reactive_main.js "$@"

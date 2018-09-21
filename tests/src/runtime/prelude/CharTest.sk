@@ -1,0 +1,30 @@
+@test
+fun testfromCode(): void {
+  assertEqual(Char::fromCode(80), 'P');
+  assertEqual(Char::fromCode(81).code(), 81);
+  void
+}
+
+@test
+fun testCompare(): void {
+  a = Char::fromCode(80);
+  b = Char::fromCode(81);
+
+  assertTrue(a == a);
+  assertTrue(a != b);
+  assertTrue(a < b);
+  assertTrue(b > a);
+  assertTrue(a <= b);
+  assertTrue(b <= b);
+  assertTrue(b >= a);
+  assertTrue(b >= b);
+
+  assertFalse(a == b);
+  assertFalse(a != a);
+  assertFalse(b < a);
+  assertFalse(a > b);
+  assertFalse(b <= a);
+  assertFalse(a >= b);
+
+  void
+}

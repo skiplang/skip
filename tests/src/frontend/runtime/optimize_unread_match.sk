@@ -1,0 +1,8 @@
+fun main(): void {
+  _ = 42 match {
+  | 1 -> "1"
+  | 2 -> "2"
+  | _ -> "other"
+  };
+  print_string("Pass")
+}

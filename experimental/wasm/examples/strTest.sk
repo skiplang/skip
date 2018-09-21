@@ -1,0 +1,156 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+@no_inline
+@cpp_export_as("mkNumStr")
+fun mkNumStr(x: Float): String {
+  // "Number: " + x.toString()
+  x.toString()
+}
+
+@no_inline
+@cpp_export_as("mkNumStr2")
+fun mkNumStr2(x: Float, y: Float): String {
+  "Numbers: " + x + ", " + y
+}
+
+@no_inline
+@cpp_export_as("combineStr")
+fun combineStr(s1: String, s2: String): String {
+  s1 + s2
+}
+
+type PhotoResizeModeConstKey = String;
+
+class PhotoResizeModeConst() {
+  const CONTAIN: PhotoResizeModeConstKey = "s";
+  const COVER: PhotoResizeModeConstKey = "p";
+}
+
+fun resizeModeToString(resize_mode: Nullable<PhotoResizeModeConstKey>): String {
+  "  resize_mode: " +
+    (resize_mode match {
+    | Box(x) -> x.toString()
+    | Null() -> "null"
+    }) +
+    "\n"
+}
+
+class RMHolder{resize_mode: Nullable<PhotoResizeModeConstKey>}
+
+fun mkRMHolder(rm: Nullable<PhotoResizeModeConstKey>): RMHolder {
+  RMHolder{resize_mode => rm}
+}
+
+fun resize{resize_mode: PhotoResizeModeConstKey}: RMHolder {
+  mkRMHolder(Box(resize_mode))
+}
+
+@no_inline
+fun setResizeMode(
+  eqSize: Bool,
+  resize_mode: PhotoResizeModeConstKey,
+): Nullable<PhotoResizeModeConstKey> {
+  resize_mode_res = if (eqSize) {
+    print_raw("setResizeMode: assigning Null");
+    Null()
+  } else {
+    print_raw("setResizeMode: assigning Box");
+    Box(resize_mode)
+  };
+
+  resize_mode_res match {
+  | Box(_x) -> print_raw("setResizeMode: is a box")
+  | Null() -> print_raw("setResizeMode: is Null")
+  };
+
+  resize_mode_res
+}
+
+@cpp_export_as("sk.main")
+fun main(): void {
+  fval = 3.265;
+  fval2 = 4.725;
+
+  s0 = "Hello" + " Skip " + "World!";
+  print_raw(s0);
+  s1 = combineStr("Skip ", "World");
+  print_raw("Hello " + s1 + ", good day to you!");
+  print_raw("fval is: " + fval);
+  s2 = "fval is: " + fval;
+  print_raw(s2);
+  s3 = mkNumStr(fval);
+  print_raw(s3);
+  /* BAD:
+  s4 = mkNumStr2(fval, fval2);
+  print_raw(s4);
+  */
+  // The following .toString() calls appear to be evaluated at
+  // compile time:
+  s5 = "Also numbers (s5): " + fval + ", " + fval2;
+  print_raw(s5);
+  // Let's try with mkNumStr() to force conversion at runtime:
+  s6 = "Also numbers (s6): " + mkNumStr(fval) + ", " + mkNumStr(fval2);
+  print_raw(s6);
+
+  rm: Nullable<PhotoResizeModeConstKey> = Null();
+  s7 = "rm ==> " + resizeModeToString(rm);
+  print_raw(s7);
+
+  rm2: Nullable<PhotoResizeModeConstKey> = Box("hello");
+  s8 = "rm2 ==> " + resizeModeToString(rm2);
+  print_raw(s8);
+
+  rh0 = RMHolder{resize_mode => Box("word")};
+  print_raw("rh0 ==> " + resizeModeToString(rh0.resize_mode));
+
+  rh1 = RMHolder{resize_mode => Box(PhotoResizeModeConst::COVER)};
+  print_raw("rh1 ==> " + resizeModeToString(rh1.resize_mode));
+
+  rh2 = resize{resize_mode => PhotoResizeModeConst::COVER};
+  print_raw("rh2 ==> " + resizeModeToString(rh2.resize_mode));
+
+  rh3 = RMHolder{resize_mode => Null()};
+  print_raw("rh3 ==> " + resizeModeToString(rh3.resize_mode));
+
+  x = 25;
+
+  (resize_mode_res, resize_size_res) = if (x < 20) {
+    (Null(), Null())
+  } else {
+    (Box("a"), Box(19))
+  };
+
+  print_raw("resize_mode_res ==> " + resizeModeToString(resize_mode_res));
+  print_raw(
+    "resize_size_res ==> " +
+      (resize_size_res match {
+      | Box(y) -> y.toString()
+      | Null() -> "null"
+      }),
+  );
+
+  rm4 = setResizeMode(true, PhotoResizeModeConst::COVER);
+  print_raw(
+    "rm4 ==> " +
+      (rm4 match {
+      | Box(y) -> y.toString()
+      | Null() -> "null"
+      }),
+  );
+
+  rm5 = setResizeMode(false, PhotoResizeModeConst::CONTAIN);
+  print_raw(
+    "rm5 ==> " +
+      (rm5 match {
+      | Box(y) -> y.toString()
+      | Null() -> "null"
+      }),
+  );
+
+  void
+}

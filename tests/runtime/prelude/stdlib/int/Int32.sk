@@ -1,0 +1,15 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+native value class Int32 uses Integral {
+  @intrinsic
+  native fun toInt(): Int;
+  @intrinsic
+  native static fun truncate(n: Int): Int32;
+  const min: Int32 = Int32::truncate(-0x80000000);
+  const max: Int32 = Int32::truncate(0x7FFFFFFF);
+}

@@ -1,0 +1,10 @@
+trait Z
+trait Y
+trait X extends Y, Z {
+  fun no(): void {
+    this match {
+    | Z _ -> void
+    | _ -> void
+    }
+  }
+}

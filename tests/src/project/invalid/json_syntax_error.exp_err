@@ -1,0 +1,7 @@
+File "invalid/json_syntax_error/skip.project.json", line 3, characters 3-3:
+JSON syntax error. Unexpected character 's' in JSON. Expected '"'.
+1 | {
+2 |   "skipVersion": "1.0",
+3 |   syntax error!
+  |   ^
+4 | }

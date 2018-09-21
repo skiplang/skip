@@ -1,0 +1,25 @@
+base class X
+class A() extends X {
+  fun methodOnlyOnA(): String {
+    "A\n"
+  }
+}
+class B() extends X
+
+fun checkA(a: A): String {
+  // This blows up in the interpreter trying to call a nonexistent method on B.
+  a.methodOnlyOnA()
+}
+
+fun main(): void {
+  // This correctly infers the type is mutable Ref<A>.
+  r = mutable Ref(A());
+
+  // This assignment should not be allowed; B is not an A!
+  r.set(B());
+
+  print_raw(
+    // This call ends up passing a B to something wanting an A and dies.
+    checkA(r.value),
+  )
+}

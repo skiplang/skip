@@ -1,0 +1,9 @@
+trait MyIterable<+T> {
+  fun foldl<R>((R, T) -> R, R): R;
+}
+
+class Foo<T>() uses MyIterable<T> {
+  fun foldl<R>(_: (R, T) ~> R, init: R): R {
+    init
+  }
+}

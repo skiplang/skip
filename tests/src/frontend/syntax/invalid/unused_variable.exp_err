@@ -1,0 +1,6 @@
+File "./syntax/invalid/unused_variable.sk", line 2, characters 3-8:
+Local variable 'unused' was not used. Prefix it with an underscore to silence the error: '_unused'
+1 | fun main(): void {
+2 |   unused = 10;
+  |   ^^^^^^
+3 |   print_string("Hello Skip!")

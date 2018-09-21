@@ -1,0 +1,15 @@
+base class Foo {
+  children =
+  | Fail()
+  | Pass(run: () ~> String)
+
+  fun get(): String
+  | Fail() -> "fail"
+  | Pass(run) -> run()
+}
+
+fun main(): void {
+  p = Pass(() ~> "Pass\n");
+  foo: Foo = p;
+  print_raw(foo.get())
+}

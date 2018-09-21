@@ -1,0 +1,5 @@
+trait MyTC
+
+fun foo(): void {
+  _ = MyTC
+}

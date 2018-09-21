@@ -1,0 +1,105 @@
+base class Awaitable<T>
+
+base class Exception {
+  fun getMessage(): String;
+}
+
+@debug
+@no_return
+fun exit<T>(res: Int): T {
+  internalExit(res);
+  invariant_violation("never")
+}
+
+@debug
+@no_return
+@cpp_runtime
+native fun internalExit(Int): void;
+
+native fun print_last_exception_stack_trace_and_exit(Exception): void;
+
+class InvariantViolation(msg: String) extends Exception {
+  fun getMessage(): String {
+    "Invariant violation: " + this.msg
+  }
+}
+
+@no_inline
+fun invariant_violation<T>(msg: String): T {
+  throw InvariantViolation(msg)
+}
+
+fun print_string(value: String): void {
+  print_raw(value);
+  print_raw("\n")
+}
+native fun print_raw(String): void;
+native fun print_error(String): void;
+
+native class String {
+  native fun +(this): this;
+
+  fun toString(): String {
+    this
+  }
+}
+native value class Int uses Orderable {
+  native fun ==(Int): Bool;
+  native fun !=(Int): Bool;
+  native fun +(Int): Int;
+  native fun -(Int): Int;
+  native fun *(Int): Int;
+  native fun /(Int): Int;
+  native fun %(Int): Int;
+  native fun <(Int): Bool;
+  native fun >(Int): Bool;
+  native fun <=(Int): Bool;
+  native fun >=(Int): Bool;
+
+  // bitwise &
+  @intrinsic
+  native fun and(other: Int): Int;
+  // bitwise |
+  @intrinsic
+  native fun or(other: Int): Int;
+  // bitwise ^
+  @intrinsic
+  native fun xor(other: Int): Int;
+  // bitwise <<
+  @intrinsic
+  native fun shl(other: Int): Int;
+  // bitwise >>
+  @intrinsic
+  native fun shr(other: Int): Int;
+  // bitwise >>>
+  @intrinsic
+  native fun ushr(other: Int): Int;
+  // bitwise ~
+  fun not(): Int {
+    this.xor(-1)
+  }
+
+  fun compare(other: Int): Order {
+    if (this < other) LT() else if (this == other) EQ() else GT()
+  }
+}
+
+native value class Bool {
+  native fun !(): Bool;
+  native fun ==(Bool): Bool;
+  native fun !=(Bool): Bool;
+  native fun <(Bool): Bool;
+  native fun >(Bool): Bool;
+  native fun <=(Bool): Bool;
+  native fun >=(Bool): Bool;
+  native fun toString(): String;
+}
+native base class Class<+T> {
+  children =
+  | Concrete
+  | Base
+  native fun ==(Class<_>): Bool;
+  fun !=(c2: Class<_>): Bool {
+    !(this == c2)
+  }
+}

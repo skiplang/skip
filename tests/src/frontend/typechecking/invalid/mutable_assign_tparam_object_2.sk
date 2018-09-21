@@ -1,0 +1,6 @@
+mutable base class A(mutable x: Int = 0)
+mutable class B extends A
+
+fun set<T: A>(b: T): void {
+  b.!x = 37
+}

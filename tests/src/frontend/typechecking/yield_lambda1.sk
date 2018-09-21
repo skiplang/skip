@@ -1,0 +1,12 @@
+fun good(): mutable Iterator<Int> {
+  _ = () -> yield 37;
+  yield 9
+}
+
+fun main(): void {
+  if (good().collect(Vector) == Vector[9]) {
+    print_string("Pass")
+  } else {
+    print_string("Fail")
+  }
+}

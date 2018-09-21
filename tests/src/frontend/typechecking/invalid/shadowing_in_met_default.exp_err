@@ -1,0 +1,7 @@
+File "./typechecking/invalid/shadowing_in_met_default.sk", line 5, characters 7-7:
+x is already bound in this scope. A name may be bound only once in a given scope. Use '!x = ...' to assign a new value to an existing name.
+3 |     f: Int = {
+4 |       x = 1;
+5 |       x = 2;
+  |       ^
+6 |       x

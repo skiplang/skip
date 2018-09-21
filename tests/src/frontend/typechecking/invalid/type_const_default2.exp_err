@@ -1,0 +1,12 @@
+File "./typechecking/invalid/type_const_default2.sk", line 1, characters 7-9:
+Missing implementation for the type T
+1 | class Foo() {
+  |       ^^^
+2 |   type T default Int;
+
+File "./typechecking/invalid/type_const_default2.sk", line 2, characters 18-20:
+default type values are only meaningful in base classes
+1 | class Foo() {
+2 |   type T default Int;
+  |                  ^^^
+3 | }

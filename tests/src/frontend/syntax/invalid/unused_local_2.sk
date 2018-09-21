@@ -1,0 +1,5 @@
+fun foo(): void {
+  (1, 2) match {
+  | (x, _) -> void
+  }
+}

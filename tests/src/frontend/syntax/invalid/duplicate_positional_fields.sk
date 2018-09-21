@@ -1,0 +1,5 @@
+class C(p: Int, p: String) {}
+
+fun main(): void {
+  print_raw("Fail")
+}

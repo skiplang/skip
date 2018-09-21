@@ -1,0 +1,14 @@
+class Foo<T>(x: T) {
+  static fun bar<Tv>(c: () -> Tv): Foo<Tv> {
+    Foo(c())
+  }
+  fun get(): T {
+    this.x
+  }
+}
+
+fun main(): void {
+  f: () -> Int = (() -> 42);
+  v = Foo::bar(f);
+  print_raw(if (v.get() == 42) "Pass\n" else "Fail")
+}

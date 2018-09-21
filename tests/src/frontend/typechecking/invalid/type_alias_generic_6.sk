@@ -1,0 +1,2 @@
+class MyMap<+K: Orderable, +V>(K, V)
+type MM<V> = MyMap<V>;

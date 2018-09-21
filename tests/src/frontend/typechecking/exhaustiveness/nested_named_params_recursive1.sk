@@ -1,0 +1,13 @@
+base class F {
+  children =
+  | A{x: Int}
+  | B{x: Int, y: F}
+}
+
+fun main(): void {
+  print_raw(
+    B{x => 1, y => A{x => 1}} match {
+    | B{x => Int _, y => F _} -> "Pass\n"
+    },
+  )
+}

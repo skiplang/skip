@@ -1,0 +1,4 @@
+fun main(): void {
+  42;
+  print_raw("Fail");
+}

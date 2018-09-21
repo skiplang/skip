@@ -1,0 +1,11 @@
+@no_inline
+fun loopForever(): void {
+  loopForever()
+}
+
+fun main(): void {
+  if (arguments().size() == 9999999) {
+    loopForever();
+  };
+  print_string("Pass")
+}

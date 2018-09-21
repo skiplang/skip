@@ -1,0 +1,32 @@
+File "./typechecking/invalid/invariance2.sk", line 22, characters 9-17:
+Invalid argument
+20 |     }
+21 |   );
+22 |   store(stringFun);
+   |         ^^^^^^^^^
+23 |   print_raw(
+
+File "./typechecking/invalid/invariance2.sk", line 5, characters 40-43:
+The invariant type: Some<String>
+3 | mutable class StringFun<-T>(mutable value: T ~> String)
+4 |
+5 | fun store(stringFun: mutable StringFun<Some<String>>): void {
+  |                                        ^^^^
+6 |   f: Some<String> ~> String = (
+
+File "./typechecking/invalid/invariance2.sk", line 16, characters 33-39:
+Is incompatible with the invariant type: Option<String>
+14 |
+15 | fun main(): void {
+16 |   stringFun = mutable StringFun<?String>(m ~>
+   |                                 ^^^^^^^
+17 |     m match {
+
+File "./typechecking/invalid/invariance2.sk", line 5, characters 40-43:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Option<String>
+3 | mutable class StringFun<-T>(mutable value: T ~> String)
+4 |
+5 | fun store(stringFun: mutable StringFun<Some<String>>): void {
+  |                                        ^^^^
+6 |   f: Some<String> ~> String = (

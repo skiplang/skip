@@ -1,0 +1,15 @@
+base class B {
+  macro fun toVector(): Vector<this> {
+    Vector<#ThisClass>[this]
+  }
+}
+
+class C{} extends B {
+  fun toString(): String {
+    "C"
+  }
+}
+
+fun main(): void {
+  print_string(C{}.toVector()[0].toString())
+}

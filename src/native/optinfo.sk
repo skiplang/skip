@@ -1,0 +1,503 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module OptimizerInfo;
+
+// Transient data we compute for an optimization pass.
+mutable class .OptimizerInfo{
+  mutable f: Function,
+  idToBlock: mutable BlockIDToBlock,
+  idToInstr: mutable InstrIDToInstr,
+  instrToBlock: mutable InstrIDToBlockID,
+  mutable constantsChanged: Bool = false,
+  mutable _lazyConstants: mutable UnorderedSet<
+    Constant,
+  > = mutable UnorderedSet[],
+  mutable _computedConstants: Bool = false,
+  mutable _lazyReversePostorder: Array<BlockID> = Array[],
+  mutable _lazyBlockToPredecessors: mutable Array<
+    Array<BlockID>,
+  > = mutable Array[],
+  mutable _lazyDominatorParent: Array<BlockID> = Array[],
+  mutable _lazyDominatorChildren: Array<Array<BlockID>> = Array[],
+  mutable lazyRefcounts: Array<Int> = Array[],
+} {
+  static fun make(f: Function): mutable OptimizerInfo {
+    mutable static{
+      f,
+      idToBlock => BlockIDToBlock::make(f),
+      idToInstr => InstrIDToInstr::make(f),
+      instrToBlock => InstrIDToBlockID::make(f),
+    }
+  }
+
+  mutable fun iid(): InstrID {
+    this.idToInstr.allocID()
+  }
+
+  readonly fun getInstr(id: InstrID): Instr {
+    this.idToInstr[id]
+  }
+
+  readonly fun getBlock(id: BlockID): Block {
+    this.idToBlock[id]
+  }
+
+  mutable fun getConstants(): mutable UnorderedSet<Constant> {
+    // Create the table the first time anyone asks. The theory is that we
+    // often won't create constants so there's no need to make it.
+    if (!this._computedConstants) {
+      this.!_computedConstants = true;
+      this.!_lazyConstants = this.f.constants.clone()
+    };
+    this._lazyConstants
+  }
+
+  // Intern a Constant. If we already have this value interned, returns the
+  // existing Instr, else adds x to the intern table, returns it, and sets
+  // the "constantsChanged" flag to remember that something changed.
+  mutable fun getConstant(x: Constant): Constant {
+    // Insert, but if it's already there, just return the old value.
+    c = this.getConstants();
+    if (c.maybeInsert(x)) {
+      this.!constantsChanged = true;
+      this.idToInstr.insert(x);
+      x
+    } else {
+      this.idToInstr.freeID(x.id);
+      c[x]
+    }
+  }
+
+  mutable fun reversePostorder(): Array<BlockID> {
+    if (this._lazyReversePostorder.isEmpty()) {
+      entry = this.f.blocks[0];
+
+      // Use an explicit recursion stack to avoid blowing the program
+      // stack recursing through a large function.
+      stack = mutable Vector[];
+      pushed = Array::mfill(this.idToBlock.size(), false);
+      visited = mutable Vector[];
+      visited.ensureCapacity(this.f.blocks.size());
+
+      // Seed the recursion stack with the entry block.
+      pushed.set(entry.id.id, true);
+      stack.push((entry, 0));
+
+      while (!stack.isEmpty()) {
+        (b, successorIndex) = stack.pop();
+        successors = b.successors();
+
+        if (successorIndex == successors.size()) {
+          // All successors have been visited.
+          visited.push(b.id);
+        } else {
+          child = successors[successorIndex].target;
+
+          stack.push((b, successorIndex + 1));
+          if (!pushed[child.id]) {
+            pushed.set(child.id, true);
+            stack.push((this.getBlock(child), 0))
+          }
+        }
+      };
+
+      visited.reverse();
+
+      entry.pos.invariant(visited[0] == entry.id, "expected entry");
+
+      this.!_lazyReversePostorder = visited.toArray()
+    };
+
+    this._lazyReversePostorder
+  }
+
+  mutable fun instrUniquelyReferenced(instrID: InstrID): Bool {
+    if (this.getInstr(instrID).id != instrID) {
+      // This Instr was replaced during this optimization pass.
+      // Conservatively assume it's not uniquely referenced.
+      false
+    } else {
+      if (this.lazyRefcounts.isEmpty()) {
+        r = Array::mfill(this.idToInstr.size(), 0);
+
+        for (b in this.f.blocks) {
+          for (instr in b.instrs) {
+            instr.visitInputs(in_ -> r.set(in_.id, r[in_.id] + 1), this)
+          }
+        };
+
+        this.!lazyRefcounts = freeze(r)
+      };
+
+      // A new Instr might be out of bounds, or might be in an unvisited "0"
+      // slot. Either way, claim it's not uniquely referenced.
+      this.lazyRefcounts.maybeGet(instrID.id).default(0) == 1
+    }
+  }
+
+  mutable fun getPredecessors(b: BlockID): Array<BlockID> {
+    p = this._lazyBlockToPredecessors;
+    if (p.isEmpty()) {
+      !p = computePredecessors(this.f, this.reversePostorder(), this.idToBlock);
+      this.!_lazyBlockToPredecessors = p
+    };
+    p[b.id]
+  }
+
+  // When parent's BlockSuccessors change from old to new, update the
+  // cached predecessors for all affected Blocks.
+  mutable fun updatePredecessors(
+    parent: BlockID,
+    old: Array<BlockSuccessor>,
+    new: Array<BlockSuccessor>,
+  ): void {
+    p = this._lazyBlockToPredecessors;
+    if (!p.isEmpty()) {
+      // Remove predecessors for successors that went away.
+      seen = mutable UnorderedSet[];
+      for (bs in new) _ = seen.maybeInsert(bs.target.id);
+      for (bs in old) {
+        target = bs.target.id;
+        if (seen.maybeInsert(target)) {
+          oldPredecessors = p[target];
+          newPredecessors = oldPredecessors.filter(pred -> pred != parent);
+          invariant(
+            newPredecessors.size() == oldPredecessors.size() - 1,
+            "Did not find predecessor we expected to remove.",
+          );
+          p.set(target, newPredecessors)
+        }
+      };
+
+      // Add predecessors for successors that showed up.
+      seen.clear();
+      for (bs in old) _ = seen.maybeInsert(bs.target.id);
+      for (bs in new) {
+        target = bs.target.id;
+        if (seen.maybeInsert(target)) {
+          p.set(target, p[target].concat(Array[parent]))
+        }
+      }
+    }
+  }
+
+  readonly fun dominatorTreeComputed(): Bool {
+    !this._lazyDominatorParent.isEmpty()
+  }
+
+  private mutable fun computeDominatorTree(): Array<BlockID> {
+    if (!this.dominatorTreeComputed()) {
+      this.!_lazyDominatorParent = Dominator.computeDominatorTree(this)
+    };
+    this._lazyDominatorParent
+  }
+
+  // Returns the immediate parent in the dominator tree. The entry block is
+  // the root of the tree and has no dominator, so it will return a negative
+  // BlockID.
+  mutable fun getDominator(b: BlockID): BlockID {
+    this.computeDominatorTree()[b.id]
+  }
+
+  mutable fun getDominatorChildren(b: BlockID): Array<BlockID> {
+    if (this._lazyDominatorChildren.isEmpty()) {
+      this.!_lazyDominatorChildren = Dominator.computeDominatorChildren(
+        this.computeDominatorTree(),
+        this,
+      )
+    };
+    this._lazyDominatorChildren[b.id]
+  }
+
+  // Given a method call, invoke the given callback for every method
+  // implementation it might invoke. If the callback ever returns false
+  // this stops iterating. Returns false iff any callback ever returned
+  // false.
+  mutable fun allMethodImplementations(
+    call: CallMethodBase,
+    env: GlobalEnv,
+    func: (SClass, SFunctionID, FunSuperpositionID, FunSuperpositionID) -> Bool,
+  ): Bool {
+    pos = call.pos;
+    objType = this.getInstr(call.obj()).typ;
+
+    this.f.superpositions.all(sposn -> {
+      methodSuperposition = call.smap[sposn];
+
+      objType.typeInSuperposition(sposn).forEachConcreteSubtype(env, sc -> {
+        code = sc.getMethod(call.method, methodSuperposition, pos);
+        callee = FunSuperpositionID(sc.superposition, methodSuperposition);
+        func(sc, code, sposn, callee)
+      })
+    })
+  }
+
+  // invoke func on every method implementation it might invoke. If func
+  // returns true, stop and return true. Returns true iff func ever returned
+  // true.
+  mutable fun anyMethodImplementation(
+    call: CallMethodBase,
+    env: GlobalEnv,
+    func: (SClass, SFunctionID, FunSuperpositionID, FunSuperpositionID) -> Bool,
+  ): Bool {
+    !this.allMethodImplementations(call, env, (a, b, c, d) -> !func(a, b, c, d))
+  }
+}
+
+class IDNotFound(msg: String) extends Exception {
+  fun getMessage(): String {
+    this.msg
+  }
+}
+
+// This maps a small-integer-based key (like InstrID or BlockID) to an
+// object like Instr or Block using a simple lookup table. See the subclasses
+// for specific use cases.
+//
+// The size of the table is determined by the biggest index, so sparse indexes
+// are inefficient.
+mutable base class IDMap<Key: HasIDValue<Int> & Show, Val> final {
+  protected vec: mutable Vector<?Val> = mutable Vector[],
+  protected pos: Pos,
+  private mutable nextAllocIndex: Int = 0,
+} {
+  static deferred fun mcreate(
+    reserve: Int = 0,
+    pos: Pos = FileRange.builtin,
+  ): mutable this {
+    mutable static{vec => Vector::mfill(reserve, (None() : ?Val)), pos}
+  }
+
+  readonly fun maybeGet(id: Key): ?Val {
+    this.vec.maybeGet(id.idValue()).default(None())
+  }
+
+  readonly fun get(id: Key): Val {
+    this.maybeGet(id) match {
+    | Some(x) -> x
+    | None() ->
+      throw IDNotFound(
+        `${this.pos}: Internal error: attempt to ask for nonexistent ${id}`,
+      )
+    }
+  }
+
+  mutable fun remove(key: Key): void {
+    if (!this.contains(key)) {
+      throwKeyNotFound()
+    };
+    this.vec.set(key.idValue(), None());
+    this.freeID(key)
+  }
+
+  // Map Key to Val, auto-growing the mapping as necessary.
+  mutable fun set(id: Key, val: Val): void {
+    n = id.idValue();
+    if (n >= this.size()) {
+      this.vec.resize(n + 1, None())
+    };
+    this.vec.set(n, Some(val))
+  }
+
+  overridable mutable fun add(id: Key, val: Val): void {
+    if (this.contains(id)) {
+      throw Duplicate()
+    };
+    this.set(id, val)
+  }
+
+  readonly fun size(): Int {
+    this.vec.size()
+  }
+
+  private readonly fun indexIsAllocated(n: Int): Bool {
+    this.vec.maybeGet(n).maybe(false, x -> x.isSome())
+  }
+
+  // Is this ID currently being used?
+  readonly fun contains(key: Key): Bool {
+    this.indexIsAllocated(key.idValue())
+  }
+
+  readonly fun each(f: Val -> void): void {
+    for (v in this.vec) {
+      v match {
+      | Some(x) -> f(x)
+      | None() -> void
+      }
+    }
+  }
+
+  readonly fun values(): mutable Iterator<Val> {
+    for (v in this.vec) {
+      v match {
+      | Some(x) -> yield x
+      | None() -> void
+      }
+    }
+  }
+
+  readonly fun reduce<U>(f: (U, Val) -> U, init: U): U {
+    this.vec.reduce(
+      (u, v) ->
+        v match {
+        | Some(x) -> f(u, x)
+        | None() -> u
+        },
+      init,
+    )
+  }
+
+  // Allocate an ID not currently in use. This may reuse a a "hole" that
+  // exists in the numbering space, but does not guarantee it.
+  mutable protected fun allocIndex(): Int {
+    while ({
+      id = this.nextAllocIndex;
+      this.!nextAllocIndex = id + 1;
+      this.indexIsAllocated(id)
+    }) void;
+
+    this.nextAllocIndex - 1
+  }
+
+  mutable fun freeID(id: Key): void {
+    // This should only be used when we tentatively asked for an ID but
+    // changed our mind, as when creating a Constant that already exists.
+    invariant(!this.contains(id), "Freeing ID in use");
+    this.!nextAllocIndex = min(this.nextAllocIndex, id.idValue())
+  }
+
+  readonly fun clone(): mutable this {
+    mutable static{vec => this.vec.clone(), pos => this.pos}
+  }
+}
+
+// Workaround for T28022384 where we can't have a conditional method on IDMap.
+mutable base class InsertableIDMap<
+  Key: HasIDValue<Int> & Show,
+  Val: HasID<Key>,
+> extends IDMap<Key, Val> {
+  mutable fun insert(val: Val): void {
+    this.set(val.id, val)
+  }
+
+  readonly fun map(f: Val -> Val): mutable this {
+    result = static::mcreate(this.size());
+    this.each(val -> result.insert(f(val)));
+    result
+  }
+}
+
+// Visit all Instrs in a Function.
+private fun forEachInstr(f: Function, g: (Instr -> void)): void {
+  f.params.each(g);
+  f.constants.each(g);
+  for (b in f.blocks) {
+    b.params.each(g);
+    b.instrs.each(g)
+  }
+}
+
+// Maps InstrID -> Instr.
+mutable class InstrIDToInstr extends InsertableIDMap<InstrID, Instr> {
+  static fun make(f: Function): mutable InstrIDToInstr {
+    maxInstrID = -1;
+    forEachInstr(f, instr -> !maxInstrID = max(maxInstrID, instr.id.id));
+    map = InstrIDToInstr::mcreate(maxInstrID + 1, f.pos);
+    forEachInstr(f, instr -> map.add(instr.id, instr));
+    map
+  }
+
+  mutable fun add(id: InstrID, val: Instr): void {
+    if (this.contains(id)) {
+      this.pos.die(`Adding duplicate ${id}: new is ${val}, old is ${this[id]}`)
+    };
+    this.set(id, val)
+  }
+
+  mutable fun allocID(): InstrID {
+    InstrID(this.allocIndex())
+  }
+}
+
+// Maps InstrID -> BlockID (for its containing block).
+// Constants and FuncParams do not have a block.
+mutable class InstrIDToBlockID extends IDMap<InstrID, BlockID> {
+  static fun make(f: Function): mutable InstrIDToBlockID {
+    maxInstrID = -1;
+    for (b in f.blocks) {
+      for (instr in b.params) !maxInstrID = max(maxInstrID, instr.id.id);
+      for (instr in b.instrs) !maxInstrID = max(maxInstrID, instr.id.id)
+    };
+
+    map = InstrIDToBlockID::mcreate(maxInstrID + 1, f.pos);
+    f.blocks.each(map.recordBlock);
+    map
+  }
+
+  mutable fun recordBlock(b: Block): void {
+    record: (Instr -> void) = (x -> this.set(x.id, b.id));
+    b.params.each(record);
+    b.instrs.each(record)
+  }
+}
+
+// Maps BlockID -> Block.
+mutable class BlockIDToBlock extends InsertableIDMap<BlockID, Block> {
+  static fun make(f: Function): mutable BlockIDToBlock {
+    maxBlockID = f.blocks.foldl((acc, b) -> max(acc, b.id.id), -1);
+    map = BlockIDToBlock::mcreate(maxBlockID + 1, f.pos);
+    for (x in f.blocks) map.add(x.id, x);
+    map
+  }
+
+  mutable fun allocID(): BlockID {
+    BlockID(this.allocIndex())
+  }
+}
+
+// Computes the predecessors of every block reachable from the entry block.
+// Unreachable blocks and the entry block itself will have zero predecessors.
+fun computePredecessors(
+  _f: Function,
+  reversePostorder: Array<BlockID>,
+  idToBlock: mutable BlockIDToBlock,
+): mutable Array<Array<BlockID>> {
+  emptyList: List<BlockID> = List[];
+  predecessors = Array::mfill(idToBlock.size(), emptyList);
+
+  for (blockID in reversePostorder) {
+    b = idToBlock[blockID];
+    for (s in b.successors()) {
+      index = s.target.idValue();
+      head = predecessors[index];
+
+      // Don't add the same block to the same predecessor list twice.
+      // We know if this happens it will be the most recently added value.
+      isDuplicate = head match {
+      | List.Cons(id, _) -> id == b.id
+      | _ -> false
+      };
+
+      if (!isDuplicate) {
+        predecessors.set(index, List.Cons(b.id, head))
+      }
+    }
+  };
+
+  // Convert to immutable array form.
+  empty: Array<BlockID> = Array[];
+  Array::mfillBy(predecessors.size(), i -> {
+    x = predecessors[i];
+    if (x.isEmpty()) {
+      empty
+    } else {
+      x.collect(Array)
+    }
+  })
+}

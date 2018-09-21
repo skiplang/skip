@@ -1,0 +1,63 @@
+File "./typechecking/invalid/this_base_class.sk", line 8, characters 7-7:
+Invalid override for the field 'foo' on child 'A' for parent 'MyBase'
+ 6 | }
+ 7 |
+ 8 | class A() extends MyBase {
+   |       ^
+ 9 |   fun foo(_: this): this {
+
+File "./typechecking/invalid/this_base_class.sk", line 2, characters 11-14:
+The type: MyBase
+1 | base class MyBase {
+2 |   fun foo(this): this;
+  |           ^^^^
+3 |   fun foo_myself(): this {
+
+File "./typechecking/invalid/this_base_class.sk", line 9, characters 14-17:
+Is not a subtype of: A
+ 7 |
+ 8 | class A() extends MyBase {
+ 9 |   fun foo(_: this): this {
+   |              ^^^^
+10 |     this
+
+File "./typechecking/invalid/this_base_class.sk", line 9, characters 14-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: MyBase
+ 7 |
+ 8 | class A() extends MyBase {
+ 9 |   fun foo(_: this): this {
+   |              ^^^^
+10 |     this
+
+File "./typechecking/invalid/this_base_class.sk", line 15, characters 3-10:
+The value returned from the function is incompatible with the return type 'T'
+13 |
+14 | fun test<T: MyBase>(x: T): T {
+15 |   x.foo(x)
+   |   ^^^^^^^^
+16 | }
+
+File "./typechecking/invalid/this_base_class.sk", line 2, characters 18-21:
+The type: MyBase
+1 | base class MyBase {
+2 |   fun foo(this): this;
+  |                  ^^^^
+3 |   fun foo_myself(): this {
+
+File "./typechecking/invalid/this_base_class.sk", line 14, characters 28-28:
+Is not a subtype of: T
+12 | }
+13 |
+14 | fun test<T: MyBase>(x: T): T {
+   |                            ^
+15 |   x.foo(x)
+
+File "./typechecking/invalid/this_base_class.sk", line 14, characters 28-28:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: MyBase
+12 | }
+13 |
+14 | fun test<T: MyBase>(x: T): T {
+   |                            ^
+15 |   x.foo(x)

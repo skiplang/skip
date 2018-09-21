@@ -1,0 +1,3 @@
+class Bar() {}
+
+type Foo<T> = Bar<T>; /* expected 0 params */

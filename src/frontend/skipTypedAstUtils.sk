@@ -1,0 +1,106 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Helpers for the typed abstract syntax tree. */
+/*****************************************************************************/
+
+module alias T = SkipTypedAst;
+
+/*****************************************************************************/
+/* Returns the type of an expression. */
+/*****************************************************************************/
+module SkipTypedAstUtils;
+
+fun get_type(p: T.Expr): T.Type_ {
+  (ty, _e) = p;
+  ty
+}
+
+fun get_type_of_pattern(p: T.Pattern): T.Type_ {
+  (ty, _pat) = p;
+  ty
+}
+
+fun type_of__(ty: T.Type_): T.Type__ {
+  ty.i1
+}
+
+fun expr_of__(ex: T.Expr): T.Expr__ {
+  ex.i1.i1
+}
+
+/*****************************************************************************/
+/* Returns the position of an expression */
+/*****************************************************************************/
+
+fun expr_pos(p: T.Expr): FileRange {
+  (_type, (pos, _expr)) = p;
+  pos
+}
+
+fun get_pos_of_type(ty: T.Type_): FileRange {
+  ty.i0
+}
+
+fun pattern_pos(p: T.Pattern): FileRange {
+  (_type, (pos, _pat)) = p;
+  pos
+}
+
+fun patterns_of_mbl(mbl: List<T.Match_branch>): List<T.Pattern> {
+  mbl
+    .map((p) -> {
+      (pat, _, _) = p;
+      pat
+    })
+    .flatten()
+}
+
+fun pattern_of__(param: T.Pattern): T.Pattern__ {
+  (_, (_, p)) = param;
+  p
+}
+
+fun pattern_is_exhaustive(pat: T.Pattern): Bool {
+  pattern_of__(pat) match {
+  | T.Pat_var _ -> true
+  | T.Pat_literal _ -> false
+  /* TODO: should do a type test here */
+  | T.Pat_type _ -> false
+  | T.Pat_as(pat1, _) -> pattern_is_exhaustive(pat1)
+  }
+}
+
+fun match_branch_is_if(mb: T.Match_branch): Bool {
+  mb match {
+  | (_, Some(_), _) -> true
+  | _ -> false
+  }
+}
+
+fun params_pattern_is_exhaustive(param_pats: ?Parameters<T.Pattern>): Bool {
+  param_pats.isNone() || param_pats.fromSome().all(pattern_is_exhaustive)
+}
+
+fun is_class_object(str: String): Bool {
+  ((str == "Base") || (str == "Class")) || (str == "Concrete")
+}
+
+fun is_class_object_name(n: T.Name): Bool {
+  is_class_object(n.i1)
+}
+
+const default_binding_info: T.Binding_info = T.Binding_info{
+  captured => false,
+  updated => false,
+  read => false,
+};
+
+fun binding_needs_ref(p: T.Binding_info): Bool {
+  p.captured && p.updated
+}

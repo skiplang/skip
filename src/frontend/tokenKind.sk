@@ -1,0 +1,590 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module TokenKind;
+
+// Use an extra base class here so that we can use algebraic
+// children here.
+base class SkipTokenKind extends TokenKind {
+  children =
+  | TYPE_IDENTIFIER()
+  | NONTYPE_IDENTIFIER()
+  | MACRO_TYPE_IDENTIFIER()
+  | MACRO_NONTYPE_IDENTIFIER()
+
+  // Literals
+  | INTEGER_LITERAL()
+  | FLOAT_LITERAL()
+  | CHAR_LITERAL()
+  | STRING_LITERAL()
+  | TEMPLATE_LITERAL_STRING()
+
+  // Keywords
+  | AS()
+  | ASYNC()
+  | AWAIT()
+  | BREAK()
+  | CATCH()
+  | CHILDREN()
+  | CLASS()
+  | CONCURRENT()
+  | CONST()
+  | CONTINUE()
+  | DO()
+  | ELSE()
+  | EXTENDS()
+  | FALSE()
+  | FOR()
+  | FUN()
+  | IF()
+  | IN()
+  | LOOP()
+  | MACRO()
+  | MODULE()
+  | MUTABLE()
+  | NATIVE()
+  | PRIVATE()
+  | PROTECTED()
+  | READONLY()
+  | RETURN()
+  | STATIC()
+  | THIS()
+  | THROW()
+  | TRAIT()
+  | TRUE()
+  | TRY()
+  | USES()
+  | VOID()
+  | WHILE()
+  | YIELD()
+  // TODO remove these with recursive descent parser
+  | OVERRIDABLE()
+  | MEMOIZED()
+  | FROZEN()
+  | DEFERRED()
+  | UNTRACKED()
+  | FINAL()
+  | FOREACH_FIELD()
+
+  // 4.3.4.5 Operators and Punctuators
+  | OPEN_PAREN()
+  | CLOSE_PAREN()
+  | OPEN_CURLY()
+  | CLOSE_CURLY()
+  | COMMA()
+  | COLON()
+  | OPEN_ANGLE()
+  | CLOSE_ANGLE()
+  | SEMI_COLON()
+  | EQUAL()
+  | PERIOD()
+  | BAR_BAR()
+  | AMPERSAND_AMPERSAND()
+  | EQUAL_EQUAL()
+  | BANG_EQUAL()
+  | LESS_EQUAL()
+  | GREATER_EQUAL()
+  | COLON_COLON()
+  | PLUS()
+  | MINUS()
+  | STAR()
+  | SLASH()
+  | PERCENT()
+  | BANG()
+  | BAR()
+  | AMPERSAND()
+  | AT()
+  | ARROW()
+  | TILDE_ARROW()
+  | FAT_ARROW()
+  | OPEN_SQUARE()
+  | CLOSE_SQUARE()
+  | QUESTION()
+  | CARET()
+  | EQUAL_DOT()
+  | PIPE()
+  | BACK_TICK()
+  | TEMPLATE_LITERAL_EXPRESSION_START()
+
+  fun toString(): String {
+    this match {
+    | TYPE_IDENTIFIER() -> "type identifier"
+    | NONTYPE_IDENTIFIER() -> "non-type identifier"
+    | MACRO_TYPE_IDENTIFIER() -> "macro type identifier"
+    | MACRO_NONTYPE_IDENTIFIER() -> "macro non-type identifier"
+
+    // Literals
+    | INTEGER_LITERAL() -> "integer literal"
+    | FLOAT_LITERAL() -> "float literal"
+    | CHAR_LITERAL() -> "char literal"
+    | STRING_LITERAL() -> "string literal"
+
+    // Keywords
+    | AS() -> "as"
+    | ASYNC() -> "async"
+    | AWAIT() -> "await"
+    | BREAK() -> "break"
+    | CATCH() -> "catch"
+    | CHILDREN() -> "children"
+    | CLASS() -> "class"
+    | CONCURRENT() -> "concurrent"
+    | CONST() -> "const"
+    | CONTINUE() -> "continue"
+    | DO() -> "do"
+    | ELSE() -> "else"
+    | EXTENDS() -> "extends"
+    | FALSE() -> "false"
+    | FOR() -> "for"
+    | FUN() -> "fun"
+    | IF() -> "if"
+    | IN() -> "in"
+    | LOOP() -> "loop"
+    | MACRO() -> "macro"
+    | MODULE() -> "module"
+    | MUTABLE() -> "mutable"
+    | NATIVE() -> "native"
+    | PRIVATE() -> "private"
+    | PROTECTED() -> "protected"
+    | READONLY() -> "readonly"
+    | RETURN() -> "return"
+    | STATIC() -> "static"
+    | THIS() -> "this"
+    | THROW() -> "throw"
+    | TRAIT() -> "trait"
+    | TRUE() -> "true"
+    | TRY() -> "try"
+    | USES() -> "uses"
+    | VOID() -> "void"
+    | WHILE() -> "while"
+    | YIELD() -> "yield"
+    // TODO remove these with recursive descent parser
+    | OVERRIDABLE() -> "overridable"
+    | MEMOIZED() -> "memoized"
+    | FROZEN() -> "frozen"
+    | DEFERRED() -> "deferred"
+    | UNTRACKED() -> "untracked"
+    | FINAL() -> "final"
+    | FOREACH_FIELD() -> "#forEachField"
+
+    | OPEN_PAREN() -> "("
+    | CLOSE_PAREN() -> ")"
+    | OPEN_CURLY() -> "{"
+    | CLOSE_CURLY() -> "}"
+    | COMMA() -> ","
+    | COLON() -> ":"
+    | OPEN_ANGLE() -> "<"
+    | CLOSE_ANGLE() -> ">"
+    | SEMI_COLON() -> ";"
+    | EQUAL() -> "="
+    | PERIOD() -> "."
+    | BAR_BAR() -> "||"
+    | AMPERSAND_AMPERSAND() -> "&&"
+    | EQUAL_EQUAL() -> "=="
+    | BANG_EQUAL() -> "!="
+    | LESS_EQUAL() -> "<="
+    | GREATER_EQUAL() -> ">="
+    | COLON_COLON() -> "::"
+    | PLUS() -> "+"
+    | MINUS() -> "-"
+    | STAR() -> "*"
+    | SLASH() -> "/"
+    | PERCENT() -> "%"
+    | BANG() -> "!"
+    | BAR() -> "|"
+    | AMPERSAND() -> "&"
+    | AT() -> "@"
+    | ARROW() -> "->"
+    | TILDE_ARROW() -> "~>"
+    | FAT_ARROW() -> "=>"
+    | OPEN_SQUARE() -> "["
+    | CLOSE_SQUARE() -> "]"
+    | QUESTION() -> "?"
+    | CARET() -> "^"
+    | EQUAL_DOT() -> "=."
+    | PIPE() -> "|>"
+    | BACK_TICK() -> "`"
+    | TEMPLATE_LITERAL_STRING() -> "template literal string"
+    | TEMPLATE_LITERAL_EXPRESSION_START() -> "$"
+    }
+  }
+}
+
+extension base class TokenKind {
+  fun isKeyword(): Bool {
+    this match {
+    | AS()
+    | ASYNC()
+    | AWAIT()
+    | BREAK()
+    | CATCH()
+    | CHILDREN()
+    | CLASS()
+    | CONCURRENT()
+    | CONST()
+    | CONTINUE()
+    | DO()
+    | ELSE()
+    | EXTENDS()
+    | FALSE()
+    | FOR()
+    | FUN()
+    | IF()
+    | IN()
+    | LOOP()
+    | MODULE()
+    | MUTABLE()
+    | NATIVE()
+    | PRIVATE()
+    | PROTECTED()
+    | READONLY()
+    | RETURN()
+    | STATIC()
+    | THIS()
+    | THROW()
+    | TRAIT()
+    | TRUE()
+    | TRY()
+    | USES()
+    | VOID()
+    | WHILE()
+    | YIELD()
+    // TODO remove these with recursive descent parser
+    | OVERRIDABLE()
+    | MEMOIZED()
+    | FROZEN()
+    | DEFERRED()
+    | UNTRACKED()
+    | FINAL()
+    | FOREACH_FIELD() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isPunctuation(): Bool {
+    this match {
+    | OPEN_PAREN()
+    | CLOSE_PAREN()
+    | OPEN_CURLY()
+    | CLOSE_CURLY()
+    | COMMA()
+    | COLON()
+    | OPEN_ANGLE()
+    | CLOSE_ANGLE()
+    | SEMI_COLON()
+    | EQUAL()
+    | PERIOD()
+    | BAR_BAR()
+    | AMPERSAND_AMPERSAND()
+    | EQUAL_EQUAL()
+    | BANG_EQUAL()
+    | LESS_EQUAL()
+    | GREATER_EQUAL()
+    | COLON_COLON()
+    | PLUS()
+    | MINUS()
+    | STAR()
+    | SLASH()
+    | PERCENT()
+    | BANG()
+    | BAR()
+    | AMPERSAND()
+    | AT()
+    | ARROW()
+    | TILDE_ARROW()
+    | FAT_ARROW()
+    | OPEN_SQUARE()
+    | CLOSE_SQUARE()
+    | QUESTION()
+    | CARET()
+    | EQUAL_DOT()
+    | PIPE()
+    | BACK_TICK()
+    | TEMPLATE_LITERAL_EXPRESSION_START() ->
+      true
+    | _ -> false
+    }
+  }
+
+  // Complex tokens' value varies from token to token.
+  fun isComplex(): Bool {
+    this match {
+    | TYPE_IDENTIFIER()
+    | NONTYPE_IDENTIFIER()
+    | MACRO_TYPE_IDENTIFIER()
+    | MACRO_NONTYPE_IDENTIFIER()
+
+    // Literals
+    | INTEGER_LITERAL()
+    | FLOAT_LITERAL()
+    | CHAR_LITERAL()
+    | STRING_LITERAL()
+    | TEMPLATE_LITERAL_STRING()
+    | ERROR() ->
+      true
+
+    | _ -> false
+    }
+  }
+
+  // Simple Tokens have fixed text value: keywords, operators, bof, eof
+  fun isSimple(): Bool {
+    !this.isComplex();
+  }
+
+  fun isValidMethodName(): Bool {
+    this match {
+    | TokenKind.NONTYPE_IDENTIFIER()
+    | TokenKind.BAR_BAR()
+    | TokenKind.AMPERSAND_AMPERSAND()
+    | TokenKind.EQUAL_EQUAL()
+    | TokenKind.BANG_EQUAL()
+    | TokenKind.LESS_EQUAL()
+    | TokenKind.OPEN_ANGLE()
+    | TokenKind.GREATER_EQUAL()
+    | TokenKind.CLOSE_ANGLE()
+    | TokenKind.PLUS()
+    | TokenKind.MINUS()
+    | TokenKind.STAR()
+    | TokenKind.SLASH()
+    | TokenKind.PERCENT()
+    | TokenKind.BANG() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isMultiplicativeOperator(): Bool {
+    this match {
+    | TokenKind.STAR()
+    | TokenKind.SLASH()
+    | TokenKind.PERCENT() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isAdditiveOperator(): Bool {
+    this match {
+    | TokenKind.PLUS()
+    | TokenKind.MINUS() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isRelationalOperator(): Bool {
+    this match {
+    | TokenKind.OPEN_ANGLE()
+    | TokenKind.CLOSE_ANGLE()
+    | TokenKind.LESS_EQUAL()
+    | TokenKind.GREATER_EQUAL() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isEqualityOperator(): Bool {
+    this match {
+    | TokenKind.EQUAL_EQUAL()
+    | TokenKind.BANG_EQUAL() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isLogicalAndOperator(): Bool {
+    this match {
+    | TokenKind.AMPERSAND_AMPERSAND() -> true
+    | _ -> false
+    }
+  }
+
+  fun isLogicalOrOperator(): Bool {
+    this match {
+    | TokenKind.BAR_BAR() -> true
+    | _ -> false
+    }
+  }
+
+  fun isPipeOperator(): Bool {
+    this match {
+    | TokenKind.PIPE() -> true
+    | _ -> false
+    }
+  }
+
+  fun isUnaryOperator(): Bool {
+    this match {
+    | TokenKind.BANG()
+    | TokenKind.MINUS()
+    | TokenKind.AWAIT()
+    | TokenKind.ASYNC()
+    | TokenKind.MUTABLE() ->
+      true
+    | _ -> false
+    }
+  }
+
+  fun isBinaryOperator(): Bool {
+    this match {
+    | TokenKind.STAR()
+    | TokenKind.SLASH()
+    | TokenKind.PERCENT()
+    | TokenKind.PLUS()
+    | TokenKind.MINUS()
+    | TokenKind.OPEN_ANGLE()
+    | TokenKind.CLOSE_ANGLE()
+    | TokenKind.LESS_EQUAL()
+    | TokenKind.GREATER_EQUAL()
+    | TokenKind.EQUAL_EQUAL()
+    | TokenKind.BANG_EQUAL()
+    | TokenKind.AMPERSAND_AMPERSAND()
+    | TokenKind.BAR_BAR()
+    | TokenKind.PIPE() ->
+      true
+    | _ -> false
+    }
+  }
+
+  // Higher precedence binds tighter.
+  // Equal precedence binds left to right.
+  // NOTE: This is an approximation only. The source of truth is in the
+  // Grammar parsed by SkipParser.
+  // TODO: Use this to implement the Pratt optimization in the parser.
+  fun precedence(): Int {
+    this match {
+    | TokenKind.STAR()
+    | TokenKind.SLASH()
+    | TokenKind.PERCENT() ->
+      7
+    | TokenKind.PLUS()
+    | TokenKind.MINUS() ->
+      6
+    | TokenKind.OPEN_ANGLE()
+    | TokenKind.CLOSE_ANGLE()
+    | TokenKind.LESS_EQUAL()
+    | TokenKind.GREATER_EQUAL() ->
+      5
+    | TokenKind.EQUAL_EQUAL()
+    | TokenKind.BANG_EQUAL() ->
+      4
+    | TokenKind.AMPERSAND_AMPERSAND() -> 3
+    | TokenKind.BAR_BAR() -> 2
+    | TokenKind.PIPE() -> 1
+    | _ -> invariant_violation("Binary operator expected")
+    }
+  }
+}
+
+fun tokenKinds(): List<TokenKind> {
+  List<TokenKind>[
+    ERROR(),
+    BEGINNING_OF_FILE(),
+    END_OF_FILE(),
+
+    TYPE_IDENTIFIER(),
+    NONTYPE_IDENTIFIER(),
+    MACRO_TYPE_IDENTIFIER(),
+    MACRO_NONTYPE_IDENTIFIER(),
+
+    // Literals
+    INTEGER_LITERAL(),
+    FLOAT_LITERAL(),
+    CHAR_LITERAL(),
+    STRING_LITERAL(),
+    TEMPLATE_LITERAL_STRING(),
+
+    // Keywords
+    AS(),
+    ASYNC(),
+    AWAIT(),
+    BREAK(),
+    CATCH(),
+    CHILDREN(),
+    CLASS(),
+    CONCURRENT(),
+    CONST(),
+    CONTINUE(),
+    DO(),
+    ELSE(),
+    EXTENDS(),
+    FALSE(),
+    FOR(),
+    FUN(),
+    IF(),
+    IN(),
+    LOOP(),
+    MODULE(),
+    MUTABLE(),
+    NATIVE(),
+    PRIVATE(),
+    PROTECTED(),
+    READONLY(),
+    RETURN(),
+    STATIC(),
+    THIS(),
+    THROW(),
+    TRAIT(),
+    TRUE(),
+    TRY(),
+    USES(),
+    VOID(),
+    WHILE(),
+    YIELD(),
+    // TODO remove these with recursive descent parser
+    OVERRIDABLE(),
+    MEMOIZED(),
+    FROZEN(),
+    DEFERRED(),
+    UNTRACKED(),
+    FINAL(),
+    FOREACH_FIELD(),
+
+    // 4.3.4.5 Operators and Punctuators
+    OPEN_PAREN(),
+    CLOSE_PAREN(),
+    OPEN_CURLY(),
+    CLOSE_CURLY(),
+    COMMA(),
+    COLON(),
+    OPEN_ANGLE(),
+    CLOSE_ANGLE(),
+    SEMI_COLON(),
+    EQUAL(),
+    PERIOD(),
+    BAR_BAR(),
+    AMPERSAND_AMPERSAND(),
+    EQUAL_EQUAL(),
+    BANG_EQUAL(),
+    LESS_EQUAL(),
+    GREATER_EQUAL(),
+    COLON_COLON(),
+    PLUS(),
+    MINUS(),
+    STAR(),
+    SLASH(),
+    PERCENT(),
+    BANG(),
+    BAR(),
+    AMPERSAND(),
+    AT(),
+    ARROW(),
+    TILDE_ARROW(),
+    FAT_ARROW(),
+    OPEN_SQUARE(),
+    CLOSE_SQUARE(),
+    QUESTION(),
+    CARET(),
+    EQUAL_DOT(),
+    PIPE(),
+    BACK_TICK(),
+    TEMPLATE_LITERAL_EXPRESSION_START(),
+  ]
+}
+
+module end;

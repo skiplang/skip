@@ -1,0 +1,7 @@
+// When the LHS in LHS . RHS is a function with no Arguments
+// it's likely that the error is forgotten parens.
+// Put out a did-you-mean error in this case.
+//
+fun f(myMap: mutable UnorderedMap<String, Int>): void {
+  myMap.items.each(_ -> void) // should be myMap.items()
+}

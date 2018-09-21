@@ -1,0 +1,21 @@
+fun main(): void {
+  print_raw("OK")
+}
+trait Foo {
+  fun one(inst): Int;
+}
+
+trait Bar extends Foo {
+  fun one(inst): Int {
+    1
+  }
+  fun two(inst): Int;
+}
+
+base class MyParent uses Bar {
+  fun two(MyParent): Int {
+    2
+  }
+}
+
+class MyChild() extends MyParent

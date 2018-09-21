@@ -1,0 +1,177 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SkipProjectConfig;
+
+// Defines the schema for Skip project files.
+// Whenever you edit the data structures in this file, you must regenerate Config.Json.sk.
+//
+// To regenerate it run:
+//   tools/generate_project_config
+//
+// This is a manual step to speed up the build process.
+
+// A ProgramUnit is either a Library or a Program.
+//
+// A Program has a 'main' function, and may not be referenced by other ProgramUnits.
+//
+// A Library must not have a main function and may be referenced by other
+// ProgramUnits.
+@serialize
+base class ProgramUnitKind() {
+  children =
+  | Library()
+  | Program()
+
+  fun isProgram(): Bool
+  | Library() -> false
+  | Program() -> true
+
+  fun isLibrary(): Bool
+  | Library() -> true
+  | Program() -> false
+}
+
+// A reference to a ProgramUnit in a Project file.
+//
+// It is an error for a ProgramUnit to reference a ProgramUnit whose kind is
+// not Library.
+//
+// It is an error for a ProgramUnit to directly, or indirectly reference
+// its contained project.
+@serialize
+class ProgramUnitReference{
+  // The path relative to the directory containing this project file
+  // of the directory containing the referenced project file.
+  path: String,
+  // The name of the referenced ProgramUnit. If omitted, then the reference
+  // is to the default ProgramUnit in the referenced Project file.
+  name: ?String,
+}
+
+// A variable enables paramaterizing ProgramUnits.
+// Variables must be set to one of a fixed set of values.
+//
+// Variables are global (aka scoped to the entire solution).
+//
+// Default variable values are used for IDEs only; compilation
+// scenarios must specify values for every variable in the solution.
+@serialize
+class Variable{
+  // Must be unique within the scope of the entire solution.
+  values: Vector<String>,
+  // Used for IDE scenarios only.
+  default: String,
+}
+
+// Specifies the set of source files to include when the Parameter's variable
+// is set to a specific value.
+@serialize
+class ParameterValue{
+  // The rules for sources and excludes are the same as those for ProgramUnits.
+  sources: Vector<String>,
+  excludes: Vector<String>,
+}
+
+// A group of Skip source files which must be compiled together.
+//
+// A ProgramUnit may reference other Library ProgramUnits.
+//
+// The set of source files which must be analyzed is the transitive closure
+// of all the source files in this ProgramUnit and all referenced ProgramUnits.
+//
+// ProgramUnits may be parameterized on variables.
+@serialize
+class ProgramUnit{
+  // File and directory names of all the .sk files in the program unit.
+  //
+  // Directory names denote all files within that directory with the .sk extension.
+  // Directory names do not include files in sub-directories.
+  //
+  // If the source ends in '**' then all .sk files within that directory
+  // are included recursively.
+  //
+  // Wildcards/regular expressions are not permitted in sources.
+  sources: Vector<String>,
+  // Regular expressions which, if matched, filter out files from sources.
+  // If a source entry refers to a file directly, then excludes are not applied.
+  // If a source entry is a directory, then excludes are applied to each .sk
+  // file in that directory.
+  // If a source entry is a recursive directory, then excludes are applied to
+  // each sub-directory found, as well as to each .sk file found.
+  excludes: Vector<String>,
+  kind: ProgramUnitKind,
+  references: Vector<ProgramUnitReference>,
+  // Parameters specify sources files which are included based on the value of a
+  // variable.
+  parameters: Map<String, Map<String, ParameterValue>>,
+}
+
+// Specifies a set of ProgramUnits.
+//
+// A Project must define at least one ProgramUnit.
+// The ProgramUnits directly defined in a Project must have distinct names.
+//
+// All file and directory names are relative to the directory containing the
+// project file.
+//
+// The Project file for a given source file is the file named 'skip.project.json'
+// in the nearest enclosing directory.
+//
+//
+// The Default Program Unit for a Project
+//
+// If specified, the default field must name a ProgramUnit defined in this file
+// and that ProgramUnit is the default ProgramUnit for this project.
+//
+// If there is only 1 program unit, then it is the default ProgramUnit.
+//
+// If there is more than 1 ProgramUnit defined in a Project file and no
+// default is specified, then the project has no default program unit.
+//
+//
+// Project Source Files
+//
+// The set of source files in a project is the union of the set of files in
+// each of its program units.
+// - A source file may not be contained in more than one project.
+//
+//
+// The Default ProgramUnit for a Source File
+//
+// To map a source file to its default ProgramUnit:
+//  - first, find the unique Project containing that source file, if it has one.
+//  - if a source file is directly contained in the default ProgramUnit
+//    in its Project file then that is the default ProgramUnit for that source file.
+//  - otherwise, the first ProgramUnit in the project file which directly contains
+//    the source file is the default ProgramUnit for that source file.
+//  - otherwise, the source file is not directly containined in any ProgramUnits
+//    in its Project. Its default ProgramUnit is the default ProgramUnit
+//    for the analyzed source file's Project.
+//
+//
+// The set of source files used to analyze a single source file include the
+// transitive closure of all source files in the default ProgramUnit for that
+// source file. If a source file is not included in any ProgramUnits defined in
+// its contained project, and that project has no default ProgramUnit then it is
+// analyzed alone.
+//
+// Projects may also define variables. A Variable must be set to one of a set
+// of distinct values. Variables are used to conditionally include source files
+// in ProgramUnits. Variables are global to the entire solution.
+@serialize
+class Project{
+  skipVersion: String,
+  programUnits: Map<String, ProgramUnit>,
+  // The name of the default ProgramUnit.
+  default: ?String,
+  variables: Map<String, Variable>,
+}
+
+const CURRENT_VERSION: String = "1.0";
+
+module end;

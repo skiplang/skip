@@ -1,0 +1,5 @@
+class X {
+  children =
+  | L(int: Int)
+  | R(str: String)
+}

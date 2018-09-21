@@ -1,0 +1,12 @@
+File "./typechecking/invalid/unimplementable_conditional_method_1.sk", line 1, characters 7-8:
+Missing implementation for the method abs
+1 | class No() {
+  |       ^^
+2 |   fun abs[Int: String](): void;
+
+File "./typechecking/invalid/unimplementable_conditional_method_1.sk", line 2, characters 7-9:
+Defined here
+1 | class No() {
+2 |   fun abs[Int: String](): void;
+  |       ^^^
+3 | }

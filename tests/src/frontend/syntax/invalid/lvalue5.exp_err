@@ -1,0 +1,45 @@
+File "./syntax/invalid/lvalue5.sk", line 12, characters 5-8:
+The value returned from the function is incompatible with the return type 'UnorderedMap<K2, V2>'
+10 |
+11 |   fun set<K2, V2>[K: K2, V: V2](K2, V2): UnorderedMap<K2, V2> {
+12 |     this
+   |     ^^^^
+13 |   }
+
+File "./syntax/invalid/lvalue5.sk", line 1, characters 7-11:
+The type: MyMap<K, V>
+1 | class MyMap<+K, +V>() {
+  |       ^^^^^
+2 |   static fun createFromItems<K2: Orderable, V2, I: readonly Sequence<(K2, V2)>>[
+
+File "./syntax/invalid/lvalue5.sk", line 11, characters 42-53:
+Is not a subtype of: UnorderedMap<K2, V2>
+ 9 |   }
+10 |
+11 |   fun set<K2, V2>[K: K2, V: V2](K2, V2): UnorderedMap<K2, V2> {
+   |                                          ^^^^^^^^^^^^
+12 |     this
+
+File "./syntax/invalid/lvalue5.sk", line 18, characters 3-7:
+Non-void expressions must be the last expression in an expression sequence. Either use the expression result, or bind it to a variable whose name starts with '_'.
+16 | fun main(): void {
+17 |   x = (MyMap[] : MyMap<Int, String>);
+18 |   x![0] = "Hello";
+   |   ^^^^^
+19 |   print_raw(x[0])
+
+File "./syntax/invalid/lvalue5.sk", line 11, characters 42-53:
+The type: UnorderedMap<Int, String>
+ 9 |   }
+10 |
+11 |   fun set<K2, V2>[K: K2, V: V2](K2, V2): UnorderedMap<K2, V2> {
+   |                                          ^^^^^^^^^^^^
+12 |     this
+
+File "./syntax/invalid/lvalue5.sk", line 18, characters 3-7:
+Is not a subtype of: void
+16 | fun main(): void {
+17 |   x = (MyMap[] : MyMap<Int, String>);
+18 |   x![0] = "Hello";
+   |   ^^^^^
+19 |   print_raw(x[0])

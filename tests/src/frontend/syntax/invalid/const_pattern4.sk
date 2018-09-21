@@ -1,0 +1,8 @@
+const MyText: String = "foo" + "barbaz";
+
+fun shouldFail(x: String): String {
+  x match {
+  | MyText -> "Pass\n"
+  | _ -> "You shouldn't be seeing this\n"
+  }
+}

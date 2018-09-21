@@ -1,0 +1,12 @@
+class Foo<T>(x: T) {
+  fun add<U>[T: U](x: U): Foo<U> {
+    Foo(x)
+  }
+  fun inv(x: T): Foo<T> {
+    this.add(x)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

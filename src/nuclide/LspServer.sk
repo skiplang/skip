@@ -1,0 +1,485 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Nuclide LSP provider for Skip.
+// Implementation of the VS Code Language Server Protocol
+// https://github.com/Microsoft/language-server-protocol/blob/gh-pages/specification.md
+
+module alias LSP = LanguageServerProtocol;
+module alias RPC = JsonRpc;
+
+type ParseTree = ParseTree.ParseTree;
+
+mutable class LspServer{
+  includeTypeErrors: Bool,
+  reportDoneProcessing: Bool,
+  enableConsole: Bool = true,
+  enableLogging: Bool = true,
+  mutable serverInit: ?LSP.InitializeParams = None(),
+  mutable logger: ?mutable MessageLogger = None(),
+  mutable hasSeenShutdown: Bool = false,
+  openFiles: mutable OpenFiles = mutable OpenFiles{},
+} {
+  readonly fun isInitialized(): Bool {
+    this.serverInit.isSome()
+  }
+
+  mutable fun logMessage(message: String): void {
+    this.logger.each(logger -> logger.logMessage(message))
+  }
+
+  mutable fun logJson(kind: LogKind, contents: JSON.Value): void {
+    this.logger.each(logger -> logger.logJson(kind, contents))
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Console functions log messages to the Nuclide Console (Menu View - Toggle Console).
+  mutable fun sendToConsole(type: LSP.MessageType, message: String): void {
+    if (this.enableConsole) {
+      this.sendNotification(
+        LSP.LogMessageNotification{
+          params => LSP.LogMessageParams{
+            type,
+            message => `SKIP_LSP ${this.serverInit.map(params ~>
+              params.rootUri
+            ).default("")}: ` + message,
+          },
+        },
+      )
+    }
+  }
+
+  mutable fun consoleLog(message: String): void {
+    this.sendToConsole(LSP.MessageType::Log, message)
+  }
+
+  mutable fun consoleInfo(message: String): void {
+    this.sendToConsole(LSP.MessageType::Info, message)
+  }
+
+  mutable fun consoleWarning(message: String): void {
+    this.sendToConsole(LSP.MessageType::Warning, message)
+  }
+
+  mutable fun consoleError(message: String): void {
+    this.sendToConsole(LSP.MessageType::Error, message)
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Low level message send/receive
+  mutable fun sendRpcMessage(message: RPC.Message): void {
+    json = message.toJson();
+    this.logJson(LogKindSend(), json);
+    LSP.writeMessage(json);
+  }
+
+  mutable fun sendSuccess(id: Int, result: JSON.Value): void {
+    this.sendRpcMessage(RPC.Success{id, result})
+  }
+
+  mutable fun sendErrorResponse(id: Int, code: Int, message: String): void {
+    this.sendRpcMessage(
+      RPC.ErrorResponse{id, error => RPC.ResponseError{code, message}},
+    );
+  }
+
+  mutable fun sendErrorNotification(code: Int, message: String): void {
+    this.sendRpcMessage(
+      RPC.ErrorNotification{error => RPC.ResponseError{code, message}},
+    );
+  }
+
+  mutable fun sendNotification(notification: LSP.Notification): void {
+    this.sendRpcMessage(notification.toRpc())
+  }
+
+  untracked mutable fun readMessage(): ?LSP.Message {
+    messageString = try {
+      LSP.readMessage(this.logMessage);
+    } catch {
+    | e ->
+      this.logJson(
+        LogKindError(),
+        `Error reading message: ${e.getMessage()}`.toJson(),
+      );
+      this.consoleError(`Error reading message: ${e.getMessage()}`);
+      return None()
+    };
+
+    this.logMessage(`Received message ${messageString}`);
+    json = try {
+      JSON.decode(messageString);
+    } catch {
+    | JSON.InvalidJSONError(position, message) ->
+      error = `Bad JSON in message at ${position}: ${message}`;
+      this.sendErrorNotification(RPC.ParseError, error);
+      this.consoleError(error);
+      return None()
+    | e -> throw e
+    };
+    this.logJson(LogKindReceive(), json);
+    try {
+      Some(LSP.Message::fromJson(json));
+    } catch {
+    | e ->
+      error = `Invalid request: '${e.getMessage()}' for '${messageString}'`;
+      json.expectObject().maybeGetInt("id") match {
+      | None() -> this.sendErrorNotification(RPC.InvalidRequest, error)
+      | Some(id) -> this.sendErrorResponse(id, RPC.InvalidRequest, error)
+      };
+      this.consoleError(error);
+      None()
+    };
+  }
+
+  mutable fun reportDoneWithMessage(): void {
+    if (this.reportDoneProcessing) {
+      this.sendNotification(
+        LSP.TelemetryNotification{
+          params => JSON.String("skip_lsp: Done Processing"),
+        },
+      )
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Message Handling
+  untracked mutable fun run(): Int {
+    this.logMessage(`Initializing with type errors: ${this.includeTypeErrors}`);
+    this.consoleLog(`Initializing with type errors: ${this.includeTypeErrors}`);
+
+    try {
+      loop {
+        message = this.readMessage() match {
+        | None() -> continue
+        | Some(value) -> value
+        };
+
+        // Always ok to service the exit notification
+        if (message is LSP.ExitNotification _) {
+          return if (this.hasSeenShutdown) {
+            this.consoleLog(`Exiting after shutdown`);
+            0
+          } else {
+            this.consoleLog(`Exiting no shutdown`);
+            1
+          }
+        };
+
+        if (this.isInitialized()) {
+          message match {
+          // Process Lifecycle
+          | LSP.InitializeRequest{id} ->
+            this.handleUnexpectedInitializeRequest(id)
+          | LSP.ShutdownRequest{id} ->
+            this.handleShutdownRequest(id);
+            // TODO: In theory, should wait for either an ExitNotification
+            // or for the parent process to exit. In practice, Nuclide often
+            // terminates before sending the ExitNotification, and we don't have
+            // a library function to detect the exit of the parent process.
+            // So instead, just exit when we see the shutdown.
+            this.consoleLog(`Shutting down`);
+            return 1
+
+          // Document life cycle notifications
+          | LSP.TextDocumentDidOpenNotification{params} ->
+            this.handleDidOpen(params)
+          | LSP.DidChangeTextDocumentNotification{params} ->
+            this.handleDidChangeNotification(params)
+          | LSP.TextDocumentDidCloseNotification{params} ->
+            this.handleDidClose(params)
+          | LSP.TextDocumentDidSaveNotification{params} ->
+            this.handleDidSave(params)
+
+          // Requests
+          | LSP.TextDocumentDocumentSymbolRequest{id, params} ->
+            this.handleDocumentSymbolRequest(id, params)
+          | LSP.DocumentFormattingRequest{id, params} ->
+            this.handleDocumentFormattingRequest(id, params)
+          | LSP.TextDocumentGotoDefinitionRequest{id, params} ->
+            // TOOD: this.handleGotoDefinitionRequest(id, params)
+            _ = params;
+            this.sendSuccess(id, JSON.Array(Vector[]))
+
+          // Request lifecycle
+          | LSP.CancelRequest{params} ->
+            this.handleCancelNotification(params.id)
+
+          | _ -> this.handleUnknownMessage(message)
+          }
+        } else {
+          message match {
+          | LSP.InitializeRequest{id, params} ->
+            this.handleInitializeRequest(id, params)
+          | LSP.Notification _ ->
+            // Notifications may be ignored before initialize is recieved.
+            void
+          | LSP.Request{id} ->
+            this.sendErrorResponse(
+              id,
+              LSP.ServerNotInitialized,
+              "Server not initialized",
+            )
+          }
+        };
+
+        this.reportDoneWithMessage();
+      }
+    } catch {
+    | e ->
+      this.logMessage(`Uncaught exception: ${e.getMessage()}`);
+      this.consoleError(`Uncaught exception: ${e.getMessage()}`);
+      3
+    }
+  }
+
+  mutable fun handleUnexpectedInitializeRequest(id: Int): void {
+    this.sendErrorResponse(id, RPC.InvalidRequest, "Server already initialized")
+  }
+
+  mutable fun handleShutdownRequest(id: Int): void {
+    this.!hasSeenShutdown = true;
+    this.sendSuccess(id, JSON.Null())
+  }
+
+  mutable fun handleDidOpen(params: LSP.DidOpenTextDocumentParams): void {
+    document = params.textDocument;
+    uri = document.uri;
+    this.updateFile(uri, Some(document.version), document.text);
+  }
+
+  mutable fun handleDidClose(params: LSP.DidCloseTextDocumentParams): void {
+    uri = params.textDocument.uri;
+    this.openFiles.maybeRemove(uri);
+    this.sendErrorsForFile(uri);
+  }
+
+  readonly fun hasAnyParseErrors(): Bool {
+    this.openFiles.hasAnyParseErrors()
+  }
+
+  untracked mutable fun logLeakCounters(names: Array<String>): void {
+    for (name in names) {
+      this.consoleLog(`  ${Debug.getLeakCounter(name)} ${name}`);
+    }
+  }
+
+  untracked mutable fun handleDidSave(
+    params: LSP.DidSaveTextDocumentParams,
+  ): void {
+    filename = fileOfUri(params.textDocument.uri);
+    if (!this.hasAnyParseErrors()) {
+      if (this.includeTypeErrors) {
+        this.logMessage(`Type checking: ${filename}`);
+        this.consoleLog(`Type checking: ${filename}`);
+
+        errors = SkipAnalyze.analyzeFile(filename);
+
+        this.consoleLog(`Done type checking: ${filename}. ${errors} errors.`);
+        this.logLeakCounters(Array["Invocation", "Revision"]);
+
+        this.setTypeErrors(errorsToDiagnostics(errors));
+      }
+    } else {
+      this.consoleLog(`Not type checking: ${filename}, parse errors present.`);
+    }
+  }
+
+  mutable fun setTypeErrors(errors: Map<String, Vector<LSP.Diagnostic>>): void {
+    urisToSend = this.openFiles.setTypeErrors(errors);
+    urisToSend.each(this.sendErrorsForFile);
+  }
+
+  mutable fun sendErrorsForFile(uri: String): void {
+    diagnostics = this.openFiles.getErrorsForFile(uri);
+    this.consoleLog(
+      `sendErrorsForFile: ${uri}. ${diagnostics.toJson().encode()}`,
+    );
+
+    this.sendNotification(
+      LSP.PublishDiagnosticsNotification{
+        params => LSP.PublishDiagnosticsParams{uri, diagnostics => diagnostics},
+      },
+    )
+  }
+
+  mutable fun handleDidChangeNotification(
+    params: LSP.DidChangeTextDocumentParams,
+  ): void {
+    changes = params.contentChanges;
+    if (changes.size() != 1 || !changes[0].isFullChange()) {
+      this.sendErrorNotification(
+        RPC.InvalidParams,
+        "Expected full change, got incremental change",
+      )
+    } else {
+      uri = params.textDocument.uri;
+      this.updateFile(uri, params.textDocument.version, changes[0].text);
+    }
+  }
+
+  mutable fun updateFile(uri: String, version: ?Int, contents: String): void {
+    this.openFiles.set(uri, version, contents);
+    this.sendErrorsForFile(uri);
+  }
+
+  mutable fun handleUnknownMessage(message: LSP.Message): void {
+    message match {
+    | LSP.Request{id} ->
+      this.sendErrorResponse(id, RPC.MethodNotFound, "Unknown method")
+    | _ -> this.sendErrorNotification(RPC.MethodNotFound, "Unknown method")
+    }
+  }
+
+  mutable fun handleCancelNotification(id: Int): void {
+    _ = id;
+    // Do nothing. Cancel requests are ignorable.
+    void
+  }
+
+  mutable fun handleDocumentFormattingRequest(
+    id: Int,
+    params: LSP.DocumentFormattingParams,
+  ): void {
+    uri = params.textDocument.uri;
+    this.openFiles.maybeGet(uri) match {
+    | None() ->
+      this.sendErrorResponse(
+        id,
+        RPC.InvalidParams,
+        "Formatting file is not open",
+      )
+    | Some(SourceFileInfo{parseErrors, tree, contents}) ->
+      if (parseErrors.size() > 0) {
+        // NOTE: The LSP spec permits null as a result, but Nuclide produces
+        // log spam on a null result.
+        this.sendSuccess(id, JSON.Array(Vector[]))
+      } else {
+        formatted = mutable Vector[];
+        print = text -> formatted.push(text);
+        ctx = SkipPrinter.Context{contents};
+        Doc.printDoc(SkipPrinter.print(ctx, tree), print);
+        print("\n");
+        newText = formatted.join("");
+        range = convertRange(tree.range);
+        edit = LSP.TextEdit{range, newText};
+        this.sendSuccess(id, JSON.Array(Vector[edit.toJson()]))
+      }
+    }
+  }
+
+  untracked mutable fun handleGotoDefinitionRequest(
+    id: Int,
+    params: LSP.TextDocumentPositionParams,
+  ): void {
+    if (this.includeTypeErrors) {
+      uri = params.textDocument.uri;
+      this.openFiles.maybeGet(uri) match {
+      | None() ->
+        this.sendErrorResponse(
+          id,
+          RPC.InvalidParams,
+          "Goto definition file is not open",
+        )
+      | Some _ ->
+        filename = fileOfUri(uri);
+        this.logMessage("GotoDefinition: checkFile ...");
+        SkipAnalyze.checkFile(filename) match {
+        | Success(program) ->
+          position = FilePosition{
+            filename,
+            position => params.position.toPosition(),
+          };
+          definitionOpt = GetDefinition.definitionOfPos(program, position);
+          if (definitionOpt.isNone()) {
+            this.sendSuccess(id, JSON.Array(Vector[]))
+          } else {
+            definition = definitionOpt.fromSome();
+
+            // find definition of source
+            this.logMessage("GotoDefinition: finding definition ...");
+            destination = GetDefinition.posOfDefinition(definition);
+            this.sendSuccess(id, convertFileRange(destination).toJson())
+          }
+        | Failure _ -> this.sendSuccess(id, JSON.Array(Vector[]))
+        }
+      }
+    } else {
+      this.sendSuccess(id, JSON.Array(Vector[]))
+    }
+  }
+
+  mutable fun handleDocumentSymbolRequest(
+    id: Int,
+    params: LSP.DocumentSymbolParams,
+  ): void {
+    uri = params.textDocument.uri;
+    this.openFiles.maybeGet(uri) match {
+    | None() ->
+      this.sendErrorResponse(
+        id,
+        RPC.InvalidParams,
+        "DocumentSymbol file is not open",
+      )
+    | Some(SourceFileInfo{parseErrors, tree}) ->
+      this.sendSuccess(id, createOutline(uri, tree, parseErrors).toJson())
+    }
+  }
+
+  mutable fun handleInitializeRequest(
+    id: Int,
+    params: LSP.InitializeParams,
+  ): void {
+    this.!serverInit = Some(params);
+
+    if (this.enableLogging) {
+      logger = MessageLogger::create(
+        "/tmp/skip_lsp" +
+          params.rootUri.replace("file://", "_").replace("/", "_"),
+      );
+      this.consoleLog(`Set log file: ${logger.logFileName}`);
+      this.!logger = Some(logger);
+    };
+
+    this.sendSuccess(
+      id,
+      LSP.InitializeResult{
+        capabilities => LSP.ServerCapabilities{
+          textDocumentSync => LSP.TextDocumentSyncOptions{
+            openClose => true,
+            change => LSP.TextDocumentSyncKind::Full,
+            willSave => false,
+            willSaveWaitUntil => true,
+            // Need includeText for testing.
+            save => Some(LSP.SaveOptions{includeText => true}),
+          },
+          hoverProvider => false,
+          completionProvider => None(),
+          signatureHelpProvider => None(),
+          definitionProvider => true,
+          typeDefinitionProvider => None(),
+          implementationProvider => None(),
+          referencesProvider => false,
+          documentHighlightProvider => false,
+          documentSymbolProvider => true,
+          workspaceSymbolProvider => false,
+          codeActionProvider => false,
+          codeLensProvider => None(),
+          documentFormattingProvider => true,
+          documentRangeFormattingProvider => false,
+          documentOnTypeFormattingProvider => None(),
+          renameProvider => false,
+          documentLinkProvider => None(),
+          colorProvider => None(),
+          executeCommandProvider => None(),
+          workspace => None(),
+          experimental => None(),
+        },
+      }.toJson(),
+    );
+  }
+}

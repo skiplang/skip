@@ -1,0 +1,15 @@
+base class L
+base class R
+class A() extends L
+class B() extends L, R
+class C() extends R
+
+fun test<T: L & R>(x: T): void {
+  x match {
+  | B _ -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

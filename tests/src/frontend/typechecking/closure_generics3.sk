@@ -1,0 +1,28 @@
+class Container<T: frozen>() {
+  fun set(T): this {
+    this
+  }
+}
+
+class X() {
+  fun get(): Int {
+    42
+  }
+}
+
+base class Foo<T>
+
+class Bar<T>() extends Foo<T>
+class Baz<T>{closure: T ~> Bool} extends Foo<T>
+
+fun test(): Container<Foo<X>> {
+  c: Container<Foo<X>> = Container();
+  !c=.set(Bar());
+  f: X ~> Bool = (x ~> x.get() == 42);
+  !c=.set(Baz{closure => f});
+  c
+}
+
+fun main(): void {
+  void
+}

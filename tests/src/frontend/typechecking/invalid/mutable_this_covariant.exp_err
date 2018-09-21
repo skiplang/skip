@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_this_covariant.sk", line 17, characters 9-20:
+Invalid argument
+15 | fun main(): void {
+16 |   x = mutable Cov(Inty(42));
+17 |   x.put(Cov(Nully()));
+   |         ^^^^^^^^^^^^
+18 |   _ = x.v.val; //boom
+
+File "./typechecking/invalid/mutable_this_covariant.sk", line 17, characters 13-19:
+The type: Nully
+15 | fun main(): void {
+16 |   x = mutable Cov(Inty(42));
+17 |   x.put(Cov(Nully()));
+   |             ^^^^^^^
+18 |   _ = x.v.val; //boom
+
+File "./typechecking/invalid/mutable_this_covariant.sk", line 16, characters 19-26:
+Is not a subtype of: Inty
+14 |
+15 | fun main(): void {
+16 |   x = mutable Cov(Inty(42));
+   |                   ^^^^^^^^
+17 |   x.put(Cov(Nully()));
+
+File "./typechecking/invalid/mutable_this_covariant.sk", line 16, characters 19-26:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: MyBase
+14 |
+15 | fun main(): void {
+16 |   x = mutable Cov(Inty(42));
+   |                   ^^^^^^^^
+17 |   x.put(Cov(Nully()));

@@ -1,0 +1,9 @@
+fun main(): void {
+  p = (42, "No");
+  print_raw(
+    p match {
+    | (x, y) -> x.toString() + " " + y
+    | _ -> "dead"
+    },
+  )
+}

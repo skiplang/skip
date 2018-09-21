@@ -1,0 +1,20 @@
+class MyMap<+K, +V>() {
+  static fun createFromItems<K2: Orderable, V2, I: readonly Sequence<(K2, V2)>>[
+    K: K2,
+    V: V2,
+  ](
+    I,
+  ): MyMap<K2, V2> {
+    MyMap()
+  }
+
+  fun set<K2, V2>[K: K2, V: V2](K2, V2): UnorderedMap<K2, V2> {
+    this
+  }
+}
+
+fun main(): void {
+  x = (MyMap[] : MyMap<Int, String>);
+  x![0] = "Hello";
+  print_raw(x[0])
+}

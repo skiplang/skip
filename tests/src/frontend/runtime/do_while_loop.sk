@@ -1,0 +1,83 @@
+fun main(): void {
+  i = 0;
+  s = "";
+
+  do {
+    print_string("Pass");
+    break void;
+  } while (true);
+
+  do !i = i + 1 while (i < 10) else print_string("Pass");
+
+  !i = 0;
+  !s = do !i = i + 1 while (i < 10) else "Pass";
+  print_string(s);
+
+  !i = 0;
+  !s = do {
+    if (i == 10) break "Pass";
+    !i = i + 1
+  } while (i < 11) else {
+    "FAIL"
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = do {
+    if (i == 11) break "FAIL";
+    !i = i + 1
+  } while (i < 11) else {
+    "Pass"
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = do continue while (false) else "Pass";
+  print_string(s);
+
+  !i = 0;
+  !s = do break "Pass" while (true) else "FAIL";
+  print_string(s);
+
+  !i = 0;
+  !s = do {
+    if (i < 10) {
+      !i = i + 1;
+      continue
+    };
+    break "Pass";
+  } while (i < 11) else {
+    "FAIL"
+  };
+  print_string(s);
+
+  !i = 0;
+  !s = do {
+    if (i < 11) {
+      !i = i + 1;
+      continue
+    };
+    break "FAIL";
+  } while (i < 10) else {
+    "Pass"
+  };
+  print_string(s);
+
+  try {
+    _ =
+      1 +
+      (do {
+        throw MyExn()
+      } while (true) else {
+        invariant_violation("imposible")
+      })
+  } catch {
+  | e @ MyExn() -> print_string(e.getMessage())
+  }
+}
+
+class MyExn() extends Exception {
+  fun getMessage(): String {
+    "Pass"
+  }
+}

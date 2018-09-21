@@ -1,0 +1,17 @@
+File "./typechecking/invalid/mismatched_variance_unknown_2.sk", line 6, characters 5-22:
+Invalid pattern binding. Cannot bind this expression to a local.
+Try replacing with '_'
+4 | fun no<T>(m: MyBox<T>): void {
+5 |   m match {
+6 |   | o @ MyIndexedBox _ -> _ = o
+  |     ^^^^^^^^^^^^^^^^^^
+7 |   }
+
+File "./typechecking/invalid/mismatched_variance_unknown_2.sk", line 2, characters 20-20:
+This type parameter was unknown when downcasting from the parent type.
+And it has no concrete upper bounds (base or normal classes).
+As such, the type cannot be inferred and cannot be interacted with.
+1 | base class MyBox<+T>(x: T)
+2 | class MyIndexedBox<T> extends MyBox<(Int, T)>
+  |                    ^
+3 |

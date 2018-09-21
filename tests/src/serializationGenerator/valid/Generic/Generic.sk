@@ -1,0 +1,26 @@
+@serialize
+mutable class GenericRecord<T1, T2>{
+  name: String,
+  data1: T1,
+  data2: T2,
+} uses Equality[T1: Equality, T2: Equality], Show[T1: Show, T2: Show] {
+  readonly fun toString[T1: Show, T2: Show](): String {
+    `GenericRecord(${this.name}, ${this.data1}, ${this.data2})`
+  }
+}
+
+fun main(): void {
+  assertSerializes(
+    `{"name": "test", "data1": [1, 2, 3], "data2": {"a": [], "": [0]}}`,
+    GenericRecord::meta(
+      Vector::meta(Int::meta),
+      Map::meta(String::meta, Vector::meta(Int::meta)),
+    ),
+    GenericRecord{
+      name => "test",
+      data1 => Vector[1, 2, 3],
+      data2 => Map["a" => Vector[], "" => Vector[0]],
+    },
+  );
+  print_string("Pass")
+}

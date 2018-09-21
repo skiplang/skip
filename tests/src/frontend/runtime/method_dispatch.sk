@@ -1,0 +1,44 @@
+// Create a funky M-shaped inheritance diagram to challenge vtable layout.
+base class Base1 {
+  fun name1(): String;
+}
+base class Base2 {
+  fun name2(): String;
+}
+
+class A() extends Base1 {
+  fun name1(): String {
+    "A1"
+  }
+}
+class B() extends Base1, Base2 {
+  fun name1(): String {
+    "B1"
+  }
+  fun name2(): String {
+    "B2"
+  }
+}
+class C() extends Base2 {
+  fun name2(): String {
+    "C2"
+  }
+}
+
+@no_inline
+fun dispatch1(x: Base1): String {
+  x.name1()
+}
+
+@no_inline
+fun dispatch2(x: Base2): String {
+  x.name2()
+}
+
+fun main(): void {
+  a = A();
+  b = B();
+  c = C();
+
+  print_raw(dispatch1(a) + dispatch1(b) + dispatch2(b) + dispatch2(c) + "\n")
+}

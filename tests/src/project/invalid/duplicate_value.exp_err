@@ -1,0 +1,2 @@
+File "invalid/duplicate_value/skip.project.json"
+Variable 'v' contains duplicate value 'val1'.

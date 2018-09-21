@@ -1,0 +1,32 @@
+base class P<T, Tz>
+class Foo<T, Tz: Z<T>>(x: Tz) extends P<T, Tz>
+class Bar<T, Tz>() extends P<T, Tz>
+
+base class Z<T>()
+class X<T: Equality & Hashable> extends Z<T>
+base class Y<T: Orderable> extends Z<T> {
+  fun ymet(): void {
+    void
+  }
+}
+class Ya<T: Orderable> extends Y<T>
+class Yb<T: Orderable> extends Y<T>
+
+fun doIt<T, Tz>(p: P<T, Tz>): void {
+  p match {
+  | Foo(x) ->
+    x match {
+    | Y() -> x.ymet()
+    | _ -> void
+    }
+  | _ -> void
+  }
+}
+
+fun main(): void {
+  doIt(Bar());
+  doIt(Foo(X()));
+  doIt(Foo(Ya()));
+  doIt(Foo(Yb()));
+  print_string("Pass")
+}

@@ -1,0 +1,8 @@
+// it's an error to call an untracked fun from a tracked context
+untracked fun f(): String {
+  "OK\n"
+}
+
+fun main(): void {
+  print_raw(f())
+}

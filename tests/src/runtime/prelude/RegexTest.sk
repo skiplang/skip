@@ -1,0 +1,312 @@
+// Disabled until the native backend supports replaceRegex
+// @test
+fun testEscape(): void {
+  assertEqual(
+    Regex.escape("a\\^$.[]|()?*+{}"),
+    "a\\\\\\^\\$\\.\\[\\]\\|\\(\\)\\?\\*\\+\\{\\}",
+  );
+}
+
+@test
+fun testDifferences(): void {
+  // PHP-specific escapes
+  // http://php.net/manual/en/regexp.reference.escape.php
+  assertThrows(() -> Regex::create("\\a")); // BEL character
+  assertThrows(() -> Regex::create("\\A")); // Start of subject
+  assertThrows(() -> Regex::create("\\e")); // ESCAPE character
+  assertThrows(() -> Regex::create("\\E")); // Ignore regex metacharacters
+  assertThrows(() -> Regex::create("\\g")); // Back named reference
+  assertThrows(() -> Regex::create("\\G")); // Assertion start position
+  assertThrows(() -> Regex::create("\\k")); // Back named reference
+  assertThrows(() -> Regex::create("\\K")); // Reset match
+  assertThrows(() -> Regex::create("\\p")); // Unicode property
+  assertThrows(() -> Regex::create("\\P")); // Unicode property
+  assertThrows(() -> Regex::create("\\Q")); // Ignore regex metacharacters
+  assertThrows(() -> Regex::create("\\R")); // Line break
+  assertThrows(() -> Regex::create("\\V")); // Not a \v
+  assertThrows(() -> Regex::create("\\x{0C}")); // Unicode
+  assertThrows(() -> Regex::create("\\z")); // End of subject or newline
+  assertThrows(() -> Regex::create("\\Z")); // End of subject
+
+  // JavaScript-specific escapes
+  assertThrows(() -> Regex::create("\\u000C")); // Unicode
+  assertThrows(() -> Regex::create("\\u{000C}")); // Unicode
+
+  // \0xx Doesn't work with the unicode flag set in JavaScript
+  assertThrows(() -> Regex::create("\\040"));
+  assertThrows(() -> Regex::create("\\0113"));
+
+  // Make sure that odd numbers of escapes are not banned
+  assertTrue("\\a".matches(Regex::create("\\\\a")));
+
+  // PHP-specific groups
+  // http://php.net/manual/en/regexp.reference.recursive.php
+  assertThrows(() -> Regex::create("(?1)"));
+  assertThrows(() -> Regex::create("(?-1)"));
+  assertThrows(() -> Regex::create("(?R)"));
+  assertThrows(() -> Regex::create("(?P>name)"));
+  assertThrows(() -> Regex::create("(?&name)"));
+  // http://php.net/manual/en/regexp.reference.conditional.php
+  assertThrows(() -> Regex::create("(?(a)b|c)"));
+  // http://php.net/manual/en/regexp.reference.onlyonce.php
+  assertThrows(() -> Regex::create("(?>a)"));
+  // http://php.net/manual/en/regexp.reference.assertions.php
+  assertThrows(() -> Regex::create("(?<=a)"));
+  assertThrows(() -> Regex::create("(?<!a)"));
+  // http://php.net/manual/en/regexp.reference.back-references.php
+  assertThrows(() -> Regex::create("(?P=name)"));
+  assertThrows(() -> Regex::create("\\g'name'"));
+  assertThrows(() -> Regex::create("\\g{name}"));
+  assertThrows(() -> Regex::create("\\g<name>"));
+  assertThrows(() -> Regex::create("\\k'name'"));
+  assertThrows(() -> Regex::create("\\k{name}"));
+  assertThrows(() -> Regex::create("\\k<name>"));
+  // http://php.net/manual/en/regexp.reference.internal-options.php
+  assertThrows(() -> Regex::create("(?X)"));
+  assertThrows(() -> Regex::create("((?i)a)"));
+  assertThrows(() -> Regex::create("((?im-sx)a)"));
+
+  // JavaScript-specific flags
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+  assertThrows(() -> Regex::create("a", "g")); // Global
+  assertThrows(() -> Regex::create("a", "y")); // Sticky
+
+  // PHP-specific flags
+  // http://php.net/manual/en/reference.pcre.pattern.modifiers.php
+  assertThrows(() -> Regex::create("a", "s")); // dotall
+  assertThrows(() -> Regex::create("a", "x")); // extended
+  assertThrows(() -> Regex::create("a", "e")); // replace eval
+  assertThrows(() -> Regex::create("a", "A")); // anchored
+  assertThrows(() -> Regex::create("a", "D")); // dollar endonly
+  assertThrows(() -> Regex::create("a", "S")); // several times
+  assertThrows(() -> Regex::create("a", "U")); // ungreedy
+  assertThrows(() -> Regex::create("a", "X")); // extra
+  assertThrows(() -> Regex::create("a", "J")); // info jchanged
+
+  // PHP-specific groups
+  assertThrows(() -> Regex::create("(?|(Sat)ur|(Sun))day"));
+  assertThrows(() -> Regex::create("(?i:saturday|sunday)"));
+
+  // PHP-specific \cX
+  assertThrows(() -> Regex::create("\\c;"));
+  assertThrows(() -> Regex::create("\\cz"));
+  assertThrows(() -> Regex::create("\\c{"));
+
+  // Smart placement of ]
+  // https://stackoverflow.com/questions/34134741/what-is-the-difference-between-php-regex-and-javascript-regex
+  assertThrows(() -> Regex::create("[^][a]"));
+
+  // PHP-specific named character-classes
+  // http://php.net/manual/en/regexp.reference.character-classes.php
+  assertThrows(() -> Regex::create("[01[:alpha:]%]"));
+  assertThrows(() -> Regex::create("[12[:^digit:]]"));
+  // \w and \s are handled differently between backends for unicode characters
+  // Unfortunately it would be unfortunate to prevent those shortcuts and in
+  // practice I expect those differences to not matter. Documenting them here
+  // what the behavior should be on every implementation:
+  // assertTrue("\u2003".matches(Regex::create("\\s")));
+  // assertTrue("é".matches(Regex::create("\\w")));
+  // assertFalse("é".matches(Regex::create("\\W")));
+}
+
+@test
+fun testSameBehaviors(): void {
+  // ^ $
+  assertTrue("abc".matches(Regex::create("^a")));
+  assertTrue("abc".matches(Regex::create("c$")));
+
+  // *
+  assertTrue("abc".matches(Regex::create("z*")));
+  assertTrue("abc".matches(Regex::create("a*")));
+
+  // +
+  assertTrue("aaabc".matches(Regex::create("a+")));
+  assertTrue("aabc".matches(Regex::create("a+")));
+  assertTrue("abc".matches(Regex::create("a+")));
+  assertFalse("bc".matches(Regex::create("a+")));
+
+  // ?
+  assertTrue(
+    "123abc".match(Regex::create("\\d+")).fromSome().toArray() == Array["123"],
+  );
+  assertTrue(
+    "123abc".match(Regex::create("\\d+?")).fromSome().toArray() == Array["1"],
+  );
+
+  // \
+  assertTrue("a*".matches(Regex::create("a\\*")));
+
+  // |
+  or = "abc".matchAll(Regex::create("b|c")).collect(Vector);
+  assertTrue(or.size() == 2);
+  assertTrue(or[0].toArray() == Array["b"]);
+  assertTrue(or[1].toArray() == Array["c"]);
+
+  // .
+  assertTrue("abc".matches(Regex::create("a.c")));
+  assertFalse("a\nc".matches(Regex::create("a.c")));
+
+  // {}
+  assertTrue("abbc".matches(Regex::create("b{2}")));
+  assertFalse("abbc".matches(Regex::create("b{3}")));
+
+  assertFalse("abbbbc".matches(Regex::create("ab{2,3}c")));
+  assertTrue("abbbc".matches(Regex::create("ab{2,3}c")));
+  assertTrue("abbc".matches(Regex::create("ab{2,3}c")));
+  assertFalse("abc".matches(Regex::create("ab{2,3}c")));
+
+  assertTrue("abbbc".matches(Regex::create("b{2,}")));
+  assertTrue("abbc".matches(Regex::create("b{2,}")));
+  assertFalse("abc".matches(Regex::create("b{2,}")));
+
+  // Non capturing parenthesis
+  assertTrue(
+    "fooo".match(Regex::create("(?:foo)(o)")).fromSome().toArray() ==
+      Array["fooo", "o"],
+  );
+
+  // Positive lookahead
+  assertTrue(
+    "JackSprat".match(Regex::create("Jack(?=Sprat)")).fromSome().toArray() ==
+      Array["Jack"],
+  );
+  assertFalse("JackBauer".matches(Regex::create("Jack(?=Sprat)")));
+
+  // Negative lookahead
+  assertTrue(
+    "31".match(Regex::create("\\d+(?!\\.)")).fromSome().toArray() ==
+      Array["31"],
+  );
+  assertFalse("3.".matches(Regex::create("\\d+(?!\\.)")));
+
+  // \b
+  assertTrue("moon".matches(Regex::create("\\bm")));
+  assertFalse("moon".matches(Regex::create("oo\\b")));
+  assertTrue("moon".matches(Regex::create("oon\\b")));
+  assertTrue("moon sun".matches(Regex::create("oon\\b")));
+
+  // \B
+  assertTrue(
+    "noonday".match(Regex::create("\\B..")).fromSome().toArray() == Array["oo"],
+  );
+  assertTrue(
+    "possibly yesterday.".match(Regex::create("y\\B.")).fromSome().toArray() ==
+      Array["ye"],
+  );
+
+  // \cX
+  assertTrue("\u000D".matches(Regex::create("\\cM")));
+
+  // \d
+  assertTrue("0".matches(Regex::create("\\d")));
+  assertTrue("5".matches(Regex::create("\\d")));
+  assertTrue("9".matches(Regex::create("\\d")));
+  assertFalse("a".matches(Regex::create("\\d")));
+  assertFalse(";".matches(Regex::create("\\d")));
+
+  // \D
+  assertFalse("0".matches(Regex::create("\\D")));
+  assertFalse("5".matches(Regex::create("\\D")));
+  assertFalse("9".matches(Regex::create("\\D")));
+  assertTrue("a".matches(Regex::create("\\D")));
+  assertTrue(";".matches(Regex::create("\\D")));
+
+  // \0 \f \n \r \t \v
+  assertTrue("\0".matches(Regex::create("\\0")));
+  assertTrue("\u000C".matches(Regex::create("\\f")));
+  assertTrue("\u000A".matches(Regex::create("\\n")));
+  assertTrue("\u000D".matches(Regex::create("\\r")));
+  assertTrue("\u0009".matches(Regex::create("\\t")));
+  assertTrue("\u000B".matches(Regex::create("\\v")));
+
+  // \s
+  // Note: JavaScript \s also matches the following:
+  // \u00a0\u1680\u180e\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff
+  assertEqual(
+    " \f\n\r\t\v".matchAll(Regex::create("\\s")).collect(Vector).size(),
+    6,
+  );
+
+  // \w
+  assertEqual(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+      .matchAll(Regex::create("\\w"))
+      .collect(Vector)
+      .size(),
+    63,
+  );
+
+  // \W
+  assertTrue(".".matches(Regex::create("\\W")));
+
+  // \S
+  assertTrue("a".matches(Regex::create("\\S")));
+  assertFalse(" ".matches(Regex::create("\\S")));
+
+  // Back reference
+  assertTrue("aa".matches(Regex::create("(a)\\1")));
+
+  // \xhh
+  assertTrue("\u000C".matches(Regex::create("\\x0C")));
+
+  // []
+  assertTrue("b".matches(Regex::create("[b]")));
+  assertTrue("b".matches(Regex::create("[a-c]")));
+  assertTrue("b".matches(Regex::create("[^c]")));
+  assertTrue(".".matches(Regex::create("[.]")));
+  assertFalse("a".matches(Regex::create("[.]")));
+  assertTrue("\u0008".matches(Regex::create("[\\b]")));
+  assertTrue("-".matches(Regex::create("[a-]")));
+
+  // Unicode
+  assertTrue(
+    "\U0001F389".match(Regex::create(".")).fromSome().toArray() ==
+      Array["\U0001F389"],
+  );
+}
+
+@test
+fun testMatches(): void {
+  assertTrue("abc".matches(Regex::create("a(b)")));
+  assertFalse("abc".matches(Regex::create("a(z)")));
+}
+
+@test
+fun testMatch(): void {
+  a = "abc".match(Regex::create("a(z)"));
+  assertTrue(a.isNone());
+  b = "abc".match(Regex::create("a(b)(c)"));
+  assertTrue(b.fromSome().toArray() == Array["abc", "b", "c"]);
+  c = "abc".match(Regex::create("A", "i"));
+  assertTrue(c.fromSome().toArray() == Array["a"]);
+}
+
+@test
+fun testMatchAll(): void {
+  a = "abcaz".matchAll(Regex::create("a(.)")).collect(Vector);
+  assertEqual(a.size(), 2);
+  assertTrue(a[0].toArray() == Array["ab", "b"]);
+  assertTrue(a[1].toArray() == Array["az", "z"]);
+
+  b = "abcaz".matchAll(Regex::create("x")).collect(Vector);
+  assertEqual(b.size(), 0);
+}
+
+@test
+// Disabled until the native backend supports replaceRegex
+fun testReplaceRegex(): void {
+  a = "abcaz".replaceRegex(Regex::create("a(.)"), v -> v[1] + v[0]);
+  assertEqual(a, "babczaz");
+}
+
+@test
+fun testSplitRegex(): void {
+  a = " a b \tc    ddd ".splitRegex(Regex::create("\\s+")).collect(Vector);
+  assertEqual(a.size(), 6);
+  assertEqual(a[0], "");
+  assertEqual(a[1], "a");
+  assertEqual(a[2], "b");
+  assertEqual(a[3], "c");
+  assertEqual(a[4], "ddd");
+  assertEqual(a[5], "");
+}

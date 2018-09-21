@@ -1,0 +1,17 @@
+File "./typechecking/invalid/memoized_awaitable_no_async.sk", line 1, characters 21-24:
+Invalid return type to a memoized function
+1 | memoized fun bad(): ^Int {
+  |                     ^^^^
+2 |   async {
+
+File "./typechecking/invalid/memoized_awaitable_no_async.sk", line 1, characters 21-24:
+To memoize this awaitable value, the function must be declared as 'async'
+1 | memoized fun bad(): ^Int {
+  |                     ^^^^
+2 |   async {
+
+File "./typechecking/invalid/memoized_awaitable_no_async.sk", line 1, characters 1-8:
+Try declaring this function as 'async' here
+1 | memoized fun bad(): ^Int {
+  | ^^^^^^^^
+2 |   async {

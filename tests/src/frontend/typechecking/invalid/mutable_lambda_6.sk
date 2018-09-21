@@ -1,0 +1,14 @@
+mutable class Foo() {
+  mutable fun doIt(): void {
+    void
+  }
+}
+
+fun apply(f: () ~> void): void {
+  f()
+}
+
+fun no(): void {
+  f = mutable Foo();
+  apply(f.doIt)
+}

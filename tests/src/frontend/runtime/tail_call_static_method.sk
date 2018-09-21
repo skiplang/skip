@@ -1,0 +1,15 @@
+class C() {
+  static fun tc(i: Int): String {
+    if (i == 0) {
+      "Pass\n"
+    } else if (i % 2 == 0) {
+      C::tc(i - 1)
+    } else {
+      static::tc(i - 1)
+    }
+  }
+}
+
+fun main(): void {
+  print_raw(C::tc(1000000))
+}

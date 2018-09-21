@@ -1,0 +1,5 @@
+File "invalid/cycle/skip.project.json"
+Cycle in project definitions
+
+File "invalid/cycle/ref/skip.project.json"
+Referenced from

@@ -1,0 +1,32 @@
+File "./typechecking/invalid/covariant_pattern_1.sk", line 16, characters 22-35:
+Invalid annotation
+14 | fun main(): void {
+15 |   i = mutable Inv(C1());
+16 |   x: mutable Co<P> = mutable Foo(i);
+   |                      ^^^^^^^^^^^^^^
+17 |   x match {
+
+File "./typechecking/invalid/covariant_pattern_1.sk", line 16, characters 17-17:
+The invariant type: P
+14 | fun main(): void {
+15 |   i = mutable Inv(C1());
+16 |   x: mutable Co<P> = mutable Foo(i);
+   |                 ^
+17 |   x match {
+
+File "./typechecking/invalid/covariant_pattern_1.sk", line 15, characters 19-22:
+Is incompatible with the invariant type: C1
+13 |
+14 | fun main(): void {
+15 |   i = mutable Inv(C1());
+   |                   ^^^^
+16 |   x: mutable Co<P> = mutable Foo(i);
+
+File "./typechecking/invalid/covariant_pattern_1.sk", line 15, characters 19-22:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+13 |
+14 | fun main(): void {
+15 |   i = mutable Inv(C1());
+   |                   ^^^^
+16 |   x: mutable Co<P> = mutable Foo(i);

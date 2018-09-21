@@ -1,0 +1,11 @@
+mutable class Foo(mutable x: Int)
+
+fun tester(_: Foo): void {
+  void
+}
+
+fun bar(): void {
+  f = mutable Foo(1);
+  f.!x = 2;
+  tester(f)
+}

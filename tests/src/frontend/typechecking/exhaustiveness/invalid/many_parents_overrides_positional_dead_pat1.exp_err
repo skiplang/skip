@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/many_parents_overrides_positional_dead_pat1.sk", line 18, characters 5-41:
+The following pattern is unused:
+ | Join("a", _, _, "b", _, 3, _, 'c', _)
+16 |   | Join(_, true, _, "b", _, 3, _, 'c', _) -> "P"
+17 |   | Join(_, false, _, "b", _, 3, _, 'c', _) -> "a"
+18 |   | Join("a", _, _, "b", _, 3, _, 'c', _) -> "s1"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 |   | Join(_, _, _, "c", _, _, _, _, _) -> "s2"

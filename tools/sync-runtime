@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+import argparse
+import filecmp
+import os
+import pipes
+import shutil
+
+
+backupDir = None
+
+
+def enumFiles(root):
+    res = set(os.path.relpath(os.path.join(dirpath, f), root)
+              for (dirpath, dirnames, filenames) in os.walk(root)
+              for f in filenames
+              if not f.endswith('.pyc')
+              )
+    return res
+
+
+def mkdir(path):
+    try:
+        os.mkdir(path)
+    except OSError as e:
+        if e.errno == 2: # parent doesn't exist?
+            mkdir(os.path.dirname(path))
+            os.mkdir(path)
+        elif e.errno == 17: # file exists
+            pass
+        else:
+            raise
+
+
+def backup(path):
+    root = os.path.realpath(os.path.join(__file__, '../..'))
+
+    global backupDir
+    if not backupDir:
+        # Roll the backup dir
+        for i in range(3, -1, -1):
+            src = os.path.join(root, 'build/backup/sync-runtime.%d' % (i,))
+            dst = os.path.join(root, 'build/backup/sync-runtime.%d' % (i + 1,))
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+            if os.path.exists(src):
+                shutil.move(src, dst)
+        backupDir = src
+        mkdir(backupDir)
+
+        print "(Original files backed up to %s)" % (pipes.quote(backupDir),)
+
+    backupFile = os.path.join(backupDir, os.path.relpath(path, root))
+    mkdir(os.path.dirname(backupFile))
+    shutil.copy(path, backupFile)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--reverse', '-R', action='store_true',
+                        help='Reverse: Copy from src/runtime to tests/runtime')
+    args = parser.parse_args()
+
+    root = os.path.realpath(os.path.join(__file__, '../..'))
+    source = os.path.join(root, 'tests/runtime')
+    target = os.path.join(root, 'src/runtime')
+
+    if args.reverse:
+        source, target = target, source
+
+    srcs = enumFiles(source)
+    dsts = enumFiles(target)
+
+    # Delete files that no longer exist
+    for f in sorted(dsts - srcs):
+        f = os.path.join(source, f)
+        if not args.dry_run:
+            dst = os.path.join(target, f)
+            backup(dst)
+            os.unlink(dst)
+        print "Deleted %s" % (pipes.quote(f),)
+
+    # Copy new files
+    for f in sorted(srcs - dsts):
+        src = os.path.join(source, f)
+        dst = os.path.join(target, f)
+        if not args.dry_run:
+            shutil.copy(src, dst)
+        print "Copied %s" % (pipes.quote(f),)
+
+    # Diff everything else
+    for f in sorted(srcs & dsts):
+        src = os.path.join(source, f)
+        dst = os.path.join(target, f)
+        if not filecmp.cmp(src, dst):
+            if not args.dry_run:
+                backup(dst)
+                shutil.copy(src, dst)
+            print "Replaced %s" % (pipes.quote(f),)
+
+
+main()

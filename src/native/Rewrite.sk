@@ -1,0 +1,1566 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Rewrite;
+
+// Base class for general-purpose Function rewriting passes or emitting
+// a function from scratch.
+mutable base class .RewriteBase{
+  optinfo: mutable OptimizerInfo,
+  blockBuf: mutable Vector<Block> = mutable Vector<Block>[],
+  instrBuf: mutable Vector<Stmt> = mutable Vector<Stmt>[],
+  mutable funType: Tfun = kVoidVoidFunType,
+  mutable funTypeChanged: Bool = false,
+  mutable funParams: Array<FunParam> = Array[],
+  mutable funParamsChanged: Bool = false,
+  mutable anyBlockChanged: Bool = false,
+  mutable insideOptimizeBlock: Bool = false,
+  mutable blockChanged: Bool = false,
+  mutable nextBlockID: BlockID = BlockID::none,
+  mutable prettyBlockName: String = "",
+  mutable exportStyleReplacement: ?ExportStyle = None(),
+  mutable blockParams: Array<BlockParam> = Array[],
+  mutable positionRewriter: ?Pos ~> Pos = None(),
+  mutable pos: Pos,
+} {
+  readonly fun getScalarType(t: Type): ScalarType;
+
+  mutable fun iid(): InstrID {
+    this.optinfo.iid()
+  }
+
+  mutable fun newBlockID(): BlockID {
+    this.optinfo.idToBlock.allocID()
+  }
+
+  readonly fun getInstr(id: InstrID): Instr {
+    this.optinfo.getInstr(id)
+  }
+
+  readonly fun getBlock(id: BlockID): Block {
+    this.optinfo.getBlock(id)
+  }
+
+  mutable fun getConstant(c: Constant): Constant {
+    this.optinfo.getConstant(c)
+  }
+
+  mutable fun constantVoid(): Constant {
+    this.getConstant(
+      ConstantVoid{id => this.iid(), typ => tVoid, prettyName => "void"},
+    )
+  }
+
+  mutable fun constantBool(value: Bool): Constant {
+    this.getConstant(
+      ConstantBool{
+        id => this.iid(),
+        typ => tBool,
+        value,
+        prettyName => value.toString(),
+      },
+    )
+  }
+
+  mutable fun constantChar(value: Char): Constant {
+    this.getConstant(
+      ConstantChar{
+        id => this.iid(),
+        typ => tChar,
+        value,
+        prettyName => value.toString(),
+      },
+    )
+  }
+
+  mutable fun constantInt(value: Int): Constant {
+    this.constantTypedInt(tInt, value)
+  }
+
+  mutable fun constantTypedInt(typ: Type, value: Int): Constant {
+    // We canonicalize N-bit ints to use a sign-extended 64-bit value.
+    // Picking a canonical form allows CSE.
+    canonicalized = sext(value, this.getScalarType(typ).bitSize);
+
+    this.getConstant(ConstantInt{id => this.iid(), typ, value => canonicalized})
+  }
+
+  mutable fun constantFloat(value: Float): Constant {
+    this.getConstant(ConstantFloat{id => this.iid(), typ => tFloat, value})
+  }
+
+  mutable fun constantFun(value: SFunctionID): Constant {
+    this.getConstant(ConstantFun{id => this.iid(), typ => tNonGCPointer, value})
+  }
+
+  mutable fun constantPointer(typ: Type, value: Int): Constant {
+    this.getConstant(ConstantPointer{id => this.iid(), typ, value})
+  }
+
+  mutable fun constantZero(typ: Type): Constant {
+    typ match {
+    | t if (t == tBool) -> this.constantBool(false)
+    | t if (t == tChar) -> this.constantChar('\x00')
+    | t if (this.getScalarType(t).kind == IntegerScalarKind()) ->
+      this.constantTypedInt(t, 0)
+    | t if (t == tFloat) -> this.constantFloat(0.0)
+    | _ -> this.getConstant(ConstantPointer{id => this.iid(), typ, value => 0})
+    }
+  }
+
+  mutable fun constantUTF8String(value: UTF8String): Constant {
+    this.getConstant(ConstantString{id => this.iid(), typ => tString, value})
+  }
+
+  mutable fun constantString(value: String): Constant {
+    this.constantUTF8String(UTF8String::make(value))
+  }
+
+  mutable fun constantGlobalSingleton(): Constant {
+    this.getConstant(
+      ConstantGlobalSingleton{id => this.iid(), typ => tConstSingleton},
+    )
+  }
+
+  mutable fun constantObject(typ: Type, values: Array<Constant>): Constant {
+    this.getConstant(ConstantObject::make(this.iid(), typ, values))
+  }
+
+  mutable fun constantFrozenObject(
+    sclass: SClass,
+    values: Array<Constant>,
+  ): Constant {
+    this.constantObject(Tclass(sclass.id, DeepFrozen()), values)
+  }
+
+  mutable fun constantArray(
+    typ: Type,
+    values: Array<Constant>,
+    size: Int,
+  ): Constant {
+    this.getConstant(ConstantArray::make(this.iid(), typ, values, size))
+  }
+
+  mutable fun constantVTable(value: SClassID, frozen_: Bool): Constant {
+    this.getConstant(
+      ConstantVTable{id => this.iid(), typ => tNonGCPointer, value, frozen_},
+    )
+  }
+
+  private mutable fun emitStmt<T: Stmt>(x: T): T {
+    _ = this.emitInstr(x);
+    x
+  }
+
+  mutable fun emitAlloca{
+    byteSize: Int,
+    byteAlignment: Int,
+    zero: Bool,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Alloca {
+    this.emitStmt(
+      Alloca{
+        id,
+        pos,
+        typ => tNonGCPointer,
+        prettyName,
+        byteSize,
+        byteAlignment,
+        zero,
+      },
+    )
+  }
+
+  mutable fun emitAsyncReturn{
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(AsyncReturn{id, pos, typ => tVoid, prettyName})
+  }
+
+  mutable fun emitBoolCmpEq{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: BoolCmpEq {
+    this.emitStmt(BoolCmpEq{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitBoolCmpLe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: BoolCmpLe {
+    this.emitStmt(BoolCmpLe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitBoolCmpLt{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: BoolCmpLt {
+    this.emitStmt(BoolCmpLt{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitBoolCmpNe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: BoolCmpNe {
+    this.emitStmt(BoolCmpNe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitBytePointerAdd{
+    addr: InstrID,
+    offset: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: BytePointerAdd {
+    this.emitStmt(BytePointerAdd{id, pos, typ, prettyName, addr, offset})
+  }
+
+  mutable fun emitCallFunction{
+    args: Array<InstrID>,
+    name: SFunctionID,
+    smap: SuperpositionMap<FunSuperpositionID>,
+    returns: Bool = true,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: CallFunction {
+    this.emitStmt(
+      CallFunction{id, pos, typ, prettyName, args, name, smap, returns},
+    )
+  }
+
+  mutable fun emitCallMethod{
+    args: Array<InstrID>,
+    method: String,
+    smap: SuperpositionMap<MethodSuperpositionID>,
+    returns: Bool = true,
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: CallMethod {
+    this.emitStmt(
+      CallMethod{id, pos, typ, prettyName, args, method, smap, returns},
+    )
+  }
+
+  mutable fun emitCast{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    prettyName: String = "",
+  }: Instr {
+    v = this.getInstr(value);
+    if (v.typ == typ) {
+      // Do nothing for no-op casts.
+      v
+    } else {
+      this.emitStmt(Cast{value, typ, pos, id => this.iid(), prettyName})
+    }
+  }
+
+  mutable fun emitFloatBits{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatBits {
+    this.emitStmt(FloatBits{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitFloatToInt{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatToInt {
+    this.emitStmt(FloatToInt{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitFloatToString{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatToString {
+    this.emitStmt(FloatToString{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitGetCurrentAwaitable{
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: GetCurrentAwaitable {
+    this.emitStmt(GetCurrentAwaitable{id, pos, typ, prettyName})
+  }
+
+  mutable fun emitIntClz{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntClz {
+    this.emitStmt(IntClz{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitIntCtz{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCtz {
+    this.emitStmt(IntCtz{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitIntToFloat{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntToFloat {
+    this.emitStmt(IntToFloat{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitIntToString{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntToString {
+    this.emitStmt(IntToString{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitIntern{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    prettyName: String = "",
+  }: Instr {
+    if (!this.getScalarType(typ).isGCPointer()) {
+      // Not internable, e.g. Int, so just return the value unchanged.
+      this.getInstr(value)
+    } else {
+      this.emitStmt(Intern{value, typ, pos, id => this.iid(), prettyName})
+    }
+  }
+
+  mutable fun emitIntPopcount{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntPopcount {
+    this.emitStmt(IntPopcount{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitObstackShallowClone{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ObstackShallowClone {
+    this.emitStmt(ObstackShallowClone{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitReinterpret{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Reinterpret {
+    this.emitStmt(Reinterpret{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitStringHash{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: StringHash {
+    this.emitStmt(StringHash{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitSuspend{
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Suspend {
+    this.emitStmt(Suspend{value, typ => tVoid, pos, id, prettyName})
+  }
+
+  mutable fun emitArrayClone{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ArrayClone {
+    this.emitStmt(ArrayClone{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitArraySize{
+    value: InstrID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ArraySize {
+    this.emitStmt(ArraySize{value, typ, pos, id, prettyName})
+  }
+
+  mutable fun emitFloatAdd{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatAdd {
+    this.emitStmt(FloatAdd{id, pos, typ => tFloat, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatDiv{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatDiv {
+    this.emitStmt(FloatDiv{id, pos, typ => tFloat, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatMul{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatMul {
+    this.emitStmt(FloatMul{id, pos, typ => tFloat, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatSub{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatSub {
+    this.emitStmt(FloatSub{id, pos, typ => tFloat, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatCmpEq{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatCmpEq {
+    this.emitStmt(FloatCmpEq{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatCmpLe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatCmpLe {
+    this.emitStmt(FloatCmpLe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatCmpLt{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatCmpLt {
+    this.emitStmt(FloatCmpLt{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFloatCmpNe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: FloatCmpNe {
+    this.emitStmt(FloatCmpNe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpEq{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpEq {
+    this.emitStmt(IntCmpEq{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpLe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpLe {
+    this.emitStmt(IntCmpLe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpLt{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpLt {
+    this.emitStmt(IntCmpLt{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpNe{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpNe {
+    this.emitStmt(IntCmpNe{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpUle{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpUle {
+    this.emitStmt(IntCmpUle{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntCmpUlt{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntCmpUlt {
+    this.emitStmt(IntCmpUlt{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntAdd{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntAdd {
+    this.emitStmt(IntAdd{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntAnd{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntAnd {
+    this.emitStmt(IntAnd{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntDiv{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntDiv {
+    this.emitStmt(IntDiv{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntMul{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntMul {
+    this.emitStmt(IntMul{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntOr{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntOr {
+    this.emitStmt(IntOr{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntRem{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntRem {
+    this.emitStmt(IntRem{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntSll{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntSll {
+    this.emitStmt(IntSll{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntSra{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntSra {
+    this.emitStmt(IntSra{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntSrl{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntSrl {
+    this.emitStmt(IntSrl{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntSub{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntSub {
+    this.emitStmt(IntSub{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitIntXor{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: IntXor {
+    this.emitStmt(IntXor{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitFreeze{
+    value: InstrID,
+    nop: Bool = false,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Freeze {
+    this.emitStmt(Freeze{id, pos, typ, prettyName, value, nop})
+  }
+
+  mutable fun emitGetConst{
+    name: ConstID,
+    tupleIndex: Int,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: GetConst {
+    this.emitStmt(GetConst{id, pos, typ, prettyName, name, tupleIndex})
+  }
+
+  mutable fun emitGetField{
+    obj: InstrID,
+    field: String,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: GetField {
+    this.emitStmt(GetField{id, pos, typ, prettyName, obj, field})
+  }
+
+  mutable fun emitIf{
+    predicate: InstrID,
+    ifTrue: BlockSuccessor,
+    ifFalse: BlockSuccessor,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      If{
+        id,
+        pos,
+        typ => tVoid,
+        prettyName,
+        predicate,
+        successors => Array[ifTrue, ifFalse],
+      },
+    )
+  }
+
+  mutable fun emitIndirectJump{
+    label: InstrID,
+    tag: String,
+    successors: Array<BlockSuccessor>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      IndirectJump{id, pos, typ => tVoid, prettyName, label, tag, successors},
+    )
+  }
+
+  mutable fun emitIntSwitch{
+    value: InstrID,
+    cases: Array<Int>,
+    successors: Array<BlockSuccessor>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      IntSwitch{id, pos, typ => tVoid, prettyName, value, cases, successors},
+    )
+  }
+
+  mutable fun emitInvokeFunction{
+    args: Array<InstrID>,
+    name: SFunctionID,
+    smap: SuperpositionMap<FunSuperpositionID>,
+    returns: Bool = true,
+    typ: Type,
+    pos: Pos,
+    ifNoCatch: BlockSuccessor,
+    ifCatch: BlockSuccessor,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: InvokeFunction {
+    this.emitStmt(
+      InvokeFunction{
+        id,
+        pos,
+        typ,
+        prettyName,
+        args,
+        name,
+        smap,
+        returns,
+        successors => Array[ifNoCatch, ifCatch],
+      },
+    )
+  }
+
+  mutable fun emitInvokeMethod{
+    args: Array<InstrID>,
+    method: String,
+    smap: SuperpositionMap<MethodSuperpositionID>,
+    returns: Bool = true,
+    typ: Type,
+    pos: Pos,
+    ifNoCatch: BlockSuccessor,
+    ifCatch: BlockSuccessor,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: InvokeMethod {
+    this.emitStmt(
+      InvokeMethod{
+        id,
+        pos,
+        typ,
+        prettyName,
+        args,
+        method,
+        smap,
+        returns,
+        successors => Array[ifNoCatch, ifCatch],
+      },
+    )
+  }
+
+  mutable fun emitJump{
+    target: BlockSuccessor,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      Jump{id, pos, typ => tVoid, prettyName, successors => Array[target]},
+    )
+  }
+
+  mutable fun emitLandingPad{
+    target: BlockSuccessor,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: LandingPad {
+    this.emitStmt(
+      LandingPad{
+        id,
+        pos,
+        typ => tException,
+        prettyName,
+        successors => Array[target],
+      },
+    )
+  }
+
+  mutable fun emitLoad{
+    addr: InstrID,
+    bitOffset: Int,
+    addrByteAlignment: Int,
+    canCSE: Bool,
+    invariant: Bool = false,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Load {
+    this.emitStmt(
+      Load{
+        id,
+        pos,
+        typ,
+        prettyName,
+        addr,
+        bitOffset,
+        addrByteAlignment,
+        canCSE,
+        invariant,
+      },
+    )
+  }
+
+  mutable fun emitLoadVTableEntry{
+    vtable: InstrID,
+    offset: VTable.VTableRequestID,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: LoadVTableEntry {
+    this.emitStmt(LoadVTableEntry{id, pos, typ, prettyName, vtable, offset})
+  }
+
+  mutable fun emitLocalGC{
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(LocalGC{id, pos, typ => tVoid, prettyName})
+  }
+
+  mutable fun emitObstackUsage{
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(ObstackUsage{id, pos, typ => tInt, prettyName})
+  }
+
+  mutable fun emitNamedCall{
+    name: String,
+    args: Array<InstrID>,
+    mayRelocatePointers: Bool = false,
+    casts: Array<String> = Array[],
+    canThrow: Bool,
+    allocAmount: AllocAmount,
+    llvmRetType: String = "",
+    llvmRetCast: String = "",
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: NamedCall {
+    this.emitStmt(
+      NamedCall{
+        id,
+        pos,
+        typ,
+        prettyName,
+        name,
+        args,
+        mayRelocatePointers,
+        casts,
+        canThrow,
+        allocAmount,
+        llvmRetType,
+        llvmRetCast,
+      },
+    )
+  }
+
+  mutable fun emitObject{
+    args: Array<InstrID>,
+    pos: Pos,
+    typ: Type,
+    pinned: Bool = false,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: Object {
+    this.emitStmt(Object{id, pos, typ, prettyName, args, pinned})
+  }
+
+  mutable fun emitObstackAlloc{
+    byteSize: InstrID,
+    zero: Bool,
+    pos: Pos,
+    typ: Type,
+    pinned: Bool = false,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ObstackAlloc {
+    this.emitStmt(
+      ObstackAlloc{id, pos, typ, prettyName, byteSize, zero, pinned},
+    )
+  }
+
+  mutable fun emitObstackNote{
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ObstackNote {
+    this.emitStmt(ObstackNote{id, pos, typ => tNonGCPointer, prettyName})
+  }
+
+  mutable fun emitRawCall{
+    code: InstrID,
+    args: Array<InstrID>,
+    returns: Bool,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: RawCall {
+    this.emitStmt(RawCall{id, pos, typ, prettyName, code, args, returns})
+  }
+
+  mutable fun emitRawInvoke{
+    code: InstrID,
+    args: Array<InstrID>,
+    returns: Bool,
+    successors: Array<BlockSuccessor>,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: RawInvoke {
+    this.emitStmt(
+      RawInvoke{id, pos, typ, prettyName, code, args, returns, successors},
+    )
+  }
+
+  mutable fun emitReturn{
+    values: Array<InstrID>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(Return{id, pos, typ => tVoid, prettyName, values})
+  }
+
+  mutable fun emitSetField{
+    obj: InstrID,
+    field: String,
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      SetField{id, pos, typ => tVoid, prettyName, obj, field, value},
+    )
+  }
+
+  mutable fun emitSignExtend{
+    value: InstrID,
+    pos: Pos,
+    typ: Type,
+    prettyName: String = "",
+  }: Instr {
+    fromInt = this.getInstr(value);
+    fromSize = this.getScalarType(fromInt.typ).bitSize;
+    toSize = this.getScalarType(typ).bitSize;
+
+    if (fromSize == toSize) {
+      fromInt
+    } else if (fromSize < toSize) {
+      this.emitStmt(SignExtend{id => this.iid(), typ, pos, value, prettyName})
+    } else {
+      pos.die("SignExtend cannot decrease the size.")
+    }
+  }
+
+  mutable fun emitZeroExtend{
+    value: InstrID,
+    pos: Pos,
+    typ: Type,
+    prettyName: String = "",
+  }: Instr {
+    fromInt = this.getInstr(value);
+    fromSize = this.getScalarType(fromInt.typ).bitSize;
+    toSize = this.getScalarType(typ).bitSize;
+
+    if (fromSize == toSize) {
+      fromInt
+    } else if (fromSize < toSize) {
+      this.emitStmt(ZeroExtend{id => this.iid(), typ, pos, value, prettyName})
+    } else {
+      pos.die("ZeroExtend cannot decrease the size.")
+    }
+  }
+
+  mutable fun emitTruncate{
+    value: InstrID,
+    pos: Pos,
+    typ: Type,
+    prettyName: String = "",
+  }: Instr {
+    fromInt = this.getInstr(value);
+    fromSize = this.getScalarType(fromInt.typ).bitSize;
+    toSize = this.getScalarType(typ).bitSize;
+
+    if (fromSize == toSize) {
+      fromInt
+    } else if (fromSize > toSize) {
+      this.emitStmt(Truncate{id => this.iid(), typ, pos, value, prettyName})
+    } else {
+      pos.die("Truncate cannot increase the size.")
+    }
+  }
+
+  mutable fun emitObstackStore{
+    addr: InstrID,
+    bitOffset: Int,
+    addrByteAlignment: Int,
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      ObstackStore{
+        id,
+        pos,
+        typ => tVoid,
+        prettyName,
+        addr,
+        bitOffset,
+        addrByteAlignment,
+        value,
+      },
+    )
+  }
+
+  mutable fun emitObstackInit{
+    addr: InstrID,
+    bitOffset: Int,
+    addrByteAlignment: Int,
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      ObstackInit{
+        id,
+        pos,
+        typ => tVoid,
+        prettyName,
+        addr,
+        bitOffset,
+        addrByteAlignment,
+        value,
+      },
+    )
+  }
+
+  mutable fun emitStackStore{
+    addr: InstrID,
+    bitOffset: Int,
+    addrByteAlignment: Int,
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      StackStore{
+        id,
+        pos,
+        typ => tVoid,
+        prettyName,
+        addr,
+        bitOffset,
+        addrByteAlignment,
+        value,
+      },
+    )
+  }
+
+  mutable fun emitStringCmp{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: StringCmp {
+    this.emitStmt(StringCmp{id, pos, typ => tInt, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitStringCmpEq{
+    lhs: InstrID,
+    rhs: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: StringCmpEq {
+    this.emitStmt(StringCmpEq{id, pos, typ => tBool, prettyName, lhs, rhs})
+  }
+
+  mutable fun emitStringConcat{
+    args: Array<InstrID>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: StringConcat {
+    this.emitStmt(StringConcat{id, pos, typ => tString, prettyName, args})
+  }
+
+  mutable fun emitStringSwitch{
+    value: InstrID,
+    cases: Array<InstrID>,
+    successors: Array<BlockSuccessor>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      StringSwitch{id, pos, typ => tVoid, prettyName, value, cases, successors},
+    )
+  }
+
+  mutable fun emitThrow{
+    exception: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(Throw{id, pos, typ => tVoid, prettyName, exception})
+  }
+
+  mutable fun emitTupleExtract{
+    obj: InstrID,
+    index: Int,
+    typ: Type,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: TupleExtract {
+    this.emitStmt(TupleExtract{id, pos, typ, prettyName, obj, index})
+  }
+
+  mutable fun emitTypeSwitch{
+    value: InstrID,
+    cases: Array<GClassName>,
+    successors: Array<BlockSuccessor>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      TypeSwitch{id, pos, typ => tVoid, prettyName, value, cases, successors},
+    )
+  }
+
+  mutable fun emitUnreachable{
+    why: String,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(Unreachable{id, pos, typ => tVoid, prettyName, why});
+
+    // Start a new block so any Instrs following this one go into an
+    // implicitly created but unreachable block.
+    this.startNewBlock()
+  }
+
+  mutable fun emitArrayAlloc{
+    size: InstrID,
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ArrayAlloc {
+    this.emitStmt(ArrayAlloc{id, pos, typ, prettyName, size})
+  }
+
+  mutable fun emitArrayNew{
+    args: Array<InstrID>,
+    size: Int,
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ArrayNew {
+    this.emitStmt(ArrayNew{id, pos, typ, prettyName, args, size})
+  }
+
+  mutable fun emitArrayUnsafeGet{
+    obj: InstrID,
+    index: InstrID,
+    tupleIndex: Int,
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: ArrayUnsafeGet {
+    this.emitStmt(
+      ArrayUnsafeGet{id, pos, typ, prettyName, obj, index, tupleIndex},
+    )
+  }
+
+  mutable fun emitArrayUnsafeSet{
+    obj: InstrID,
+    index: InstrID,
+    tupleIndex: Int,
+    value: InstrID,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(
+      ArrayUnsafeSet{
+        id,
+        pos,
+        typ => tVoid,
+        prettyName,
+        obj,
+        index,
+        tupleIndex,
+        value,
+      },
+    )
+  }
+
+  mutable fun emitWith{
+    obj: InstrID,
+    fieldAssignments: Array<(String, InstrID)>,
+    pos: Pos,
+    typ: Type,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: With {
+    this.emitStmt(With{id, pos, typ, prettyName, obj, fieldAssignments})
+  }
+
+  mutable fun emitYield{
+    values: Array<InstrID>,
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(Yield{id, pos, typ => tVoid, prettyName, values})
+  }
+
+  mutable fun emitYieldBreak{
+    pos: Pos,
+    id: InstrID = this.iid(),
+    prettyName: String = "",
+  }: void {
+    _ = this.emitStmt(YieldBreak{id, pos, typ => tVoid, prettyName})
+  }
+
+  // If any instructions are pending, flush them out to a new Block.
+  mutable fun startNewBlock(followingBlockID: BlockID = BlockID::none): void {
+    if (!this.instrBuf.isEmpty()) {
+      optinfo = this.optinfo;
+      instrBuf = this.instrBuf;
+
+      isOriginalBlock = optinfo.idToBlock.contains(this.nextBlockID);
+      b = if (isOriginalBlock && !this.blockChanged) {
+        // We are emitting an existing block unchanged.
+        orig = optinfo.getBlock(this.nextBlockID);
+
+        // Slow (and imperfect) check that block contents did not change.
+        // It's imperfect because non-CSE classes don't implement a throrough
+        // equality check. Still, it's something.
+        instrsSame = (instrBuf.size() == orig.instrs.size());
+        if (instrsSame) {
+          orig.instrs.eachWithIndex((i, x) ->
+            if (x != instrBuf[i]) {
+              !instrsSame = false
+            }
+          )
+        };
+        if (!instrsSame) {
+          orig.pos.die("Theoretically unchanged block is actually different!")
+        };
+        orig
+      } else {
+        this.!anyBlockChanged = true;
+
+        newBlockID = if (this.nextBlockID != BlockID::none) {
+          this.nextBlockID
+        } else {
+          this.newBlockID()
+        };
+
+        newBlock = Block{
+          id => newBlockID,
+          pos => this.pos,
+          instrs => instrBuf.toArray(),
+          params => this.blockParams,
+          prettyName => this.prettyBlockName,
+        };
+
+        optinfo.idToBlock.insert(newBlock);
+        optinfo.instrToBlock.recordBlock(newBlock);
+
+        newBlock
+      };
+
+      this.blockBuf.push(b);
+      instrBuf.clear()
+    };
+
+    // Reset this state so the next block can't reuse it.
+    this.!nextBlockID = followingBlockID;
+    this.!prettyBlockName = "";
+    this.!blockParams = Array[]
+  }
+
+  mutable fun emitInstr(instr: Stmt): Stmt {
+    this.!blockChanged = true;
+    this.positionRewriter match {
+    | Some(rewrite) -> !instr = instr with {pos => rewrite(instr.pos)}
+    | None() -> void
+    };
+    this.instrBuf.push(instr);
+    this.optinfo.idToInstr.insert(instr);
+    this.optinfo.instrToBlock.set(instr.id, this.nextBlockID);
+    instr
+  }
+}
+
+// Base class for general-purpose Function rewriting passes.
+mutable base class .Rewrite{
+  env: GlobalEnv,
+  unfinishedDependencies: mutable UnorderedSet<
+    SFunctionID,
+  > = mutable UnorderedSet[],
+} extends RewriteBase {
+  // Emit one possibly transformed/expanded Instr. Returns true if
+  // it succeeded in making changes, false if not (in which case the
+  // caller should emit it).
+  //
+  // TODO: Rename to "rewriteInstr" or something.
+  protected mutable fun optimizeInstr(instr: Stmt): Bool;
+
+  // Hook for subclasses.
+  protected overridable mutable fun beginOptimizeBlock(_: Block): void {
+    void
+  }
+
+  protected mutable fun optimizeBlock(b: Block): void {
+    if (this.insideOptimizeBlock) {
+      b.pos.die("optimizeBlock() is not reentrant.")
+    };
+    this.!insideOptimizeBlock = true;
+
+    if (!this.instrBuf.isEmpty()) {
+      b.pos.die("instrBuf not reset between blocks")
+    };
+
+    // Set up state for startNewBlock.
+    this.!pos = b.pos;
+    this.!nextBlockID = b.id;
+    this.!prettyBlockName = b.prettyName;
+    this.!blockParams = b.params;
+    this.!blockChanged = false;
+
+    this.beginOptimizeBlock(b);
+
+    optinfo = this.optinfo;
+    remap: (InstrID -> InstrID) = (x -> optinfo.getInstr(x).id);
+
+    for (instr in b.instrs) {
+      // If any input has been replaced, update this instruction to point
+      // to the canonical version.
+      replaced = false;
+      instr.visitInputs(
+        operandID -> {
+          if (operandID != optinfo.getInstr(operandID).id) {
+            !replaced = true
+          }
+        },
+        optinfo,
+      );
+
+      if (replaced) {
+        !instr = instr.replaceInputs(remap);
+        optinfo.idToInstr.insert(instr);
+        this.!blockChanged = true
+      };
+
+      if (this.optimizeInstr(instr)) {
+        this.!blockChanged = true
+      } else {
+        this.instrBuf.push(instr)
+      }
+    };
+
+    this.startNewBlock();
+
+    this.!insideOptimizeBlock = false
+  }
+
+  protected overridable mutable fun optimizeAllBlocks(
+    inputBlocks: Array<BlockID>,
+  ): void {
+    for (b in inputBlocks) this.optimizeBlock(this.getBlock(b))
+  }
+
+  readonly fun getScalarType(t: Type): ScalarType {
+    t.exampleSClass(this.env).getScalarType()
+  }
+
+  // The passDescription is either the name of a pass being performed or None()
+  // if the generation is too early to verify.
+  protected mutable fun go(
+    passDescription: String,
+    verifyAtEnd: Bool,
+  ): (Function, PassResult) {
+    optinfo = this.optinfo;
+
+    this.!funParams = optinfo.f.params;
+    this.!funType = optinfo.f.funType;
+
+    inputBlocks = optinfo.reversePostorder();
+    if (inputBlocks.size() != optinfo.f.blocks.size()) {
+      this.!anyBlockChanged = true
+    };
+
+    this.optimizeAllBlocks(inputBlocks);
+
+    (f, status) = this.finishAndCheckIfChanged(passDescription, verifyAtEnd);
+
+    status match {
+    | PassChanged() -> (this.postprocess(f), PassChanged())
+    | p @ PassUnchanged _ -> (f, p)
+    }
+  }
+
+  protected overridable readonly fun createNewFunctionIfOnlyConstantsChanged(): Bool {
+    // By default we do not create a new function if only
+    // this.optinfo.constantsChanged, because then some temporary
+    // constants that didn't get used can look like a phony change and cause
+    // an infinite loop with DCE deleting them.
+    false
+  }
+
+  protected mutable fun finishAndCheckIfChanged(
+    passDescription: String,
+    verifyAtEnd: Bool,
+  ): (Function, PassResult) {
+    // TODO: Option if constants changed and we don't insist in a new function
+    // (i.e. DCE) we should return a new function anyway with the new
+    // constants but return "false" claiming no important change happened.
+    optinfo = this.optinfo;
+    f = optinfo.f;
+
+    if (!this.instrBuf.isEmpty()) {
+      this.pos.die("Did not flush all instructions.")
+    };
+
+    if (
+      !(this.anyBlockChanged ||
+        this.funParamsChanged ||
+        this.funTypeChanged ||
+        this.exportStyleReplacement.isSome() ||
+        (optinfo.constantsChanged &&
+          this.createNewFunctionIfOnlyConstantsChanged()))
+    ) {
+      // You can't wait on yourself.
+      (f, PassUnchanged(this.unfinishedDependencies.filter(x -> x != f.id)))
+    } else {
+      f2 = f with {
+        params => if (this.funParamsChanged) this.funParams else f.params,
+        funType => if (this.funTypeChanged) this.funType else f.funType,
+        exportStyle => this.exportStyleReplacement.default(f.exportStyle),
+        blocks => if (this.anyBlockChanged) {
+          this.blockBuf.toArray()
+        } else {
+          f.blocks
+        },
+        constants => if (optinfo.constantsChanged) {
+          freeze(optinfo.getConstants())
+        } else {
+          f.constants
+        },
+      };
+
+      // Verify that the newly generated function is still valid.
+      if (kConfig.optConfig.verify && verifyAtEnd) {
+        Verify.verifyFunction(f2, this.env, passDescription);
+      };
+
+      (f2, PassChanged())
+    }
+  }
+
+  overridable protected mutable fun postprocess(f: Function): Function {
+    // Subclass hook to postprocess function creation.
+    f
+  }
+}

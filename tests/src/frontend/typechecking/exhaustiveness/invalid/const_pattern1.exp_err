@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/const_pattern1.sk", line 8, characters 5-14:
+The following pattern is unused:
+ | 42
+ 6 |   x match {
+ 7 |   | MyInt -> "Pass\n"
+ 8 |   | MyOtherInt -> "Fail\n"
+   |     ^^^^^^^^^^
+ 9 |   | _ -> "Fail\n"

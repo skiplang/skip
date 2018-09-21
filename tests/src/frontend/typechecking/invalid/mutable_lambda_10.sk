@@ -1,0 +1,6 @@
+fun main(): void {
+  g: Int -> Int = (_ -> 112);
+  f = (() ~> g(42));
+  _ = f();
+  print_raw("Fail")
+}

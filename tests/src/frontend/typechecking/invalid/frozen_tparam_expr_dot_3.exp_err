@@ -1,0 +1,28 @@
+File "./typechecking/invalid/frozen_tparam_expr_dot_3.sk", line 4, characters 23-23:
+Invalid binding
+2 |
+3 | fun no<T: mutable Foo>(x: T): void {
+4 |   _ = freeze(x) with {x => mutable Array[0]}
+  |                       ^
+5 | }
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_3.sk", line 4, characters 28-43:
+The type: mutable Array<Int>
+2 |
+3 | fun no<T: mutable Foo>(x: T): void {
+4 |   _ = freeze(x) with {x => mutable Array[0]}
+  |                            ^^^^^^^^^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_3.sk", line 1, characters 22-39:
+Is not a subtype of: Array<Int>
+1 | mutable class Foo(x: mutable Array<Int>)
+  |                      ^^^^^^^^^^^^^^^^^^
+2 |
+
+File "./typechecking/invalid/frozen_tparam_expr_dot_3.sk", line 1, characters 22-39:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Array<Int>
+1 | mutable class Foo(x: mutable Array<Int>)
+  |                      ^^^^^^^^^^^^^^^^^^
+2 |

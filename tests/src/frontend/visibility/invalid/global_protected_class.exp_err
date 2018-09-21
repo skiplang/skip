@@ -1,0 +1,4 @@
+File "./visibility/invalid/global_protected_class.sk", line 1, characters 1-9:
+Expected declaration.
+1 | protected class Foo
+  | ^^^^^^^^^

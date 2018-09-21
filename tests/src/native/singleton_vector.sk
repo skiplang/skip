@@ -1,0 +1,19 @@
+@no_inline
+fun mvec(): mutable Array<Int> {
+  sz = arguments().size();
+  if (sz != 999999999) {
+    // Trick optimizer; always runs this case.
+    mutable Array[]
+  } else {
+    mutable Array[37, sz]
+  }
+}
+
+@no_inline
+fun fvec(): Array<Int> {
+  freeze(mvec())
+}
+
+fun main(): void {
+  print_raw("" + fvec().size() + "\n")
+}

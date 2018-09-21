@@ -1,0 +1,8 @@
+fun foo<T>(T): void {
+  void
+}
+
+fun test(): void {
+  _ = foo<Bool>(0);
+  void
+}

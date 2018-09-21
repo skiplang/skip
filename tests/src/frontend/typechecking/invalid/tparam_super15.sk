@@ -1,0 +1,13 @@
+trait MyOrderable {
+  readonly fun compare(inst): Order;
+}
+
+class Cont<T>(x: T) {
+  fun get(): T {
+    this.x
+  }
+
+  fun compareit<V, V2: MyOrderable>[T: V & V2](x: V): Order {
+    this.get().compare(x)
+  }
+}

@@ -1,0 +1,139 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SkipDidYouMean;
+
+fun min3(a: Int, b: Int, c: Int): Int {
+  min(a, min(b, c))
+}
+
+fun set(width: Int, d: mutable Array<Int>, x: Int, y: Int, value: Int): void {
+  d![y * width + x] = value;
+}
+
+fun get(width: Int, d: mutable Array<Int>, x: Int, y: Int): Int {
+  d[y * width + x]
+}
+
+fun levenshteinDistance(s: String, t: String): Int {
+  m = s.length();
+  n = t.length();
+  w = m + 1;
+  h = n + 1;
+
+  d = Array::mfill(w * h, 0);
+
+  for (i in Range(0, m + 1)) {
+    set(w, d, i, 0, i);
+  };
+  for (j in Range(0, n + 1)) {
+    set(w, d, 0, j, j);
+  };
+
+  for (j in Range(1, n + 1)) {
+    for (i in Range(1, m + 1)) {
+      if (s[i - 1] == t[j - 1]) {
+        set(w, d, i, j, get(w, d, i - 1, j - 1))
+      } else {
+        set(
+          w,
+          d,
+          i,
+          j,
+          min3(
+            get(w, d, i - 1, j) + 1,
+            get(w, d, i, j - 1) + 1,
+            get(w, d, i - 1, j - 1) + 1,
+          ),
+        )
+      }
+    }
+  };
+
+  get(w, d, m, n)
+}
+
+fun findTypos(potentials: Map<String, String>, source: String): Array<String> {
+  source_lower = source.lowercase();
+
+  potentials
+    .items()
+    .map(potential -> {
+      (synonym, suggestion) = potential;
+      (_, last) = synonym.splitLast(".");
+      potential_lower = last.lowercase();
+      (
+        suggestion,
+        potential_lower,
+        levenshteinDistance(source_lower, potential_lower),
+      )
+    })
+    .filter(e -> {
+      (_, a, dist) = e;
+      b = source_lower;
+
+      if (a.length() > b.length()) {
+        (!a, !b) = (b, a)
+      };
+
+      if (a.length() >= 3 && b.contains(a)) {
+        // We want to match substrings. For example `name` is likely a typo for
+        // `name` even though levenstein distance is 4
+        true
+      } else if (dist == 1) {
+        true
+      } else {
+        false
+      }
+    })
+    .collect(Array)
+    .sortedBy(e ~> e.i2)
+    .slice(0, 3)
+    .map(e -> e.i0)
+}
+
+fun orSequence(list: Array<String>): String {
+  if (list.size() == 0) {
+    ""
+  } else if (list.size() == 1) {
+    list[0]
+  } else {
+    list.slice(0, list.size() - 1).join(", ") + " or " + list[list.size() - 1]
+  }
+}
+
+fun formatTypos(typos: Array<String>): String {
+  if (typos.isEmpty()) {
+    ""
+  } else {
+    ". Did you mean " + orSequence(typos) + "?"
+  }
+}
+
+fun didYouMeanTypos(potentials: Map<String, String>, elem: String): String {
+  formatTypos(findTypos(potentials, elem));
+}
+
+fun createFix(
+  errorRange: FileRange,
+  fixRange: FileRange,
+  typos: Array<String>,
+): ?SkipError.Fix {
+  if (errorRange.filename == fixRange.filename && typos.size() >= 1) {
+    Some(
+      SkipError.Fix{
+        oldRange => fixRange.range,
+        newText => typos[0],
+        speculative => typos.size() > 1,
+      },
+    );
+  } else {
+    None()
+  };
+}
+
+module end;

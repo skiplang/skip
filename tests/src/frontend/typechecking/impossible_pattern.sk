@@ -1,0 +1,17 @@
+base class MyBase<T>()
+class Child1<T> extends MyBase<(T, T)>
+class Child2 extends MyBase<Int>
+
+fun main(): void {
+  b1: MyBase<Int> = Child2();
+  s1 = b1 match {
+  | Child2() -> "Pa"
+  };
+
+  b2: MyBase<(Int, Int)> = Child1();
+  s2 = b2 match {
+  | Child1() -> "ss\n"
+  };
+
+  print_raw(s1 + s2)
+}

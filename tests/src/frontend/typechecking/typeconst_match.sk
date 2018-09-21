@@ -1,0 +1,26 @@
+base class Letter final ()
+class A extends Letter
+class B extends Letter
+
+base class MyBase {
+  type T: Letter;
+  fun letter(): this::T;
+}
+
+class Foo() extends MyBase {
+  type T = A;
+
+  fun letter(): this::T {
+    A()
+  }
+}
+
+fun main(): void {
+  b: MyBase = Foo();
+  print_raw(
+    b.letter() match {
+    | A() -> "Pass\n"
+    | B() -> "Fail"
+    },
+  )
+}

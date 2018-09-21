@@ -1,0 +1,21 @@
+module M;
+
+fun f(_i: Int): void {
+  void
+}
+
+fun x(): void {
+  f = f(42); // error here
+  f;
+}
+
+fun y(): void {
+  f = f(42);
+  f;
+}
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

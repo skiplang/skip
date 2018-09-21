@@ -1,0 +1,98 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Modified from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/binarytrees-hack-3.html
+module BinaryTreesBenchmark;
+
+base class Tree {
+  children =
+  | Node(i0: Tree, i1: Tree)
+  | Leaf()
+}
+
+fun bottomUpTree(depth: Int): Tree {
+  if (depth == 0) {
+    Node(Leaf(), Leaf());
+  } else {
+    !depth = depth - 1;
+    Node(bottomUpTree(depth), bottomUpTree(depth));
+  }
+}
+
+fun itemCheck(treeNode: Tree): Int {
+  1 +
+    treeNode match {
+    | Node(Node(Leaf(), _), _) -> 1
+    | Node(n @ Node _, _) -> itemCheck(n)
+    | _ -> 0
+    } +
+    treeNode match {
+    | Node(_, Node(Leaf(), _)) -> 1
+    | Node(_, n @ Node _) -> itemCheck(n)
+    | _ -> 0
+    }
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  minDepth = 4;
+  n = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(1);
+
+  maxDepth = max(minDepth + 2, n);
+  stretchDepth = maxDepth + 1;
+  stretchTree = bottomUpTree(stretchDepth);
+
+  stretchTreeCheck = itemCheck(stretchTree);
+  expect = Math.pow(2.0, (stretchDepth + 1).toFloat()).toInt() - 1;
+  invariant(
+    stretchTreeCheck == expect,
+    "Incorrect value for stretchTreeCheck." +
+      `Expected ${expect}. Got ${stretchTreeCheck}.` +
+      "Benchmark setup failed.",
+  );
+
+  longLivedTree = bottomUpTree(maxDepth);
+  iterations = 1.shl(maxDepth);
+
+  results = bencher.bench{
+    run => () -> {
+      while ({
+        check = 0;
+        i = 1;
+        while (
+          i <= iterations &&
+          {
+            t = bottomUpTree(minDepth);
+            !check = check + itemCheck(t);
+            true
+          }
+        ) {
+          !i = i + 1;
+        };
+        !minDepth = minDepth + 2;
+        !iterations = iterations.shr(2);
+        minDepth <= maxDepth;
+      }) void;
+    },
+    afterEach => () -> {
+      !minDepth = 4;
+      !iterations = 1.shl(maxDepth);
+    },
+  };
+
+  longLivedTreeCheck = itemCheck(longLivedTree);
+  invariant(
+    longLivedTreeCheck == Math.pow(2.0, (maxDepth + 1).toFloat()).toInt() - 1,
+    "Incorrect value for stretchTreeCheck." +
+      `Expected ${Math.pow(2.0, (maxDepth + 1).toFloat()).toInt() -
+        1}. Got ${longLivedTreeCheck}.` +
+      "Benchmark setup failed.",
+  );
+  results
+}
+
+module end;

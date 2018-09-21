@@ -1,0 +1,14 @@
+class Foo() uses Equality {
+  fun ==(_: Foo): Bool {
+    true
+  }
+}
+
+fun x<T: Equality & Show>(T): void {
+  void
+}
+
+fun main(): void {
+  x(Foo());
+  print_raw("No")
+}

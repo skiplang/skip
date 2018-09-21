@@ -1,0 +1,7 @@
+File "./typechecking/invalid/abstract_type_const6.sk", line 3, characters 20-20:
+Foo::T is not yet defined and cannot be used other than with `this` inside it's defining class
+1 | base class Foo {
+2 |   type T: Test.MixedScalar;
+3 |   fun doit(): Foo::T;
+  |                    ^
+4 | }

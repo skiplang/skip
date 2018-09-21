@@ -1,0 +1,26 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Assert;
+
+class InternalError(pos: String, msg: String) extends Exception {
+  fun getMessage(): String {
+    this.pos + ": Internal error: " + this.msg
+  }
+}
+
+fun fail(range: FileRange, message: String): _ {
+  throw InternalError(range.toString(), message);
+}
+
+fun invariant(flag: Bool, range: FileRange, message: String): void {
+  if (!flag) {
+    fail(range, message);
+  }
+}
+
+module end;

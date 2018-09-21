@@ -1,0 +1,21 @@
+Combine Int: 1 + 2
+Combine Int: 2 + 3
+Combine Float: 1.125 + 2.5
+Combine Float: 2.125 + 3.75
+Combine String: x + y
+Combine String: zzz + xx
+Compare Strings: x + y
+Compare Strings: zzz + xx
+Combine Object: o(c, 37) + o(d, 12)
+Combine Object: o(c, 9) + o(ddd, 12)
+Combine ValueClass: v(c) + v(d)
+Combine ValueClass: v(c) + v(really long yeah)
+Combine Tuple: 1 + hi + 3.25
+Combine Tuple: 9 + xx + 1.25
+Array[7, 11, 7]
+Array[8.625, 13.375, 8.625]
+Array[x 'y', zzz 'xx', x 'y']
+Array[(true, true, false, true, false, false), (false, false, false, true, true, true), (true, true, false, true, false, false)]
+Array[o(c 'd', 49), o(c 'ddd', 21), o(c 'd', 49)]
+Array[v(c 'd'), v(c 'really long yeah'), v(c 'd')]
+Array[(2, hi!, -9.75), (18, xx!, -3.75), (2, hi!, -9.75)]

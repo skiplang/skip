@@ -1,0 +1,6 @@
+class Boxy<T>()
+class Foo<+T>() {
+  fun doit(): Boxy<T> {
+    Boxy()
+  }
+}

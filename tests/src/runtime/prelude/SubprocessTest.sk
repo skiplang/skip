@@ -1,0 +1,25 @@
+@test
+untracked fun testSubprocessSpawnSuccess(): void {
+  result = Subprocess.spawn(Array["sh", "-c", "echo hello"]);
+  assertEqual(result.returnCode, 0);
+  assertEqual(result.stdout, "hello\n".utf8().collect(Array));
+  assertEqual(result.stderr, Array[]);
+}
+
+@test
+untracked fun testSubprocessSpawnFailure(): void {
+  result = Subprocess.spawn(Array["sh", "-c", "(>&2 echo error) && exit 42"]);
+  assertEqual(result.returnCode, 42);
+  assertEqual(result.stdout, Array[]);
+  assertEqual(result.stderr, "error\n".utf8().collect(Array));
+}
+
+@test
+untracked fun testSubprocessSpawnStdoutAndStderr(): void {
+  result = Subprocess.spawn(
+    Array["sh", "-c", "echo hello && (>&2 echo error) && exit 42"],
+  );
+  assertEqual(result.returnCode, 42);
+  assertEqual(result.stdout, "hello\n".utf8().collect(Array));
+  assertEqual(result.stderr, "error\n".utf8().collect(Array));
+}

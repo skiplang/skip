@@ -1,0 +1,32 @@
+File "./typechecking/invalid/invalid_lambda_tvar.sk", line 21, characters 10-33:
+Invalid annotation
+19 |   b = B();
+20 |   ao: ?A = Some(C());
+21 |   _: B = my_maybe_with(id, b, ao); // OOPS this is actually a C! Death!
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^
+22 |   print_raw("FAIL")
+
+File "./typechecking/invalid/invalid_lambda_tvar.sk", line 19, characters 7-9:
+The type: A
+17 | fun main(): void {
+18 |   _ = Array[None(), None(), None()];
+19 |   b = B();
+   |       ^^^
+20 |   ao: ?A = Some(C());
+
+File "./typechecking/invalid/invalid_lambda_tvar.sk", line 21, characters 6-6:
+Is not a subtype of: B
+19 |   b = B();
+20 |   ao: ?A = Some(C());
+21 |   _: B = my_maybe_with(id, b, ao); // OOPS this is actually a C! Death!
+   |      ^
+22 |   print_raw("FAIL")
+
+File "./typechecking/invalid/invalid_lambda_tvar.sk", line 21, characters 6-6:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A
+19 |   b = B();
+20 |   ao: ?A = Some(C());
+21 |   _: B = my_maybe_with(id, b, ao); // OOPS this is actually a C! Death!
+   |      ^
+22 |   print_raw("FAIL")

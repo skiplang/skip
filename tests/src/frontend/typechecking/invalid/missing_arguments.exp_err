@@ -1,0 +1,7 @@
+File "./typechecking/invalid/missing_arguments.sk", line 6, characters 3-6:
+Missing arguments, expected 3 but got 1
+4 |
+5 | fun main(): void {
+6 |   f(1);
+  |   ^^^^
+7 |   void

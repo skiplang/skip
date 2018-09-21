@@ -1,0 +1,21 @@
+fun main(): void {
+  // Shouldn't inline
+  elems(() -> { 1 }, () -> { 2 });
+  elems(() -> 1, () -> { 2 });
+  elems(a, b, (a: SomeVeryLongType, b: SomeVeryLongType, c: SomeVeryLongType) -> { 2 });
+  elems(call(() -> 1), (a: SomeVeryLongType, b: SomeVeryLongType, c: SomeVeryLongType) -> { 2 });
+  this.verticesverticesverticesverticesvertices.values().flatMap((head: Vertex) ~> {
+    this.successorsOf(head).map(tail ~> (head, tail)).values();
+  });
+
+  // Should inline
+  elems.each(value -> {
+    items.push(inspect(value))
+  });
+  elems.each(a, b, value -> {
+    items.push(inspect(value))
+  });
+  this.vertices.values().flatMap((head: Vertex) ~> {
+    this.successorsOf(head).map(tail ~> (head, tail)).values();
+  });
+}

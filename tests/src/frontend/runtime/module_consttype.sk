@@ -1,0 +1,17 @@
+fun main(): void {
+  print_raw(Foo.Baz().hello())
+}
+
+module Foo;
+
+base class Bar {
+  type T;
+  deferred fun hello(): this::T;
+}
+
+class Baz() extends Bar {
+  type T = String;
+  fun hello(): this::T {
+    "Pass\n"
+  }
+}

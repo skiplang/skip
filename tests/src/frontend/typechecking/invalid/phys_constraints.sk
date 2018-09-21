@@ -1,0 +1,48 @@
+base class Thrower<T> {
+  children =
+  | MyThrower()
+  fun die(): T {
+    invariant_violation("")
+  }
+}
+
+fun takeEqualityThrower<T: Equality>(_f: Thrower<T>): void {
+  void
+}
+fun makeIntThrower<T: Int>(f: Thrower<T>): () -> Int {
+  f.die
+}
+fun takeShowThrower<T: Show>(_f: Thrower<T>): void {
+  void
+}
+fun makeStringThrower<T: String>(f: Thrower<T>): () -> String {
+  f.die
+}
+fun makeIntPairThrower<T: (Int, Int)>(f: Thrower<T>): () -> (Int, Int) {
+  f.die
+}
+
+fun test1(): void {
+  t = MyThrower();
+  _ = takeEqualityThrower(t); // valid
+  _ = makeIntThrower(t); // valid
+  _ = takeShowThrower(t); // valid
+  _ = makeStringThrower(t); // invalid
+  void
+}
+/*
+fun test2(): void {
+  t2 = MyThrower();
+  _ = makeIntPairThrower(t2);
+  _ = takeShowThrower(t2); // valid
+  void
+}
+*/
+fun main(): void {
+  test1();
+  //test2();
+  print_raw(
+    //test2();
+    "FAIL",
+  )
+}

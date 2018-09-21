@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_binary_non_lvalue.sk", line 2, characters 4-5:
+Invalid LValue
+1 | fun main(): String {
+2 |   X::y.z = 42;
+  |    ^^
+3 |   "Fail"

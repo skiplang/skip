@@ -1,0 +1,2 @@
+File "invalid/reference_missing_default/skip.project.json"
+Referenced project 'invalid/reference_missing_default/ref' does not have a default program unit.

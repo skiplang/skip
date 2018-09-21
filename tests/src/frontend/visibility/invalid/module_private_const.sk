@@ -1,0 +1,13 @@
+module Foo;
+
+private const bar: Int = 112;
+fun ok(): Int {
+  bar
+}
+
+module end;
+
+fun main(): void {
+  _ = Foo.bar;
+  print_raw("Fail")
+}

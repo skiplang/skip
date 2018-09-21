@@ -1,0 +1,16 @@
+.DS_Store
+*~
+*.swp
+*.pyc
+*.orig
+\#*\#
+.\#*
+/nuclide
+
+/build
+
+tools/profiler/tmp
+
+npm-debug.log
+
+.mypy_cache

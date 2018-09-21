@@ -1,0 +1,31 @@
+// upper case const
+
+const GLOBAL_CONFIG: String = "Global";
+
+class Foo() {
+  const CLASS_CONFIG: String = "Class";
+
+  static fun get_static(): String {
+    static::CLASS_CONFIG
+  }
+
+  fun get_instance(): String {
+    static::CLASS_CONFIG
+  }
+}
+
+fun main(): void {
+  print_raw(
+    if (
+      GLOBAL_CONFIG +
+        Foo::CLASS_CONFIG +
+        Foo::get_static() +
+        Foo().get_instance() ==
+      "GlobalClassClassClass"
+    ) {
+      "OK\n"
+    } else {
+      "FAILED"
+    },
+  )
+}

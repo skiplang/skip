@@ -1,0 +1,33 @@
+trait MyTC {
+  fun bar(inst): String;
+}
+
+base class ArrayKey_ uses MyTC {
+  fun bar(x: this): String
+  | IntKey_(_) -> x.asInt().toString()
+  | StringKey_(_) -> x.asString()
+}
+
+class IntKey_(i: Int) extends ArrayKey_ {
+  fun asInt(): Int {
+    this.i
+  }
+}
+
+class StringKey_(x: String) extends ArrayKey_ {
+  fun asString(): String {
+    invariant_violation("calling stringkey")
+  }
+}
+
+fun foo<T: MyTC>(x: T, y: T): String {
+  x.bar(y)
+}
+
+fun breaker(x: ArrayKey_, y: ArrayKey_): String {
+  foo(x, y)
+}
+
+fun main(): void {
+  print_raw(breaker(IntKey_(1), StringKey_("")))
+}

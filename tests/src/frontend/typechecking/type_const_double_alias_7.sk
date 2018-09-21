@@ -1,0 +1,27 @@
+base class X
+base class Y<+T: X>
+
+base class Pgen<A> {
+  type TX: X;
+  type TY: Y<this::TX> default Y<this::TX>;
+
+  fun getA(): A;
+}
+
+base class P extends Pgen<this::TY>
+
+base class Qgen<T1, T2: Pgen<T1>> {
+  type TP: P;
+
+  fun getT2(): T2;
+
+  fun getT1(): T1 {
+    this.getT2().getA()
+  }
+}
+
+base class Q extends Qgen<this::TP::TY, this::TP> {}
+
+fun main(): void {
+  print_string("Pass")
+}

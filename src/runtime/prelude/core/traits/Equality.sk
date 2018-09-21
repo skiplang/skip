@@ -1,0 +1,34 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+trait Equality {
+  overridable macro readonly fun ==(other: inst): Bool {
+    other match {
+    | otherTyped @ #ThisClass _ ->
+      _ = otherTyped; // silence unused variable warning in classes with no fields.
+      #forEachField (#field) {
+        // Use isEqual to ensure that fields implement Equality
+        if (!isEqual(this.#field, otherTyped.#field)) {
+          return false;
+        }
+      };
+      true
+
+    | _ -> false
+    }
+  }
+
+  overridable readonly fun !=(other: inst): Bool {
+    !(this == other)
+  }
+}
+
+// Does an equality check, but only for types whose == means Equality
+// Some types (notably Float) define an == method which does not mean Equality.
+fun isEqual<T: Equality>(a: T, b: T): Bool {
+  a == b
+}

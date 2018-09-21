@@ -1,0 +1,9 @@
+class Foo(x: Int, y: String)
+
+fun main(): void {
+  print_raw(
+    Foo(42, "Fail") match {
+    | Foo(x, x) -> x
+    },
+  )
+}

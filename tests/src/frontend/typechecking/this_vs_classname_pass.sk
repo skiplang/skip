@@ -1,0 +1,12 @@
+class Foo<T>() {
+  static fun empty(): Foo<T> {
+    Foo()
+  }
+  static fun special<T: nonNullable>(): Foo<T> {
+    Foo::empty()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

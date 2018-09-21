@@ -1,0 +1,4 @@
+fun main(): String {
+  l = {p1: String, p2} -> p1;
+  l{p1 => "Fail", p2 => 42}
+}

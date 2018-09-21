@@ -1,0 +1,15 @@
+File "./typechecking/invalid/abstract_type_const4.sk", line 7, characters 14-28:
+Type constant values cannot use abstract type constants
+5 | base class Foo {
+6 |   type TObj: Obj;
+7 |   type Tid = this::TObj::Tid;
+  |              ^^^^^^^^^^^^^^^
+8 | }
+
+File "./typechecking/invalid/abstract_type_const4.sk", line 6, characters 8-11:
+This type is, or contains, an uninistantiated type constant
+4 |
+5 | base class Foo {
+6 |   type TObj: Obj;
+  |        ^^^^
+7 |   type Tid = this::TObj::Tid;

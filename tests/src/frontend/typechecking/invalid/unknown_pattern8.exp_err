@@ -1,0 +1,17 @@
+File "./typechecking/invalid/unknown_pattern8.sk", line 10, characters 9-9:
+Invalid pattern binding. Cannot bind this expression to a local.
+Try replacing with '_'
+ 8 | fun doit(x: Hide): String {
+ 9 |   x match {
+10 |   | Bar(v) -> showit(v)
+   |         ^
+11 |   }
+
+File "./typechecking/invalid/unknown_pattern8.sk", line 2, characters 11-11:
+This type parameter was unknown when downcasting from the parent type.
+And it has no concrete upper bounds (base or normal classes).
+As such, the type cannot be inferred and cannot be interacted with.
+1 | base class Hide
+2 | class Bar<T: Show>(x: T) extends Hide
+  |           ^
+3 |

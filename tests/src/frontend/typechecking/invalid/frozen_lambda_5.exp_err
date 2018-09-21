@@ -1,0 +1,13 @@
+File "./typechecking/invalid/frozen_lambda_5.sk", line 3, characters 3-15:
+Cannot take a frozen or readonly view mutable lambda
+1 | mutable class Foo(mutable f: () -> void)
+2 | fun no(f: mutable Foo): void {
+3 |   freeze(f).f()
+  |   ^^^^^^^^^^^^^
+4 | }
+
+File "./typechecking/invalid/frozen_lambda_5.sk", line 1, characters 30-39:
+This is the lambda you are trying to view as non-mutable
+1 | mutable class Foo(mutable f: () -> void)
+  |                              ^^^^^^^^^^
+2 | fun no(f: mutable Foo): void {

@@ -1,0 +1,44 @@
+#!/bin/bash -e
+
+# Transpiles and runs skip code using the JS backend.
+# This is handy for one off runs. If you want to run more than once,
+# then you probably want to call skip_to_js to convert to JS, then
+# call run_js_file for each run.
+#
+# Usage: skip_eval_js <sk_files> [-- <arguments>]
+
+SOURCE_DIR=${SOURCE_DIR:-$(dirname $(dirname "${0}"))}
+BINARY_DIR=${BINARY_DIR:-${SOURCE_DIR}/build}
+TMPDIR=${BINARY_DIR}/tmp
+
+# Get SK files, advance args past optional --
+SK_FILES=()
+while [[ $# -ge 1 ]]; do
+  ARG="$1"
+  shift
+  if [ $ARG == '--' ]; then
+    break
+  else
+    SK_FILES+=($ARG)
+  fi
+done
+
+mkdir -p ${TMPDIR}
+JS_FILE=$(mktemp "${TMPDIR}/skip_eval_js.XXXXXXXXXX")
+
+# Increase the stack size in case we are compiling something very large.
+softlimit=32768
+hardlimit=`ulimit -Hs`
+if [ "$hardlimit" != "unlimited" ] && (( $softlimit > $hardlimit )); then
+    softlimit=$hardlimit
+fi
+ulimit -s $softlimit
+
+${BINARY_DIR}/bin/skip_to_js ${SKIP_FLAGS//,/ } --output "$JS_FILE" "${SK_FILES[@]}"
+${SOURCE_DIR}/tools/run_js_file "$JS_FILE" "$@"
+
+# Clean up after ourselves.
+if [ -z "$KEEP_TEMP" ]; then
+    rm -rf "${JS_FILE}"
+    rm -rf "${JS_FILE}.map"
+fi

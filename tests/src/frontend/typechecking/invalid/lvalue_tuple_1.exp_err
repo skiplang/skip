@@ -1,0 +1,20 @@
+File "./typechecking/invalid/lvalue_tuple_1.sk", line 2, characters 3-8:
+Invalid pattern
+1 | fun main(): void {
+2 |   (_, _) = (1, 2, 3);
+  |   ^^^^^^
+3 |   print_raw("FAIL")
+
+File "./typechecking/invalid/lvalue_tuple_1.sk", line 2, characters 12-20:
+The type: (Int, Int, Int)
+1 | fun main(): void {
+2 |   (_, _) = (1, 2, 3);
+  |            ^^^^^^^^^
+3 |   print_raw("FAIL")
+
+File "./typechecking/invalid/lvalue_tuple_1.sk", line 2, characters 3-8:
+Does not share a common super type with: (_, _)
+1 | fun main(): void {
+2 |   (_, _) = (1, 2, 3);
+  |   ^^^^^^
+3 |   print_raw("FAIL")

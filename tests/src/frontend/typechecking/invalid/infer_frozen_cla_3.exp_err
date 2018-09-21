@@ -1,0 +1,29 @@
+File "./typechecking/invalid/infer_frozen_cla_3.sk", line 8, characters 3-5:
+Constraint not satisfied
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo::test(mutable Array[])
+   |   ^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_cla_3.sk", line 8, characters 13-27:
+The mutable type 'mutable Array<_>' appeared inside an immutable type.
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo::test(mutable Array[])
+   |             ^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_cla_3.sk", line 1, characters 14-19:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | class Foo<T: frozen>(x: Array<T>) {
+  |              ^^^^^^
+2 |   static fun test(T): void {
+
+File "./typechecking/invalid/infer_frozen_cla_3.sk", line 8, characters 21-27:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Foo::test(mutable Array[])
+   |                     ^^^^^^^
+ 9 | }

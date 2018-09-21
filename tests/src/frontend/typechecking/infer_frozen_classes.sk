@@ -1,0 +1,31 @@
+mutable class MyRef<T>(mutable r: T)
+mutable class MutRef<T>(x: mutable MyRef<T>)
+class ImmEmpty<T: frozen>(x: T)
+class ImmConstr<T: MyRef<Int>>(x: T)
+class ImmParam<T>(x: MyRef<T>)
+
+fun main(): void {
+  mut_r = mutable MyRef(0);
+  imm_r = MyRef(0);
+  _ = mutable MyRef(mutable Array[mut_r]);
+  _ = mutable MyRef(mut_r);
+  _ = mutable MyRef(Array[imm_r]);
+  _ = mutable MyRef(imm_r);
+  _ = mutable MyRef(0);
+  _ = MyRef(Array[imm_r]);
+  _ = MyRef(imm_r);
+  _ = MyRef(0);
+
+  _ = mutable MutRef(mut_r);
+  _ = MutRef(imm_r);
+
+  _ = ImmEmpty(Array[imm_r]);
+  _ = ImmEmpty(Array[0]);
+  _ = ImmEmpty(0);
+
+  _ = ImmConstr(imm_r);
+
+  _ = ImmParam(imm_r);
+
+  print_string("Pass")
+}

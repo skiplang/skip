@@ -1,0 +1,23 @@
+@no_inline @cpp_export_as("mkNumStr") fun mkNumStr(x: Float): String {
+  // "Number: " + x.toString()
+  x.toString()
+}
+
+@hhvm_import
+class C <T>{
+}
+{
+  @hhvm_import
+  native fun method(): Int ;
+
+  @hhvm_import
+  native fun testCreateInvalidDayOfMonth<TException: .Exception>(
+    expected_exception_class: ?Concrete<TException>,
+  ): void ;
+
+  @hhvm_import
+  native fun testCreateInvalidDayOfMonth<TException: .Exception>[T: TException](
+    p: T,
+  ): void ;
+
+}

@@ -1,0 +1,42 @@
+base class Runner<-T, +Tv> protected (func: (T) ~> Tv) {
+  fun get(in_: T): Tv {
+    this.func(in_)
+  }
+}
+
+class MapRunner extends Runner<UnorderedMap<String, Int>, Int>
+
+class FE<T>(value: P<T>)
+
+base class P<T>()
+class FP<T1, T2, +TP: P<T2>>(mk: Runner<T1, T2>, p: TP) extends P<T1>
+
+base class LowerAndUpper<Tv: Orderable>(
+  lowerBound: Nullable<Tv>,
+  upperBound: Nullable<Tv>,
+) extends P<Tv> {
+  fun exclusive(): Bool;
+}
+
+class LessThan<T: Orderable> extends LowerAndUpper<T> {
+  static fun create(x: T): this {
+    static(Null(), Box(x))
+  }
+
+  fun exclusive(): Bool {
+    true
+  }
+}
+
+fun getFromFE<T>(fe: FE<T>): Nullable<Int> {
+  fe.value match {
+  | FP(MapRunner(_), p @ LowerAndUpper(_, Box(upper))) ->
+    Box(if (p.exclusive()) (upper - 1) else upper)
+  | _ -> Null()
+  }
+}
+
+fun main(): void {
+  _ = getFromFE(FE(LessThan::create(10)));
+  print_string("Pass")
+}

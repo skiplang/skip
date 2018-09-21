@@ -1,0 +1,8 @@
+mutable class I(v: mutable Array<String>)
+mutable value class A(i: mutable I)
+
+const g: A = A(I(Array["Pass\n"]));
+
+fun main(): void {
+  print_raw(g.i.v[0])
+}

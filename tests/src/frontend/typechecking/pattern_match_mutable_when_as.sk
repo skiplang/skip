@@ -1,0 +1,10 @@
+mutable class C(mutable x: String) {}
+
+fun main(): void {
+  c = mutable C("Fail");
+  c match {
+  | c2 @ C(x) if (x == "Fail") -> c2.!x = "Pass\n"
+  | _ -> void
+  };
+  print_raw(c.x)
+}

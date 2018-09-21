@@ -1,0 +1,13 @@
+base class Foo {
+  fun doIt(): void {
+    void
+  }
+}
+base class Traity {
+  overridable fun doIt(): void {
+    void
+  }
+}
+class CFoo() extends Foo, Traity {
+  fun doIt from Traity;
+}

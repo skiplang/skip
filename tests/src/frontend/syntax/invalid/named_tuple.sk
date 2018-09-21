@@ -1,0 +1,4 @@
+fun main(): String {
+  t: (x: Int, Int) = (0, 1);
+  "fail"
+}

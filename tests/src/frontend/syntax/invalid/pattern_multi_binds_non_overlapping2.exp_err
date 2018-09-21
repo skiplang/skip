@@ -1,0 +1,15 @@
+File "./syntax/invalid/pattern_multi_binds_non_overlapping2.sk", line 12, characters 5-13:
+Found non-overlapping variable in or pattern.
+10 |   f match {
+11 |   | Baz(x, y, z)
+12 |   | Bar(x, y) ->
+   |     ^^^^^^^^^
+13 |     "Fail\n"
+
+File "./syntax/invalid/pattern_multi_binds_non_overlapping2.sk", line 11, characters 15-15:
+This pattern has non-overlapping variable: z
+ 9 |
+10 |   f match {
+11 |   | Baz(x, y, z)
+   |               ^
+12 |   | Bar(x, y) ->

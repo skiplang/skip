@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/multiple_child_class_override_named_params_dead_pattern.sk", line 10, characters 5-34:
+The following pattern is unused:
+ | C{x => 2, y => true, z => "t"}
+ 8 |   | B{y => false} -> "a"
+ 9 |   | B{y => true, x => 2} -> "s"
+10 |   | C{z => "t", y => true, x => 2} -> "s"
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |   | A{x => _} -> "\n"

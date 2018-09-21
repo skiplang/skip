@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/multiple_children_override.sk", line 6, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | C(Int _, _, true)
+4 |
+5 | fun myMatch(b: A): String {
+6 |   b match {
+  |   ^^^^^^^^^
+7 |   | A(false) -> "0"
+  |   ^^^^^^^^^^^^^^^^^

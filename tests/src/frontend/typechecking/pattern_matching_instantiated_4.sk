@@ -1,0 +1,20 @@
+class OK() uses Show {
+  fun toString(): String {
+    "Pass"
+  }
+}
+
+base class P<T: Show> {
+  children =
+  | C(x: T)
+}
+
+fun tester(v: P<OK>): String {
+  v match {
+  | C(x) -> x.toString()
+  }
+}
+
+fun main(): void {
+  print_raw(tester(C(OK())))
+}

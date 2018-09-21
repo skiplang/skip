@@ -1,0 +1,7 @@
+File "./syntax/invalid/macro_global_typeid.sk", line 3, characters 14-23:
+Expected 'type identifier'. Found 'macro type identifier'.
+1 | base class B {
+2 |   macro fun m(): void {
+3 |     _ = (0: .#ThisClass);
+  |              ^^^^^^^^^^
+4 |   }

@@ -1,0 +1,7 @@
+fun test(x: Int, b: Bool = true, y: Int = 44): Int {
+  if (b) y else x
+}
+
+fun main(): void {
+  print_raw(if (test(0, true, 0) == 0) "Passed\n" else "FAILED")
+}

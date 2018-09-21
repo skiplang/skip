@@ -1,0 +1,6 @@
+File "./syntax/invalid/when_clause_location.sk", line 2, characters 17-17:
+Unexpected type parameter declaration. It must be declared right after the name of the function.
+1 | class X<T>() {
+2 |   fun a[T: Show]<U>(): String {
+  |                 ^
+3 |     ""

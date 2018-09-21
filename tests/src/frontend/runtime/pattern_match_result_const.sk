@@ -1,0 +1,97 @@
+// The native back end optimizes matches that yield consts by storing those
+// consts in vtables. Test some of those cases.
+
+base class A
+class B() extends A
+class C() extends A
+class D() extends A
+
+@no_inline
+fun testBool1(a: A): Bool {
+  a match {
+  | B() -> true
+  | C() -> false
+  | _ -> true
+  }
+}
+@no_inline
+fun testBool2(a: A): Bool {
+  a match {
+  | B() -> false
+  | C() -> true
+  | _ -> true
+  }
+}
+
+@no_inline
+fun testInt1(a: A): Int {
+  a match {
+  | B() -> 1
+  | C() -> 2
+  | _ -> 3
+  }
+}
+@no_inline
+fun testInt2(a: A): Int {
+  a match {
+  | B() -> -9
+  | C() -> -8
+  | _ -> -7
+  }
+}
+
+// TODO: We would like to use real floating point numbers here, like 1.25,
+// but the JS back end formats them differently than the others, even though
+// it's exactly representable.
+@no_inline
+fun testFloat1(a: A): Float {
+  a match {
+  | B() -> 1.0
+  | C() -> -3.0
+  | _ -> 16.0
+  }
+}
+
+@no_inline
+fun testFloat2(a: A): Float {
+  a match {
+  | B() -> 12.0
+  | C() -> 47.0
+  | _ -> -8.0
+  }
+}
+
+@no_inline
+fun testString1(a: A): String {
+  a match {
+  | B() -> "B"
+  | C() -> "C"
+  | _ -> "D"
+  }
+}
+@no_inline
+fun testString2(a: A): String {
+  a match {
+  | B() -> "Q"
+  | C() -> "R"
+  | _ -> "S"
+  }
+}
+
+@no_inline
+fun stringify<T: Show>(f: (A -> T)): String {
+  (f(B()).toString() + ", " + f(C()) + ", " + f(D()) + ";\n");
+}
+
+fun main(): void {
+  print_raw(
+    (stringify(testBool1) +
+      stringify(testBool2) +
+      stringify(testInt1) +
+      stringify(testInt2) +
+      stringify(testFloat1) +
+      stringify(testFloat2) +
+      stringify(testString1) +
+      stringify(testString2)),
+  )
+}

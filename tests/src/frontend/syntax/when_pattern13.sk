@@ -1,0 +1,14 @@
+base class F {
+  children =
+  | A(Int)
+  | B(String)
+}
+
+fun main(): void {
+  print_raw(
+    A(1) match {
+    | A(x) if (((x) ~> x == 1)(x)) -> "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

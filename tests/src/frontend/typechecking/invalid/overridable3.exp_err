@@ -1,0 +1,14 @@
+File "./typechecking/invalid/overridable3.sk", line 8, characters 7-9:
+Cannot redeclare Child::foo as abstract
+ 6 |
+ 7 | class Child() extends MyBase {
+ 8 |   fun foo(): Int;
+   |       ^^^
+ 9 | }
+
+File "./typechecking/invalid/overridable3.sk", line 2, characters 18-18:
+MyBase::foo was given a definition here
+1 | base class MyBase {
+2 |   fun foo(): Int {
+  |                  ^
+3 |     42

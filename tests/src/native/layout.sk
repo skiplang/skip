@@ -1,0 +1,89 @@
+// -----------------------------------------------------------------------------
+
+module PosLayout;
+// For cpp_export make sure that fields aren't reordered in positional classes
+
+@cpp_export
+class Class1(
+  a: Int8,
+  b: Int,
+  c: String,
+  d: Float,
+  e: Bool,
+)
+
+@cpp_export
+class Class2(
+  a: Bool,
+  b: Bool,
+  c: Int,
+)
+
+@cpp_extern
+untracked native fun reportClass1(obj: Class1): void;
+
+@cpp_extern
+untracked native fun reportClass2(obj: Class2): void;
+
+untracked fun test(): void {
+  reportClass1(Class1(Int8::truncate(1), 2, "3", 4.0, true));
+  reportClass1(Class1(Int8::truncate(4), 3, "2", 1.0, false));
+
+  reportClass2(Class2(false, true, 100));
+  reportClass2(Class2(true, false, 100));
+}
+
+module end;
+
+// -----------------------------------------------------------------------------
+
+module NamedLayout;
+// For cpp_export make sure that fields aren't reordered in named classes
+
+@cpp_export
+class Class1{
+  c: String,
+  b: Int,
+  a: Int8,
+  e: Bool,
+  d: Float,
+}
+
+@cpp_extern
+untracked native fun reportClass1(obj: Class1): void;
+
+untracked fun test(): void {
+  reportClass1(
+    Class1{a => Int8::truncate(1), b => 2, c => "3", d => 4.0, e => true},
+  );
+}
+
+module end;
+
+// -----------------------------------------------------------------------------
+
+module ValueDefeat;
+// Make sure that the value-class optimization (single field in a final class)
+// doesn't happen for cpp_export classes.
+
+@cpp_export
+class Class1{
+  a: String,
+}
+
+@cpp_extern
+untracked native fun reportClass1(obj: Class1): void;
+
+untracked fun test(): void {
+  reportClass1(Class1{a => "hello"});
+}
+
+module end;
+
+// -----------------------------------------------------------------------------
+
+untracked fun main(): void {
+  PosLayout.test();
+  NamedLayout.test();
+  ValueDefeat.test();
+}

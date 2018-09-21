@@ -1,0 +1,5 @@
+File "./typechecking/invalid/boolean.sk", line 1, characters 13-19:
+Unbound class: 'Boolean'
+1 | fun main(): Boolean {
+  |             ^^^^^^^
+2 |   "A"

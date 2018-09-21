@@ -1,0 +1,14 @@
+mutable class ClassConverter {
+  filter: Filter,
+  className: String,
+}
+extends
+  AttributeConverter,
+  TypeParameterConverter,
+  ConstantConverter,
+  FunctionConverter,
+  HackAstConverterBase,
+  InteropConverter,
+{
+  fun f(): void { void }
+}

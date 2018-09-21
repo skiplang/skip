@@ -1,0 +1,21 @@
+base class Foo {
+  overridable fun hello(): String {
+    "String"
+  }
+}
+
+class Bar() extends Foo {
+  fun hello(): _ {
+    invariant_violation("Expected invariant")
+  }
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      Bar().hello()
+    } catch {
+    | _ -> "Pass\n"
+    },
+  )
+}

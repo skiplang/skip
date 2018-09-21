@@ -1,0 +1,10 @@
+trait Z {
+  fun no(): void {
+    this match {
+    | X() -> void
+    | _ -> void
+    }
+  }
+}
+
+class X() uses Z

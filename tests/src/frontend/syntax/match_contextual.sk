@@ -1,0 +1,13 @@
+fun match(match: Bool): Bool {
+  match
+}
+
+fun main(): void {
+  print_raw(
+    if (match(true)) {
+      "Pass\n"
+    } else {
+      "Fail\n"
+    },
+  )
+}

@@ -1,0 +1,16 @@
+base class Expr {
+  children =
+  | Plus(Expr, Expr)
+  | Value(Int)
+}
+
+class Test() {
+  type T = Plus;
+
+  fun test(x: this::T): Int {
+    x match {
+    | Value(i) -> i
+    | this::T(_, _) -> 2
+    }
+  }
+}

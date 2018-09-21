@@ -1,0 +1,10 @@
+mutable class A<T>(mutable dummy: String = "")
+
+fun test(): void {
+  _ = mutable A();
+  void
+}
+
+fun main(): void {
+  print_string("Pass")
+}

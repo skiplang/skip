@@ -1,0 +1,63 @@
+File "./visibility/invalid/private_abstract_2.sk", line 3, characters 5-5:
+For the child: 'A', invalid extend of the parent: 'C'
+1 | base class C {
+2 |   children =
+3 |   | A()
+  |     ^
+4 |   | B()
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 15-17:
+Private methods in base classes must be defined for that class since they are only visible for that class
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |               ^^^
+6 |   | A _ -> void
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 3-9:
+Declared private here
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |   ^^^^^^^
+6 |   | A _ -> void
+
+File "./visibility/invalid/private_abstract_2.sk", line 4, characters 5-5:
+For the child: 'B', invalid extend of the parent: 'C'
+2 |   children =
+3 |   | A()
+4 |   | B()
+  |     ^
+5 |   private fun foo(): void
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 15-17:
+Private methods in base classes must be defined for that class since they are only visible for that class
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |               ^^^
+6 |   | A _ -> void
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 3-9:
+Declared private here
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |   ^^^^^^^
+6 |   | A _ -> void
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 15-17:
+Private methods in base classes must be defined for that class since they are only visible for that class
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |               ^^^
+6 |   | A _ -> void
+
+File "./visibility/invalid/private_abstract_2.sk", line 5, characters 3-9:
+Declared private here
+3 |   | A()
+4 |   | B()
+5 |   private fun foo(): void
+  |   ^^^^^^^
+6 |   | A _ -> void

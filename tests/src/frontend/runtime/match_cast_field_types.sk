@@ -1,0 +1,31 @@
+base class BC() {
+  fun toString(): String {
+    ""
+  }
+}
+class B extends BC
+class C extends BC
+
+base class Expression()
+
+class MyExpression<T: BC>(context: T) extends Expression
+
+untracked fun f2(e: Expression): void {
+  e match {
+  | MyExpression(C()) -> print_raw("Fail")
+  | MyExpression(B()) -> print_raw("Pa")
+  }
+}
+
+untracked fun f1(e: Expression): void {
+  e match {
+  | MyExpression(C()) -> print_raw("Fail")
+  | _ -> print_raw("ss")
+  }
+}
+
+untracked fun main(): void {
+  e = MyExpression(B());
+  f2(e);
+  f1(e);
+}

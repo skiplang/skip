@@ -1,0 +1,12 @@
+base class F {
+  children =
+  | Bar(Int, Int)
+}
+
+fun main(): void {
+  print_raw(
+    Bar(1, 1) match {
+    | Bar(_, Int _) -> "Pass\n"
+    },
+  )
+}

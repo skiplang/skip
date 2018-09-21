@@ -1,0 +1,30 @@
+File "./typechecking/invalid/infer_frozen_met_3.sk", line 8, characters 3-40:
+Constraint not satisfied
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Tester().foo(Array[], mutable Array[])
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_met_3.sk", line 8, characters 25-39:
+The mutable type 'mutable Array<_>' appeared inside an immutable type.
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Tester().foo(Array[], mutable Array[])
+   |                         ^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/infer_frozen_met_3.sk", line 2, characters 14-19:
+This type is immutable, and immutable types must be deeply frozen. To make it mutable, preface it with 'mutable', or for generics try removing any 'frozen' constraint.
+1 | class Tester() {
+2 |   fun foo<T: frozen>(Array<T>, T): void {
+  |              ^^^^^^
+3 |     void
+
+File "./typechecking/invalid/infer_frozen_met_3.sk", line 8, characters 33-39:
+To keep it immutable, try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+ 6 |
+ 7 | fun test(): void {
+ 8 |   Tester().foo(Array[], mutable Array[])
+   |                                 ^^^^^^^
+ 9 | }

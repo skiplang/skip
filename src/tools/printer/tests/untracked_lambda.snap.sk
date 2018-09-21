@@ -1,0 +1,3 @@
+untracked fun main(): void {
+  inc = untracked x -> x + 1;
+}

@@ -1,0 +1,6 @@
+File "./typechecking/invalid/construct_prim.sk", line 2, characters 3-7:
+Int does not have a constructor
+1 | fun foo(): Int {
+2 |   Int()
+  |   ^^^^^
+3 | }

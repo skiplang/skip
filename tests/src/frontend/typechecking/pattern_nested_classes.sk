@@ -1,0 +1,24 @@
+base class B {
+  children =
+  | I(x: Int)
+  | S(x: String)
+  | V(x: Bool)
+}
+
+class C(b: B)
+
+fun main(): void {
+  c = C(S("Pass\n"));
+  print_raw(
+    c match {
+    | C(I(x)) -> (x + 1).toString()
+    | C(V(x)) ->
+      if (x) {
+        "true"
+      } else {
+        "false"
+      }
+    | C(S(x)) -> x
+    },
+  )
+}

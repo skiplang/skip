@@ -1,0 +1,8 @@
+base class C {
+  children =
+  | A()
+  | B()
+  private fun foo(): void
+  | A _ -> void
+  | B _ -> void
+}

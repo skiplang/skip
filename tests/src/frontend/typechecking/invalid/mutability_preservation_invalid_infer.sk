@@ -1,0 +1,32 @@
+base class P<T>
+class C1<T1, T2>() extends P<T2> {
+  fun setT1(T1): void {
+    void
+  }
+  fun setT2(T2): void {
+    void
+  }
+}
+class C2<T>() extends P<Int> {
+  fun setT(T): void {
+    void
+  }
+}
+class C3<T>() extends P<mutable Vector<Int>>
+
+fun no1(): P<Int> {
+  c = C1();
+  c.setT1(mutable Vector[]);
+  c.setT2(0);
+  c
+}
+
+fun no2(): P<Int> {
+  c = C2();
+  c.setT(mutable Vector[]);
+  c
+}
+
+fun no3(): P<mutable Vector<Int>> {
+  C3()
+}

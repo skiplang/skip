@@ -1,0 +1,1077 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ This file implements compilation of matches based on the algorithm outlined
+ in the following paper:
+
+ http://moscova.inria.fr/~maranget/papers/ml05e-maranget.pdf
+
+ In particular, we lower all match statements to switch/typeswitch/if
+ expressions.
+
+ While the majority of the algorithm is straightforward and follows directly
+ from the paper, handling subclasses/inheritance/multiple inheritance presents
+ more of a challenge. We therefore take the following view towards this:
+
+ When generating a typeswitch for a given class C, instead of creating a case
+ for C, we instead case on all of the leaves of C in the inheritance hierarchy
+ (and on C if it has no leaves). This then gets us around tricky issues with
+ determining which subproblems remain after a given column is processed, as well
+ as order that these branches must be in in the typeswitch.
+
+*/
+
+module alias O = OuterIst;
+module alias OIU = SkipOuterIstUtils;
+module alias AU = SkipAstUtils;
+module alias PP = SkipAstPp;
+module alias OPP = SkipOuterIstPp;
+module alias P = BufferedPrinter;
+
+module SkipLowerMatches;
+
+value class IdExpr(id: String, e: O.Expr) uses Hashable, Equality {
+  fun hash(): Int {
+    this.id.hash()
+  }
+  fun ==(other: IdExpr): Bool {
+    this.id == other.id
+  }
+}
+
+value class StrippedPattern(
+  ty: O.Type,
+  pos: FileRange,
+  pat: StrippedPattern_,
+) uses Hashable, Equality {
+  fun hash(): Int {
+    this.pat.hash()
+  }
+  fun isWildcard(): Bool {
+    this.pat.isWildcard()
+  }
+  fun isDefault(): Bool {
+    this.pat.isDefault()
+  }
+}
+
+base class StrippedPattern_ uses Hashable, Equality {
+  children =
+  | PatAll()
+  | PatLiteral(lit: O.Literal)
+  | PatType(
+    matchClass: O.TypeIdentifier,
+    castType: O.Type,
+    params: UMap<StrippedParamPattern>,
+  )
+
+  fun isWildcard(): Bool
+  | PatAll() -> true
+  | _ -> false
+
+  /* A Int _ is a default (but not) wildcard pattern for an Int column (etc.)
+   * Therefore we need to treat literal constraints as wildcard patterns when
+   * generating switch statements. */
+  fun isDefault(): Bool
+  | PatAll() -> true
+  | PatType(tid, _, _) -> literalClassNames.contains(tid.name.id)
+  | _ -> false
+}
+
+value class StrippedParamPattern(
+  ty: O.Type,
+  pat: StrippedPattern,
+) uses Hashable, Equality
+
+class Row{
+  actionId: O.Name,
+  inits: Array<O.Stmt>,
+  patterns: Array<StrippedPattern>,
+  guard: ?O.Stmt,
+} uses Hashable, Equality {
+  fun hash(): Int {
+    Hashable.combine(
+      this.actionId.id.hash(),
+      Hashable.combine(this.patterns.hash(), this.guard.hash()),
+    )
+  }
+}
+
+base class BlockStmt {
+  children =
+  /* @stmt jumps to a block in @finishedBlocks in our acc */
+  | Finished(O.Name, O.Stmt)
+  /* This is a "raw" statement and doesn't point into the finishedBlocks */
+  | Leaf(O.Stmt)
+}
+
+fun literalType(l: O.Literal): String {
+  l match {
+  | O.LBool _ -> "Bool"
+  | O.LInt _ -> "Int"
+  | O.LFloat _ -> "Float"
+  | O.LChar _ -> "Char"
+  | O.LString _ -> "String"
+  | O.LVoid _ -> "Void"
+  }
+}
+
+/* The set of all the literal class names.
+ * This may seem way more complicated than it needs to be, but we want to make
+ * sure that these names stay in sync with what we return from @literalType. */
+const literalClassNames: SSet = ({
+  i = 1;
+  literals = List[
+    O.LBool(true),
+    O.LInt(i),
+    O.LFloat(1.0),
+    O.LChar(i),
+    O.LString(" "),
+  ];
+  SSet::createFromItems(
+    literals.foldl(((acc, lit) -> List.Cons(literalType(lit), acc)), List[]),
+  )
+});
+
+fun from_block_stmt(bstmt: BlockStmt): O.Stmt {
+  bstmt match {
+  | Finished(_, s)
+  | Leaf(s) ->
+    s
+  }
+}
+
+/* These shouldn't be making it to the backend, and all we need them for is to
+ * act at buffers that keep the pattern matrix in sync. */
+fun makeWildcardPat(pat: StrippedPattern): StrippedPattern {
+  StrippedPattern(pat.ty, pat.pos, PatAll())
+}
+
+// TODO integrate with other caching
+value class WeakKeyPat(pat: StrippedPattern) uses Hashable, Equality {
+  fun hash(): Int {
+    this.pat.pat match {
+    | PatAll() -> 0
+    | PatLiteral(lit) -> lit.hash()
+    | PatType(tid, _, _) -> tid.name.id.hash()
+    }
+  }
+
+  fun ==(other: WeakKeyPat): Bool {
+    (this.pat.pat, other.pat.pat) match {
+    | (PatAll(), PatAll()) -> true
+    | (PatLiteral(lit1), PatLiteral(lit2)) -> lit1 == lit2
+    | (PatType(tid1, _, _), PatType(tid2, _, _)) -> tid1.name.id == tid2.name.id
+    | _ -> false
+    }
+  }
+}
+
+fun add_typing_info(
+  typing_info: SMap<UMap<StrippedParamPattern>>,
+  ppat: StrippedPattern,
+): StrippedPattern {
+  (ty, pos, pat) = (ppat.ty, ppat.pos, ppat.pat);
+  pat match {
+  | PatType(tid, castType, _) ->
+    tid_str = tid.name.id;
+    new_params = typing_info[tid_str];
+    StrippedPattern(ty, pos, PatType(tid, castType, new_params))
+  | _ -> ppat
+  }
+}
+
+/* dedup patterns based on weak key equality.
+ * preserves order of first appearance */
+fun dedup_patterns(pats: List<StrippedPattern>): List<StrippedPattern> {
+  wkpats = UnorderedSet::mcreate(pats.size());
+  pats.filter(p -> wkpats.maybeInsert(WeakKeyPat(p)))
+}
+
+/****************************************************************************/
+/* Heuristics for column selection */
+/****************************************************************************/
+
+/* Get the patterns in the specified column of the pattern matrix. */
+fun get_nth_column_pats(rows: List<Row>, i: Int): List<StrippedPattern> {
+  rows.map(r ~> r.patterns[i])
+}
+
+/* 'f' in the paper */
+fun first_row_non_wc(col: List<StrippedPattern>): Int {
+  if (col.getHead().isWildcard()) 0 else 1
+}
+
+/* 'd' in the paper */
+fun small_default(col: List<StrippedPattern>): Int {
+  -(col.filter(c ~> c.isWildcard())).size()
+}
+
+/* 'b' from the paper */
+fun small_branching_factor(col: List<StrippedPattern>): Int {
+  has_default = col.any(c ~> c.isWildcard());
+  unique = dedup_patterns(col);
+  branches = unique.size() + if (has_default) 1 else 0;
+  -branches
+}
+
+/* 'q' - prefer a column whose first WC appears as far down as possible */
+fun long_non_wc_prefix_step(col: List<StrippedPattern>, acc: Int): Int {
+  col match {
+  | List.Nil() -> acc
+  | List.Cons(pat, pats) ->
+    if (pat.isWildcard()) acc else long_non_wc_prefix_step(pats, acc + 1)
+  }
+}
+
+fun long_non_wc_prefix(col: List<StrippedPattern>): Int {
+  long_non_wc_prefix_step(col, 0)
+}
+
+/* 'a' - prefer a column with the lowest total number of constructor params */
+fun ctor_arity(pat: StrippedPattern): Int {
+  pat.pat match {
+  | PatLiteral _
+  | PatAll() ->
+    0
+  | PatType(_, _, ps) ->
+    n = ps.size();
+    ps.reduce((n, _, p) ~> n + ctor_arity(p.pat), n)
+  }
+}
+
+fun low_arity(col: List<StrippedPattern>): Int {
+  -col.foldl((n, pat) ~> n + ctor_arity(pat), 0)
+}
+
+value class ColScore(col: Int, score: Int)
+
+/* given a list of (index, score) pairs, return those indexes
+   whose scores are equal to the high score */
+fun best_cols(col_scores: Array<ColScore>): Array<Int> {
+  col_scores.size() match {
+  | 0 -> invariant_violation("Internal error: empty column list")
+  | 1 -> Array[col_scores[0].col]
+  | _ ->
+    hi = col_scores.foldl((x, cs) ~> max(x, cs.score), col_scores[0].score);
+    col_scores.filter(cs ~> cs.score == hi).map(cs ~> cs.col)
+  }
+}
+
+/* given a list of rows, a list of column indexes, and a heuristic,
+   return the subset of indexes whose columns have the highest score
+   on the heuristic */
+fun pick_cols(
+  rows: List<Row>,
+  cols: Array<Int>,
+  h: List<StrippedPattern> ~> Int,
+): Array<Int> {
+  score_col = i ~> ColScore(i, h(get_nth_column_pats(rows, i)));
+  best_cols(cols.map(score_col))
+}
+
+// heuristic sequences described in Maranget
+const fdb: Array<List<StrippedPattern> ~> Int> = Array[
+  first_row_non_wc,
+  small_default,
+  small_branching_factor,
+];
+
+const qba: Array<List<StrippedPattern> ~> Int> = Array[
+  long_non_wc_prefix,
+  small_branching_factor,
+  low_arity,
+];
+
+/* pick a column to begin matching on. */
+fun select_match_column(rows: List<Row>): Int {
+  r = rows.getHead();
+  r.patterns.size() match {
+  | 0 -> invariant_violation("Internal error: empty row in select_match_column")
+  | 1 -> 0
+  | _ ->
+    all_cols = Array::fillBy(r.patterns.size(), i ~> i);
+    best_cols = qba.foldl((cols, f) ~> pick_cols(rows, cols, f), all_cols);
+    best_cols[0]
+  }
+}
+
+/****************************************************************************/
+/* Row and pattern manipulation facilities */
+/****************************************************************************/
+/* Given a class name return back all the leaves (concrete classes) for that
+ * class. We need to do this in order to get around weird subtyping relationships
+ * and multiple inheritance in our generated code. */
+fun concretize_class(
+  class_defs: UMap<O.ClassDef>,
+  class_tid: O.TypeIdentifier,
+): List<O.TypeIdentifier> {
+  class_tid match {
+  | O.TidStatic _ -> List[class_tid]
+  | O.TidObject(name) ->
+    class_defs.maybeGetNoPos(name.id) match {
+    | None() ->
+      name.pos.die(`ICE: no definition for class ${name.id} in match lowering`)
+    | Some(class_def) ->
+      class_def.kind match {
+      | O.KTrait() -> List[]
+      | O.KBase() ->
+        /* We can have a base class with no children. So if this is the case
+         * add the base class back in.*/
+        if (class_def.concrete_children.isEmpty()) {
+          List[class_tid]
+        } else {
+          class_def.concrete_children.reduce(
+            (acc, kid) ~> List.Cons(O.TidObject(O.Name(name.pos, kid)), acc),
+            List[],
+          )
+        }
+      | O.KClass() -> List[class_tid]
+      }
+    }
+  }
+}
+
+fun build_seen(
+  typing_info: SMap<UMap<StrippedParamPattern>>,
+  pats: List<StrippedPattern>,
+): List<StrippedPattern> {
+  // correctness depends on scanning the list in reverse,
+  // picking up the last instance of each unique pattern.
+  // unclear why.
+  wkpats = UnorderedSet::mcreate(pats.size());
+  pats.foldr(
+    (p, acc) ->
+      if (wkpats.maybeInsert(WeakKeyPat(p))) {
+        List.Cons(add_typing_info(typing_info, p), acc)
+      } else {
+        acc
+      },
+    List[],
+  )
+}
+
+/* Create a default matrix for P:
+ * - cols 1..n of all rows whose col 0 is a WC,
+ * - all other rows discarded */
+fun defaultMatrix(rows: List<Row>): List<Row> {
+  is_wc_row = r ~> !r.patterns.isEmpty() && r.patterns[0].isDefault();
+  rows.filter(is_wc_row).map(r ~> r with {patterns => r.patterns.drop(1)})
+}
+
+fun swapCol<T>(c: Int, a: Array<T>): Array<T> {
+  Array::fillBy(a.size(), i -> if (i == 0) a[c] else if (i == c) a[0] else a[i])
+}
+
+fun swapCols(
+  rows: List<Row>,
+  exprs: Array<IdExpr>,
+  c: Int,
+): (List<Row>, Array<IdExpr>) {
+  !rows = rows.map(r -> r with {patterns => swapCol(c, r.patterns)});
+  !exprs = swapCol(c, exprs);
+  (rows, exprs)
+}
+
+/***************************************************************************/
+/* Switch and type switch generation */
+/***************************************************************************/
+
+value class MemoKey(
+  exprs: Array<IdExpr>,
+  rows: List<Row>,
+) uses Hashable, Equality
+
+mutable class Acc{
+  /* The finished switch blocks that we've generated */
+  finishedBlocks: mutable Vector<(O.Name, O.Stmt)> = Vector::mcreate(),
+  /* The statements that we've seen */
+  memoTable: mutable UnorderedMap<MemoKey, O.Name> = UnorderedMap::mcreate(),
+}
+
+// Match-lowering visitor
+mutable class MatchCompiler(
+  new_id: () -> Int,
+  cds: UMap<O.ClassDef>,
+  mutable acc: mutable Acc = mutable Acc{},
+) extends OIU.Visitor {
+  readonly fun getVisitorName(): String {
+    "MatchCompiler"
+  }
+
+  mutable fun makeJumpLabel(pos: FileRange): O.Name {
+    O.Name(pos, sk_new_var(this.new_id, "jumpLab"))
+  }
+
+  /* Once we've created a statement for our match, we then label it with a jump
+   * label/index, record this in our @finishedBlocks list, create a statement that
+   * will jump us to that label, and finally increment our jump count. */
+  mutable fun addBlock(pos: FileRange, s: O.Stmt): BlockStmt {
+    jump_lab = this.makeJumpLabel(pos);
+    /* Add our block */
+    this.acc.finishedBlocks.push((jump_lab, s));
+    /* Make the jump statement */
+    jmp_st = O.JumpTo(jump_lab);
+    /* update our blocks */
+    Finished(jump_lab, jmp_st)
+  }
+
+  /* Record the clause matrix @cl and the subproblem given by @idx that we need to
+   * jump to for that subproblem. */
+  mutable fun updateMemoTable(k: MemoKey, stmt: BlockStmt): void {
+    stmt match {
+    | Finished(subProbId, _) -> this.acc.memoTable.add(k, subProbId)
+    | Leaf _ -> void
+    }
+  }
+
+  /* If we don't remove extraneous constructors, than we will windup generating
+   * more switch statements than we will need. Essentially, we're setifying our
+   * root constructors.
+   * IMPORTANT: We are setifying our constructors while at the same time making
+   * sure that the parameters in the constructor that we choose is as large as possible -- and
+   * thus we have as much typing information available to us as possible later on
+   * during specialization/wildcard generation. For example, if we took in the
+   * following list of constructors:
+   * [B{x => 1, y => true}; B{t => 2}; A(1); A(2)]
+   * Then we would return out either of the following:
+   * [B{t => 2,x => 1, y => true}; A(1)]
+   * [B{t => 2,x => 1, y => true}; A(2)]
+   * The important thing to note here is that we unioned the parameters to B and
+   * through this give ourselves all the typing information for the parameters of
+   * B that we could ever need during the rest of the algorithm. */
+  readonly fun dedupConstructors(
+    orig: List<StrippedPattern>,
+    expanded: List<StrippedPattern>,
+  ): List<StrippedPattern> {
+    build_typing_info = (acc, pat) -> {
+      pat.pat match {
+      | PatType(tid, _castType, params) ->
+        tid_str = tid.name.id;
+        acc.maybeGet(tid_str) match {
+        | Some(other_params) ->
+          unioned_params = other_params.combine(params, (_, left, right) -> {
+            (left, right) match {
+            | (None(), None()) -> None()
+            | (Some(l), None())
+            | (None(), Some(l))
+            | (Some(l), Some _) ->
+              Some(l)
+            }
+          });
+          acc.set(tid_str, unioned_params)
+        | None() -> acc.set(tid_str, params)
+        }
+      | _ -> acc
+      }
+    };
+    /* Union all the parameters together -- we don't care which ones we pick, just
+     * that we have all the typing info */
+    pats = expanded.concat(orig);
+    typing_info = pats.foldl(build_typing_info, SortedMap[]);
+    /* Once we've picked our pattern, go and slot the typing info from the unioned
+     * parameters into it.*/
+    build_seen(typing_info, pats)
+  }
+
+  readonly fun concretizePatterns(
+    patterns: List<StrippedPattern>,
+  ): (List<StrippedPattern>, List<StrippedPattern>) {
+    patterns match {
+    | List.Nil() -> (List[], List[])
+    | List.Cons(pat, rest) ->
+      // subtle: we want to retain original subclasses, and only fill in using
+      // expanded base classes. This retains critical type info from original pats
+      (orig, expanded) = this.concretizePatterns(rest);
+      pat.pat match {
+      /* params don't matter here */
+      | PatType(tid, castType, params) ->
+        (ty, pos) = (pat.ty, pat.pos);
+        update_pat = new_tid ->
+          StrippedPattern(ty, pos, PatType(new_tid, castType, params));
+        concrete_subs = concretize_class(this.cds, tid);
+        concrete_subs.foldl(
+          (acc, sub_tid) -> {
+            (orig1, expanded1) = acc;
+            if (sub_tid.name.id == tid.name.id) {
+              (List.Cons(pat, orig1), expanded1)
+            } else {
+              (orig1, List.Cons(update_pat(sub_tid), expanded1))
+            }
+          },
+          (orig, expanded),
+        )
+      | _ -> (List.Cons(pat, orig), expanded)
+      }
+    }
+  }
+
+  /* Return separate lists of wildcards and constructors from a pattern column,
+     with the constructors concretized and deduped. */
+  readonly fun getRootConstructors(
+    col: List<StrippedPattern>,
+  ): (List<StrippedPattern>, List<StrippedPattern>) {
+    (wildcards, ctors) = col.partition(p ~> p.isDefault());
+    (orig, expanded) = this.concretizePatterns(ctors);
+    deduped = this.dedupConstructors(orig, expanded);
+    (wildcards, deduped)
+  }
+
+  readonly fun isChild(c: O.TypeIdentifier, p: O.TypeIdentifier): Bool {
+    this.cds.maybeGetNoPos(c.name.id) match {
+    | None() -> c.name.pos.die(`no definition for class ${c.name.id}`)
+    | Some(cd) -> cd.extends_.containsRawKey(p.name.id)
+    }
+  }
+
+  readonly fun isSubtype(c: O.TypeIdentifier, p: O.TypeIdentifier): Bool {
+    c.name.id == p.name.id || this.isChild(c, p)
+  }
+
+  /* We need to possibly add wildcards to @params since the left
+    (@skelParams) might be a parameter override */
+  readonly fun normalizeParams(
+    skelParams: UMap<StrippedParamPattern>,
+    params: UMap<StrippedParamPattern>,
+    restPats: mutable Iterator<StrippedPattern>,
+  ): Array<StrippedPattern> {
+    paramPats = params.map((_, p) -> p.pat);
+    for (item in skelParams.items()) {
+      (name, skelParam) = item;
+      if (!paramPats.containsKey(name)) {
+        !paramPats = paramPats.add(name, makeWildcardPat(skelParam.pat))
+      }
+    };
+    /* Why not just call UMap.values you ask? The order when going from named
+     * to positional args matters _a lot_. Therefore we want to make sure that
+     * we only go through Parameters.toList when going from named to positional.*/
+    Array::createFromIterator(paramPats.values().concat(restPats))
+  }
+
+  /* canonicalize the given parameters to non-optional named form */
+  readonly fun namedParams<T>(
+    cls_name: O.Name,
+    paramsOpt: ?Parameters<T>,
+  ): UMap<T> {
+    paramsOpt match {
+    | None() -> UMap[]
+    | Some(Positional(plist)) ->
+      cd = this.cds.getOrCrash(cls_name.id);
+      cd.params match {
+      | None() -> UMap[]
+      | Some(O.ClassParams{params => Named _}) ->
+        invariant_violation("unexpected named class params")
+      | Some(O.ClassParams{params => Positional(class_parameters)}) ->
+        cpnames = class_parameters.map(p ~> (p.name.pos, p.name.id));
+        UMap::createFromItems(cpnames.zip(plist))
+      }
+    | Some(Named(map)) -> map
+    }
+  }
+
+  /* Given a pattern and our current switch expression, generate the occurrences
+   * for the arguments to that pattern. */
+  readonly fun buildOccurrences(
+    expr: IdExpr,
+    pat: StrippedPattern,
+  ): mutable Iterator<IdExpr> {
+    pat.pat match {
+    | PatAll()
+    | PatLiteral _ ->
+      Array[].iterator()
+    | PatType(tid, castType, params) ->
+      // Use castType not ty here as ty may be a more specific generic
+      // Instantiation due to additional constraints caused by parameter patterns.
+      cast_expr = OIU.make_expr(castType.ty, pat.pos, O.Cast(castType, expr.e));
+      // TODO: The field types here are also incorrect.
+      // The types of the field in the pattern is the type to be matched on,
+      // not the actual type of the field access.
+      params.items().map(kv ~> {
+        ((pos, id), param) = kv;
+        IdExpr(
+          `${expr.id}#${id}`,
+          OIU.make_get_field(
+            param.ty,
+            param.pat.pos,
+            tid.name,
+            cast_expr,
+            O.Name(pos, id),
+          ),
+        )
+      })
+    }
+  }
+
+  /* Specialize a row. This is detailed (except for how we handle subtyping
+   * relationships) in the paper.
+   * TLDR: result of specialization depends on the relationship between incoming
+   * constructor and first pattern in the row. If they're disjoint, the row
+   * goes away; if they're equivalent, the rest of the row is returned.
+   * The nontrivial case is when the first column and incoming patterns are both
+   * type constructors, and the incoming is a subtype. In this case we recurse
+   * into the constructor arguments, and add those tests to the head of the row.
+   */
+  readonly fun specializeRow(con: StrippedPattern, r: Row): ?Row {
+    invariant(!r.patterns.isEmpty(), "specialize_row: empty pattern row");
+    restPatsIter = () ~> r.patterns.iterator().drop(1);
+    restRow = () ~> r with {patterns => r.patterns.drop(1)};
+    (con.pat, r.patterns[0].pat) match {
+    // incoming wildcard
+    | (PatAll(), PatAll()) -> Some(restRow())
+    | (PatAll(), _) -> None()
+    // incoming literal
+    | (PatLiteral _, PatAll()) -> Some(restRow())
+    | (PatLiteral(lit), PatLiteral(lit2)) if (lit == lit2) -> Some(restRow())
+    | (PatLiteral _, PatLiteral _) -> None()
+    | (
+      PatLiteral(lit),
+      PatType(tid, _, _),
+    ) if (tid.name.id == literalType(lit)) ->
+      Some(restRow())
+    | (PatLiteral _, PatType _) -> None()
+    // incoming type constructor
+    | (PatType(_, _, params), PatAll()) ->
+      wildcards = params.values().map(p -> makeWildcardPat(p.pat));
+      patterns = wildcards.concat(restPatsIter()).collect(Array);
+      Some(r with {patterns})
+    | (PatType _, PatLiteral _) -> None()
+    | (
+      PatType(conTid, _, conParams),
+      PatType(patTid, _, patParams),
+    ) if (this.isSubtype(conTid, patTid)) ->
+      patterns = this.normalizeParams(conParams, patParams, restPatsIter());
+      Some(r with {patterns})
+    | (PatType _, PatType _) -> None()
+    }
+  }
+
+  readonly fun generateBoolTest(
+    expr: O.Expr,
+    compiledPats: List<(StrippedPattern, O.Stmt)>,
+    defaultBranch: ?O.Stmt,
+  ): O.Stmt {
+    pat_bool = p ~>
+      p.pat match {
+      | PatLiteral(O.LBool(b)) -> b
+      | _ -> p.pos.die("Expected boolean literal pattern")
+      };
+    // rely on exhaustiveness checking to constrain what we get here
+    (t, f) = compiledPats match {
+    | List.Cons((p, s1), List.Nil()) ->
+      s2 = defaultBranch.default(O.Seq(List[]));
+      if (pat_bool(p)) (s1, s2) else (s2, s1)
+    | List.Cons((p, s1), List.Cons((_, s2), List.Nil())) ->
+      if (pat_bool(p)) (s1, s2) else (s2, s1)
+    | _ ->
+      expr.pos.die(
+        `Unexpected shape in bool match: ` +
+          `${compiledPats.size()} branch(es) ` +
+          `${if (defaultBranch.isSome()) "and" else ", no"} default`,
+      )
+    };
+    O.If(expr, t, f)
+  }
+
+  /* Given a set of compiled patterns generate a switch expression for those patterns. */
+  readonly fun generateSwitch(
+    expr: O.Expr,
+    compiledPats: List<(StrippedPattern, O.Stmt)>,
+    defaultBranch: ?O.Stmt,
+  ): O.Stmt {
+    /* We don't handle boolean switches in the native backend. So we need to
+     * compile these to a series of if expressions. */
+    if (OIU.is_bool_type(expr.ty)) {
+      this.generateBoolTest(expr, compiledPats, defaultBranch)
+    } else {
+      (compiledPats, defaultBranch) match {
+      | (_, None()) ->
+        // no finite types besides bool at present - assert if no default
+        expr.pos.die("No default in generate_switch")
+      | (List.Nil(), Some(def)) -> def
+      | _ ->
+        pat_literal = p ~>
+          p.pat match {
+          | PatLiteral(l) -> l
+          | _ -> p.pos.die("Non-literal pattern in generate_switch")
+          };
+        create_switch_branches = pa ~> {
+          (pat, action) = pa;
+          O.SwitchBranch(List[(pat.pos, pat_literal(pat))], action)
+        };
+        switch_branches = compiledPats.map(create_switch_branches);
+        O.Switch(expr, switch_branches, defaultBranch)
+      }
+    }
+  }
+
+  /* true if concretized classes of expr's type are covered by pats */
+  readonly fun isSaturated(expr: O.Expr, pats: List<StrippedPattern>): Bool {
+    expr.ty match {
+    | O.Type(_, O.Tapply(name, _)) ->
+      concretes = concretize_class(this.cds, O.TidObject(name));
+      (pats.size() >= concretes.size()) &&
+        {
+          concrete_names = concretes.map(c ->
+            c match {
+            | O.TidObject(n) -> n.id
+            | _ ->
+              invariant_violation(
+                "Internal error: unexpected tid in concretized class",
+              )
+            }
+          );
+          pat_types = pats.foldl(
+            (acc, p) ->
+              p.pat match {
+              | PatType(O.TidObject(n), _, _) -> acc.set(n.id)
+              | _ -> acc
+              },
+            SSet[],
+          );
+          concrete_names.all(n -> pat_types.contains(n))
+        }
+    | _ -> false
+    }
+  }
+
+  /* The same thing is done here as in @generate_switch, just outputing
+   * typeswitches instead. */
+  readonly fun generateTypeSwitch(
+    expr: O.Expr,
+    compiledPats: List<(StrippedPattern, O.Stmt)>,
+    defaultBranch: ?O.Stmt,
+  ): O.Stmt {
+    pat_to_tid_list = pat ->
+      pat.pat match {
+      | PatType(tid, _, _) ->
+        pos = pat.pos;
+        concretize_class(this.cds, tid).map(c ~> (pos, c))
+      | _ ->
+        invariant_violation(
+          "Internal error: encountered non-type pattern while generating type-switch statement",
+        )
+      };
+    compiledPats match {
+    | List.Nil() ->
+      defaultBranch match {
+      | None() ->
+        invariant_violation(
+          "Internal error: no default branch for empty list of patterns",
+        )
+      | Some(st) -> st
+      }
+    | _ ->
+      branches = compiledPats.map(cp ->
+        O.TypeSwitchBranch(pat_to_tid_list(cp.i0), cp.i1)
+      );
+      O.TypeSwitch(expr, branches, defaultBranch)
+    }
+  }
+
+  /* We compile a pattern guard by doing the following:
+    0. Map in a fresh set of local bindings (the guard may occur multiple times)
+    1. Initialize a variable l that we will store the value of the test in (initially set to false);
+    2. set all the returns within the test expression to instead assign to l;
+    3. return back the expression to test on, along with the updated guard expression.
+  */
+  mutable fun compileGuard(pos: FileRange, guard: O.Stmt): (O.Expr, O.Stmt) {
+    /* Make a local test var so that we can determine if this guard passed */
+    (init_stmt, expr, name) = OIU.make_new_local_init(
+      this.new_id,
+      OIU.make_false_expr(pos),
+      OIU.nonconst_binding_info,
+    );
+    local_var = O.LocalVar(expr.ty, name);
+    /* rename all local bindings */
+    guard_copy = OIU.rename_binds(this.new_id, guard);
+    /* change return statements to assignments to @local_var */
+    guard_stmt = OIU.set_return(
+      (expr1 -> O.Assign(local_var, expr1)),
+      guard_copy,
+    );
+    /* Package up the guard expression along with the initialization of the test variable */
+    guard_stmt1 = O.Seq(List[init_stmt, guard_stmt]);
+    (expr, guard_stmt1)
+  }
+
+  // compile (or retrieve) the subproblem induced by a root constructor
+  mutable fun compileSub(
+    ctor: StrippedPattern,
+    exprs: Array<IdExpr>,
+    rows: List<Row>,
+    default: ?O.Stmt,
+  ): (StrippedPattern, O.Stmt) {
+    /* Specializing a matrix w.r.t a constructor is just specializing each row
+     * of the matrix based on that constructor. Note that specialization of a matrix
+     * may very well remove some rows from the matrix. */
+    specRows = rows.map(r -> this.specializeRow(ctor, r)).filterNone();
+    cmat = MemoKey(exprs, specRows);
+    this.acc.memoTable.maybeGet(cmat) match {
+    | Some(lab) ->
+      // If we've already generated that sub-problem, simply jump to it
+      (ctor, O.JumpTo(lab))
+    | None() ->
+      // specRows has replaced leftmost column with 0 or more new
+      // columns for subpatterns. Same expansion here in specExprs
+      occs = this.buildOccurrences(exprs[0], ctor);
+      specExprs = occs.concat(exprs.iterator().drop(1)).collect(Array);
+      st = this.compileMatrix(ctor.pos, specExprs, specRows, default);
+      /* Record the solution to the sub-problem. Note that since we push the
+       * block id for the block that we generate onto @block_ids, we know that
+       * the label for the sub-problem that we just generated is at the top
+       * of current stack of block ids after generation of the sub-problem. */
+      this.updateMemoTable(cmat, st);
+      (ctor, from_block_stmt(st))
+    }
+  }
+
+  /* Takes a clause matrix and compiles that to a sequence of labeled switch, if,
+     and typeSwitch statements. In order to produce efficient code, we do a couple
+     things..
+     1. We share nodes in the decision tree that we output (i.e., we won't produce
+        duplicate code (ish -- we will produce duplicate jumps to actions))
+     2. All jumps must be _forward_ -- we will _never_ _ever_ (EVER) jump to a labeled
+        section of code above us...
+     3. Why? Since we flatten out our switch statements in such a manner that
+        the deeper a given sub-problem is, the further down the list of statements
+        that we produce (@acc.finishedBlocks) it will be. Thus jumping to a
+        labeled section of code above us means that we are jumping from a
+        sub-problem to a larger problem that contained that sub-problem (and we
+        would no longer have a DAG!).
+  */
+  mutable fun compileMatrix(
+    pos: FileRange,
+    exprs: Array<IdExpr>,
+    rows: List<Row>,
+    default: ?O.Stmt,
+  ): BlockStmt {
+    rows match {
+    | List.Nil() ->
+      // We always fail on an empty match
+      default match {
+      | None() -> Leaf(OIU.make_void_statement(pos))
+      | Some(stmt) -> Leaf(stmt)
+      }
+    | List.Cons(top, rest) if (top.patterns.all(p ~> p.isWildcard())) ->
+      // The row is entirely wildcards
+      this.compileAction(pos, top, rest, exprs, default)
+    | List.Cons(_, _) ->
+      // Select the column to look at, swap it to position 0
+      i = select_match_column(rows);
+      (!rows, !exprs) = swapCols(rows, exprs, i);
+      col0 = get_nth_column_pats(rows, 0);
+      // Grab the constructors in the column, remove wildcards, and setify
+      (wildcards, rootCtors) = this.getRootConstructors(col0);
+      compiledPats = rootCtors.map(c ->
+        this.compileSub(c, exprs, rows, default)
+      );
+      // if this is a saturated column, we can dispense with WCs
+      if (this.isSaturated(exprs[0].e, rootCtors)) !wildcards = List[];
+      // if there are any wildcards in our left column, default will route to
+      // the submatrix reachable from them. Otherwise, drop through to outer
+      // default.
+      // TODO this is broken
+      !default = wildcards match {
+      | List.Cons(p, _) ->
+        pos.invariant(
+          !exprs.isEmpty(),
+          "clause matrix and exprs are out of sync",
+        );
+        defaultMat = defaultMatrix(rows);
+        dmat = MemoKey(exprs, defaultMat);
+        this.acc.memoTable.maybeGet(dmat) match {
+        | Some(lab) -> Some(O.JumpTo(lab))
+        | None() ->
+          st = this.compileMatrix(p.pos, exprs.drop(1), defaultMat, default);
+          this.updateMemoTable(dmat, st);
+          Some(from_block_stmt(st))
+        }
+      | _ -> default
+      };
+      /* Generate our tests for this subproblem */
+      testStmt = if (rootCtors.any(rc ~> rc.pat is PatLiteral _)) {
+        this.generateSwitch(exprs[0].e, compiledPats, default)
+      } else {
+        this.generateTypeSwitch(exprs[0].e, compiledPats, default)
+      };
+      /* Now label this subproblem so that others can jump to us possibly */
+      this.addBlock(pos, testStmt)
+    }
+  }
+
+  /* Once we've finished the tests we then emit the action to perform. There are a
+   * couple things that happen here:
+     1. Generate the pattern guard -- if the guard is true then perform the action,
+        otherwise go on to the remaining sub-problem
+     2. Add the initialization expression for variables before we perform the
+        guard statement and before we jump to our action.
+  */
+  mutable fun compileAction(
+    pos: FileRange,
+    top: Row,
+    rest: List<Row>,
+    exprs: Array<IdExpr>,
+    default: ?O.Stmt,
+  ): BlockStmt {
+    guardTest = top.guard match {
+    | Some(g) ->
+      (testExpr, guard) = this.compileGuard(pos, g);
+      // Compile the continuation, if the guard fails go on to that.
+      contBlock = this.compileMatrix(pos, exprs, rest, default);
+      this.updateMemoTable(MemoKey(exprs, rest), contBlock);
+      Array[
+        guard,
+        O.If(testExpr, O.JumpTo(top.actionId), from_block_stmt(contBlock)),
+      ]
+    | None() -> Array[O.JumpTo(top.actionId)]
+    };
+    stmts = top.inits.iterator().concat(guardTest.iterator());
+    Leaf(O.Seq(List::createFromIterator(stmts)))
+  }
+
+  /* Compile the the tests down to a list of labeled sections of code. */
+  mutable fun compileTests(
+    pos: FileRange,
+    test: BlockStmt,
+    cont: List<O.LabeledStmt>,
+  ): List<O.LabeledStmt> {
+    branches = this.acc.finishedBlocks;
+    tests = branches.foldl(
+      (acc, branch) -> List.Cons(O.LabeledStmt(branch.i0, branch.i1), acc),
+      cont,
+    );
+    test match {
+    | Finished _ -> tests
+    | Leaf(test1) ->
+      top_lab = this.makeJumpLabel(pos);
+      List.Cons(O.LabeledStmt(top_lab, test1), tests)
+    }
+  }
+
+  /* given a pattern, updates a map of binders, a vector of initializers, and
+   * returns the pattern's binder-free equivalent */
+  mutable fun convertPat(
+    expr: O.Expr,
+    binds: mutable UnorderedMap<String, O.Bind>,
+    inits: mutable Vector<O.Stmt>,
+    p: O.Pattern,
+  ): StrippedPattern {
+    typedAliasExpr = () ~> OIU.make_expr(p.ty.ty, p.pos, O.Cast(p.ty, expr));
+    p.pat match {
+    | O.Pat_all() -> StrippedPattern(p.ty, p.pos, PatAll())
+    | O.Pat_literal(lit) -> StrippedPattern(p.ty, p.pos, PatLiteral(lit))
+    | O.Pat_var(b) ->
+      patAs = O.Pat_as(O.Pattern(p.ty, p.pos, O.Pat_all()), b);
+      this.convertPat(expr, binds, inits, O.Pattern(p.ty, p.pos, patAs))
+    | O.Pat_type(tid, castType, paramPats) ->
+      /* We convert _all_ type parameters into named args at the outset. This is
+       * needed later on in order to allow us to deal with parameter overrides in the
+       * multiple inheritance case. */
+      texpr = typedAliasExpr();
+      pmap = this.namedParams(tid.name, paramPats).map((name, param) -> {
+        (pos, id) = name;
+        getField = OIU.make_get_field(
+          param.ty,
+          param.pat.pos,
+          tid.name,
+          texpr,
+          O.Name(pos, id),
+        );
+        paramPat = this.convertPat(getField, binds, inits, param.pat);
+        StrippedParamPattern(param.ty, paramPat)
+      });
+      StrippedPattern(p.ty, p.pos, PatType(tid, castType, pmap))
+    | O.Pat_as(pat, b) ->
+      if (!OIU.is_underscore_binding(b)) {
+        !b = O.Binding(b.ty, b.name, b.info with {updated => true});
+        (bind, init) = OIU.make_bind_assign(b, typedAliasExpr());
+        binds.set(bind.binding.name.id, bind);
+        inits.push(init);
+      };
+      this.convertPat(expr, binds, inits, pat)
+    }
+  }
+
+  /* convert an incoming selection expr and array of match branches (a match
+   * branch is one or more patterns sharing a common guard and action) into:
+   * - a single list of (initializer-free) bind statements
+   * - a list of Rows derived from the patterns of the incoming match branches
+   * - a list of labeled statements holding match branch actions */
+  mutable fun convertMatch(
+    expr: O.Expr,
+    branches: Array<O.MatchBranch>,
+  ): (Array<O.Bind>, List<Row>, List<O.LabeledStmt>) {
+    bindings = mutable UnorderedMap[];
+    rows = Vector::mcreate(branches.size());
+    actions = Array::fillBy(branches.size(), i -> {
+      b = branches[i];
+      actionId = this.makeJumpLabel(expr.pos);
+      b.pats.each(p -> {
+        inits = Vector::mcreate();
+        // NOTE: important that we choose the final binding for each name. Why?
+        pat = this.convertPat(expr, bindings, inits, p);
+        r = Row{
+          patterns => Array[pat],
+          inits => Array::createFromItems(inits),
+          guard => b.guard,
+          actionId,
+        };
+        rows.push(r)
+      });
+      O.LabeledStmt(actionId, b.action)
+    });
+    (
+      bindings.values().collect(Array),
+      List::createFromItems(rows),
+      List::createFromItems(actions),
+    )
+  }
+
+  /* Takes a match and compiles it down to a series of labeled statements, and
+   * typeswitch/switch/if statements based on the patterns in the match */
+  mutable fun compileMatch(
+    expr: O.Expr,
+    matchBranches: Array<O.MatchBranch>,
+    default: ?O.Stmt,
+  ): O.Stmt {
+    pos = expr.pos;
+    (exprInit, !expr, n) = OIU.ensure_var_expr(this.new_id, expr);
+    idex = IdExpr(n.id, expr);
+    (binders, rows, actions) = this.convertMatch(expr, matchBranches);
+    /* The default branch is called in our actions -- we have failed to match
+     * if we haven't set an action */
+    saveAcc = this.acc;
+    this.!acc = mutable Acc{};
+    test = this.compileMatrix(pos, Array[idex], rows, default);
+    /* Output the code that we built up in @acc.finishedBlocks */
+    tests_and_actions = this.compileTests(pos, test, actions);
+    jmp: O.Stmt = O.JumpBlock(tests_and_actions, false);
+    stmts = (binders : Array<O.Stmt>).iterator().concat(Array[jmp].iterator());
+    res = OIU.make_seq_opt(exprInit, O.Seq(List::createFromIterator(stmts)));
+    this.!acc = saveAcc;
+    res
+  }
+
+  mutable fun match_(m: O.Match): (Bool, O.Stmt) {
+    (_, !m) = this.matchChildren(m);
+    bs = Array::createFromItems(m.branches);
+    (true, this.compileMatch(m.expr, bs, None()))
+  }
+
+  mutable fun try_(t: O.Try): (Bool, O.Stmt) {
+    (_, !t) = this.tryChildren(t);
+    exn_name = O.name(sk_new_var_name(this.new_id, t.pos));
+    exn_type = OIU.make_exception_type(t.pos);
+    expr = O.Expr(exn_type, t.pos, O.Local(exn_name));
+    default = O.Throw(expr);
+    exn_binding = O.Binding(exn_type, exn_name, OIU.const_binding_info);
+    bs = Array::createFromItems(t.branches);
+    catch_match = this.compileMatch(expr, bs, Some(default));
+    (true, O.TryCatch(t.pos, t.stmt, exn_binding, catch_match))
+  }
+}

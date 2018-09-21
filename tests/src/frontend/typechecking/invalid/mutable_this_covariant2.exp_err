@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_this_covariant2.sk", line 12, characters 29-29:
+Invalid annotation
+10 | fun main(): void {
+11 |   x: mutable Foo<SK> = mutable Foo(SK("Hi!"));
+12 |   p: mutable MyParent<AK> = x; // error, type params invariant on mutables so no subtype
+   |                             ^
+13 |   p match {
+
+File "./typechecking/invalid/mutable_this_covariant2.sk", line 12, characters 23-24:
+The invariant type: AK
+10 | fun main(): void {
+11 |   x: mutable Foo<SK> = mutable Foo(SK("Hi!"));
+12 |   p: mutable MyParent<AK> = x; // error, type params invariant on mutables so no subtype
+   |                       ^^
+13 |   p match {
+
+File "./typechecking/invalid/mutable_this_covariant2.sk", line 11, characters 18-19:
+Is incompatible with the invariant type: SK
+ 9 |
+10 | fun main(): void {
+11 |   x: mutable Foo<SK> = mutable Foo(SK("Hi!"));
+   |                  ^^
+12 |   p: mutable MyParent<AK> = x; // error, type params invariant on mutables so no subtype
+
+File "./typechecking/invalid/mutable_this_covariant2.sk", line 11, characters 18-19:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: AK
+ 9 |
+10 | fun main(): void {
+11 |   x: mutable Foo<SK> = mutable Foo(SK("Hi!"));
+   |                  ^^
+12 |   p: mutable MyParent<AK> = x; // error, type params invariant on mutables so no subtype

@@ -1,0 +1,338 @@
+// ---------- Vector ----------
+
+// createFromIterator
+@test
+fun testCreateFromIterator(): void {
+  seq = Vector[1, 3, 5, 7, 9];
+  seq2 = seq.values().collect(Vector);
+  assertEqual(seq, seq2);
+}
+
+@test
+fun testCreateFromIteratorThrowsForInvalidIterator(): void {
+  assertThrows(() -> (mutable NegativeSizeHintIterator()).collect(Vector));
+}
+
+@test
+fun testMCreateWithCapacity(): void {
+  seq = Vector::mcreate(1);
+  assertEqual(seq.size(), 0);
+  capacity = seq.capacity();
+  assertEqual(capacity, 1);
+  // assertThrows(() -> seq.get(0));
+  // assertThrows(() -> seq.first());
+  // assertThrows(() -> seq.last());
+  seq.push(42);
+  assertEqual(seq.size(), 1);
+  assertEqual(seq.capacity(), capacity); // unchanged
+  assertEqual(seq[0], 42);
+  seq.set(0, 43);
+  assertEqual(seq.size(), 1);
+  assertEqual(seq.capacity(), capacity); // unchanged
+  assertEqual(seq[0], 43);
+}
+
+@test
+// mcreateFromIterator
+fun testMCreateFromIterator(): void {
+  seq = Vector[1, 3, 5, 7, 9];
+  seq2 = Vector::mcreateFromIterator(seq.values());
+  assertEqual(seq, seq2);
+}
+
+@test
+fun testMCreateFromIteratorThrowsForInvalidIterator(): void {
+  assertThrows(() ->
+    Vector::mcreateFromIterator(mutable NegativeSizeHintIterator())
+  );
+}
+
+@test
+// reverseFromIterator
+fun testReverseFromIterator(): void {
+  seq = Vector[1, 3, 5, 7, 9];
+  // reverse a sized iterator
+  seq2 = Vector::reverseFromIterator(seq.values());
+  assertEqual(seq2, seq.reversed());
+  // reverse an unsized iterator
+  seq3 = Vector::reverseFromIterator(seq.values().filter(x -> x < 6));
+  assertSeqEqual(seq3, Array[5, 3, 1]);
+}
+
+@test
+// mreverseFromIterator
+fun testMReverseFromIterator(): void {
+  seq = Vector[1, 3, 5, 7, 9];
+  // reverse a sized iterator
+  seq2 = Vector::mreverseFromIterator(seq.values());
+  assertEqual(seq2, seq.reversed());
+  // reverse an unsized iterator
+  seq3 = Vector::mreverseFromIterator(seq.values().filter(x -> x < 6));
+  assertSeqEqual(seq3, Array[5, 3, 1]);
+}
+
+@test
+// fill, fillBy
+fun testFill(): void {
+  sz = 3;
+  value = 42;
+  seq = Vector::fill(sz, value);
+  assertEqual(seq.size(), sz);
+  for (index in Range(0, sz)) assertEqual(seq.get(index), value);
+}
+
+@test
+fun testMFill(): void {
+  sz = 3;
+  value = 42;
+  seq = Vector::mfill(sz, value);
+  assertEqual(seq.size(), sz);
+  assertEqual(seq.capacity(), sz);
+  for (index in Range(0, sz)) assertEqual(seq.get(index), value);
+}
+
+@test
+fun testFillBy(): void {
+  sz = 3;
+  seq = Vector::fillBy(sz, index -> index * 2 + 1);
+  assertEqual(seq.size(), sz);
+  assertEqual(seq.get(0), 1);
+  assertEqual(seq.get(1), 3);
+  assertEqual(seq.get(2), 5);
+}
+
+@test
+fun testMFillBy(): void {
+  sz = 3;
+  seq = Vector::mfillBy(sz, index -> index * 2 + 1);
+  assertEqual(seq.size(), sz);
+  assertEqual(seq.capacity(), sz);
+  assertEqual(seq.get(0), 1);
+  assertEqual(seq.get(1), 3);
+  assertEqual(seq.get(2), 5);
+}
+
+@test
+fun testToString(): void {
+  assertEqual(Vector[].toString(), "Vector[]");
+  assertEqual(Vector[1, 2, 3, 4, 5].toString(), "Vector[1, 2, 3, 4, 5]");
+  void
+}
+
+@test
+fun testCompareAndEqual(): void {
+  // Test vectors in lexicographical order.
+  vecs = vectorsToTest();
+
+  // Try all O(n^2) combinations -- order should match index order.
+  vecs.eachWithIndex((i, v1) -> {
+    vecs.eachWithIndex((j, v2) -> {
+      assertEqual(v1 == v2, i == j);
+      assertEqual(v1 != v2, i != j);
+      assertEqual(v1.compare(v2), compare(i, j));
+      assertEqual(v1 > v2, i > j);
+      assertEqual(v1 >= v2, i >= j);
+      assertEqual(v1 < v2, i < j);
+      assertEqual(v1 <= v2, i <= j)
+    })
+  });
+}
+
+@test
+fun testJoin(): void {
+  assertEqual(Vector[1, 2, 3].join(", "), "1, 2, 3")
+}
+
+@test
+fun testSortConcurrentModification(): void {
+  seq = mutable Vector[];
+  g = () -> {
+    void
+  };
+  f = () -> {
+    seq.push(g)
+  };
+  seq.push(f);
+  seq.push(f);
+  assertThrowsContainerChanged(() ->
+    seq.sortBy(a ~> {
+      a();
+      1
+    })
+  );
+}
+
+@test
+// parallelMap
+fun testParallelMap(): void {
+  seq = Vector[1, 2, 3];
+  seq2 = seq.parallelMap(x ~> x * 2 + 1);
+  assertSeqEqual(seq2, Array[3, 5, 7]);
+}
+
+@test
+untracked fun testParallelMap2(): void {
+  // Test that parallelMap actually runs in parallel.
+  //
+  // NOTE: This test assumes you have at least 2 cores!  It shouldn't be a
+  // problem if those cores are overloaded because we don't actually do any
+  // real work on them (sleep() is basically free).
+  //
+  // NOTE 2: On Javascript hack_sleep() just returns immediately - so this
+  // test will still pass even though it isn't actually running in parallel!
+  profile_start();
+  seq = Vector[1, 2, 3, 4, 5, 6, 7, 8];
+  snooze = 1;
+  _ = seq.parallelMap(_ ~> {
+    hack_sleep(snooze);
+  });
+  duration = profile_stop();
+  // Make sure at least two threads ran in parallel
+  assertTrue(duration < (seq.size() * snooze * 1000).toFloat() - 0.5);
+}
+
+@test
+// ensureCapacity
+fun testEnsureCapacity(): void {
+  seq = Vector::mcreate(0);
+  assertEqual(seq.capacity(), 0);
+  seq.ensureCapacity(10);
+  assertEqual(seq.capacity(), 10);
+}
+
+@test
+fun testKeepWhereConcurrentModification(): void {
+  seq = Vector::mcreateFromItems(Array[0]);
+  assertThrowsContainerChanged(() -> {
+    seq.keepWhere(_ -> {
+      seq.push(1);
+      true
+    });
+  });
+}
+
+@test
+fun testKeepWhereConcurrentModification1(): void {
+  seq = Vector::mcreateFromItems(Array[0]);
+  assertThrowsContainerChanged(() -> {
+    seq.keepWhere(_ -> {
+      _ = seq.pop();
+      true
+    });
+  });
+}
+
+@test
+// async
+fun testGen(): void {
+  awaitSynchronously(
+    async {
+      seq = Vector::createFromItems(
+        Array[
+          async {
+            1
+          },
+          async {
+            2
+          },
+          async {
+            3
+          },
+        ],
+      );
+      seq2 = await seq.gen();
+      assertSeqEqual(seq2, Array[1, 2, 3]);
+    },
+  )
+}
+
+@test
+fun testGenMap(): void {
+  awaitSynchronously(
+    async {
+      seq = Vector::createFromItems(Array[1, 2, 3]);
+      seq2 = await seq.genMap(x ~>
+        async {
+          x * 2 + 1
+        }
+      );
+      assertSeqEqual(seq2, Array[3, 5, 7]);
+    },
+  )
+}
+
+@test
+fun testGenFilter(): void {
+  awaitSynchronously(
+    async {
+      seq = Vector::createFromItems(Array[1, 2, 3, 4, 5, 6, 7]);
+      seq2 = await seq.genFilter(x ~>
+        async {
+          x % 2 == 0
+        }
+      );
+      assertSeqEqual(seq2, Array[2, 4, 6]);
+    },
+  )
+}
+
+fun vectorsToTest(): Vector<Vector<Int>> {
+  Vector[
+    Vector[],
+    Vector[1],
+    Vector[1, 1, 1, 1, 1],
+    Vector[1, 1, 1, 1, 2],
+    Vector[1, 2],
+    Vector[1, 2, 3],
+    Vector[1, 3, 3],
+    Vector[1, 99],
+    Vector[4],
+    Vector[100, 101, 102, 103],
+  ]
+}
+
+fun assertThrowsContainerChanged(f: () -> void): void {
+  try {
+    f();
+    assertFailure{
+      message => "Expected a ContainerChanged() exception",
+      expected => "container changed",
+      actual => "function did not throw",
+    }
+  } catch {
+  | ContainerChanged() -> void
+  | exn ->
+    assertFailure{
+      message => "Expected a ContainerChanged() exception",
+      expected => "container changed",
+      actual => exn.getMessage(),
+    }
+  }
+}
+
+fun assertSeqEqual<T: Equality & Show>(
+  a: readonly Sequence<T>,
+  b: readonly Sequence<T>,
+): void {
+  assertEqual(a.size(), b.size());
+  a.values().zip(b.values()).each(i -> assertEqual(i.i0, i.i1));
+}
+
+// On native this gives access to the C "sleep()" function for this test.  On
+// Javascript this just immediately returns.
+@cpp_extern("sleep")
+fun hack_sleep(_duration: Int): void {
+  void
+}
+
+// A valid iterator must return sizeHint() >= 0 (or None())
+// this returns a negative value.
+mutable class NegativeSizeHintIterator<T>() extends Iterator<T> {
+  readonly fun sizeHint(): ?Int {
+    Some(-1)
+  }
+
+  mutable fun next(): ?T {
+    None()
+  }
+}

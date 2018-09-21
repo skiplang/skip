@@ -1,0 +1,270 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module EliminateDeadCode;
+
+mutable class .EliminateDeadCode{
+  // Maps InstrID to a flag saying whether it's live.
+  isLive: mutable Array<Bool>,
+  // Original block params per block before we start removing them.
+  origBlockParams: Array<Array<BlockParam>>,
+} extends Rewrite {
+  // Eliminates dead code.
+  //
+  // Returns the resulting function and a bool saying whether it changed.
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    optinfo = OptimizerInfo::make(f);
+
+    // Copy aside all the existing BlockParams before we start.
+    empty = Array[];
+    origBlockParams = Array::fillBy(optinfo.idToBlock.size(), i -> {
+      blockID = BlockID(i);
+      if (optinfo.idToBlock.contains(blockID)) {
+        optinfo.getBlock(blockID).params
+      } else {
+        empty
+      }
+    });
+
+    d = mutable static{
+      optinfo,
+      env,
+      isLive => Array::mfill(optinfo.idToInstr.size(), false),
+      origBlockParams,
+      pos => f.pos,
+    };
+    d.go("deadcode", true)
+  }
+
+  private readonly fun instrIsLive(i: Instr): Bool {
+    this.isLive[i.idValue()]
+  }
+
+  // Delete any dead outgoing block args, knowing that the corresponding
+  // BlockParam will also be deleted.
+  private mutable fun optimizeTerminator(t: Terminator): Bool {
+    successorsChanged = false;
+    newSuccessors = t.successors.map(s -> {
+      // Remove any block argument which is dead in the receiving block.
+      targetParams = this.origBlockParams[s.target.idValue()];
+
+      index = 0;
+      liveArgs = s.args.filter(_ -> {
+        param = targetParams[index];
+        !index = index + 1;
+        this.instrIsLive(param)
+      });
+
+      if (liveArgs.size() == s.args.size()) {
+        // Every argument was live, so change nothing.
+        s
+      } else {
+        !successorsChanged = true;
+        s with {args => liveArgs}
+      }
+    });
+
+    if (successorsChanged) {
+      _ = this.emitInstr(t with {successors => newSuccessors});
+      true
+    } else {
+      false
+    }
+  }
+
+  // Delete dead instrs and outgoing block arguments, except for
+  // incoming block parameters (they need to remain for now so we can
+  // identify which outgoing args are dead).
+  //
+  // Returns the resulting block and a bool saying whether it changed.
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    if (!this.instrIsLive(instr)) {
+      // Delete this.
+      true
+    } else {
+      instr match {
+      | t @ Terminator _ -> this.optimizeTerminator(t)
+      | _ -> false
+      }
+    }
+  }
+
+  // Splice out any dead block parameters.
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    params = b.params;
+    numLive = params.foldl(
+      (n, x) -> {
+        if (this.instrIsLive(x)) {
+          n + 1
+        } else {
+          n
+        }
+      },
+      0,
+    );
+
+    if (numLive != params.size()) {
+      this.!blockChanged = true;
+
+      // Compute the new parameters array, possibly renumbering indices.
+      newParams = Array<BlockParam>::mfill(numLive, params[0]);
+
+      out = 0;
+      for (p in params) {
+        if (this.instrIsLive(p)) {
+          newParams.set(
+            out,
+            if (p.index == out) {
+              p
+            } else {
+              p2 = p with {index => out};
+              this.optinfo.idToInstr.insert(p2); // currently unnecessary
+              p2
+            },
+          );
+
+          !out = out + 1
+        }
+      };
+      invariant(out == numLive, "oops");
+
+      this.!blockParams = freeze(newParams)
+    }
+  }
+
+  protected readonly fun createNewFunctionIfOnlyConstantsChanged(): Bool {
+    true
+  }
+
+  protected mutable fun optimizeAllBlocks(inputBlocks: Array<BlockID>): void {
+    optinfo = this.optinfo;
+
+    stack = mutable Vector<InstrID>[];
+
+    markIDLive: (InstrID -> void) = (
+      i -> {
+        n = i.idValue();
+        if (!this.isLive[n]) {
+          this.isLive.set(n, true);
+          stack.push(i)
+        }
+      }
+    );
+
+    // Mark as live any Instr which is always live, and any Instr that
+    // those transitively depend on.
+    for (b in inputBlocks) {
+      for (i in this.getBlock(b).instrs) {
+        if (alwaysLive(i)) {
+          markIDLive(i.id);
+          while (!stack.isEmpty()) {
+            v = this.getInstr(stack.pop());
+            v.visitNonBlockArgInputs(markIDLive, optinfo)
+          }
+        }
+      }
+    };
+
+    // Discard dead constants (if any).
+    constants = optinfo.getConstants();
+    for (c in optinfo.f.constants.toArray()) {
+      if (!this.instrIsLive(c)) {
+        constants.remove(c);
+        optinfo.!constantsChanged = true
+      }
+    };
+
+    for (b in inputBlocks) this.optimizeBlock(this.getBlock(b))
+  }
+}
+
+// Does this Instr have important side effects (i.e. don't kill as "dead")?
+private fun alwaysLive(instr: Stmt): Bool {
+  instr match {
+  | CallBase _ // Any call might throw an exception.
+  | LandingPad _
+  | LocalGC _
+  | NamedCall _
+  | RawCallBase _
+  | SetField _
+  | Store _
+  | Suspend _
+  | Terminator _
+  | ArrayUnsafeSet _
+  | Yield _ ->
+    true
+
+  | Alloca _
+  | BoolCmpEq _
+  | BoolCmpLe _
+  | BoolCmpLt _
+  | BoolCmpNe _
+  | BytePointerAdd _
+  | Cast _
+  | FloatAdd _
+  | FloatBits _
+  | FloatCmpEq _
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatCmpNe _
+  | FloatDiv _
+  | FloatMul _
+  | FloatSub _
+  | FloatToInt _
+  | FloatToString _
+  | Freeze _
+  | GetCurrentAwaitable _
+  | GetField _
+  | GetConst _
+  | IntAdd _
+  | IntAnd _
+  | IntClz _
+  | IntCtz _
+  | IntCmpEq _
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpNe _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntMul _
+  | IntOr _
+  | IntPopcount _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _
+  | IntToFloat _
+  | IntToString _
+  | IntXor _
+  | Intern _
+  | Load _
+  | LoadVTableEntry _
+  | Object _
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _
+  | ObstackUsage _
+  | Reinterpret _
+  | SignExtend _
+  | StringCmp _
+  | StringCmpEq _
+  | StringConcat _
+  | StringHash _
+  | Truncate _
+  | TupleExtract _
+  | ArrayAlloc _
+  | ArrayClone _
+  | ArrayNew _
+  | ArraySize _
+  | ArrayUnsafeGet _
+  | With _
+  | ZeroExtend _ ->
+    false
+  }
+}

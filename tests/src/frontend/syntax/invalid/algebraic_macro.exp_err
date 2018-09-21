@@ -1,0 +1,7 @@
+File "./syntax/invalid/algebraic_macro.sk", line 6, characters 3-7:
+'macro' methods must include an expression body.
+4 |   | D()
+5 |
+6 |   macro fun m(): void
+  |   ^^^^^
+7 |   | C() -> void

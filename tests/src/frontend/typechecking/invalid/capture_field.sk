@@ -1,0 +1,6 @@
+mutable class B()
+mutable class A(x: mutable B) {
+  readonly fun foo(): B {
+    this.x
+  }
+}

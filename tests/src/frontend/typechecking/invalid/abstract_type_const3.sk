@@ -1,0 +1,8 @@
+class Foo() {
+  type T;
+  type T2: this::T;
+}
+
+class Bar() {
+  type T = Foo::T2;
+}

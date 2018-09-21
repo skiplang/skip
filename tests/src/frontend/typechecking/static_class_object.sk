@@ -1,0 +1,19 @@
+class A() {
+  static fun foo(): void {
+    void
+  }
+  fun bar(): void {
+    void
+  }
+}
+
+fun main(): void {
+  A::foo();
+  c = A;
+  c::foo();
+  a = A();
+  class(a)::foo();
+  !a = A();
+  a.bar();
+  print_string("Pass")
+}

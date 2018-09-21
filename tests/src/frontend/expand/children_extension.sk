@@ -1,0 +1,10 @@
+base class ProgramUnitKind() {
+  children =
+  | Program()
+}
+
+extension base class ProgramUnitKind
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,20 @@
+File "./typechecking/invalid/ignored_expression.sk", line 2, characters 3-4:
+Non-void expressions must be the last expression in an expression sequence. Either use the expression result, or bind it to a variable whose name starts with '_'.
+1 | fun main(): void {
+2 |   42;
+  |   ^^
+3 |   print_raw("Fail");
+
+File "./typechecking/invalid/ignored_expression.sk", line 2, characters 3-4:
+The type: Int
+1 | fun main(): void {
+2 |   42;
+  |   ^^
+3 |   print_raw("Fail");
+
+File "./typechecking/invalid/ignored_expression.sk", line 2, characters 3-4:
+Is not a subtype of: void
+1 | fun main(): void {
+2 |   42;
+  |   ^^
+3 |   print_raw("Fail");

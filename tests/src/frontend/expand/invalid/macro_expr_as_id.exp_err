@@ -1,0 +1,7 @@
+File "./expand/invalid/macro_expr_as_id.sk", line 3, characters 10-23:
+'#thisClassName' may not be used as an identifier. It may only be used as an expression.
+1 | class C() {
+2 |   macro fun m(): void {
+3 |     this.#thisClassName
+  |          ^^^^^^^^^^^^^^
+4 |   }

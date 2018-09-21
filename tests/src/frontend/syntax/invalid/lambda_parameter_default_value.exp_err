@@ -1,0 +1,13 @@
+File "./syntax/invalid/lambda_parameter_default_value.sk", line 2, characters 10-10:
+Expected ')'. Found '='.
+1 | fun main(): String {
+2 |   x = (p = "Fail") ~> p;
+  |          ^
+3 |   x()
+
+File "./syntax/invalid/lambda_parameter_default_value.sk", line 2, characters 7-7:
+ For opening '('
+1 | fun main(): String {
+2 |   x = (p = "Fail") ~> p;
+  |       ^
+3 |   x()

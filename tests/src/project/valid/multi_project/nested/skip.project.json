@@ -1,0 +1,10 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "library": {
+      "kind": "Library",
+      "sources": [ "t.sk" ]
+    }
+  },
+  "default": "library"
+}

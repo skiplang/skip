@@ -1,0 +1,10 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "frontend": {
+      "kind": "Library",
+      "sources": ["."],
+      "references": [ { "path": "../utils" } ]
+    }
+  }
+}

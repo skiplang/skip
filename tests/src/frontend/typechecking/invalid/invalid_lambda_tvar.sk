@@ -1,0 +1,23 @@
+base class A()
+class B extends A {
+  fun s(): String {
+    "Pass\n"
+  }
+}
+
+class C extends A
+
+fun my_maybe_with<T, R>(some: T -> R, none: R, opt: ?T): R {
+  opt match {
+  | None() -> none
+  | Some(x) -> some(x)
+  }
+}
+
+fun main(): void {
+  _ = Array[None(), None(), None()];
+  b = B();
+  ao: ?A = Some(C());
+  _: B = my_maybe_with(id, b, ao); // OOPS this is actually a C! Death!
+  print_raw("FAIL")
+}

@@ -1,0 +1,32 @@
+File "./typechecking/invalid/variance_4.sk", line 24, characters 35-42:
+Invalid argument
+22 |
+23 | fun main(): void {
+24 |   print_raw(getFooOfChildA().call(ChildB()).toString())
+   |                                   ^^^^^^^^
+25 | }
+
+File "./typechecking/invalid/variance_4.sk", line 24, characters 35-42:
+The type: ChildB
+22 |
+23 | fun main(): void {
+24 |   print_raw(getFooOfChildA().call(ChildB()).toString())
+   |                                   ^^^^^^^^
+25 | }
+
+File "./typechecking/invalid/variance_4.sk", line 19, characters 27-32:
+Is not a subtype of: ChildA
+17 | }
+18 |
+19 | fun getFooOfChildA(): Foo<ChildA> {
+   |                           ^^^^^^
+20 |   Foo()
+
+File "./typechecking/invalid/variance_4.sk", line 19, characters 27-32:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+17 | }
+18 |
+19 | fun getFooOfChildA(): Foo<ChildA> {
+   |                           ^^^^^^
+20 |   Foo()

@@ -1,0 +1,15 @@
+class Foo(value: Int) uses Equality {
+  fun ==(other: Foo): Bool {
+    this.value == other.value
+  }
+}
+
+fun testIsEqual<T: Equality>(t1: T, t2: T): Bool {
+  t1 == t2
+}
+
+fun main(): void {
+  t1 = Foo(0);
+  t2 = Foo(42);
+  print_raw(if (!testIsEqual(t1, t2)) "Pass\n" else "fail")
+}

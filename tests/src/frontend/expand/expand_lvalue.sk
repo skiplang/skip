@@ -1,0 +1,29 @@
+module alias M = MyModule;
+
+module MyModule;
+const C: Int = 0;
+module end;
+
+mutable class WeirdRef<+T>(mutable value: T)
+class WeirdObj(k: Int, v: Int) {
+  fun set(k: Int, v: Int): this {
+    WeirdObj(k, v)
+  }
+}
+
+fun main(): void {
+  a = mutable Vector[1, 2, 3];
+  a![MyModule.C] = 10;
+  a![M.C] = 10;
+  (a![MyModule.C], a![M.C]) = (10, 10);
+  ref = mutable Ref(mutable Vector[1, 2, 3]);
+  ref.value![MyModule.C] = 10;
+  ref.value![M.C] = 10;
+
+  weirdo = mutable WeirdRef(WeirdObj(0, 42));
+  weirdo.!value[MyModule.C] = 10;
+  weirdo.!value[M.C] = 10;
+  !weirdo.value[MyModule.C] = 10;
+  !weirdo.value[M.C] = 10;
+  print_string("Pass\n")
+}

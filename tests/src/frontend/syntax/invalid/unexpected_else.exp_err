@@ -1,0 +1,14 @@
+File "./syntax/invalid/unexpected_else.sk", line 3, characters 5-8:
+Expected '}'. Found 'else'.
+1 |
+2 | fun test(): void {
+3 |   1 else 2
+  |     ^^^^
+4 | }
+
+File "./syntax/invalid/unexpected_else.sk", line 2, characters 18-18:
+ For opening '{'
+1 |
+2 | fun test(): void {
+  |                  ^
+3 |   1 else 2

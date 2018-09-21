@@ -1,0 +1,5 @@
+class C(private private p: String) {}
+
+fun main(): String {
+  C("Fail").p
+}

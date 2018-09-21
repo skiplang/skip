@@ -1,0 +1,426 @@
+@test
+@example("String.split")
+fun testExampleSplit(): void {
+  assertTrue(
+    "Mary had a little lamb".split(" ") ==
+      Vector["Mary", "had", "a", "little", "lamb"],
+  );
+
+  // A split separator can be multiple characters
+  assertTrue(
+    "lion::tiger::leopard".split("::") == Vector["lion", "tiger", "leopard"],
+  );
+
+  // If a string contains multiple contiguous separators, you will end up with empty strings in the output:
+  assertTrue("|||a||b|c".split("|") == Vector["", "", "", "a", "", "b", "c"]);
+
+  // This can be surprising if you are using a space as separator. It will lead to empty strings in the result!
+  assertTrue("   a  b c".split(" ") == Vector["", "", "", "a", "", "b", "c"]);
+
+  // Split always give at least one element
+  assertTrue("".split(" ") == Vector[""]);
+}
+
+@test
+fun testSplit(): void {
+  str = "a,b,c,d,e";
+  items = mutable Vector[];
+  str.split(",").each(items.push);
+  expected = Vector["a", "b", "c", "d", "e"];
+  assertEqual(items.size(), expected.size());
+  for (i in Range(0, items.size())) {
+    assertEqual(items.get(i), expected.get(i))
+  };
+}
+
+@test
+fun testSplit1(): void {
+  str = "a,b,c,d,";
+  items = mutable Vector[];
+  str.split(",").each(items.push);
+  expected = Vector["a", "b", "c", "d", ""];
+  assertEqual(items.size(), expected.size());
+  for (i in Range(0, items.size())) {
+    assertEqual(items.get(i), expected.get(i))
+  };
+}
+
+@test
+fun testSplit2(): void {
+  str = ",b,c,d,e";
+  items = mutable Vector[];
+  str.split(",").each(items.push);
+  expected = Vector["", "b", "c", "d", "e"];
+  assertEqual(items.size(), expected.size());
+  for (i in Range(0, items.size())) {
+    assertEqual(items.get(i), expected.get(i))
+  };
+}
+
+@test
+fun testJoinStrings(): void {
+  cases = Array[
+    (", ", Array[], ""),
+    (", ", Array["x"], "x"),
+    (", ", Array["q", "r"], "q, r"),
+    (", ", Array["a", "b", "c"], "a, b, c"),
+    ("", Array["r", "s", "t"], "rst"),
+  ];
+  cases.each(case -> {
+    (delim, input, expected) = case;
+    assertEqual(delim.join(input), expected)
+  })
+}
+
+@test
+fun testJoinInts(): void {
+  cases = Array[
+    (", ", Array[], ""),
+    (", ", Array[1], "1"),
+    (", ", Array[1, 2], "1, 2"),
+    (", ", Array[3, 4, 5], "3, 4, 5"),
+    ("", Array[6, 7, 8], "678"),
+  ];
+  cases.each(case -> {
+    (delim, input, expected) = case;
+    assertEqual(delim.join(input), expected)
+  })
+}
+
+@test
+fun testStartsWith(): void {
+  cases = Array[
+    ("", "", true),
+    ("", "a", false),
+    ("a", "", true),
+    ("aa", "a", true),
+    ("ba", "a", false),
+    ("aa", "aa", true),
+    ("a\x00bc", "a\x00", true),
+    ("abc", "a\x00", false),
+  ];
+  cases.each(case -> {
+    (haystack, needle, expected) = case;
+    assertEqual(haystack.startsWith(needle), expected)
+  })
+}
+
+@test
+fun testContains(): void {
+  assertEqual("aaba".contains("ab"), true);
+  assertEqual("aaac".contains("ab"), false);
+  assertEqual("aaba".contains("aaba"), true);
+  assertEqual("aaac".contains(""), true);
+  assertEqual("".contains(""), true);
+  assertEqual("".contains("a"), false);
+}
+
+@test
+fun testRepeat(): void {
+  assertEqual("".repeat(10), "");
+  assertEqual("*".repeat(-5), "");
+  assertEqual("*".repeat(0), "");
+  assertEqual("*".repeat(1), "*");
+  assertEqual("*".repeat(5), "*****");
+  assertEqual("123".repeat(3), "123123123");
+}
+
+@test
+fun testReplace(): void {
+  assertEqual("abc123def".replace("123", "ABCDEF"), "abcABCDEFdef");
+  assertEqual("aa".replace("a", "aa"), "aaaa");
+  assertEqual("abc".replace("", "a"), "abc");
+  assertEqual("abca".replace("a", ""), "bc");
+}
+
+@test
+fun testSplitLast(): void {
+  assertTrue("".splitLast("") == ("", ""));
+  assertTrue("".splitLast("x") == ("", ""));
+  assertTrue("".splitLast("xy") == ("", ""));
+
+  assertTrue("abcdefghi".splitLast("") == ("abcdefghi", ""));
+  assertTrue("abcdefghi".splitLast("f") == ("abcde", "ghi"));
+  assertTrue("abcdefghi".splitLast("i") == ("abcdefgh", ""));
+  assertTrue("abcdefghi".splitLast("a") == ("", "bcdefghi"));
+  assertTrue("abcdefghi".splitLast("z") == ("", "abcdefghi"));
+
+  assertTrue("abcdefghi".splitLast("fg") == ("abcde", "hi"));
+  assertTrue("abcdefghi".splitLast("hi") == ("abcdefg", ""));
+  assertTrue("abcdefghi".splitLast("ab") == ("", "cdefghi"));
+  assertTrue("abcdefghi".splitLast("gf") == ("", "abcdefghi"));
+}
+
+@test
+fun testToIntOption(): void {
+  assertEqualOption("".toIntOption(), None());
+  assertEqualOption("a".toIntOption(), None());
+  assertEqualOption("-".toIntOption(), None());
+  assertEqualOption("+".toIntOption(), None());
+  assertEqualOption("+0".toIntOption(), None());
+  assertEqualOption("00".toIntOption(), None());
+  assertEqualOption("012".toIntOption(), None());
+  assertEqualOption("0a".toIntOption(), None());
+  assertEqualOption("12ab34".toIntOption(), None());
+  assertEqualOption("a123".toIntOption(), None());
+  assertEqualOption("-0".toIntOption(), None());
+  assertEqualOption("9223372036854775808".toIntOption(), None());
+  assertEqualOption("19223372036854775808".toIntOption(), None());
+  assertEqualOption("99999999999999999999".toIntOption(), None());
+  assertEqualOption("-9223372036854775809".toIntOption(), None());
+  assertEqualOption("-9999999999999999999".toIntOption(), None());
+  assertEqualOption("-10000000000000000000".toIntOption(), None());
+  assertEqualOption("100000000000000000000".toIntOption(), None());
+
+  assertEqualOption("0".toIntOption(), Some(0));
+  assertEqualOption("1".toIntOption(), Some(1));
+  assertEqualOption("-1".toIntOption(), Some(-1));
+  assertEqualOption("123".toIntOption(), Some(123));
+  assertEqualOption("-123".toIntOption(), Some(-123));
+  assertEqualOption(
+    "9223372036854775806".toIntOption(),
+    Some(9223372036854775806),
+  );
+  assertEqualOption(
+    "9223372036854775807".toIntOption(),
+    Some(9223372036854775807),
+  );
+  assertEqualOption(
+    "-9223372036854775807".toIntOption(),
+    Some(-9223372036854775807),
+  );
+  assertEqualOption(
+    "-9223372036854775806".toIntOption(),
+    Some(-9223372036854775806),
+  );
+  assertEqualOption(
+    "-9223372036854775808".toIntOption(),
+    Some(-9223372036854775808),
+  );
+  assertEqualOption("-9223372036854775809".toIntOption(), None());
+
+  try {
+    assertEqualOption("123".toIntOption(), Some(123));
+  } catch {
+  | _ -> invariant_violation("failed")
+  }
+}
+
+@test
+fun testPadLeft(): void {
+  assertEqual("abc".padLeft(5), "  abc");
+  assertEqual("".padLeft(5), "     ");
+  assertEqual("abc".padLeft(1), "abc");
+  assertEqual("".padLeft(0), "");
+  assertEqual("abc".padLeft(0), "abc");
+  assertEqual("abc".padLeft(-10), "abc");
+  assertEqual("abc".padLeft(5, '_'), "__abc");
+}
+
+@test
+fun testPadRight(): void {
+  assertEqual("abc".padRight(5), "abc  ");
+  assertEqual("".padRight(5), "     ");
+  assertEqual("abc".padRight(1), "abc");
+  assertEqual("".padRight(0), "");
+  assertEqual("abc".padRight(0), "abc");
+  assertEqual("abc".padRight(-10), "abc");
+  assertEqual("abc".padRight(5, '_'), "abc__");
+}
+
+@test
+fun testGetIter(): void {
+  i = "abc".getIter();
+  assertEqualOption(i.next(), Some('a'));
+  j = i.clone();
+  assertEqualOption(i.next(), Some('b'));
+  assertEqualOption(i.next(), Some('c'));
+  assertEqualOption(i.next(), None());
+
+  assertEqualOption(j.next(), Some('b'));
+  assertEqualOption(j.next(), Some('c'));
+  assertEqualOption(j.next(), None());
+}
+
+@test
+fun testSubstringSmall(): void {
+  s = "abc";
+  s1 = s.getIter();
+  assertEqual(s1.substring(s1), "");
+
+  s2 = s.getIter();
+  assertEqual(s1.substring(s2), "");
+
+  _ = s2.next();
+  assertEqual(s1.substring(s2), "a");
+
+  _ = s2.next();
+  assertEqual(s1.substring(s2), "ab");
+
+  assertThrows(() -> s2.substring(s1));
+}
+
+@test
+// test the different string representations in the native back end
+fun testSubstringLarge(): void {
+  s = "abcdefghijklmnopqrstubwxyz";
+  s1 = s.getIter();
+  assertEqual(s1.substring(s1), "");
+
+  s2 = s.getIter();
+  assertEqual(s1.substring(s2), "");
+
+  _ = s2.next();
+  assertEqual(s1.substring(s2), "a");
+
+  _ = s2.next();
+  assertEqual(s1.substring(s2), "ab");
+
+  assertThrows(() -> s2.substring(s1));
+}
+
+@test
+fun testTrim(): void {
+  assertEqual("".trim(), "");
+  assertEqual("a".trim(), "a");
+  assertEqual("  a  ".trim(), "a");
+
+  // All the special characters
+  assertEqual("\u0020".trim(), "");
+  assertEqual("\u00A0".trim(), "");
+  assertEqual("\u1680".trim(), "");
+  assertEqual("\u2000".trim(), "");
+  assertEqual("\u2001".trim(), "");
+  assertEqual("\u2002".trim(), "");
+  assertEqual("\u2003".trim(), "");
+  assertEqual("\u2004".trim(), "");
+  assertEqual("\u2005".trim(), "");
+  assertEqual("\u2006".trim(), "");
+  assertEqual("\u2007".trim(), "");
+  assertEqual("\u2008".trim(), "");
+  assertEqual("\u2009".trim(), "");
+  assertEqual("\u200A".trim(), "");
+  assertEqual("\u202F".trim(), "");
+  assertEqual("\u205F".trim(), "");
+  assertEqual("\u3000".trim(), "");
+  assertEqual("\u2028".trim(), "");
+  assertEqual("\u2029".trim(), "");
+  assertEqual("\u0009".trim(), "");
+  assertEqual("\u000A".trim(), "");
+  assertEqual("\u000B".trim(), "");
+  assertEqual("\u000C".trim(), "");
+  assertEqual("\u000D".trim(), "");
+  assertEqual("\u0085".trim(), "");
+}
+
+@test
+fun testTrimLeft(): void {
+  assertEqual("".trimLeft(), "");
+  assertEqual("a".trimLeft(), "a");
+  assertEqual("  a  ".trimLeft(), "a  ");
+}
+
+@test
+fun testTrimRight(): void {
+  assertEqual("".trimRight(), "");
+  assertEqual("a".trimRight(), "a");
+  assertEqual("  a  ".trimRight(), "  a");
+}
+
+@test
+fun testStripPrefix(): void {
+  assertEqual("abc".stripPrefix("abc"), "");
+  assertEqual("abcd".stripPrefix("abc"), "d");
+  assertEqual("abcd".stripPrefix("bcd"), "abcd");
+  assertEqual("abcabcd".stripPrefix("abc"), "abcd");
+  assertEqual("".stripPrefix("bcd"), "");
+  assertEqual("ab".stripPrefix("bcd"), "ab");
+}
+
+@test
+fun testStripSuffix(): void {
+  assertEqual("abc".stripSuffix("abc"), "");
+  assertEqual("abcd".stripSuffix("abc"), "abcd");
+  assertEqual("abcd".stripSuffix("bcd"), "a");
+  assertEqual("abcdbcd".stripSuffix("bcd"), "abcd");
+  assertEqual("".stripSuffix("bcd"), "");
+  assertEqual("ab".stripSuffix("bcd"), "ab");
+}
+
+@test
+fun testUppercase(): void {
+  assertEqual("abc".uppercase(), "ABC");
+  assertEqual("ABC".uppercase(), "ABC");
+  assertEqual("".uppercase(), "");
+  assertEqual("aBc123".uppercase(), "ABC123");
+
+  // TODO: Make unicode and locale work
+  assertNotEqual("é".uppercase(), "É");
+  assertNotEqual("i̇".uppercase(), "I"); // TODO: "i̇".uppercase("lt-LT")
+}
+
+@test
+fun testLowercase(): void {
+  assertEqual("abc".lowercase(), "abc");
+  assertEqual("ABC".lowercase(), "abc");
+  assertEqual("".lowercase(), "");
+  assertEqual("aBc123".lowercase(), "abc123");
+}
+
+@test
+fun testFromChars(): void {
+  assertEqual(String::fromChars(Array['a', 'b', 'c']), "abc");
+  assertEqual(String::fromChars(Array[]), "");
+}
+
+@test
+fun testChars(): void {
+  assertTrue("abc".chars() == Vector['a', 'b', 'c']);
+  assertTrue("".chars() == Vector[]);
+}
+
+@test
+fun testUppercaseFirst(): void {
+  assertTrue("".uppercaseFirst() == "");
+  assertTrue("_".uppercaseFirst() == "_");
+  assertTrue("a".uppercaseFirst() == "A");
+  assertTrue("A".uppercaseFirst() == "A");
+  assertTrue("abc".uppercaseFirst() == "Abc");
+  assertTrue("Abc".uppercaseFirst() == "Abc");
+}
+
+@test
+fun testLowercaseFirst(): void {
+  assertTrue("".lowercaseFirst() == "");
+  assertTrue("_".lowercaseFirst() == "_");
+  assertTrue("a".lowercaseFirst() == "a");
+  assertTrue("A".lowercaseFirst() == "a");
+  assertTrue("abc".lowercaseFirst() == "abc");
+  assertTrue("Abc".lowercaseFirst() == "abc");
+}
+
+@test
+fun testToFromUtf8(): void {
+  abc = "ABC";
+  abcBytes = Array[
+    UInt8::truncate('A'.code()),
+    UInt8::truncate('B'.code()),
+    UInt8::truncate('C'.code()),
+  ];
+  assertEqual(abc.utf8().collect(Array), abcBytes);
+  assertEqual(String::fromUtf8(abcBytes), abc);
+
+  phrase = "Victor jagt zw\u00F6lf Boxk\u00E4mpfer quer \u00FCber den gro\u00DFen Sylter Deich";
+  // printer-ignore
+  phraseBytes = Array[
+      0x56, 0x69, 0x63, 0x74, 0x6f, 0x72, 0x20, 0x6a, 0x61, 0x67, 0x74, 0x20,
+      0x7a, 0x77, 0xc3, 0xb6, 0x6c, 0x66, 0x20, 0x42, 0x6f, 0x78, 0x6b, 0xc3,
+      0xa4, 0x6d, 0x70, 0x66, 0x65, 0x72, 0x20, 0x71, 0x75, 0x65, 0x72, 0x20,
+      0xc3, 0xbc, 0x62, 0x65, 0x72, 0x20, 0x64, 0x65, 0x6e, 0x20, 0x67, 0x72,
+      0x6f, 0xc3, 0x9f, 0x65, 0x6e, 0x20, 0x53, 0x79, 0x6c, 0x74, 0x65, 0x72,
+      0x20, 0x44, 0x65, 0x69, 0x63, 0x68,
+    ]
+    .map(UInt8::truncate);
+  assertEqual(phrase.utf8().collect(Array), phraseBytes);
+  assertEqual(String::fromUtf8(phraseBytes), phrase);
+}

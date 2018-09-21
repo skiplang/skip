@@ -1,0 +1,257 @@
+mutable base class Animal(mutable id: Int = 0) uses Hashable, Equality
+
+mutable class Cow() extends Animal {
+  readonly fun hash(): Int {
+    this.id.hash()
+  }
+  readonly fun ==(other: Animal): Bool {
+    this.id == other.id
+  }
+}
+
+@test
+fun testSimple(): void {
+  m = Set::mcreate(0);
+  assertEqual(m.size(), 0);
+  assertFalse(m.contains(99));
+
+  m.insert(99);
+  assertEqual(m.size(), 1);
+  assertTrue(m.contains(99));
+
+  m.insert(99);
+  assertEqual(m.size(), 1);
+  assertTrue(m.contains(99));
+
+  assertTrue(m.maybeInsert(45));
+  assertEqual(m.size(), 2);
+  assertTrue(m.contains(45));
+  assertFalse(m.maybeInsert(45));
+  assertEqual(m.size(), 2);
+  assertTrue(m.contains(45));
+
+  m.clear();
+  assertTrue(m.isEmpty());
+  assertEqual(m.size(), 0);
+
+  assertFalse(m.contains(45));
+  assertFalse(m.contains(99))
+}
+
+@test
+fun testMaybeRemove(): void {
+  s = mutable Set[10, 20, 30];
+  assertFalse(s.maybeRemove(15));
+  assertTrue(s.maybeRemove(20));
+  assertEqual(s.size(), 2);
+  assertTrue(s.contains(10));
+  assertFalse(s.contains(20));
+  assertTrue(s.contains(30))
+}
+
+@test
+fun testCollectionLiteral(): void {
+  m = Set["key"];
+  assertTrue(m.contains("key"))
+}
+
+@test
+fun testFromItems(): void {
+  m = Array["key"].collect(Set);
+  assertTrue(m.contains("key"))
+}
+
+@test
+fun testFromItems1(): void {
+  s = Set["a", "b", "c"];
+  assertEqual(s, s.collect(Set));
+}
+
+@test
+fun testMutableFromItems(): void {
+  s = mutable Set["a", "b", "c"];
+  assertEqual(s, Set::mcreateFromItems(s));
+}
+
+@test
+fun testFilterReturnsSet(): void {
+  a = Set[0, 1, 2];
+  b: Set<Int> = a.filter(x -> x > 0);
+  assertEqual(b.toArray().sorted(), Array[1, 2])
+}
+
+@test
+fun testExtend(): void {
+  a = mutable Set<Animal>[Cow(0), Cow(1)];
+  b = mutable Array[Cow(0), Cow(12), Cow(19)];
+  a.extend(b);
+  assertEqual(a.toArray().map(q -> q.id).sorted(), Array[0, 1, 12, 19])
+}
+
+@test
+fun testUnion(): void {
+  a = Set<Animal>[Cow(0), Cow(1)];
+  b = mutable Array[Cow(0), Cow(12), Cow(19), Cow(19), Cow(19)];
+  c = a.union(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[0, 1, 12, 19])
+}
+
+@test
+fun testSubtract(): void {
+  a = mutable Set<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(1), Cow(3), Cow(5), Cow(7), Cow(9)];
+  a.subtract(b);
+  assertEqual(a.toArray().map(q -> q.id).sorted(), Array[0, 2, 4])
+}
+
+@test
+fun testDifference(): void {
+  a = Set<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(1), Cow(3), Cow(5), Cow(7), Cow(9)];
+  c = a.difference(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[0, 2, 4])
+}
+
+@test
+fun testIntersection(): void {
+  a = Set<Animal>[Cow(0), Cow(1), Cow(2), Cow(3), Cow(4)];
+  b = mutable Array[Cow(2), Cow(3), Cow(4), Cow(5), Cow(6)];
+  c = a.intersection(b);
+  assertEqual(c.toArray().map(q -> q.id).sorted(), Array[2, 3, 4])
+}
+
+@test
+fun testContainsAll(): void {
+  a = Set[0, 1, 2, 3, 4];
+  b = mutable Array[0, 2, 4];
+  assertTrue(a.containsAll(b));
+  c = mutable Array[3, 4, 5];
+  assertFalse(a.containsAll(c));
+}
+
+@test
+fun testContainsAny(): void {
+  a = Set[0, 1, 2, 3, 4];
+  b = mutable Array[4, 5, 6];
+  assertTrue(a.containsAny(b));
+  c = mutable Array[5, 6, 7];
+  assertFalse(a.containsAny(c));
+}
+
+@test
+fun testJoin(): void {
+  // Items should be joined in iteration order
+  set = Set[1, 2, 3];
+  items = mutable Vector[];
+  set.each(items.push);
+  assertEqual(set.join(", "), items.join(", "));
+  assertEqual(set.join(", "), "1, 2, 3");
+}
+
+@test
+fun testInsertionOrderIteration(): void {
+  set = mutable Set[];
+  set.add(4);
+  set.add(3);
+  set.add(2);
+  set.add(1);
+  set.add(0);
+  assertKeyOrder(set, Vector[4, 3, 2, 1, 0]);
+
+  // remove first key
+  set.remove(4);
+  assertKeyOrder(set, Vector[3, 2, 1, 0]);
+
+  // remove last key
+  set.remove(0);
+  assertKeyOrder(set, Vector[3, 2, 1]);
+
+  // remove middle key
+  set.remove(2);
+  assertKeyOrder(set, Vector[3, 1]);
+}
+
+@test
+// Reverse insertion order from above to avoid passing by accident of the particular
+// hash values
+fun testInsertionOrderIteration2(): void {
+  set = mutable Set[];
+  set.add(0);
+  set.add(1);
+  set.add(2);
+  set.add(3);
+  set.add(4);
+  assertKeyOrder(set, Vector[0, 1, 2, 3, 4]);
+
+  // remove last key
+  set.remove(4);
+  assertKeyOrder(set, Vector[0, 1, 2, 3]);
+
+  // remove first key
+  set.remove(0);
+  assertKeyOrder(set, Vector[1, 2, 3]);
+
+  // remove middle key
+  set.remove(2);
+  assertKeyOrder(set, Vector[1, 3]);
+}
+
+@test
+// Cloning should preserve insertion ordeer
+fun testCloneInsertionOrderIteration(): void {
+  base = mutable Set[];
+  base.add(4);
+  base.add(3);
+  base.add(2);
+  base.add(1);
+  base.add(0);
+  set = base.clone();
+  assertKeyOrder(set, Vector[4, 3, 2, 1, 0]);
+
+  // remove first key
+  set.remove(4);
+  assertKeyOrder(set, Vector[3, 2, 1, 0]);
+
+  // remove last key
+  set.remove(0);
+  assertKeyOrder(set, Vector[3, 2, 1]);
+
+  // remove middle key
+  set.remove(2);
+  assertKeyOrder(set, Vector[3, 1]);
+}
+
+@test
+// Cloning should preserve insertion ordeer
+fun testResizingCloneInsertionOrderIteration(): void {
+  base = mutable Set[];
+  base.add(4);
+  base.add(3);
+  base.add(2);
+  base.add(1);
+  base.add(0);
+
+  set = base.clone(base.size());
+  assertKeyOrder(set, Vector[4, 3, 2, 1, 0]);
+
+  // remove first key
+  set.remove(4);
+  assertKeyOrder(set, Vector[3, 2, 1, 0]);
+
+  // remove last key
+  set.remove(0);
+  assertKeyOrder(set, Vector[3, 2, 1]);
+
+  // remove middle key
+  set.remove(2);
+  assertKeyOrder(set, Vector[3, 1]);
+}
+
+fun assertKeyOrder<K: Hashable & Equality & Show>(
+  set: readonly Set<K>,
+  order: Vector<K>,
+): void {
+  keys = mutable Vector[];
+  set.each(keys.push);
+  assertEqual(keys, order);
+}

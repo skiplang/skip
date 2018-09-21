@@ -1,0 +1,3022 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Module Expansion.
+ *
+ * This pass does a series of code transformations "expanding" names and
+ * definitions.
+ *
+ * It actually does two passes: one to collect all definitions into modules,
+ * and one where it resolves names and fully qualifies all modules.
+ *
+ * In the first pass, we collect definitions into modules and expand any
+ * classes created by the "children" keyword. For example:
+ *
+ *    >  base class X {
+ *    >     children = Y | Z
+ *    >  }
+ *
+ *    Is transformed into:
+ *    >  base class X {} // The children field has been removed
+ *    >
+ *    >  class Y extends X // Y is now defined outside of X
+ *    >                    // (and extends it explicitly)
+ *    >  class Z extends X
+ *
+ * In the second pass, we expand modules. For every definition within a
+ * module, the module's name is "pushed" on its definitions. For example:
+ *
+ *    > module M;
+ *    > class X
+ *
+ * Becomes:
+ *    > class M.X
+ *
+ * We also expand module aliases. For example:
+ *    > module alias MLN = MyLongName
+ * Then MLN is replaced with MyLongName across the entire module.
+ *
+ * As a special case, naming a class "." in a module MyModule
+ * renames the class to by MyModule in the global scope.
+ *
+ * Here we also resolve named references to type parameters. The bulk
+ * of name resolution is done in SkipNaming, but because type parameters
+ * are lexically scoped, it's important to resolve references to them
+ * before we begin to move definitions around, as in Skip Inherit.
+ *
+ */
+/*****************************************************************************/
+/*****************************************************************************/
+/* The environment. */
+/*****************************************************************************/
+module alias A = SkipAst;
+
+/*****************************************************************************/
+/* For every class, computes the transitive closure of the children of that
+ * class (and adds it to the field children__set).
+ */
+/*****************************************************************************/
+module ChildMap;
+
+const childCache: Reactive.DiffCache = Reactive.DiffCache::create();
+
+memoized fun getChildren(className: String): SSet {
+  childCache[className].foldl(
+    (result, child) -> getChildren(child).set(child).union(result),
+    SSet[],
+  )
+}
+
+untracked fun populateCache(classDefs: UMap<A.Class_def>): void {
+  fileMap = mutable Map[];
+  for (classDef in classDefs) addClass(fileMap, classDef);
+  for (filename => assocs in fileMap) {
+    defMap = mutable Map<String, mutable Vector<String>>[];
+    for (assoc in assocs) {
+      (parentStr, childStr) = assoc;
+      if (defMap.containsKey(parentStr)) {
+        defMap[parentStr].push(childStr)
+      } else {
+        defMap![parentStr] = mutable Vector[childStr]
+      };
+    };
+    for (parentName => childSet in defMap) {
+      childCache.set(filename, parentName, freeze(childSet))
+    }
+  }
+}
+
+untracked private fun addClass(
+  map: mutable Map<String, mutable Vector<(String, String)>>,
+  classDef: A.Class_def,
+): void {
+  (fileRange, childStr) = classDef.name;
+  fileName = fileRange.filename;
+  for (classExtends in classDef.extends_) {
+    (parentClass, _) = classExtends.parent;
+    parentStr = parentClass match {
+    | A.Tclass((_, x)) -> x
+    | _ -> invariant_violation("The name should have been expanded")
+    };
+    if (map.containsKey(fileName)) {
+      map[fileName].push((parentStr, childStr))
+    } else {
+      map![fileName] = mutable Vector[(parentStr, childStr)];
+    }
+  }
+}
+
+fun fillChildrenSet(classDefs: UMap<A.Class_def>): (UMap<A.Class_def>) {
+  checkCycles(classDefs);
+  /* Then, build the transitive closure of that relation and update the
+   * class definitions.
+   */
+  !classDefs = classDefs.map((_, classDef) -> {
+    (_, className) = classDef.name;
+    childrenSet = getChildren(className);
+    !classDef.children__set = childrenSet;
+    !classDef.concrete_children = childrenSet.filter(x ->
+      isConcreteClass(classDefs, x)
+    );
+    classDef
+  });
+  classDefs
+}
+
+private fun isConcreteClass(defs: UMap<A.Class_def>, c: String): Bool {
+  defs.getOrCrash(c).kind is A.KClass()
+}
+
+private fun checkCycles(classDefs: UMap<A.Class_def>): void {
+  for (classDef in classDefs) {
+    checkCycle(SSet[], classDefs, classDef)
+  }
+}
+
+// Basic check for explicit cycle in a hierarchy. Does not consider
+// implicit cycles due to subtyping
+private fun checkCycle(
+  visited: SSet,
+  classDefs: UMap<A.Class_def>,
+  classDef: A.Class_def,
+): void {
+  (classNamePos, className) = classDef.name;
+  if (visited.contains(className)) {
+    SkipError.error(classNamePos, "Cyclic class hierarchy")
+  };
+  !visited = visited.add(className);
+  for (parent in classDef.extends_) {
+    (parentClassName, _) = parent.parent;
+    (parentPos, parentName) = parentClassName match {
+    | A.Tclass(x) -> x
+    | _ -> invariant_violation("The name should have been expanded")
+    };
+    if (!classDefs.containsRawKey(parentName)) {
+      SkipError.error(
+        parentPos,
+        "Unbound class name for parent '" + parentName + "'",
+      )
+    };
+    parentClass = classDefs.getOrCrash(parentName);
+    checkCycle(visited, classDefs, parentClass)
+  }
+}
+
+module end;
+
+module ModuleMap;
+
+const moduleCache: Reactive.DiffCache = Reactive.DiffCache::create();
+
+fun containsKey(key: String): Bool {
+  moduleCache.get(key).size() > 0
+}
+
+untracked fun populateCache(moduleDefs: SkipExpand.Module_map_t): void {
+  fileMap = mutable Map[];
+  pushDef = (prefix, fileName, moduleName, defName) -> {
+    if (defName[0] == '.') {
+      !moduleName = "U";
+      !defName = defName.substring(1);
+    };
+    !defName = prefix + defName;
+    fileDefs = fileMap.getOrAdd(fileName, () -> mutable Map[]);
+    moduleDefsInFile = fileDefs.getOrAdd(moduleName, () -> mutable Vector[]);
+    moduleDefsInFile.push(defName);
+  };
+
+  for (moduleName => posAndDefs in moduleDefs) {
+    (_, defs) = posAndDefs;
+    for (cd in defs.class_defs) {
+      (fileRange, defName) = cd.name;
+      pushDef("class:", fileRange.filename, moduleName, defName);
+    };
+    for (fd in defs.fun_defs) {
+      (fileRange, defName) = fd.name;
+      pushDef("fun:", fileRange.filename, moduleName, defName);
+    };
+    for (cst in defs.const_defs) {
+      (fileRange, defName) = cst.name;
+      pushDef("const:", fileRange.filename, moduleName, defName);
+    };
+    for (tyd in defs.type_defs) {
+      (fileRange, defName) = tyd.name;
+      pushDef("type:", fileRange.filename, moduleName, defName);
+    };
+  };
+  for (fileName => moduleDefs2 in fileMap) {
+    for (moduleName => defs in moduleDefs2) {
+      moduleCache.set(fileName, moduleName, defs.chill())
+    }
+  };
+}
+
+module end;
+
+module GlobalEnv;
+
+private memoized fun getDefinitions(defName: String): A.Program {
+  files = SkipExpand.fileCache.get(defName);
+  asts = SkipParse.parse_files(files, true);
+  moduleDefsVector = asts.map(SkipExpand.definitions);
+  module_defs = moduleDefsVector.foldl(SkipExpand.mergeModuleMap, SortedMap[]);
+  program = SkipExpand.module_map_fold(module_defs);
+  program
+}
+
+memoized fun getClass(className: String): ?A.Class_def {
+  program = getDefinitions(className);
+  classDefOpt = program.class_defs.maybeGetNoPos(className);
+  classDefOpt match {
+  | None() -> None()
+  | Some(classDef) ->
+    childrenSet = ChildMap.getChildren(className);
+    !classDef.children__set = childrenSet;
+    !classDef.concrete_children = childrenSet.filter(x -> {
+      getClass(x) match {
+      | Some(childDef) -> childDef.kind == A.KClass()
+      | None() -> false
+      }
+    });
+    Some(classDef)
+  }
+}
+
+memoized fun getType(typeName: String): ?A.Type_alias_def {
+  getDefinitions(typeName).type_defs.maybeGetNoPos(typeName)
+}
+
+memoized fun getConst(constName: String): ?A.Const_def {
+  getDefinitions(constName).const_defs.maybeGetNoPos(constName)
+}
+
+memoized fun getFun(funName: String): ?A.Fun_def {
+  getDefinitions(funName).fun_defs.maybeGetNoPos(funName)
+}
+module end;
+
+/* The module doing the module name expansions. */
+
+module SkipExpand;
+
+base class Module_ uses Equality, Show {
+  children =
+  | Unqualified()
+  | Module(A.Name)
+
+  fun ==(other: Module_): Bool
+  | Unqualified() ->
+    other match {
+    | Unqualified() -> true
+    | _ -> false
+    }
+  | Module(thisName) ->
+    other match {
+    | Module(otherName) -> thisName.i1 == otherName.i1
+    | _ -> false
+    }
+
+  fun toString(): String
+  | Unqualified() -> ""
+  | Module(module_name) ->
+    (_, x) = module_name;
+    x
+}
+
+class Defs{
+  class_defs: UMap<A.Class_def>,
+  const_defs: UMap<A.Const_def>,
+  def_pos: ?FileRange,
+  fun_defs: UMap<A.Fun_def>,
+  type_defs: UMap<A.Type_alias_def>,
+}
+
+class DefNames(defs: Vector<String>) {
+  private fun binarySearch(elt: String, i: Int, j: Int): Bool {
+    if (i > j) return false;
+    pivot = (i + j) / 2;
+    compare(elt, this.defs[pivot]) match {
+    | LT() -> this.binarySearch(elt, i, pivot - 1)
+    | GT() -> this.binarySearch(elt, pivot + 1, j)
+    | EQ() -> true
+    }
+  }
+
+  fun containsClass(className: String): Bool {
+    this.binarySearch("class:" + className, 0, this.defs.size() - 1)
+  }
+  fun containsFun(funName: String): Bool {
+    this.binarySearch("fun:" + funName, 0, this.defs.size() - 1)
+  }
+  fun containsConst(constName: String): Bool {
+    this.binarySearch("const:" + constName, 0, this.defs.size() - 1)
+  }
+  fun containsType(typeName: String): Bool {
+    this.binarySearch("type:" + typeName, 0, this.defs.size() - 1)
+  }
+
+  fun names(): Vector<String> {
+    this.defs.map(x -> x.split(":")[1])
+  }
+}
+
+type Module_map_t = SMap<(?FileRange, Defs)>;
+
+fun name_of_module(x: Module_): String {
+  x match {
+  | Unqualified() -> "U"
+  | Module(n) -> "Z" + n.i1
+  }
+}
+
+fun module_names_find(x: Module_): ?DefNames {
+  // TODO: this should return none when the module is not defined
+  Some(DefNames(ModuleMap.moduleCache.get(name_of_module(x))))
+}
+
+fun module_map_find(x: Module_, y: Module_map_t): ?Defs {
+  y.maybeGet(name_of_module(x)).map(p -> p.i1)
+}
+
+fun module_names_find_unsafe(x: Module_): DefNames {
+  module_names_find(x) match {
+  | None() -> invariant_violation("ICE unbound module")
+  | Some(value) -> value
+  }
+}
+
+fun module_names_mem(x: Module_): Bool {
+  ModuleMap.containsKey(name_of_module(x))
+}
+
+fun module_map_fold(moduleMap: Module_map_t): A.Program {
+  env = intern(makeEnv());
+  emptyProgram = A.Program{
+    const_defs => UMap[],
+    type_defs => UMap[],
+    fun_defs => UMap[],
+    class_defs => UMap[],
+  };
+  moduleMap
+    .map((moduleName, posDefs) -> {
+      (pos_opt, defs) = posDefs;
+      module_name = {
+        kind = moduleName.sub(0, 1);
+        if (kind == "U") {
+          Unqualified()
+        } else {
+          pos_opt match {
+          | None() -> invariant_violation("ICE no pos for module_map_fold")
+          | Some(pos) ->
+            Module((pos, moduleName.sub(1, moduleName.length() - 1)))
+          }
+        }
+      };
+      module_(env, module_name, defs)
+    })
+    .reduce((y, _, x) -> mergePrograms(x, y), emptyProgram)
+}
+
+fun module_map_add(x: Module_, y: Defs, m: Module_map_t): Module_map_t {
+  x match {
+  | Unqualified() -> m.set(name_of_module(x), (None(), y))
+  | Module((pos, _)) -> m.set(name_of_module(x), (Some(pos), y))
+  }
+}
+
+class Env{
+  context: String,
+  current_module: Module_,
+  locals: SSet,
+  module_aliases: UMap<A.Module_alias>,
+  tparams: SMap<A.Type_parameter>,
+  allowMacros: Bool,
+}
+
+fun empty_defs(mod_name: Module_): Defs {
+  def_pos = {
+    mod_name match {
+    | Unqualified() -> None()
+    | Module((pos, _)) -> Some(pos)
+    }
+  };
+  Defs{
+    def_pos,
+    type_defs => UMap[],
+    class_defs => UMap[],
+    fun_defs => UMap[],
+    const_defs => UMap[],
+  }
+}
+
+fun empty_defs_names(): DefNames {
+  DefNames(Vector[])
+}
+
+fun makeEnv(): Env {
+  Env{
+    context => "",
+    current_module => Unqualified(),
+    locals => SSet[],
+    module_aliases => UMap[],
+    tparams => SortedMap[],
+    allowMacros => false,
+  }
+}
+
+// state for iterative expr()
+class ExprState{
+  env: Env,
+  stack: List<(A.Expr, Bool)>,
+  expr: A.Expr,
+  child: Bool,
+}
+
+/*****************************************************************************/
+/* Function expanding module names. */
+/*****************************************************************************/
+fun is_uppercase(nm: A.Name): Bool {
+  (_, name) = nm;
+  name.length() == 0 ||
+    ({
+      name[0] match {
+      | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L'
+      | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X'
+      | 'Y' | 'Z' ->
+        true
+      | _ -> false
+      }
+    })
+}
+
+fun expand_module_name<Ta>(_env: Ta, mod_name: A.Name): Module_ {
+  assert(is_uppercase(mod_name));
+  mod_name match {
+  | (_pos, "") -> Unqualified()
+  | n -> Module(n)
+  }
+}
+
+/* Core expansion behavior
+ * Given an encasing module/global-namespace, it produces the resolved name
+ * For example
+ *  (M, "name") => "M.name"
+ *  (Unqualified, "name") => "name"
+ *  (M, ".name") -> "name"
+ */
+fun make_qualified_name(
+  pos: FileRange,
+  module_: Module_,
+  name: (FileRange, String),
+): (FileRange, String) {
+  (_, str) = name;
+  dotted_name = str[0] == '.';
+  (module_, name) match {
+  | (Module((_, _)), _) if (dotted_name) -> (pos, str.sub(1, str.length() - 1))
+  | (Unqualified(), _) if (dotted_name) ->
+    SkipError.error(
+      pos,
+      "You can only use '.' to access the global namespace while within a module",
+    )
+  | (Module((_, m)), _) -> (pos, m + "." + str)
+  | (Unqualified(), _) -> name
+  }
+}
+
+fun make_definition_name(
+  env: Env,
+  name: (FileRange, String),
+): (FileRange, String) {
+  make_qualified_name(name.i0, env.current_module, name)
+}
+
+fun make_dotted_name<Ta>(
+  env: Ta,
+  pos: FileRange,
+  mod_name: A.Name,
+  name: (FileRange, String),
+): (FileRange, String) {
+  module_ = expand_module_name(env, mod_name);
+  make_qualified_name(pos, module_, name)
+}
+
+fun element_privacy(md: DefNames, field_str: String): ?Bool {
+  if (md.containsClass(field_str)) {
+    Some(false)
+  } else {
+    if (md.containsFun(field_str)) {
+      Some(false)
+    } else {
+      if (md.containsType(field_str)) {
+        Some(false)
+      } else {
+        if (md.containsConst(field_str)) {
+          Some(false)
+        } else {
+          None()
+        }
+      }
+    }
+  }
+}
+
+fun get_module(env: Env, mname: A.Name): ?DefNames {
+  module_names_find(expand_module_name(env, mname))
+}
+
+fun is_module(env: Env, mname: A.Name): Bool {
+  is_uppercase(mname) && get_module(env, mname).isSome()
+}
+
+fun is_const_cstr(env: Env, fr: FileRange, name: A.Name): Bool {
+  env.current_module match {
+  | Unqualified() -> is_const_name(env, (fr, ""), name)
+  | Module(m) ->
+    is_const_name(env, (fr, ""), name) || is_const_name(env, m, name)
+  }
+}
+
+fun is_const_name(env: Env, mname: A.Name, cname: A.Name): Bool {
+  get_module(env, mname) match {
+  | Some(m) -> m.containsConst(cname.i1)
+  | None() -> false
+  }
+}
+
+fun check_module(env: Env, mname: A.Name, f: (FileRange, String)): void {
+  (fpos, field_str) = f;
+  (mpos, m_str) = mname;
+  if (m_str == "") {
+    void
+  } else {
+    md_name = expand_module_name(env, mname);
+    if (!module_names_mem(md_name)) {
+      SkipError.error(mpos, "Unbound module: " + m_str)
+    };
+    md = module_names_find_unsafe(md_name);
+    is_private = element_privacy(md, field_str);
+    if (!is_private.isSome()) {
+      defs = md.names().map(s -> (s, s)).collect(Map);
+      didYouMeanTypos = SkipDidYouMean.didYouMeanTypos(defs, field_str);
+      SkipError.errorl(
+        List[
+          (
+            fpos,
+            "Unbound name " +
+              field_str +
+              " in module " +
+              m_str +
+              didYouMeanTypos,
+          ),
+        ],
+      )
+    };
+    (is_private.fromSome(), env.current_module) match {
+    | (false, _) -> void
+    | (true, Module(n)) if (mname.i1 == n.i1) -> void
+    | (true, _) ->
+      SkipError.errorl(
+        List[
+          (
+            fpos,
+            "Cannot access a private module element " +
+              field_str +
+              " outside of module " +
+              m_str,
+          ),
+        ],
+      )
+    }
+  }
+}
+
+fun check_module_element_privacy(
+  element_type: String,
+  env: Env,
+  privacy: ?FileRange,
+): void {
+  (privacy, env.current_module) match {
+  | (None(), _)
+  | (_, Module _) ->
+    void
+  | (Some(vpos), Unqualified()) ->
+    SkipError.error(
+      vpos,
+      "Cannot declare a " + element_type + " as private outside of a module",
+    )
+  }
+}
+
+fun check_class_privacy(env: Env, privacy: ?FileRange): void {
+  check_module_element_privacy("class", env, privacy)
+}
+
+fun check_fun_privacy(env: Env, privacy: ?FileRange): void {
+  check_module_element_privacy("function", env, privacy)
+}
+
+fun check_const_privacy(env: Env, x: (FileRange, A.Visibility)): void {
+  x match {
+  | (_, A.VPublic()) -> void
+  | (_, A.VProtected()) -> invariant_violation("ICE proected const")
+  | (pos, A.VPrivate()) ->
+    check_module_element_privacy("constant", env, Some(pos))
+  }
+}
+
+fun current_defs_names(env: Env): DefNames {
+  module_names_find(env.current_module) match {
+  | None() -> empty_defs_names()
+  | Some(value) -> value
+  }
+}
+
+/*****************************************************************************/
+/* Apply type names. */
+/*****************************************************************************/
+fun cstr_name(env: Env, name: (FileRange, String)): (FileRange, String) {
+  if (name.i1[0] == '.') {
+    (namePos, nameStr) = name;
+    !nameStr = nameStr.substring(1);
+    make_qualified_name(namePos, Unqualified(), (namePos, nameStr))
+  } else {
+    mdefs = current_defs_names(env);
+    module_ = if (mdefs.containsClass(name.i1) || mdefs.containsType(name.i1)) {
+      env.current_module
+    } else {
+      Unqualified()
+    };
+    make_qualified_name(name.i0, module_, name)
+  }
+}
+
+fun type_name(env: Env, x: A.Type_name): A.Type_name {
+  x match {
+  | A.Tmacro(n) ->
+    report_macro_usage(env, n.i0);
+    x
+  | A.Tclass(name @ (_, n)) ->
+    env.tparams.maybeGet(n) match {
+    | Some((_, id, _, _)) -> A.Tparam(name, id)
+    | None() -> A.Tclass(cstr_name(env, name))
+    }
+  | A.Tmodule_class(pos, module_name, class_name) ->
+    check_module(env, module_name, class_name);
+    A.Tclass(make_dotted_name(env, pos, module_name, class_name))
+  | param_ref @ A.Tparam _ -> param_ref
+  }
+}
+
+/*****************************************************************************/
+/* Apply variable names. */
+/*****************************************************************************/
+fun var_name(env: Env, name: (FileRange, String)): (FileRange, String) {
+  mdefs = current_defs_names(env);
+  module_ = if (
+    !env.locals.contains(name.i1) &&
+    (mdefs.containsFun(name.i1) || mdefs.containsConst(name.i1))
+  ) {
+    env.current_module
+  } else {
+    Unqualified()
+  };
+  make_qualified_name(name.i0, module_, name)
+}
+
+/*****************************************************************************/
+/* Assign unique type parameter ids to the parse trees. */
+/*****************************************************************************/
+/* Tparams have globably unique names (based on their declared context
+ * to make substitution easier in later passes
+ */
+@gc
+fun unique_tparams(
+  context: String,
+  tparams: Array<SkipAst.Type_parameter>,
+): Array<SkipAst.Type_parameter> {
+  tparams.map(tparam -> {
+    tparam match {
+    | (var, "", tparam_name, tyo) ->
+      (_, tparam_str) = tparam_name;
+      (var, tparam_str + ":" + context, tparam_name, tyo)
+    | _ -> invariant_violation("ICE non empty context for unique_tparams")
+    }
+  })
+}
+
+// Children-clause classes inherit their tparams but still need unique IDs for
+// substitution
+@gc
+fun unique_child_tparams(
+  context: String,
+  tparams: Array<SkipAst.Type_parameter>,
+): Array<SkipAst.Type_parameter> {
+  tparams.map(tparam -> {
+    tparam match {
+    | (_var, "", _, _tyo) ->
+      invariant_violation("ICE empty context for unique_child_tparams")
+    | (var, _, tparam_name, tyo) ->
+      (_, tparam_str) = tparam_name;
+      (var, tparam_str + ":" + context, tparam_name, tyo)
+    }
+  })
+}
+
+@gc
+fun tparams_method(
+  context: String,
+  met: SkipAst.Method_def,
+): SkipAst.Method_def {
+  (_, method_name) = met.name;
+  method_context = method_name + "<method>:" + context;
+  tparams = unique_tparams(method_context, met.tparams);
+  met with {tparams}
+}
+
+/* Must be here to work around Ocaml type system */
+fun malias_type_def_<Ta>(
+  env: Env,
+  f_body: ((Env, Ta) -> Ta),
+  tyd: A.Type_def<Ta>,
+): A.Type_def<Ta> {
+  tyd with {body => f_body(env, tyd.body)}
+}
+
+/*****************************************************************************/
+/* The file maps keeps track of where definitions can be found (in which
+ * file).
+ */
+/*****************************************************************************/
+const fileCache: Reactive.DiffCache = Reactive.DiffCache::create();
+
+mutable private class FileMapBuilder{private mutable currentModule: Module_} {
+  static fun create(): mutable this {
+    mutable FileMapBuilder{currentModule => Unqualified()}
+  }
+
+  untracked mutable fun populateCache(files: List<List<A.Definition>>): void {
+    for (x in files) this.file(x);
+  }
+
+  untracked private mutable fun push(name: A.Name): void {
+    (fileRange, _) = name;
+    defName = make_qualified_name(fileRange, this.currentModule, name);
+    filename = fileRange.filename;
+    fileCache.set(filename, defName.i1, Vector[filename])
+  }
+
+  untracked private mutable fun file(defs: List<A.Definition>): void {
+    this.!currentModule = Unqualified();
+    for (x in defs) this.definition(x)
+  }
+
+  untracked private mutable fun definition(def: A.Definition): void {
+    def match {
+    | A.DMalias(_) -> void
+    | A.DFun(fd) -> this.push(fd.name)
+    | A.DClass(cd) ->
+      this.push(cd.name);
+      this.addChildren(cd.children_)
+    | A.DModule(_, moduleName) -> this.!currentModule = Module(moduleName)
+    | A.DConst(cst) -> this.push(cst.name)
+    | A.DType(tyd) -> this.push(tyd.name)
+    | A.DModuleEnd(_) -> this.!currentModule = Unqualified()
+    }
+  }
+
+  untracked private mutable fun addChildren(childList: List<A.Child>): void {
+    childList.each(child -> this.push(child.chi_name))
+  }
+}
+
+/*****************************************************************************/
+/* The entry point of the pass. */
+/*****************************************************************************/
+const emptyProgram: A.Program = A.Program{
+  type_defs => UMap[],
+  class_defs => UMap[],
+  fun_defs => UMap[],
+  const_defs => UMap[],
+};
+
+@gc
+untracked fun program(files: List<List<SkipAst.Definition>>): SkipAst.Program {
+  fileMapBuilder = FileMapBuilder::create();
+  fileMapBuilder.populateCache(files);
+  moduleDefsVector = files.map(definitions);
+  module_defs = moduleDefsVector.foldl(mergeModuleMap, SortedMap[]);
+  ModuleMap.populateCache(module_defs);
+  program = module_map_fold(module_defs);
+  ChildMap.populateCache(program.class_defs);
+  !program.class_defs = ChildMap.fillChildrenSet(program.class_defs);
+  program
+}
+
+/*****************************************************************************/
+/* Collecting definitions. */
+/*****************************************************************************/
+fun add_def(
+  env: Env,
+  module_defs: Module_map_t,
+  f: ((Defs) -> Defs),
+): Module_map_t {
+  defs = module_map_find(env.current_module, module_defs) match {
+  | None() -> empty_defs(env.current_module)
+  | Some(x) -> x
+  };
+  !defs = f(defs);
+  !module_defs = module_map_add(env.current_module, defs, module_defs);
+  module_defs
+}
+
+fun mergeDefs(
+  posDefs1: (?FileRange, Defs),
+  posDefs2: (?FileRange, Defs),
+): (?FileRange, Defs) {
+  (pos, defs1) = posDefs1;
+  (_, defs2) = posDefs2;
+  class_defs = defs1.class_defs;
+  for (cd in defs2.class_defs) {
+    (!class_defs, _) = add_cd_merge_extentions(class_defs, cd);
+  };
+  (
+    pos,
+    defs1 with {
+      class_defs,
+      const_defs => UMap::union(defs1.const_defs, defs2.const_defs),
+      fun_defs => UMap::union(defs1.fun_defs, defs2.fun_defs),
+      type_defs => UMap::union(defs1.type_defs, defs2.type_defs),
+    },
+  )
+}
+
+fun mergeModuleMap(map1: Module_map_t, map2: Module_map_t): Module_map_t {
+  acc = map1;
+  for (name => defs2 in map2) {
+    acc.maybeGet(name) match {
+    | None() -> !acc = acc.add(name, defs2)
+    | Some(defs1) -> !acc = acc.set(name, mergeDefs(defs1, defs2))
+    }
+  };
+  acc
+}
+
+fun mergePrograms(prog2: A.Program, prog1: A.Program): A.Program {
+  acc = prog1;
+  prog2.type_defs.each((_, type_def) ->
+    !acc = add_tyd_to_acc(type_def.name, type_def, acc)
+  );
+  prog2.class_defs.each((_, class_def) ->
+    !acc = add_cd_to_acc(class_def.name, class_def, acc)
+  );
+  prog2.fun_defs.each((_, fun_def) ->
+    !acc = add_fun_to_acc(fun_def.name, fun_def, acc)
+  );
+  prog2.const_defs.each((_, const_def) -> {
+    !acc = add_con_to_acc(const_def.name, const_def, acc)
+  });
+  acc
+}
+
+@gc
+memoized fun definitions(file: List<SkipAst.Definition>): Module_map_t {
+  env = makeEnv();
+  module_defs = SortedMap[];
+  !env.current_module = Unqualified();
+  assert(env.module_aliases.isEmpty());
+  (!env, !module_defs) = file.foldl(
+    (acc, x) -> definition(acc, x),
+    (env, module_defs),
+  );
+  !env.module_aliases = UMap[];
+  module_defs
+}
+
+fun definition(acc: (Env, Module_map_t), x: A.Definition): (Env, Module_map_t) {
+  (env, module_defs) = acc;
+  x match {
+  | A.DMalias(mal) ->
+    if (env.current_module != Unqualified()) {
+      SkipError.error(mal.pos, "Expected 'module end;'")
+    };
+    !env.module_aliases = env.module_aliases.add(mal.mal_name, mal);
+    (env, module_defs)
+  | A.DModule(pos, module_name) ->
+    if (env.current_module != Unqualified()) {
+      SkipError.error(pos, "Expected 'module end;'")
+    };
+    !env.current_module = Module(module_name);
+    !env.context = "<module>" + env.current_module + ":";
+    (env, module_defs)
+  | A.DModuleEnd(pos) ->
+    if (env.current_module == Unqualified()) {
+      SkipError.error(pos, "Unexpected 'module end;'")
+    };
+    !env.current_module = Unqualified();
+    (env, module_defs)
+  | A.DType(tyd) ->
+    (_, type_name) = tyd.name;
+    type_context = "<type>" + type_name + ":" + env.context;
+    !tyd.tparams = unique_tparams(type_context, tyd.tparams);
+    tyd1 = malias_type_def(env, tyd);
+    !module_defs = add_def(env, module_defs, defs -> {
+      type_defs = defs.type_defs.add(tyd1.name, tyd1);
+      defs with {type_defs}
+    });
+    (env, module_defs)
+  | A.DConst(cst) ->
+    !cst = malias_const_def(env, cst);
+    !module_defs = add_def(env, module_defs, defs -> {
+      const_defs = defs.const_defs.add(cst.name, cst);
+      defs with {const_defs}
+    });
+    (env, module_defs)
+  | A.DFun(fd) ->
+    (_, function_name) = fd.name;
+    fun_context = "<fun>" + function_name + ":" + env.context;
+    !fd.tparams = unique_tparams(fun_context, fd.tparams);
+    !fd = malias_fun_def(env, fd);
+    !module_defs = add_def(env, module_defs, defs -> {
+      fun_defs = defs.fun_defs.add(fd.name, fd);
+      defs with {fun_defs}
+    });
+    (env, module_defs)
+  | A.DClass(cd) ->
+    (_, class_name) = cd.name;
+    class_context = "<class>" + class_name + ":" + env.context;
+    !cd = setNativeConstructor(cd);
+    !cd.tparams = unique_tparams(class_context, cd.tparams);
+    !cd.methods = cd.methods.map((_, cur1) ->
+      tparams_method(class_context, cur1)
+    );
+    !cd = malias_class_def(env, cd);
+    children_ = cd.children_;
+    !module_defs = add_def(env, module_defs, defs -> {
+      (class_defs, !cd) = add_cd_merge_extentions(defs.class_defs, cd);
+      defs with {class_defs}
+    });
+    add_child = (chi: A.Child, map: UMap<A.Class_def>) -> {
+      map.add(
+        chi.chi_name,
+        child(env.context, cd.name, cd.private_, cd.mutable_, cd.tparams, chi),
+      )
+    };
+    !module_defs = add_def(env, module_defs, defs -> {
+      class_defs = children_.foldr(add_child, defs.class_defs);
+      defs with {class_defs}
+    });
+    (env, module_defs)
+  }
+}
+
+/* Classes marked 'native' get a native constructor
+ * TODO move the native keyword to cosntructor/field list position
+ */
+fun setNativeConstructor(cd: A.Class_def): A.Class_def {
+  (cd.native_, cd.params) match {
+  | (None(), _) -> cd
+  | (Some(fr), A.NoParams()) -> cd with {params => A.NativeConstruct(fr)}
+
+  | (Some(fr), A.HasParams(A.Class_params{pos})) ->
+    SkipError.errorl(
+      List[
+        (pos, "Cannot add parameters to a class marked 'native'"),
+        (fr, "Declared 'native' here"),
+      ],
+    )
+  | (Some _, A.NativeConstruct _) ->
+    invariant_violation("ICE impossible native constructor already set")
+  }
+}
+
+fun add_cd_merge_extentions(
+  class_defs: UMap<A.Class_def>,
+  cd: A.Class_def,
+): (UMap<A.Class_def>, A.Class_def) {
+  class_defs.maybeGet(cd.name) match {
+  | None() -> (class_defs.add(cd.name, cd), cd)
+  | Some(old_cd) ->
+    (root_cd, ext_cd) = {
+      (cd.extension, old_cd.extension) match {
+      | (None(), None()) ->
+        SkipError.errorl(
+          List[
+            (cd.name.i0, "Name already bound"),
+            (old_cd.name.i0, "Previously defined here"),
+          ],
+        )
+      | (Some _, None()) -> (old_cd, cd)
+      | (Some _, Some _)
+      | (None(), Some _) ->
+        (cd, old_cd)
+      }
+    };
+    !cd = merge_class(root_cd, ext_cd);
+    cdefs = class_defs.set(cd.name, cd);
+    (cdefs, cd)
+  }
+}
+
+fun merge_class(cd: A.Class_def, ext_cd: A.Class_def): A.Class_def {
+  if (!ext_cd.tparams.isEmpty()) {
+    SkipError.error(
+      ext_cd.name.i0,
+      "Invalid extension. Extension classes cannot add generics.",
+    )
+  };
+  not_set(ext_cd.native_);
+  (cd.kind, ext_cd.kind) match {
+  | (A.KTrait(), A.KTrait())
+  | (A.KClass(), A.KClass())
+  | (A.KBase(), A.KBase()) ->
+    void
+  | _ ->
+    SkipError.errorl(
+      List[
+        (ext_cd.name.i0, "Incompatible extension"),
+
+        (cd.name.i0, "The class kinds are incompatible"),
+      ],
+    )
+  };
+  not_set(ext_cd.value);
+  not_set(ext_cd.data);
+  !ext_cd = ext_class_tparams(cd.tparams, ext_cd);
+  params = (cd.params, ext_cd.params) match {
+  | (_, A.NativeConstruct _) ->
+    invariant_violation("ICE native set on extension class")
+  | (A.NoParams(), x)
+  | (x, A.NoParams()) ->
+    x
+  | (A.NativeConstruct(fr), A.HasParams(A.Class_params{pos})) ->
+    SkipError.errorl(
+      List[
+        (
+          pos,
+          "Extension classes cannot add parameters to a class marked 'native'",
+        ),
+        (fr, "Declared 'native' here"),
+      ],
+    )
+  | (A.HasParams(cp), A.HasParams(ext_cp)) ->
+    A.HasParams(merge_class_params(cp, ext_cp))
+  };
+  extends_ = cd.extends_.concat(ext_cd.extends_);
+  use = cd.use.concat(ext_cd.use);
+  children_ = cd.children_.concat(ext_cd.children_);
+  consts = UMap::union(cd.consts, ext_cd.consts);
+  types = UMap::union(cd.types, ext_cd.types);
+  methods = UMap::union(cd.methods, ext_cd.methods);
+  annotations = cd.annotations.union(ext_cd.annotations);
+  fields = cd.fields.concat(ext_cd.fields);
+  cd with {
+    params,
+    extends_,
+    use,
+    children_,
+    consts,
+    types,
+    methods,
+    annotations,
+    fields,
+  }
+}
+
+fun not_set(x: ?FileRange): void {
+  x match {
+  | None() -> void
+  | Some(pos) -> SkipError.error(pos, "Invalid modifier in a class extension")
+  }
+}
+
+/* Merges params/fields for extension classes */
+fun merge_class_params(
+  cp: A.Class_params,
+  ext_cp: A.Class_params,
+): A.Class_params {
+  not_set(ext_cp.final_);
+  params = {
+    (cp.params, ext_cp.params) match {
+    | (Positional _, Positional _) ->
+      SkipError.errorl(
+        List[
+          (cp.pos, "Cannot define multiple positional parameters"),
+          (ext_cp.pos, "Previously defined here"),
+        ],
+      )
+    | (Named _, Positional _)
+    | (Positional _, Named _) ->
+      SkipError.errorl(
+        List[
+          (cp.pos, "Incompatible class parameters"),
+          (ext_cp.pos, "Previously defined here"),
+        ],
+      )
+    | (Named(m1), Named(m2)) ->
+      add = (map: UMap<A.Parameter>, n: A.Name, p: A.Parameter) ->
+        map.add(n, p);
+      ps = m1.reduce<UMap<A.Parameter>>(add, m2);
+      Named(ps)
+    }
+  };
+  (cp.visibility.i1, ext_cp.visibility.i1) match {
+  | (A.VPrivate(), A.VPrivate())
+  | (A.VPublic(), A.VPublic())
+  | (A.VProtected(), A.VProtected()) ->
+    void
+  | _ ->
+    SkipError.errorl(
+      List[
+        (cp.visibility.i0, "Incompatible constructor visibility"),
+
+        (ext_cp.visibility.i0, "Previously defined here"),
+      ],
+    )
+  };
+  ext_cp.visibility match {
+  | (_, A.VPublic()) -> void
+  | (pos, _) ->
+    SkipError.error(pos, "Cannot set constructor visibility in an extension")
+  };
+  cp with {params}
+}
+
+/*****************************************************************************/
+/* Expanding module aliases. */
+/*****************************************************************************/
+fun malias_type_def(env: Env, tyd: A.Type_alias_def): A.Type_alias_def {
+  if (env.module_aliases.isEmpty()) {
+    tyd
+  } else {
+    malias_type_def_alias(env, tyd)
+  }
+}
+
+fun malias_type_def_alias(env: Env, tyd: A.Type_alias_def): A.Type_alias_def {
+  malias_type_def_(env, malias_type, tyd)
+}
+
+fun f(env: Env, x: A.Cla_tyd): A.Cla_tyd {
+  x match {
+  | A.TydAbstract(tyo1, tyo2) ->
+    A.TydAbstract(
+      tyo1.map(ty -> malias_type(env, ty)),
+      tyo2.map(ty -> malias_type(env, ty)),
+    )
+  | A.TydDefined(ty) -> A.TydDefined(malias_type(env, ty))
+  }
+}
+
+fun malias_type_consts(env: Env, tyd: A.Cla_type_def): A.Cla_type_def {
+  malias_type_def_(env, f, tyd)
+}
+
+fun malias_const_def(env: Env, cst: A.Const_def): A.Const_def {
+  if (env.module_aliases.isEmpty()) {
+    cst
+  } else {
+    cst with {
+      type => malias_type(env, cst.type),
+      value => malias_body(env, cst.value),
+    }
+  }
+}
+
+fun malias_fun_def(env: Env, fd: A.Fun_def): A.Fun_def {
+  if (env.module_aliases.isEmpty()) {
+    fd
+  } else {
+    fd with {
+      tparams => malias_tparams(env, fd.tparams),
+      params => malias_params(env, fd.params),
+      return_ => malias_type(env, fd.return_),
+      body => fd.body.map(ex -> () ~> malias_expr(env, ex())),
+    }
+  }
+}
+
+fun malias_class_def(env: Env, cd: A.Class_def): A.Class_def {
+  if (env.module_aliases.isEmpty()) {
+    cd
+  } else {
+    consts = cd.consts.map((_, cur1) -> malias_const_def(env, cur1));
+    types = cd.types.map((_, cur1) -> malias_type_consts(env, cur1));
+    methods = cd.methods.map((_, cur1) -> malias_methods(env, cur1));
+    cd with {
+      tparams => malias_tparams(env, cd.tparams),
+      params => cd.params.mapClassParams(cps -> malias_class_params(env, cps)),
+      extends_ => malias_parents(env, cd.extends_),
+      use => malias_parents(env, cd.use),
+      children_ => malias_children(env, cd.children_),
+      consts,
+      types,
+      methods,
+    }
+  }
+}
+
+fun malias_tparams(
+  env: Env,
+  tparams: Array<A.Type_parameter>,
+): Array<A.Type_parameter> {
+  tparams.map(cur1 -> malias_tparam(env, cur1))
+}
+
+fun malias_tparam(env: Env, tp: A.Type_parameter): A.Type_parameter {
+  (v, i, n, tylo) = tp;
+  (v, i, n, tylo.map((l -> l.map(cur1 -> malias_type(env, cur1)))))
+}
+
+fun malias_when_params(
+  env: Env,
+  tparams: Array<A.When_type_clause>,
+): Array<A.When_type_clause> {
+  tparams.map(cur1 -> malias_when_clause(env, cur1))
+}
+
+fun malias_when_clause(env: Env, wc: A.When_type_clause): A.When_type_clause {
+  (ty, tyl) = wc;
+  (malias_type(env, ty), tyl.map(t -> malias_type(env, t)))
+}
+
+fun malias_params(
+  env: Env,
+  params: Parameters<A.Parameter>,
+): Parameters<A.Parameter> {
+  params.map(ps -> malias_param(env, ps))
+}
+
+fun malias_param(env: Env, p: A.Parameter): A.Parameter {
+  p with {
+    type => malias_type(env, p.type),
+    value => p.value.map(ex -> malias_expr(env, ex)),
+  }
+}
+
+fun malias_class_params(env: Env, cp: A.Class_params): A.Class_params {
+  cp with {params => malias_params(env, cp.params)}
+}
+
+fun malias_parents(env: Env, pl: Array<A.Parent>): Array<A.Parent> {
+  pl.map(cur1 -> malias_parent(env, cur1))
+}
+
+fun malias_parent(env: Env, p: A.Parent): A.Parent {
+  !p.parent = (
+    maybe_malias_ty_name(env, p.parent.i0),
+    p.parent.i1.map(ty -> malias_type(env, ty)),
+  );
+  !p.conditions = p.conditions.map(c -> malias_when_clause(env, c));
+  p
+}
+
+fun report_macro_usage(env: Env, pos: FileRange): void {
+  if (!env.allowMacros) {
+    SkipError.error(
+      pos,
+      "Macros may only be used inside bodies of methods marked 'macro'.",
+    )
+  };
+}
+
+fun malias_children(env: Env, sk_children: A.Children): A.Children {
+  sk_children.map(cur1 -> malias_child(env, cur1))
+}
+
+fun malias_child(env: Env, child: A.Child): A.Child {
+  child with {
+    chi_params => child.chi_params.map(cps -> malias_class_params(env, cps)),
+  }
+}
+
+fun malias_methods(env: Env, met: A.Method_def): A.Method_def {
+  met with {
+    whenparams => malias_when_params(env, met.whenparams),
+    tparams => malias_tparams(env, met.tparams),
+    params => malias_params(env, met.params),
+    return_ => malias_type(env, met.return_),
+    body => malias_body(env with {allowMacros => met.isMacro()}, met.body),
+  }
+}
+
+fun malias_type(env: Env, ty: A.Type_): A.Type_ {
+  lam: (Env, void, A.Type_) ~> (void, A.Type_) = (
+    env1: Env,
+    _: void,
+    ty1: A.Type_,
+  ) ~> {
+    (ty1 match {
+    | (pos, A.Tapply(n, tyl)) ->
+      (void, (pos, A.Tapply(maybe_malias_ty_name(env1, n), tyl)))
+    | (pos, A.Tabstract(n, tyl)) ->
+      (void, (pos, A.Tabstract(maybe_malias_ty_name(env1, n), tyl)))
+    | _ -> (void, ty1)
+    } : (void, A.Type_))
+  };
+  (_, ty1) = SkipAstUtils.type<Env, void>(lam, env, void, ty);
+  ty1
+}
+
+fun malias_key_values(env: Env, x: (A.Expr, A.Expr)): (A.Expr, A.Expr) {
+  (e1, e2) = x;
+  (malias_expr(env, e1), malias_expr(env, e2))
+}
+
+fun maybe_malias_ty_name(env: Env, x: A.Type_name): A.Type_name {
+  x match {
+  | A.Tclass(n @ (cpos, _)) if (env.module_aliases.containsKey(n)) ->
+    ma = env.module_aliases[n];
+    (_, new_str) = ma.mal_rhs_name;
+    A.Tclass((cpos, new_str))
+  | A.Tmodule_class(
+    pos,
+    n @ (cpos, _),
+    n2,
+  ) if (env.module_aliases.containsKey(n)) ->
+    ma = env.module_aliases[n];
+    (_, new_str) = ma.mal_rhs_name;
+    A.Tmodule_class(pos, (cpos, new_str), n2)
+  | A.Tmacro(n) ->
+    report_macro_usage(env, n.i0);
+    x
+  | tn -> tn
+  }
+}
+
+fun malias_body(env: Env, m: A.Inherited_body): A.Inherited_body {
+  (p, mb) = m;
+  (p, malias_body_(env, mb))
+}
+
+fun malias_body_(env: Env, x: A.Inherited_body_): A.Inherited_body_ {
+  x match {
+  | A.Inherited _ ->
+    invariant_violation("ICE inherited method body before inherit")
+  | A.Body(eb) -> A.Body(malias_expr_body(env, eb))
+  }
+}
+
+fun malias_expr_body(env: Env, x: A.Expr_body): A.Expr_body {
+  x match {
+  | A.BAlgebraic(mbl) -> A.BAlgebraic(malias_match_branches(env, mbl))
+  | A.BExpr(e) -> A.BExpr(() ~> malias_expr(env, e()))
+  | A.BFrom(tn) -> A.BFrom(maybe_malias_ty_name(env, tn))
+  | A.BNative _
+  | A.BNone() ->
+    x
+  }
+}
+
+fun malias_lam_param(env: Env, param: A.Lam_parameter): A.Lam_parameter {
+  param match {
+  | (nm, Some(ty)) -> (nm, Some(malias_type(env, ty)))
+  | _ -> param
+  }
+}
+
+fun malias_lam_params(
+  env: Env,
+  params: Parameters<A.Lam_parameter>,
+): Parameters<A.Lam_parameter> {
+  params.map(lp -> malias_lam_param(env, lp))
+}
+
+fun malias_expr(env: Env, ex: A.Expr): A.Expr {
+  (pos, e) = ex;
+  (pos, malias_expr_(env, pos, e))
+}
+
+fun malias_expr_(env: Env, pos: FileRange, e: A.Expr_): A.Expr_ {
+  k = ex -> malias_expr(env, ex);
+  e match {
+  | A.Literal _
+  | A.Var _ ->
+    e
+  | A.MacroVar _ ->
+    report_macro_usage(env, pos);
+    e
+  | A.Seq(e1, e2) -> A.Seq(k(e1), k(e2))
+  | A.If(e1, e2, e3) -> A.If(k(e1), k(e2), k(e3))
+  | A.Cstr(n @ (cpos, _), tyl) if (env.module_aliases.containsKey(n)) ->
+    ma = env.module_aliases[n];
+    (_, new_str) = ma.mal_rhs_name;
+    A.Cstr((cpos, new_str), tyl.map(cur1 -> malias_type(env, cur1)))
+  | A.Cstr(cn, tyl) -> A.Cstr(cn, tyl.map(cur1 -> malias_type(env, cur1)))
+  | A.Call(e1, tyl, ep) ->
+    A.Call(
+      k(e1),
+      tyl.map(cur1 -> malias_type(env, cur1)),
+      malias_call_args(env, ep),
+    )
+  | A.CallArray(e1, tyl, ep) ->
+    A.CallArray(
+      k(e1),
+      tyl.map(cur1 -> malias_type(env, cur1)),
+      malias_call_args(env, ep),
+    )
+  | A.CallMap(e1, tyl, ep) ->
+    A.CallMap(
+      k(e1),
+      tyl.map(cur1 -> malias_type(env, cur1)),
+      ep.map(cur1 -> malias_key_values(env, cur1)),
+    )
+  | A.Annotated(e1, ty) -> A.Annotated(k(e1), malias_type(env, ty))
+  | A.Dot(e1, n) -> A.Dot(k(e1), n)
+  | A.StaticDot(e1, n) -> A.StaticDot(k(e1), n)
+  | A.MacroDot(e1, n) ->
+    report_macro_usage(env, pos);
+    A.MacroDot(k(e1), n)
+  | A.MacroStaticDot(e1, n) ->
+    report_macro_usage(env, pos);
+    A.MacroStaticDot(k(e1), n)
+  | A.Pipe(e1, e2) -> A.Pipe(k(e1), k(e2))
+  | A.Binop(bop, e1, e2) -> A.Binop(bop, k(e1), k(e2))
+  | A.Unop(uop, e1) -> A.Unop(uop, k(e1))
+  | A.Is(e1, pat) -> A.Is(k(e1), malias_pattern(env, pat))
+  | A.As(e1, pat) -> A.As(k(e1), malias_pattern(env, pat))
+  | A.Match(e1, mbl) -> A.Match(k(e1), malias_match_branches(env, mbl))
+  | A.Lambda(m, p, e1) -> A.Lambda(m, malias_lam_params(env, p), k(e1))
+  | A.Tuple(el) -> A.Tuple(el.map(k))
+  | A.TemplateLiteral(ep) -> A.TemplateLiteral(malias_call_args(env, ep))
+  | A.Try(e1, mbl) -> A.Try(k(e1), malias_match_branches(env, mbl))
+  | A.Await(e1) -> A.Await(k(e1))
+  | A.Return(e1) -> A.Return(k(e1))
+  | A.Yield(e1) -> A.Yield(k(e1))
+  | A.YieldBreak() -> A.YieldBreak()
+  | A.Async(e1) -> A.Async(k(e1))
+  | A.Throw(e1) -> A.Throw(k(e1))
+  | A.With(e1, args) ->
+    A.With(k(e1), args.map((_, cur1) -> malias_ordered_expr(env, cur1)))
+  | A.Bind(lv, e1, e2) -> A.Bind(malias_lvalue(env, lv), k(e1), k(e2))
+  | A.Mutable(e1) -> A.Mutable(k(e1))
+  | A.Continue() -> A.Continue()
+  | A.Break(eb) -> A.Break(k(eb))
+  | A.Loop(eb) -> A.Loop(k(eb))
+  | A.DoWhile(body, condition, withoutBreak) ->
+    A.DoWhile(k(body), k(condition), k(withoutBreak))
+  | A.While(condition, body, withoutBreak) ->
+    A.While(k(condition), k(body), k(withoutBreak))
+  | A.ForEach(binding, collection, body, withoutBreak) ->
+    A.ForEach(binding, k(collection), k(body), k(withoutBreak))
+  | A.ForEachFieldMacro(field, fieldName, body) ->
+    report_macro_usage(env, pos);
+    A.ForEachFieldMacro(field, fieldName, k(body))
+  }
+}
+
+fun malias_call_args(env: Env, args: A.Call_args): A.Call_args {
+  args.map(p -> malias_ordered_expr(env, p))
+}
+
+fun malias_ordered_expr(env: Env, oe: A.Ordered_expr): A.Ordered_expr {
+  (i, e) = oe;
+  (i, malias_expr(env, e))
+}
+
+fun malias_lvalue(env: Env, l: A.Lvalue): A.Lvalue {
+  (fr, lvalue_) = l;
+  lvalue_ match {
+  | A.Lvalue_bind_local _ -> l
+  | A.Lvalue_assign(avalue) ->
+    !avalue = malias_lvalue_assign_value(env, avalue);
+    (fr, A.Lvalue_assign(avalue))
+  | A.Lvalue_array_set(ea, el) ->
+    (fr, A.Lvalue_array_set(malias_expr(env, ea), malias_call_args(env, el)))
+  | A.Lvalue_tuple(lvl) ->
+    !lvl = lvl.map(lv -> malias_lvalue(env, lv));
+    (fr, A.Lvalue_tuple(lvl))
+  }
+}
+
+fun malias_lvalue_assign_value(
+  env: Env,
+  l: A.Lvalue_assign_value,
+): A.Lvalue_assign_value {
+  l match {
+  | A.Lvalue_assign_local _ -> l
+  | A.Lvalue_assign_field(e, n) ->
+    !e = malias_expr(env, e);
+    A.Lvalue_assign_field(e, n)
+  | A.Lvalue_assign_with(avalue, n) ->
+    !avalue = malias_lvalue_assign_value(env, avalue);
+    A.Lvalue_assign_with(avalue, n)
+  | A.Lvalue_assign_array_set(avalue, el) ->
+    A.Lvalue_assign_array_set(
+      malias_lvalue_assign_value(env, avalue),
+      malias_call_args(env, el),
+    )
+  }
+}
+
+fun malias_match_branches(
+  env: Env,
+  mbl: List<A.Match_branch>,
+): List<A.Match_branch> {
+  mbl.map(cur1 -> malias_match_branch(env, cur1))
+}
+
+fun malias_match_branch(env: Env, mb: A.Match_branch): A.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (
+    pats.map(cur1 -> malias_pattern(env, cur1)),
+    maybe_guard.map(ex -> malias_expr(env, ex)),
+    malias_expr(env, e),
+  )
+}
+
+fun malias_pattern(env: Env, pat: A.Pattern): A.Pattern {
+  (pos, p) = pat;
+  (pos, malias_pattern_(env, p))
+}
+
+fun malias_pattern_(env: Env, x: A.Pattern_): A.Pattern_ {
+  x match {
+  | A.Pat_type(tid, nparams, complete) ->
+    new_tid = malias_tid(env, tid);
+    new_nparams = nparams.map(ps -> ps.map(p -> malias_pattern(env, p)));
+    A.Pat_type(new_tid, new_nparams, complete)
+  | A.Pat_tuple(pats) ->
+    A.Pat_tuple(pats.map(cur1 -> malias_pattern(env, cur1)))
+  | A.Pat_as(p, n) -> A.Pat_as(malias_pattern(env, p), n)
+  | A.Pat_const(ex) -> A.Pat_const(malias_expr(env, ex))
+  | A.Pat_var _
+  | A.Pat_literal _ ->
+    x
+  }
+}
+
+fun malias_tid(env: Env, x: A.TypeIdentifier): A.TypeIdentifier {
+  x match {
+  | A.Tid_object(tn) -> A.Tid_object(maybe_malias_ty_name(env, tn))
+  | x1 @ A.Tid_static _ -> x1
+  }
+}
+
+/*****************************************************************************/
+/* Substitute tparams for ext classes.
+ * If this substitution is not done, the tparams will not be properly
+ * resolved for code written inside the extension class
+ * ALTERNATIVE TODO. Another option woould be to require extension classes to
+ */
+
+/*****************************************************************************/
+
+fun ext_class_tparams_type_consts(
+  subst: SMap<A.Tparam>,
+  tyd: A.Cla_type_def,
+): A.Cla_type_def {
+  tyd with {
+    body => tyd.body match {
+    | A.TydAbstract(tyo1, tyo2) ->
+      A.TydAbstract(
+        tyo1.map(ty -> ext_class_tparams_type(subst, ty)),
+        tyo2.map(ty -> ext_class_tparams_type(subst, ty)),
+      )
+    | A.TydDefined(ty) -> A.TydDefined(ext_class_tparams_type(subst, ty))
+    },
+  }
+}
+
+fun ext_class_tparams_const_def(
+  subst: SMap<A.Tparam>,
+  cst: A.Const_def,
+): A.Const_def {
+  cst with {
+    type => ext_class_tparams_type(subst, cst.type),
+    value => ext_class_tparams_body(subst, cst.value),
+  }
+}
+
+fun ext_class_tparams(
+  tparams: Array<A.Type_parameter>,
+  cd: A.Class_def,
+): A.Class_def {
+  if (tparams.isEmpty()) {
+    cd
+  } else {
+    subst =
+      tparams.values().map(tp -> (tp.i2.i1, A.Tparam(tp.i2, tp.i1))) |>
+      SortedMap::createFromIterator;
+    consts = cd.consts.map((_, cur1) ->
+      ext_class_tparams_const_def(subst, cur1)
+    );
+    types = cd.types.map((_, cur1) ->
+      ext_class_tparams_type_consts(subst, cur1)
+    );
+    methods = cd.methods.map((_, cur1) ->
+      ext_class_tparams_methods(subst, cur1)
+    );
+    cd with {
+      tparams => ext_class_tparams_tparams(subst, cd.tparams),
+      params => cd.params.mapClassParams(cps ->
+        ext_class_tparams_class_params(subst, cps)
+      ),
+      extends_ => ext_class_tparams_parents(subst, cd.extends_),
+      use => ext_class_tparams_parents(subst, cd.use),
+      children_ => ext_class_tparams_children(subst, cd.children_),
+      consts,
+      types,
+      methods,
+    }
+  }
+}
+
+fun ext_class_tparams_tparams(
+  subst: SMap<A.Tparam>,
+  tparams: Array<A.Type_parameter>,
+): Array<A.Type_parameter> {
+  tparams.map(cur1 -> ext_class_tparams_tparam(subst, cur1))
+}
+
+fun ext_class_tparams_tparam(
+  subst: SMap<A.Tparam>,
+  tp: A.Type_parameter,
+): A.Type_parameter {
+  (v, i, n, tylo) = tp;
+  (v, i, n, tylo.map((l -> l.map(cur1 -> ext_class_tparams_type(subst, cur1)))))
+}
+
+fun ext_class_tparams_when_params(
+  subst: SMap<A.Tparam>,
+  tparams: Array<A.When_type_clause>,
+): Array<A.When_type_clause> {
+  tparams.map(cur1 -> ext_class_tparams_when_clause(subst, cur1))
+}
+
+fun ext_class_tparams_when_clause(
+  subst: SMap<A.Tparam>,
+  wc: A.When_type_clause,
+): A.When_type_clause {
+  (ty, tyl) = wc;
+  (
+    ext_class_tparams_type(subst, ty),
+    tyl.map(t -> ext_class_tparams_type(subst, t)),
+  )
+}
+
+fun ext_class_tparams_params(
+  subst: SMap<A.Tparam>,
+  params: Parameters<A.Parameter>,
+): Parameters<A.Parameter> {
+  params.map(ps -> ext_class_tparams_param(subst, ps))
+}
+
+fun ext_class_tparams_param(
+  subst: SMap<A.Tparam>,
+  p: A.Parameter,
+): A.Parameter {
+  p with {
+    type => ext_class_tparams_type(subst, p.type),
+    value => p.value.map(ex -> ext_class_tparams_expr(subst, ex)),
+  }
+}
+
+fun ext_class_tparams_class_params(
+  subst: SMap<A.Tparam>,
+  cp: A.Class_params,
+): A.Class_params {
+  cp with {params => ext_class_tparams_params(subst, cp.params)}
+}
+
+fun ext_class_tparams_parents(
+  subst: SMap<A.Tparam>,
+  pl: Array<A.Parent>,
+): Array<A.Parent> {
+  pl.map(cur1 -> ext_class_tparams_parent(subst, cur1))
+}
+
+fun ext_class_tparams_parent(subst: SMap<A.Tparam>, p: A.Parent): A.Parent {
+  !p.parent = (
+    maybe_ext_class_tparams_ty_name(subst, p.parent.i0),
+    p.parent.i1.map(ty -> ext_class_tparams_type(subst, ty)),
+  );
+  !p.conditions = p.conditions.map(c ->
+    ext_class_tparams_when_clause(subst, c)
+  );
+  p
+}
+
+fun ext_class_tparams_children(
+  subst: SMap<A.Tparam>,
+  sk_children: A.Children,
+): A.Children {
+  sk_children.map(cur1 -> ext_class_tparams_child(subst, cur1))
+}
+
+fun ext_class_tparams_child(subst: SMap<A.Tparam>, child: A.Child): A.Child {
+  child with {
+    chi_params => child.chi_params.map(cps ->
+      ext_class_tparams_class_params(subst, cps)
+    ),
+  }
+}
+
+fun ext_class_tparams_methods(
+  subst: SMap<A.Tparam>,
+  met: A.Method_def,
+): A.Method_def {
+  metsTparams =
+    met.tparams.values().map(tp -> tp.i2.i1) |> SSet::createFromIterator;
+  !subst = subst.filter((k, _) -> !metsTparams.contains(k));
+  if (subst.isEmpty()) {
+    met
+  } else {
+    met with {
+      whenparams => ext_class_tparams_when_params(subst, met.whenparams),
+      tparams => ext_class_tparams_tparams(subst, met.tparams),
+      params => ext_class_tparams_params(subst, met.params),
+      return_ => ext_class_tparams_type(subst, met.return_),
+      body => ext_class_tparams_body(subst, met.body),
+    }
+  }
+}
+
+fun ext_class_tparams_type(subst: SMap<A.Tparam>, ty: A.Type_): A.Type_ {
+  lam: (SMap<A.Tparam>, void, A.Type_) ~> (void, A.Type_) = (
+    subst1: SMap<A.Tparam>,
+    _: void,
+    ty1: A.Type_,
+  ) ~> {
+    (ty1 match {
+    | (pos, A.Tapply(n, tyl)) ->
+      (void, (pos, A.Tapply(maybe_ext_class_tparams_ty_name(subst1, n), tyl)))
+    | (pos, A.Tabstract(n, tyl)) ->
+      (
+        void,
+        (pos, A.Tabstract(maybe_ext_class_tparams_ty_name(subst1, n), tyl)),
+      )
+    | _ -> (void, ty1)
+    } : (void, A.Type_))
+  };
+  (_, ty1) = SkipAstUtils.type<SMap<A.Tparam>, void>(lam, subst, void, ty);
+  ty1
+}
+
+fun ext_class_tparams_key_values(
+  subst: SMap<A.Tparam>,
+  x: (A.Expr, A.Expr),
+): (A.Expr, A.Expr) {
+  (e1, e2) = x;
+  (ext_class_tparams_expr(subst, e1), ext_class_tparams_expr(subst, e2))
+}
+
+fun maybe_ext_class_tparams_ty_name(
+  subst: SMap<A.Tparam>,
+  x: A.Type_name,
+): A.Type_name {
+  x match {
+  | A.Tclass(name @ (_, c)) if (subst.containsKey(c)) -> subst[c] with {name}
+  | _ -> x
+  }
+}
+
+fun ext_class_tparams_body(
+  subst: SMap<A.Tparam>,
+  m: A.Inherited_body,
+): A.Inherited_body {
+  (p, mb) = m;
+  (p, ext_class_tparams_body_(subst, mb))
+}
+
+fun ext_class_tparams_body_(
+  subst: SMap<A.Tparam>,
+  x: A.Inherited_body_,
+): A.Inherited_body_ {
+  x match {
+  | A.Inherited _ ->
+    invariant_violation("ICE inherited method body before inherit")
+  | A.Body(eb) -> A.Body(ext_class_tparams_expr_body(subst, eb))
+  }
+}
+
+fun ext_class_tparams_expr_body(
+  subst: SMap<A.Tparam>,
+  x: A.Expr_body,
+): A.Expr_body {
+  x match {
+  | A.BAlgebraic(mbl) ->
+    A.BAlgebraic(ext_class_tparams_match_branches(subst, mbl))
+  | A.BExpr(e) -> A.BExpr(() ~> ext_class_tparams_expr(subst, e()))
+  | A.BFrom(tn) -> A.BFrom(maybe_ext_class_tparams_ty_name(subst, tn))
+  | A.BNative _
+  | A.BNone() ->
+    x
+  }
+}
+
+fun ext_class_tparams_lam_param(
+  subst: SMap<A.Tparam>,
+  param: A.Lam_parameter,
+): A.Lam_parameter {
+  param match {
+  | (nm, Some(ty)) -> (nm, Some(ext_class_tparams_type(subst, ty)))
+  | _ -> param
+  }
+}
+
+fun ext_class_tparams_lam_params(
+  subst: SMap<A.Tparam>,
+  params: Parameters<A.Lam_parameter>,
+): Parameters<A.Lam_parameter> {
+  params.map(lp -> ext_class_tparams_lam_param(subst, lp))
+}
+
+fun ext_class_tparams_expr(subst: SMap<A.Tparam>, ex: A.Expr): A.Expr {
+  (pos, e) = ex;
+  (pos, ext_class_tparams_expr_(subst, pos, e))
+}
+
+fun ext_class_tparams_expr_(
+  subst: SMap<A.Tparam>,
+  _pos: FileRange,
+  e: A.Expr_,
+): A.Expr_ {
+  k = ex -> ext_class_tparams_expr(subst, ex);
+  e match {
+  | A.Literal _
+  | A.Var _
+  | A.MacroVar _ ->
+    e
+  | A.Seq(e1, e2) -> A.Seq(k(e1), k(e2))
+  | A.If(e1, e2, e3) -> A.If(k(e1), k(e2), k(e3))
+  | A.Cstr(cn, tyl) ->
+    A.Cstr(cn, tyl.map(cur1 -> ext_class_tparams_type(subst, cur1)))
+  | A.Call(e1, tyl, ep) ->
+    A.Call(
+      k(e1),
+      tyl.map(cur1 -> ext_class_tparams_type(subst, cur1)),
+      ext_class_tparams_call_args(subst, ep),
+    )
+  | A.CallArray(e1, tyl, ep) ->
+    A.CallArray(
+      k(e1),
+      tyl.map(cur1 -> ext_class_tparams_type(subst, cur1)),
+      ext_class_tparams_call_args(subst, ep),
+    )
+  | A.CallMap(e1, tyl, ep) ->
+    A.CallMap(
+      k(e1),
+      tyl.map(cur1 -> ext_class_tparams_type(subst, cur1)),
+      ep.map(cur1 -> ext_class_tparams_key_values(subst, cur1)),
+    )
+  | A.Annotated(e1, ty) -> A.Annotated(k(e1), ext_class_tparams_type(subst, ty))
+  | A.Dot(e1, n) -> A.Dot(k(e1), n)
+  | A.StaticDot(e1, n) -> A.StaticDot(k(e1), n)
+  | A.MacroDot(e1, n) -> A.MacroDot(k(e1), n)
+  | A.MacroStaticDot(e1, n) -> A.MacroStaticDot(k(e1), n)
+  | A.Pipe(e1, e2) -> A.Pipe(k(e1), k(e2))
+  | A.Binop(bop, e1, e2) -> A.Binop(bop, k(e1), k(e2))
+  | A.Unop(uop, e1) -> A.Unop(uop, k(e1))
+  | A.Is(e1, pat) -> A.Is(k(e1), ext_class_tparams_pattern(subst, pat))
+  | A.As(e1, pat) -> A.As(k(e1), ext_class_tparams_pattern(subst, pat))
+  | A.Match(e1, mbl) ->
+    A.Match(k(e1), ext_class_tparams_match_branches(subst, mbl))
+  | A.Lambda(m, p, e1) ->
+    A.Lambda(m, ext_class_tparams_lam_params(subst, p), k(e1))
+  | A.Tuple(el) -> A.Tuple(el.map(k))
+  | A.TemplateLiteral(ep) ->
+    A.TemplateLiteral(ext_class_tparams_call_args(subst, ep))
+  | A.Try(e1, mbl) -> A.Try(k(e1), ext_class_tparams_match_branches(subst, mbl))
+  | A.Await(e1) -> A.Await(k(e1))
+  | A.Return(e1) -> A.Return(k(e1))
+  | A.Yield(e1) -> A.Yield(k(e1))
+  | A.YieldBreak() -> A.YieldBreak()
+  | A.Async(e1) -> A.Async(k(e1))
+  | A.Throw(e1) -> A.Throw(k(e1))
+  | A.With(e1, args) ->
+    A.With(
+      k(e1),
+      args.map((_, cur1) -> ext_class_tparams_ordered_expr(subst, cur1)),
+    )
+  | A.Bind(lv, e1, e2) ->
+    A.Bind(ext_class_tparams_lvalue(subst, lv), k(e1), k(e2))
+  | A.Mutable(e1) -> A.Mutable(k(e1))
+  | A.Continue() -> A.Continue()
+  | A.Break(eb) -> A.Break(k(eb))
+  | A.Loop(eb) -> A.Loop(k(eb))
+  | A.DoWhile(body, condition, withoutBreak) ->
+    A.DoWhile(k(body), k(condition), k(withoutBreak))
+  | A.While(condition, body, withoutBreak) ->
+    A.While(k(condition), k(body), k(withoutBreak))
+  | A.ForEach(binding, collection, body, withoutBreak) ->
+    A.ForEach(binding, k(collection), k(body), k(withoutBreak))
+  | A.ForEachFieldMacro(field, fieldName, body) ->
+    A.ForEachFieldMacro(field, fieldName, k(body))
+  }
+}
+
+fun ext_class_tparams_call_args(
+  subst: SMap<A.Tparam>,
+  args: A.Call_args,
+): A.Call_args {
+  args.map(p -> ext_class_tparams_ordered_expr(subst, p))
+}
+
+fun ext_class_tparams_ordered_expr(
+  subst: SMap<A.Tparam>,
+  oe: A.Ordered_expr,
+): A.Ordered_expr {
+  (i, e) = oe;
+  (i, ext_class_tparams_expr(subst, e))
+}
+
+fun ext_class_tparams_lvalue(subst: SMap<A.Tparam>, l: A.Lvalue): A.Lvalue {
+  (fr, lvalue_) = l;
+  lvalue_ match {
+  | A.Lvalue_bind_local _ -> l
+  | A.Lvalue_assign(avalue) ->
+    !avalue = ext_class_tparams_lvalue_assign_value(subst, avalue);
+    (fr, A.Lvalue_assign(avalue))
+  | A.Lvalue_array_set(ea, el) ->
+    (
+      fr,
+      A.Lvalue_array_set(
+        ext_class_tparams_expr(subst, ea),
+        ext_class_tparams_call_args(subst, el),
+      ),
+    )
+  | A.Lvalue_tuple(lvl) ->
+    !lvl = lvl.map(lv -> ext_class_tparams_lvalue(subst, lv));
+    (fr, A.Lvalue_tuple(lvl))
+  }
+}
+
+fun ext_class_tparams_lvalue_assign_value(
+  subst: SMap<A.Tparam>,
+  l: A.Lvalue_assign_value,
+): A.Lvalue_assign_value {
+  l match {
+  | A.Lvalue_assign_local _ -> l
+  | A.Lvalue_assign_field(e, n) ->
+    !e = ext_class_tparams_expr(subst, e);
+    A.Lvalue_assign_field(e, n)
+  | A.Lvalue_assign_with(avalue, n) ->
+    !avalue = ext_class_tparams_lvalue_assign_value(subst, avalue);
+    A.Lvalue_assign_with(avalue, n)
+  | A.Lvalue_assign_array_set(avalue, el) ->
+    A.Lvalue_assign_array_set(
+      ext_class_tparams_lvalue_assign_value(subst, avalue),
+      ext_class_tparams_call_args(subst, el),
+    )
+  }
+}
+
+fun ext_class_tparams_match_branches(
+  subst: SMap<A.Tparam>,
+  mbl: List<A.Match_branch>,
+): List<A.Match_branch> {
+  mbl.map(cur1 -> ext_class_tparams_match_branch(subst, cur1))
+}
+
+fun ext_class_tparams_match_branch(
+  subst: SMap<A.Tparam>,
+  mb: A.Match_branch,
+): A.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (
+    pats.map(cur1 -> ext_class_tparams_pattern(subst, cur1)),
+    maybe_guard.map(ex -> ext_class_tparams_expr(subst, ex)),
+    ext_class_tparams_expr(subst, e),
+  )
+}
+
+fun ext_class_tparams_pattern(
+  subst: SMap<A.Tparam>,
+  pat: A.Pattern,
+): A.Pattern {
+  (pos, p) = pat;
+  (pos, ext_class_tparams_pattern_(subst, p))
+}
+
+fun ext_class_tparams_pattern_(
+  subst: SMap<A.Tparam>,
+  x: A.Pattern_,
+): A.Pattern_ {
+  x match {
+  | A.Pat_type(tid, nparams, complete) ->
+    new_tid = ext_class_tparams_tid(subst, tid);
+    new_nparams = nparams.map(ps ->
+      ps.map(p -> ext_class_tparams_pattern(subst, p))
+    );
+    A.Pat_type(new_tid, new_nparams, complete)
+  | A.Pat_tuple(pats) ->
+    A.Pat_tuple(pats.map(cur1 -> ext_class_tparams_pattern(subst, cur1)))
+  | A.Pat_as(p, n) -> A.Pat_as(ext_class_tparams_pattern(subst, p), n)
+  | A.Pat_const(ex) -> A.Pat_const(ext_class_tparams_expr(subst, ex))
+  | A.Pat_var _
+  | A.Pat_literal _ ->
+    x
+  }
+}
+
+fun ext_class_tparams_tid(
+  subst: SMap<A.Tparam>,
+  x: A.TypeIdentifier,
+): A.TypeIdentifier {
+  x match {
+  | A.Tid_object(tn) -> A.Tid_object(maybe_ext_class_tparams_ty_name(subst, tn))
+  | x1 @ A.Tid_static _ -> x1
+  }
+}
+
+/*****************************************************************************/
+/* Expanding names. */
+/*****************************************************************************/
+fun add_cd_to_acc(name: A.Name, cd: A.Class_def, acc: A.Program): A.Program {
+  (cpos, cstr) = name;
+  if (acc.type_defs.containsRawKey(cstr)) {
+    (tpos, _) = acc.type_defs.getRawOrCrash(cstr);
+    SkipError.errorl(
+      List[
+        (cpos, cstr + " was already defined as a type"),
+        (tpos, "Defined here"),
+      ],
+    )
+  };
+  (class_defs, _cd) = add_cd_merge_extentions(acc.class_defs, cd);
+  acc with {class_defs}
+}
+
+fun add_fun_to_acc(name: A.Name, fd: A.Fun_def, acc: A.Program): A.Program {
+  (fpos, fstr) = name;
+  if (acc.const_defs.containsRawKey(fstr)) {
+    (cpos, _) = acc.const_defs.getRawOrCrash(fstr);
+    SkipError.errorl(
+      List[
+        (fpos, fstr + " was already defined as a constant"),
+        (cpos, "Defined here"),
+      ],
+    )
+  };
+  acc with {fun_defs => acc.fun_defs.add(name, fd)}
+}
+
+fun add_con_to_acc(name: A.Name, cd: A.Const_def, acc: A.Program): A.Program {
+  (cpos, cstr) = name;
+  if (acc.fun_defs.containsRawKey(cstr)) {
+    (fpos, _) = acc.fun_defs.getRawOrCrash(cstr);
+    SkipError.errorl(
+      List[
+        (cpos, cstr + " was already defined as a function"),
+        (fpos, "Defined here"),
+      ],
+    )
+  };
+  acc with {const_defs => acc.const_defs.add(name, cd)}
+}
+
+fun add_tyd_to_acc(
+  td_name: A.Name,
+  td: A.Type_alias_def,
+  acc: A.Program,
+): A.Program {
+  (tpos, tstr) = td_name;
+  if (acc.class_defs.containsRawKey(tstr)) {
+    (cpos, _) = acc.class_defs.getRawOrCrash(tstr);
+    SkipError.errorl(
+      List[
+        (tpos, tstr + " was already defined as a class"),
+        (cpos, "Defined here"),
+      ],
+    )
+  };
+  acc with {type_defs => acc.type_defs.add(td_name, td)}
+}
+
+@gc
+memoized fun module_(env: Env, module_name: Module_, defs: Defs): A.Program {
+  env1 = env with {current_module => module_name};
+  fun_defs = defs.fun_defs.map((_, cur1) -> fun_def(env1, cur1));
+  const_defs = defs.const_defs.map((_, cur1) -> const_def(env1, None(), cur1));
+  type_defs = defs.type_defs.map((_, cur1) -> type_alias_def(env1, cur1));
+  class_defs = defs.class_defs.map((_, cur1) -> class_def(env1, cur1));
+  A.Program{fun_defs, const_defs, type_defs, class_defs}
+}
+
+/*****************************************************************************/
+/* Function definition. */
+/*****************************************************************************/
+fun fun_def(env: Env, fd: A.Fun_def): A.Fun_def {
+  t__ = fd;
+  native_ = t__.native_;
+  memoized_ = t__.memoized_;
+  async_ = t__.async_;
+  untracked_ = t__.untracked_;
+  fun_private = t__.fun_private;
+  annotations = t__.annotations;
+  name = t__.name;
+  tparams = t__.tparams;
+  params = t__.params;
+  return_ = t__.return_;
+  body = t__.body;
+  check_fun_privacy(env, fun_private);
+  name1 = make_definition_name(env, name);
+  (env1, tparams1) = type_parameters(env, tparams);
+  (env2, params1) = fun_parameters(env1, None(), params);
+  return_1 = type(env2, return_);
+  body1 = body.map(ex -> () ~> expr(env2, ex()));
+  A.Fun_def{
+    annotations,
+    native_,
+    memoized_,
+    async_,
+    untracked_,
+    fun_private,
+    name => name1,
+    tparams => tparams1,
+    params => params1,
+    return_ => return_1,
+    body => body1,
+  }
+}
+
+/*****************************************************************************/
+/* Constant definition. */
+/*****************************************************************************/
+fun const_def(
+  env: Env,
+  source: ?(FileRange, String),
+  con: A.Const_def,
+): A.Const_def {
+  t__ = con;
+  annotations = t__.annotations;
+  native_ = t__.native_;
+  visibility = t__.visibility;
+  overridable_ = t__.overridable_;
+  deferred_ = t__.deferred_;
+  name = t__.name;
+  con_type = t__.type;
+  value = t__.value;
+  name1 = {
+    if (source.isSome()) {
+      name
+    } else {
+      check_const_privacy(env, visibility);
+      make_definition_name(env, name)
+    }
+  };
+  type1 = type(env, con_type);
+  (value_pos, value_val) = value;
+  value1 = {
+    value_val match {
+    | A.Inherited _ -> invariant_violation("ICE inherited const_def")
+    | A.Body(value1) -> value1
+    }
+  };
+  con_value1 = (
+    value_pos,
+    A.Body(
+      (value1, native_) match {
+      | (A.BNone(), None()) -> A.BNone()
+      | (A.BNone(), Some(pos)) -> A.BNative(pos)
+      | (A.BNative _, _) -> invariant_violation("ICE native const_def")
+      | (_, Some(pos)) ->
+        SkipError.error(pos, "Native constants cannot have bodies")
+      | (A.BExpr(e), None()) -> A.BExpr(() ~> expr(env, e()))
+      | (A.BFrom(tn), None()) -> A.BFrom(type_name(env, tn))
+      | (A.BAlgebraic _, None()) ->
+        invariant_violation("ICE algebraic const_def")
+      },
+    ),
+  );
+  A.Const_def{
+    annotations,
+    native_,
+    visibility,
+    overridable_,
+    deferred_,
+    name => name1,
+    type => type1,
+    value => con_value1,
+  }
+}
+
+/*****************************************************************************/
+/* type_def map. */
+/*****************************************************************************/
+fun cla_tyd(env: Env, x: A.Cla_tyd): A.Cla_tyd {
+  x match {
+  | A.TydAbstract(tyd_type, def) ->
+    A.TydAbstract(
+      tyd_type.map(ty -> type(env, ty)),
+      def.map(ty -> type(env, ty)),
+    )
+  | A.TydDefined(value) -> A.TydDefined(type(env, value))
+  }
+}
+
+fun cla_type_def(
+  env: Env,
+  source: ?A.Name,
+  tyd: A.Type_def<A.Cla_tyd>,
+): A.Type_def<A.Cla_tyd> {
+  t__ = tyd;
+  annotations = t__.annotations;
+  visibility = t__.visibility;
+  name = t__.name;
+  tparams = t__.tparams;
+  name1 = {
+    if (source.isSome()) {
+      name
+    } else {
+      make_definition_name(env, name)
+    }
+  };
+  (env1, tparams1) = type_parameters(env, tparams);
+  body1 = cla_tyd(env1, tyd.body);
+  assert(tyd.source.isNone());
+  A.Cla_type_def{
+    annotations,
+    visibility,
+    name => name1,
+    tparams => tparams1,
+    body => body1,
+    source,
+  }
+}
+
+fun type_alias(env: Env, tyd_value: A.Type_): A.Type_ {
+  type(env, tyd_value)
+}
+
+fun type_alias_def(env: Env, tyd: A.Type_alias_def): A.Type_def<A.Type_> {
+  t__ = tyd;
+  annotations = t__.annotations;
+  visibility = t__.visibility;
+  name = t__.name;
+  tparams = t__.tparams;
+  name1 = make_definition_name(env, name);
+  (env1, tparams1) = type_parameters(env, tparams);
+  body1 = type_alias(env1, tyd.body);
+  assert(tyd.source.isNone());
+  source = None();
+  A.Type_alias_def{
+    annotations,
+    visibility,
+    name => name1,
+    tparams => tparams1,
+    body => body1,
+    source,
+  }
+}
+
+/*****************************************************************************/
+/* Class definition. */
+/*****************************************************************************/
+fun class_def(env: Env, cd: A.Class_def): A.Class_def {
+  depth = cd.depth;
+  extension = cd.extension;
+  native_ = cd.native_;
+  kind = cd.kind;
+  value = cd.value;
+  data = cd.data;
+  name = cd.name;
+  tparams = cd.tparams;
+  params = cd.params;
+  extends_ = cd.extends_;
+  use = cd.use;
+  consts = cd.consts;
+  types = cd.types;
+  methods = cd.methods;
+  private_ = cd.private_;
+  annotations = cd.annotations;
+  mutable_ = cd.mutable_;
+  check_class_privacy(env, private_);
+  check_constructor(kind, params);
+  name1 = make_definition_name(env, name);
+  (env1, tparams1) = type_parameters(env, tparams);
+  (env2, params1) = class_parameters(env1, name1, params);
+  extends_1 = extend_list(env2, extends_);
+  use1 = extend_list(env2, use);
+  consts1 = consts.map((_, cur1) -> const_def(env2, Some(name1), cur1));
+  types1 = types.map((_, cur1) -> cla_type_def(env2, Some(name1), cur1));
+  methods1 = methods.map((_, cur1) -> method_def(env2, cd, cur1));
+  fields = Array[];
+  check_children(cd);
+  A.Class_def{
+    range => cd.range,
+    depth,
+    extension,
+    native_,
+    kind,
+    value,
+    data,
+    name => name1,
+    tparams => tparams1,
+    params => params1,
+    extends_ => extends_1,
+    use => use1,
+    children_ => List[],
+    children__set => SSet[],
+    concrete_children => SSet[],
+    consts => consts1,
+    types => types1,
+    methods => methods1,
+    private_,
+    annotations,
+    fields,
+    mutable_,
+  }
+}
+
+fun check_valid_algebraic_methods(
+  acc: A.Program,
+  class_defs: UMap<A.Class_def>,
+): void {
+  for (cur1 => cur2 in class_defs) {
+    check_valid_algebraic_cd(acc.class_defs, cur1.i1, cur2)
+  }
+}
+
+fun check_valid_algebraic_cd(
+  classes: UMap<A.Class_def>,
+  name: String,
+  cd: A.Class_def,
+): void {
+  for (cur1 => cur2 in cd.methods) {
+    check_valid_algebraic_met(classes, name, cur1.i1, cur2)
+  }
+}
+
+fun check_valid_algebraic_met(
+  classes: UMap<A.Class_def>,
+  parent_name: String,
+  _name: String,
+  met: A.Method_def,
+): void {
+  met.body match {
+  | (_, A.Body(A.BAlgebraic(mbl))) ->
+    for (mb in mbl) {
+      (pats, _, _) = mb;
+      for (cur1 in pats) {
+        check_valid_algebraic_branch(classes, parent_name, cur1)
+      }
+    }
+  | _ -> void
+  }
+}
+
+fun check_valid_algebraic_branch(
+  classes: UMap<A.Class_def>,
+  parent_str: String,
+  x: A.Pattern,
+): void {
+  x match {
+  | (_, A.Pat_const _) -> void
+  | (_, A.Pat_var _) -> void
+  | (_, A.Pat_literal _) -> void
+  | (_, A.Pat_as(p, _)) -> check_valid_algebraic_branch(classes, parent_str, p)
+  | (_, A.Pat_type(A.Tid_object(A.Tmodule_class _), _, _)) ->
+    invariant_violation("ICE unexpanded algebraic branch")
+  | (_, A.Pat_type(A.Tid_object(A.Tclass(_)), _, _)) -> void
+  | (_, A.Pat_type(A.Tid_object(A.Tmacro(_)), _, _)) -> void
+  | (pos, A.Pat_type(A.Tid_object(A.Tparam _), _, _)) ->
+    SkipError.error(
+      pos,
+      "Type parameters are not valid for Algebraic method branches",
+    )
+  | (pos, A.Pat_type(A.Tid_static _, _, _)) ->
+    SkipError.error(
+      pos,
+      "Type constants are not valid for Algebraic method branches",
+    )
+  | (_, A.Pat_tuple _) -> void
+  }
+}
+
+fun check_constructor(kind: A.Class_kind, x: A.MaybeClassParams): void {
+  x match {
+  | A.NoParams()
+  | A.NativeConstruct _ ->
+    void
+  | A.HasParams(cp) ->
+    (kind, cp.final_) match {
+    | (A.KClass(), Some(pos)) ->
+      SkipError.error(pos, "Concrete classes already have final constructors")
+    | (A.KTrait(), Some(pos)) ->
+      SkipError.error(pos, "Traits cannot have final constructors")
+    | _ -> void
+    }
+  }
+}
+
+/*****************************************************************************/
+/* Checks that the children are defined in a base class. */
+/*****************************************************************************/
+fun check_children(cd: A.Class_def): void {
+  (cd.kind, cd.children_) match {
+  | (A.KBase(), _) -> void
+  | (_, List.Nil()) -> void
+  | _ -> SkipError.error(cd.name.i0, "Only a base class can define children")
+  }
+}
+
+/*****************************************************************************/
+/* Class children expansion. */
+/*****************************************************************************/
+fun child(
+  context: String,
+  base_class_name: A.Name,
+  private_: ?FileRange,
+  mutable_: ?FileRange,
+  tparams: Array<A.Type_parameter>,
+  chi: A.Child,
+): A.Class_def {
+  (_, child_name) = chi.chi_name;
+  child_context = child_name + "<class>:" + context;
+  unique_tparams = unique_child_tparams(child_context, tparams);
+  targs = SkipAstUtils.targs_of_tparams(unique_tparams);
+  extends_ = Array[
+    A.Parent{
+      source => base_class_name,
+      parent => (A.Tclass(base_class_name), targs),
+      conditions => Array[],
+    },
+  ];
+  name = chi.chi_name;
+  params = chi.chi_params match {
+  | None() -> A.NoParams()
+  | Some(cp) -> A.HasParams(cp)
+  };
+  A.Class_def{
+    range => chi.chi_range,
+    depth => -2,
+    extension => None(),
+    native_ => None(),
+    kind => A.KClass(),
+    value => None(),
+    data => None(),
+    name,
+    tparams => unique_tparams,
+    private_,
+    params,
+    extends_,
+    use => Array[],
+    children_ => List[],
+    children__set => SSet[],
+    concrete_children => SSet[],
+    consts => UMap[],
+    types => UMap[],
+    methods => UMap[],
+    annotations => chi.chi_annotations,
+    fields => Array[],
+    mutable_ => mutable_,
+  }
+}
+
+/*****************************************************************************/
+/* Type definition (defined within classes). */
+/*****************************************************************************/
+fun extend_list(env: Env, l: Array<A.Parent>): Array<A.Parent> {
+  l.map(cur1 -> extend_type(env, cur1))
+}
+
+fun type_parameters(
+  env: Env,
+  tparams: Array<A.Type_parameter>,
+): (Env, Array<A.Type_parameter>) {
+  !tparams = tparams.map(tp -> {
+    (!env, tp_fixed) = type_parameter(env, tp);
+    tp_fixed
+  });
+  (env, tparams)
+}
+
+fun type_parameter(env: Env, tp: A.Type_parameter): (Env, A.Type_parameter) {
+  (variance, ident, name, ty) = tp;
+  tparam = (
+    variance,
+    ident,
+    name,
+    ty.map((l -> l.map(cur1 -> type(env, cur1)))),
+  );
+  tparams = env.tparams.set(name.i1, tparam);
+  (env with {tparams}, tparam)
+}
+
+fun when_params(
+  env: Env,
+  wparams: Array<A.When_type_clause>,
+): Array<A.When_type_clause> {
+  wparams.map(wc -> {
+    subtype = type(env, wc.i0);
+    supertypes = wc.i1.map(t -> type(env, t));
+    (subtype, supertypes)
+  })
+}
+
+fun type(env: Env, ty: SkipAst.Type_): A.Type_ {
+  lam = (env1, _, ty1) ~> {
+    ty1 match {
+    | (pos, A.Tapply(x, y)) -> (void, (pos, A.Tapply(type_name(env, x), y)))
+    | (pos, A.Tabstract(n, ntl)) ->
+      (void, (pos, A.Tabstract(type_name(env1, n), ntl)))
+    | x -> (void, x)
+    }
+  };
+  (_, ty1) = SkipAstUtils.type(lam, env, void, ty);
+  ty1
+}
+
+fun type_option(env: Env, x: ?A.Type_): ?A.Type_ {
+  x match {
+  | None() -> None()
+  | Some(ty) -> Some(type(env, ty))
+  }
+}
+
+fun named_type(env: Env, nt: A.Named_type): A.Named_type {
+  (tname, class_arguments) = nt;
+  (type_name(env, tname), class_arguments.map(cur1 -> type(env, cur1)))
+}
+
+fun extend_type(env: Env, et: A.Parent): A.Parent {
+  et with {
+    parent => named_type(env, et.parent),
+    conditions => when_params(env, et.conditions),
+  }
+}
+
+/*****************************************************************************/
+/* Binding names. */
+/*****************************************************************************/
+fun bind_local(env: Env, name: A.Name): Env {
+  locals = env.locals.set(name.i1);
+  env with {locals}
+}
+
+fun bind_locals(env: Env, names: Parameters<A.Name>): Env {
+  names.foldl(bind_local, env)
+}
+
+fun bind_locals_option(env: Env, x: ?Parameters<A.Name>): Env {
+  x match {
+  | None() -> env
+  | Some(params) -> bind_locals(env, params)
+  }
+}
+
+/*****************************************************************************/
+/* Class parameters. */
+/*****************************************************************************/
+fun class_parameters(
+  env: Env,
+  source: A.Name,
+  x: A.MaybeClassParams,
+): (Env, A.MaybeClassParams) {
+  x match {
+  | A.NativeConstruct _
+  | A.NoParams() ->
+    (env, x)
+  | A.HasParams(cp) ->
+    (env1, params) = fun_parameters(env, Some(source), cp.params);
+    (env1, A.HasParams(cp with {params, source => source}))
+  }
+}
+
+/*****************************************************************************/
+/* Function parameters. */
+/*****************************************************************************/
+fun fun_parameters(
+  env: Env,
+  source: ?A.Name,
+  params: Parameters<A.Parameter>,
+): (Env, Parameters<A.Parameter>) {
+  params1 = params.map(p -> parameter(env, source, p));
+  names = params1.map((par: A.Parameter) -> par.name);
+  env1 = bind_locals(env, names);
+  (env1, params1)
+}
+
+fun parameter(env: Env, source: ?A.Name, par: A.Parameter): A.Parameter {
+  t__ = par;
+  annotations = t__.annotations;
+  visibility = t__.visibility;
+  anonymous = t__.anonymous;
+  mutable_ = t__.mutable_;
+  name = t__.name;
+  value = t__.value;
+  deferred_ = t__.deferred_;
+  index = t__.index;
+  type1 = type(env, t__.type);
+  value1 = value.map(ex -> expr(env, ex));
+  assert(par.source.isNone());
+  source1 = source;
+  A.Parameter{
+    annotations,
+    visibility,
+    anonymous,
+    mutable_,
+    name,
+    type => type1,
+    value => value1,
+    source => source1,
+    deferred_,
+    index,
+  }
+}
+
+/*****************************************************************************/
+/* Methods. */
+/*****************************************************************************/
+fun method_def(env: Env, cd: A.Class_def, met: A.Method_def): A.Method_def {
+  visibility = met.visibility;
+  memoized_ = met.memoized_;
+  macro_ = met.macro_;
+  mutable_ = met.mutable_;
+  async_ = met.async_;
+  static_ = met.static_;
+  annotations = met.annotations;
+  overridable_ = met.overridable_;
+  frozen_ = met.frozen_;
+  readonly_ = met.readonly_;
+  native_ = met.native_;
+  deferred_ = met.deferred_;
+  untracked_ = met.untracked_;
+  name = met.name;
+  whenparams = met.whenparams;
+  tparams = met.tparams;
+  params = met.params;
+  return_ = met.return_;
+  body = met.body;
+  if (cd.kind != A.KBase() && deferred_.isSome()) {
+    SkipError.error(
+      deferred_.fromSome(),
+      "deferred methods can only be declared in base classes",
+    )
+  };
+  if (cd.kind != A.KBase() && body.i1 is A.Body(A.BAlgebraic(_))) {
+    SkipError.error(
+      body.i0,
+      "Algebraic bodies can only be defined in base classes",
+    )
+  };
+  check_late_static_body(deferred_, body);
+  (env1, tparams1) = type_parameters(env, tparams);
+  whenparams1 = when_params(env1, whenparams);
+  (env2, params1) = fun_parameters(env1, Some(cd.name), params);
+  return_1 = type(env2, return_);
+  body1 = method_body(env2 with {allowMacros => met.isMacro()}, native_, body);
+  A.Method_def{
+    range => met.range,
+    visibility,
+    memoized_,
+    macro_,
+    mutable_,
+    async_,
+    static_,
+    annotations,
+    overridable_,
+    frozen_,
+    readonly_,
+    native_,
+    deferred_,
+    untracked_,
+    name,
+    whenparams => whenparams1,
+    tparams => tparams1,
+    params => params1,
+    return_ => return_1,
+    body => body1,
+  }
+}
+
+fun method_body(
+  env: Env,
+  sk_native: ?FileRange,
+  b: A.Inherited_body,
+): A.Inherited_body {
+  (pos, body) = b;
+  (pos, method_body_(env, sk_native, body))
+}
+
+fun method_body_(
+  env: Env,
+  sk_native: ?FileRange,
+  x: A.Inherited_body_,
+): A.Inherited_body_ {
+  x match {
+  | A.Inherited _ ->
+    invariant_violation("ICE inherited met body before inherit")
+  | A.Body(mb) -> A.Body(method_body__(env, sk_native, mb))
+  }
+}
+
+fun method_body__(
+  env: Env,
+  sk_native: ?FileRange,
+  body: A.Expr_body,
+): A.Expr_body {
+  (body, sk_native) match {
+  | (A.BNone(), None()) -> A.BNone()
+  | (A.BNone(), Some(pos)) -> A.BNative(pos)
+  | (A.BNative _, _) ->
+    invariant_violation("ICE native met body without native mod")
+  | (_, Some(pos)) ->
+    SkipError.error(pos, "Native constants cannot have bodies")
+  | (A.BExpr(e), None()) -> A.BExpr(() ~> expr(env, e()))
+  | (A.BFrom(tn), None()) -> A.BFrom(type_name(env, tn))
+  | (A.BAlgebraic(mbl), None()) ->
+    A.BAlgebraic(mbl.map(cur1 -> match_branch(env, cur1)))
+  }
+}
+
+fun check_late_static_body(
+  deferred_: ?FileRange,
+  body: A.Inherited_body,
+): void {
+  (deferred_, body.i1) match {
+  | (Some(pos), A.Body(A.BAlgebraic _)) ->
+    SkipError.error(pos, "deferred is meaningless on algebraic functions")
+  | _ -> void
+  }
+}
+
+/*****************************************************************************/
+/* Expressions. */
+/*****************************************************************************/
+
+// ported from recursive version to avoid stack overflows
+// on long chains of A.Bind and A.Seq
+//
+fun expr(env_: Env, ex_: A.Expr): A.Expr {
+  kids = e ->
+    e match {
+    | (_, A.Bind _)
+    | (_, A.Seq _) ->
+      true
+    | _ -> false
+    };
+  init = ExprState{env => env_, stack => List[], expr => ex_, child => false};
+  cycle(init, state -> {
+    if (state.child == kids(state.expr)) {
+      f = state.expr match {
+      | (_, A.Bind _)
+      | (_, A.Seq _) ->
+        state.expr
+      | (pos, e_) -> (pos, expr_(state.env, pos, e_))
+      };
+      state.stack match {
+      | List.Nil() -> Cycle.Done(f)
+      | List.Cons(((pos, A.Bind(lv, _, c2)), false), tl) ->
+        (env, !lv) = lvalue(state.env, lv);
+        bind = (pos, A.Bind(lv, f, c2));
+        stack = List.Cons((bind, true), tl);
+        Cycle.Next(ExprState{env, stack, expr => c2, child => false})
+      | List.Cons(((pos, A.Seq(_, c2)), false), tl) ->
+        seq = (pos, A.Seq(f, c2));
+        stack = List.Cons((seq, true), tl);
+        Cycle.Next(state with {stack, expr => c2, child => false})
+      | List.Cons(((pos, A.Bind(lv, c1, _)), true), tl) ->
+        bind = (pos, A.Bind(lv, c1, f));
+        Cycle.Next(state with {stack => tl, expr => bind, child => true})
+      | List.Cons(((pos, A.Seq(c1, _)), true), tl) ->
+        seq = (pos, A.Seq(c1, f));
+        Cycle.Next(state with {stack => tl, expr => seq, child => true})
+      | _ -> invariant_violation("unexpected stack configuration (1)")
+      }
+    } else {
+      (state.expr, state.child) match {
+      | ((_, A.Bind(_, c1, _)), false) ->
+        Cycle.Next(
+          state with {
+            stack => List.Cons((state.expr, false), state.stack),
+            expr => c1,
+            child => false,
+          },
+        )
+      | ((_, A.Seq(c1, _)), false) ->
+        Cycle.Next(
+          state with {
+            stack => List.Cons((state.expr, false), state.stack),
+            expr => c1,
+            child => false,
+          },
+        )
+      | _ -> invariant_violation("unexpected stack configuration (2)")
+      }
+    }
+  })
+}
+
+fun expr_(env: Env, pos: FileRange, x: A.Expr_): A.Expr_ {
+  x match {
+  | A.Literal _ -> x
+  | A.MacroVar(name) -> A.MacroVar(name)
+  | A.Var(name) -> A.Var(var_name(env, name))
+  | A.Cstr(name, tyl) if (tyl.isEmpty() && is_const_cstr(env, pos, name)) ->
+    A.Var(var_name(env, name))
+  | A.Cstr(name, tyl) ->
+    A.Cstr(cstr_name(env, name), tyl.map(cur1 -> type(env, cur1)))
+  | A.Seq _ -> invariant_violation("ICE seq covered in expand expr")
+  | A.If(e1, e2, e3) -> A.If(expr(env, e1), expr(env, e2), expr(env, e3))
+  | A.Call(e, tyl, params) ->
+    A.Call(
+      expr(env, e),
+      tyl.map(cur1 -> type(env, cur1)),
+      call_args(env, params),
+    )
+  | A.CallArray(e, tyl, params) ->
+    A.CallArray(
+      expr(env, e),
+      tyl.map(cur1 -> type(env, cur1)),
+      call_args(env, params),
+    )
+  | A.CallMap(e, tyl, params) ->
+    A.CallMap(
+      expr(env, e),
+      tyl.map(cur1 -> type(env, cur1)),
+      params.map(cur1 -> key_values(env, cur1)),
+    )
+  | A.Annotated(e, ty) -> A.Annotated(expr(env, e), type(env, ty))
+  | A.Bind _ -> invariant_violation("ICE bind covered in expand expr")
+  | A.Dot(
+    (_, A.Dot((pos2, A.Cstr(cname, tyl)), cname2)),
+    field_name,
+  ) if (is_module(env, cname2)) ->
+    check_module(env, cname, cname2);
+    expanded_name = make_dotted_name(env, pos, cname, cname2);
+    tyl1 = tyl.map(cur1 -> type(env, cur1));
+    expr_(env, pos, A.Dot((pos2, A.Cstr(expanded_name, tyl1)), field_name))
+  | A.Dot((_, A.Cstr(cname, tyl)), field_name) ->
+    tyl1 = tyl.map(cur1 -> type(env, cur1));
+    check_module(env, cname, field_name);
+    expanded_name = make_dotted_name(env, pos, cname, field_name);
+    if (is_uppercase(field_name) && !is_const_name(env, cname, field_name)) {
+      A.Cstr(expanded_name, tyl1)
+    } else {
+      A.Var(expanded_name)
+    }
+  | A.Dot(e, n) -> A.Dot(expr(env, e), n)
+  | A.StaticDot(e, n) -> A.StaticDot(expr(env, e), n)
+  | A.MacroDot(e, n) -> A.MacroDot(expr(env, e), n)
+  | A.MacroStaticDot(e, n) -> A.MacroStaticDot(expr(env, e), n)
+  | A.Pipe(e1, e2) -> A.Pipe(expr(env, e1), expr(env, e2))
+  | A.Binop(bop, e1, e2) -> A.Binop(bop, expr(env, e1), expr(env, e2))
+  | A.Unop(uop, e) -> A.Unop(uop, expr(env, e))
+  | A.Is(e1, pat) -> A.Is(expr(env, e1), pattern(env, pat).i1)
+  | A.As(e1, pat) -> A.As(expr(env, e1), pattern(env, pat).i1)
+  | A.Match(e, mbl) ->
+    A.Match(expr(env, e), mbl.map(cur1 -> match_branch(env, cur1)))
+  | A.Lambda(mods, params, e) ->
+    names = params.map(p -> p.i0);
+    params1 = params.map(p -> {
+      (n, ty_opt) = p;
+      (n, ty_opt.map(ty -> type(env, ty)))
+    });
+    env1 = bind_locals(env, names);
+    A.Lambda(mods, params1, expr(env1, e))
+  | A.Tuple(el) -> A.Tuple(el.map(cur1 -> expr(env, cur1)))
+  | A.TemplateLiteral(params) -> A.TemplateLiteral(call_args(env, params))
+  | A.Try(e, mbl) ->
+    A.Try(expr(env, e), mbl.map(cur1 -> match_branch(env, cur1)))
+  | A.Await(e) -> A.Await(expr(env, e))
+  | A.Return(e) -> A.Return(expr(env, e))
+  | A.Yield(e) -> A.Yield(expr(env, e))
+  | A.YieldBreak() -> A.YieldBreak()
+  | A.Async(e) -> A.Async(expr(env, e))
+  | A.Throw(e) -> A.Throw(expr(env, e))
+  | A.With(e, updates) ->
+    A.With(expr(env, e), updates.map((_, cur1) -> ordered_expr(env, cur1)))
+  | A.Mutable(e) -> A.Mutable(expr(env, e))
+  | A.Continue() -> A.Continue()
+  | A.Break(eb) -> A.Break(expr(env, eb))
+  | A.Loop(eb) -> A.Loop(expr(env, eb))
+  | A.DoWhile(body, condition, withoutBreak) ->
+    A.DoWhile(expr(env, body), expr(env, condition), expr(env, withoutBreak))
+  | A.While(condition, body, withoutBreak) ->
+    A.While(expr(env, condition), expr(env, body), expr(env, withoutBreak))
+  | A.ForEach(binding, collection, body, withoutBreak) ->
+    fenv = forEachBinding(env, binding);
+    A.ForEach(
+      binding,
+      expr(env, collection),
+      expr(fenv, body),
+      expr(env, withoutBreak),
+    )
+  | A.ForEachFieldMacro(field, fieldName, body) ->
+    A.ForEachFieldMacro(field, fieldName, expr(env, body))
+  }
+}
+
+fun key_values(env: Env, x: (A.Expr, A.Expr)): (A.Expr, A.Expr) {
+  (e1, e2) = x;
+  (expr(env, e1), expr(env, e2))
+}
+
+fun call_args(env: Env, args: A.Call_args): A.Call_args {
+  args.map(oe -> ordered_expr(env, oe))
+}
+
+fun ordered_expr(env: Env, oe: A.Ordered_expr): A.Ordered_expr {
+  (i, e) = oe;
+  (i, expr(env, e))
+}
+
+fun lvalue(env: Env, l: A.Lvalue): (Env, A.Lvalue) {
+  (fr, lvalue_) = l;
+  lvalue_ match {
+  | A.Lvalue_bind_local(name) -> (bind_local(env, name), l)
+  | A.Lvalue_assign(avalue) ->
+    !avalue = lvalue_assign_value(env, avalue);
+    (env, (fr, A.Lvalue_assign(avalue)))
+  | A.Lvalue_array_set(ea, el) ->
+    !ea = expr(env, ea);
+    (env, (fr, A.Lvalue_array_set(ea, call_args(env, el))))
+  | A.Lvalue_tuple(lvl) ->
+    (!env, !lvl) = lvl.mapAcc(lvalue, env);
+    (env, (fr, A.Lvalue_tuple(lvl)))
+  }
+}
+
+fun lvalue_assign_value(
+  env: Env,
+  l: A.Lvalue_assign_value,
+): A.Lvalue_assign_value {
+  l match {
+  | A.Lvalue_assign_local _ -> l
+  | A.Lvalue_assign_field(e, n) ->
+    !e = expr(env, e);
+    A.Lvalue_assign_field(e, n)
+  | A.Lvalue_assign_with(avalue, n) ->
+    !avalue = lvalue_assign_value(env, avalue);
+    A.Lvalue_assign_with(avalue, n)
+  | A.Lvalue_assign_array_set(avalue, el) ->
+    !avalue = lvalue_assign_value(env, avalue);
+    A.Lvalue_assign_array_set(avalue, call_args(env, el))
+  }
+}
+
+fun forEachBinding(env: Env, fb: A.ForEachBinding): Env {
+  fb match {
+  | A.FEKeyed(key, value, _) ->
+    !env = bind_local(env, key);
+    bind_local(env, value)
+  | A.FEIdent(name, _) -> bind_local(env, name)
+  | A.FETuple(idents, _) ->
+    idents.foldl((fenv, ident) -> bind_local(fenv, ident), env)
+  }
+}
+
+fun match_branch(env: Env, mb: A.Match_branch): A.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (env1, pats1) = pats.map_foldl(pattern, env);
+  (pats1, maybe_guard.map(ex -> expr(env1, ex)), expr(env1, e))
+}
+
+fun pattern(env: Env, pat: A.Pattern): (Env, A.Pattern) {
+  (pos, p) = pat;
+  (env1, p1) = pattern_(env, p);
+  (env1, (pos, p1))
+}
+
+fun pattern_(env: Env, x: A.Pattern_): (Env, A.Pattern_) {
+  x match {
+  | A.Pat_const(ex) -> (env, A.Pat_const(expr(env, ex)))
+  | x1 @ A.Pat_var(name) -> (bind_local(env, name), x1)
+  | x1 @ A.Pat_literal _ -> (env, x1)
+  | A.Pat_type(tid, args, complete) ->
+    (env1, args1) = pattern_arguments_opt(env, args);
+    (env1, A.Pat_type(type_identifier(env1, tid), args1, complete))
+  | A.Pat_tuple(pats) ->
+    (env1, pats1) = pats.mapAcc(pattern, env);
+    (env1, A.Pat_tuple(pats1))
+  | A.Pat_as(p, n) ->
+    (env1, p1) = pattern(env, p);
+    env2 = bind_local(env1, n);
+    (env2, A.Pat_as(p1, n))
+  }
+}
+
+fun type_identifier(env: Env, x: A.TypeIdentifier): A.TypeIdentifier {
+  x match {
+  | A.Tid_object(tn) -> A.Tid_object(type_name(env, tn))
+  | tid @ A.Tid_static _ -> tid
+  }
+}
+
+fun pattern_arguments_opt(
+  env: Env,
+  x: ?Parameters<A.Pattern>,
+): (Env, ?Parameters<A.Pattern>) {
+  x match {
+  | None() -> (env, None())
+  | Some(args) ->
+    (env1, args1) = pattern_arguments(env, args);
+    (env1, Some(args1))
+  }
+}
+
+fun pattern_arguments(
+  env: Env,
+  pats: Parameters<A.Pattern>,
+): (Env, Parameters<A.Pattern>) {
+  pats.map_foldl(pattern, env)
+}
+
+module end;

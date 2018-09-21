@@ -1,0 +1,4012 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**
+ * @generated
+ * Use ./tools/skip_tuples to regenerate
+ */
+
+module Tuple;
+
+private base class C2<U0, U1> {
+  children =
+  | C2_0(U0)
+  | C2_1(U1)
+}
+
+value class .Tuple2<+T0, +T1>(
+  i0: T0,
+  i1: T1,
+) uses
+  Show[T0: readonly Show, T1: readonly Show],
+  Hashable[T0: Hashable, T1: Hashable],
+  Orderable[T0: Orderable, T1: Orderable],
+  Equality[T0: Equality, T1: Equality],
+{
+  fun ==<U0: Equality, U1: Equality>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    this.i0 == other.i0 && this.i1 == other.i1
+  }
+  fun !=<U0: Equality, U1: Equality>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<U0: Orderable, U1: Orderable>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() -> this.i1.compare(other.i1)
+    | c -> c
+    }
+  }
+  fun <<U0: Orderable, U1: Orderable>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><U0: Orderable, U1: Orderable>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<U0: Orderable, U1: Orderable>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<U0: Orderable, U1: Orderable>[T0: U0, T1: U1](
+    other: readonly .Tuple2<U0, U1>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[T0: readonly Show, T1: readonly Show](): String {
+    "(" + this.i0 + ", " + this.i1 + ")"
+  }
+  fun hash[T0: Hashable, T1: Hashable](): Int {
+    Hashable.combine(this.i0.hash(), this.i1.hash())
+  }
+  fun inspect(): Inspect {
+    InspectCall("", Array[inspect(this.i0), inspect(this.i1)])
+  }
+  frozen fun parallelMap<U0, U1>(f0: T0 ~> U0, f1: T1 ~> U1): (U0, U1) {
+    res = Parallel.tabulate(2, i ~>
+      i match {
+      | 0 -> C2_0(f0(this.i0))
+      | 1 -> C2_1(f1(this.i1))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C2_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C2_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C3<U0, U1, U2> {
+  children =
+  | C3_0(U0)
+  | C3_1(U1)
+  | C3_2(U2)
+}
+
+value class .Tuple3<+T0, +T1, +T2>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+) uses
+  Show[T0: readonly Show, T1: readonly Show, T2: readonly Show],
+  Hashable[T0: Hashable, T1: Hashable, T2: Hashable],
+  Orderable[T0: Orderable, T1: Orderable, T2: Orderable],
+  Equality[T0: Equality, T1: Equality, T2: Equality],
+{
+  fun ==<U0: Equality, U1: Equality, U2: Equality>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    this.i0 == other.i0 && this.i1 == other.i1 && this.i2 == other.i2
+  }
+  fun !=<U0: Equality, U1: Equality, U2: Equality>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<U0: Orderable, U1: Orderable, U2: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+  ](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() -> this.i2.compare(other.i2)
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<U0: Orderable, U1: Orderable, U2: Orderable>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><U0: Orderable, U1: Orderable, U2: Orderable>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<U0: Orderable, U1: Orderable, U2: Orderable>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<U0: Orderable, U1: Orderable, U2: Orderable>[T0: U0, T1: U1, T2: U2](
+    other: readonly .Tuple3<U0, U1, U2>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+  ](): String {
+    "(" + this.i0 + ", " + this.i1 + ", " + this.i2 + ")"
+  }
+  fun hash[T0: Hashable, T1: Hashable, T2: Hashable](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(this.i1.hash(), this.i2.hash()),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall("", Array[inspect(this.i0), inspect(this.i1), inspect(this.i2)])
+  }
+  frozen fun parallelMap<U0, U1, U2>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+  ): (U0, U1, U2) {
+    res = Parallel.tabulate(3, i ~>
+      i match {
+      | 0 -> C3_0(f0(this.i0))
+      | 1 -> C3_1(f1(this.i1))
+      | 2 -> C3_2(f2(this.i2))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C3_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C3_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C3_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C4<U0, U1, U2, U3> {
+  children =
+  | C4_0(U0)
+  | C4_1(U1)
+  | C4_2(U2)
+  | C4_3(U3)
+}
+
+value class .Tuple4<+T0, +T1, +T2, +T3>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+  ],
+  Hashable[T0: Hashable, T1: Hashable, T2: Hashable, T3: Hashable],
+  Orderable[T0: Orderable, T1: Orderable, T2: Orderable, T3: Orderable],
+  Equality[T0: Equality, T1: Equality, T2: Equality, T3: Equality],
+{
+  fun ==<U0: Equality, U1: Equality, U2: Equality, U3: Equality>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3
+  }
+  fun !=<U0: Equality, U1: Equality, U2: Equality, U3: Equality>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<U0: Orderable, U1: Orderable, U2: Orderable, U3: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() -> this.i3.compare(other.i3)
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<U0: Orderable, U1: Orderable, U2: Orderable, U3: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><U0: Orderable, U1: Orderable, U2: Orderable, U3: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<U0: Orderable, U1: Orderable, U2: Orderable, U3: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<U0: Orderable, U1: Orderable, U2: Orderable, U3: Orderable>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+  ](
+    other: readonly .Tuple4<U0, U1, U2, U3>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+  ](): String {
+    "(" + this.i0 + ", " + this.i1 + ", " + this.i2 + ", " + this.i3 + ")"
+  }
+  fun hash[T0: Hashable, T1: Hashable, T2: Hashable, T3: Hashable](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(this.i2.hash(), this.i3.hash()),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+  ): (U0, U1, U2, U3) {
+    res = Parallel.tabulate(4, i ~>
+      i match {
+      | 0 -> C4_0(f0(this.i0))
+      | 1 -> C4_1(f1(this.i1))
+      | 2 -> C4_2(f2(this.i2))
+      | 3 -> C4_3(f3(this.i3))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C4_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C4_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C4_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C4_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C5<U0, U1, U2, U3, U4> {
+  children =
+  | C5_0(U0)
+  | C5_1(U1)
+  | C5_2(U2)
+  | C5_3(U3)
+  | C5_4(U4)
+}
+
+value class .Tuple5<+T0, +T1, +T2, +T3, +T4>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+  ],
+{
+  fun ==<U0: Equality, U1: Equality, U2: Equality, U3: Equality, U4: Equality>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+  ](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4
+  }
+  fun !=<U0: Equality, U1: Equality, U2: Equality, U3: Equality, U4: Equality>[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+  ](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() -> this.i4.compare(other.i4)
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4](
+    other: readonly .Tuple5<U0, U1, U2, U3, U4>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(this.i3.hash(), this.i4.hash()),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+  ): (U0, U1, U2, U3, U4) {
+    res = Parallel.tabulate(5, i ~>
+      i match {
+      | 0 -> C5_0(f0(this.i0))
+      | 1 -> C5_1(f1(this.i1))
+      | 2 -> C5_2(f2(this.i2))
+      | 3 -> C5_3(f3(this.i3))
+      | 4 -> C5_4(f4(this.i4))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C5_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C5_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C5_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C5_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C5_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C6<U0, U1, U2, U3, U4, U5> {
+  children =
+  | C6_0(U0)
+  | C6_1(U1)
+  | C6_2(U2)
+  | C6_3(U3)
+  | C6_4(U4)
+  | C6_5(U5)
+}
+
+value class .Tuple6<+T0, +T1, +T2, +T3, +T4, +T5>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+  i5: T5,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+    T5: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+    T5: Equality,
+  ],
+{
+  fun ==<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4 &&
+      this.i5 == other.i5
+  }
+  fun !=<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() ->
+            this.i4.compare(other.i4) match {
+            | EQ() -> this.i5.compare(other.i5)
+            | c -> c
+            }
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5](
+    other: readonly .Tuple6<U0, U1, U2, U3, U4, U5>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ", " +
+      this.i5 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(
+            this.i3.hash(),
+            Hashable.combine(this.i4.hash(), this.i5.hash()),
+          ),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+        inspect(this.i5),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4, U5>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+    f5: T5 ~> U5,
+  ): (U0, U1, U2, U3, U4, U5) {
+    res = Parallel.tabulate(6, i ~>
+      i match {
+      | 0 -> C6_0(f0(this.i0))
+      | 1 -> C6_1(f1(this.i1))
+      | 2 -> C6_2(f2(this.i2))
+      | 3 -> C6_3(f3(this.i3))
+      | 4 -> C6_4(f4(this.i4))
+      | 5 -> C6_5(f5(this.i5))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C6_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C6_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C6_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C6_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C6_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[5] match {
+      | C6_5(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C7<U0, U1, U2, U3, U4, U5, U6> {
+  children =
+  | C7_0(U0)
+  | C7_1(U1)
+  | C7_2(U2)
+  | C7_3(U3)
+  | C7_4(U4)
+  | C7_5(U5)
+  | C7_6(U6)
+}
+
+value class .Tuple7<+T0, +T1, +T2, +T3, +T4, +T5, +T6>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+  i5: T5,
+  i6: T6,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+    T5: Orderable,
+    T6: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+    T5: Equality,
+    T6: Equality,
+  ],
+{
+  fun ==<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4 &&
+      this.i5 == other.i5 &&
+      this.i6 == other.i6
+  }
+  fun !=<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() ->
+            this.i4.compare(other.i4) match {
+            | EQ() ->
+              this.i5.compare(other.i5) match {
+              | EQ() -> this.i6.compare(other.i6)
+              | c -> c
+              }
+            | c -> c
+            }
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6](
+    other: readonly .Tuple7<U0, U1, U2, U3, U4, U5, U6>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ", " +
+      this.i5 +
+      ", " +
+      this.i6 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(
+            this.i3.hash(),
+            Hashable.combine(
+              this.i4.hash(),
+              Hashable.combine(this.i5.hash(), this.i6.hash()),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+        inspect(this.i5),
+        inspect(this.i6),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4, U5, U6>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+    f5: T5 ~> U5,
+    f6: T6 ~> U6,
+  ): (U0, U1, U2, U3, U4, U5, U6) {
+    res = Parallel.tabulate(7, i ~>
+      i match {
+      | 0 -> C7_0(f0(this.i0))
+      | 1 -> C7_1(f1(this.i1))
+      | 2 -> C7_2(f2(this.i2))
+      | 3 -> C7_3(f3(this.i3))
+      | 4 -> C7_4(f4(this.i4))
+      | 5 -> C7_5(f5(this.i5))
+      | 6 -> C7_6(f6(this.i6))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C7_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C7_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C7_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C7_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C7_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[5] match {
+      | C7_5(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[6] match {
+      | C7_6(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C8<U0, U1, U2, U3, U4, U5, U6, U7> {
+  children =
+  | C8_0(U0)
+  | C8_1(U1)
+  | C8_2(U2)
+  | C8_3(U3)
+  | C8_4(U4)
+  | C8_5(U5)
+  | C8_6(U6)
+  | C8_7(U7)
+}
+
+value class .Tuple8<+T0, +T1, +T2, +T3, +T4, +T5, +T6, +T7>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+  i5: T5,
+  i6: T6,
+  i7: T7,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+    T5: Orderable,
+    T6: Orderable,
+    T7: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+    T5: Equality,
+    T6: Equality,
+    T7: Equality,
+  ],
+{
+  fun ==<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4 &&
+      this.i5 == other.i5 &&
+      this.i6 == other.i6 &&
+      this.i7 == other.i7
+  }
+  fun !=<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() ->
+            this.i4.compare(other.i4) match {
+            | EQ() ->
+              this.i5.compare(other.i5) match {
+              | EQ() ->
+                this.i6.compare(other.i6) match {
+                | EQ() -> this.i7.compare(other.i7)
+                | c -> c
+                }
+              | c -> c
+              }
+            | c -> c
+            }
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7](
+    other: readonly .Tuple8<U0, U1, U2, U3, U4, U5, U6, U7>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ", " +
+      this.i5 +
+      ", " +
+      this.i6 +
+      ", " +
+      this.i7 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(
+            this.i3.hash(),
+            Hashable.combine(
+              this.i4.hash(),
+              Hashable.combine(
+                this.i5.hash(),
+                Hashable.combine(this.i6.hash(), this.i7.hash()),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+        inspect(this.i5),
+        inspect(this.i6),
+        inspect(this.i7),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4, U5, U6, U7>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+    f5: T5 ~> U5,
+    f6: T6 ~> U6,
+    f7: T7 ~> U7,
+  ): (U0, U1, U2, U3, U4, U5, U6, U7) {
+    res = Parallel.tabulate(8, i ~>
+      i match {
+      | 0 -> C8_0(f0(this.i0))
+      | 1 -> C8_1(f1(this.i1))
+      | 2 -> C8_2(f2(this.i2))
+      | 3 -> C8_3(f3(this.i3))
+      | 4 -> C8_4(f4(this.i4))
+      | 5 -> C8_5(f5(this.i5))
+      | 6 -> C8_6(f6(this.i6))
+      | 7 -> C8_7(f7(this.i7))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C8_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C8_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C8_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C8_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C8_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[5] match {
+      | C8_5(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[6] match {
+      | C8_6(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[7] match {
+      | C8_7(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C9<U0, U1, U2, U3, U4, U5, U6, U7, U8> {
+  children =
+  | C9_0(U0)
+  | C9_1(U1)
+  | C9_2(U2)
+  | C9_3(U3)
+  | C9_4(U4)
+  | C9_5(U5)
+  | C9_6(U6)
+  | C9_7(U7)
+  | C9_8(U8)
+}
+
+value class .Tuple9<+T0, +T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+  i5: T5,
+  i6: T6,
+  i7: T7,
+  i8: T8,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+    T8: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+    T8: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+    T5: Orderable,
+    T6: Orderable,
+    T7: Orderable,
+    T8: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+    T5: Equality,
+    T6: Equality,
+    T7: Equality,
+    T8: Equality,
+  ],
+{
+  fun ==<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+    U8: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4 &&
+      this.i5 == other.i5 &&
+      this.i6 == other.i6 &&
+      this.i7 == other.i7 &&
+      this.i8 == other.i8
+  }
+  fun !=<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+    U8: Equality,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() ->
+            this.i4.compare(other.i4) match {
+            | EQ() ->
+              this.i5.compare(other.i5) match {
+              | EQ() ->
+                this.i6.compare(other.i6) match {
+                | EQ() ->
+                  this.i7.compare(other.i7) match {
+                  | EQ() -> this.i8.compare(other.i8)
+                  | c -> c
+                  }
+                | c -> c
+                }
+              | c -> c
+              }
+            | c -> c
+            }
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+  >[T0: U0, T1: U1, T2: U2, T3: U3, T4: U4, T5: U5, T6: U6, T7: U7, T8: U8](
+    other: readonly .Tuple9<U0, U1, U2, U3, U4, U5, U6, U7, U8>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+    T8: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ", " +
+      this.i5 +
+      ", " +
+      this.i6 +
+      ", " +
+      this.i7 +
+      ", " +
+      this.i8 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+    T8: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(
+            this.i3.hash(),
+            Hashable.combine(
+              this.i4.hash(),
+              Hashable.combine(
+                this.i5.hash(),
+                Hashable.combine(
+                  this.i6.hash(),
+                  Hashable.combine(this.i7.hash(), this.i8.hash()),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+        inspect(this.i5),
+        inspect(this.i6),
+        inspect(this.i7),
+        inspect(this.i8),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4, U5, U6, U7, U8>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+    f5: T5 ~> U5,
+    f6: T6 ~> U6,
+    f7: T7 ~> U7,
+    f8: T8 ~> U8,
+  ): (U0, U1, U2, U3, U4, U5, U6, U7, U8) {
+    res = Parallel.tabulate(9, i ~>
+      i match {
+      | 0 -> C9_0(f0(this.i0))
+      | 1 -> C9_1(f1(this.i1))
+      | 2 -> C9_2(f2(this.i2))
+      | 3 -> C9_3(f3(this.i3))
+      | 4 -> C9_4(f4(this.i4))
+      | 5 -> C9_5(f5(this.i5))
+      | 6 -> C9_6(f6(this.i6))
+      | 7 -> C9_7(f7(this.i7))
+      | 8 -> C9_8(f8(this.i8))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C9_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C9_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C9_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C9_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C9_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[5] match {
+      | C9_5(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[6] match {
+      | C9_6(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[7] match {
+      | C9_7(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[8] match {
+      | C9_8(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+private base class C10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9> {
+  children =
+  | C10_0(U0)
+  | C10_1(U1)
+  | C10_2(U2)
+  | C10_3(U3)
+  | C10_4(U4)
+  | C10_5(U5)
+  | C10_6(U6)
+  | C10_7(U7)
+  | C10_8(U8)
+  | C10_9(U9)
+}
+
+value class .Tuple10<+T0, +T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9>(
+  i0: T0,
+  i1: T1,
+  i2: T2,
+  i3: T3,
+  i4: T4,
+  i5: T5,
+  i6: T6,
+  i7: T7,
+  i8: T8,
+  i9: T9,
+) uses
+  Show[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+    T8: readonly Show,
+    T9: readonly Show,
+  ],
+  Hashable[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+    T8: Hashable,
+    T9: Hashable,
+  ],
+  Orderable[
+    T0: Orderable,
+    T1: Orderable,
+    T2: Orderable,
+    T3: Orderable,
+    T4: Orderable,
+    T5: Orderable,
+    T6: Orderable,
+    T7: Orderable,
+    T8: Orderable,
+    T9: Orderable,
+  ],
+  Equality[
+    T0: Equality,
+    T1: Equality,
+    T2: Equality,
+    T3: Equality,
+    T4: Equality,
+    T5: Equality,
+    T6: Equality,
+    T7: Equality,
+    T8: Equality,
+    T9: Equality,
+  ],
+{
+  fun ==<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+    U8: Equality,
+    U9: Equality,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    this.i0 == other.i0 &&
+      this.i1 == other.i1 &&
+      this.i2 == other.i2 &&
+      this.i3 == other.i3 &&
+      this.i4 == other.i4 &&
+      this.i5 == other.i5 &&
+      this.i6 == other.i6 &&
+      this.i7 == other.i7 &&
+      this.i8 == other.i8 &&
+      this.i9 == other.i9
+  }
+  fun !=<
+    U0: Equality,
+    U1: Equality,
+    U2: Equality,
+    U3: Equality,
+    U4: Equality,
+    U5: Equality,
+    U6: Equality,
+    U7: Equality,
+    U8: Equality,
+    U9: Equality,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    !(this == other)
+  }
+  fun compare<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+    U9: Orderable,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Order {
+    this.i0.compare(other.i0) match {
+    | EQ() ->
+      this.i1.compare(other.i1) match {
+      | EQ() ->
+        this.i2.compare(other.i2) match {
+        | EQ() ->
+          this.i3.compare(other.i3) match {
+          | EQ() ->
+            this.i4.compare(other.i4) match {
+            | EQ() ->
+              this.i5.compare(other.i5) match {
+              | EQ() ->
+                this.i6.compare(other.i6) match {
+                | EQ() ->
+                  this.i7.compare(other.i7) match {
+                  | EQ() ->
+                    this.i8.compare(other.i8) match {
+                    | EQ() -> this.i9.compare(other.i9)
+                    | c -> c
+                    }
+                  | c -> c
+                  }
+                | c -> c
+                }
+              | c -> c
+              }
+            | c -> c
+            }
+          | c -> c
+          }
+        | c -> c
+        }
+      | c -> c
+      }
+    | c -> c
+    }
+  }
+  fun <<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+    U9: Orderable,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+  fun ><
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+    U9: Orderable,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+  fun <=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+    U9: Orderable,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+  fun >=<
+    U0: Orderable,
+    U1: Orderable,
+    U2: Orderable,
+    U3: Orderable,
+    U4: Orderable,
+    U5: Orderable,
+    U6: Orderable,
+    U7: Orderable,
+    U8: Orderable,
+    U9: Orderable,
+  >[
+    T0: U0,
+    T1: U1,
+    T2: U2,
+    T3: U3,
+    T4: U4,
+    T5: U5,
+    T6: U6,
+    T7: U7,
+    T8: U8,
+    T9: U9,
+  ](
+    other: readonly .Tuple10<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+  fun toString[
+    T0: readonly Show,
+    T1: readonly Show,
+    T2: readonly Show,
+    T3: readonly Show,
+    T4: readonly Show,
+    T5: readonly Show,
+    T6: readonly Show,
+    T7: readonly Show,
+    T8: readonly Show,
+    T9: readonly Show,
+  ](): String {
+    "(" +
+      this.i0 +
+      ", " +
+      this.i1 +
+      ", " +
+      this.i2 +
+      ", " +
+      this.i3 +
+      ", " +
+      this.i4 +
+      ", " +
+      this.i5 +
+      ", " +
+      this.i6 +
+      ", " +
+      this.i7 +
+      ", " +
+      this.i8 +
+      ", " +
+      this.i9 +
+      ")"
+  }
+  fun hash[
+    T0: Hashable,
+    T1: Hashable,
+    T2: Hashable,
+    T3: Hashable,
+    T4: Hashable,
+    T5: Hashable,
+    T6: Hashable,
+    T7: Hashable,
+    T8: Hashable,
+    T9: Hashable,
+  ](): Int {
+    Hashable.combine(
+      this.i0.hash(),
+      Hashable.combine(
+        this.i1.hash(),
+        Hashable.combine(
+          this.i2.hash(),
+          Hashable.combine(
+            this.i3.hash(),
+            Hashable.combine(
+              this.i4.hash(),
+              Hashable.combine(
+                this.i5.hash(),
+                Hashable.combine(
+                  this.i6.hash(),
+                  Hashable.combine(
+                    this.i7.hash(),
+                    Hashable.combine(this.i8.hash(), this.i9.hash()),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+  fun inspect(): Inspect {
+    InspectCall(
+      "",
+      Array[
+        inspect(this.i0),
+        inspect(this.i1),
+        inspect(this.i2),
+        inspect(this.i3),
+        inspect(this.i4),
+        inspect(this.i5),
+        inspect(this.i6),
+        inspect(this.i7),
+        inspect(this.i8),
+        inspect(this.i9),
+      ],
+    )
+  }
+  frozen fun parallelMap<U0, U1, U2, U3, U4, U5, U6, U7, U8, U9>(
+    f0: T0 ~> U0,
+    f1: T1 ~> U1,
+    f2: T2 ~> U2,
+    f3: T3 ~> U3,
+    f4: T4 ~> U4,
+    f5: T5 ~> U5,
+    f6: T6 ~> U6,
+    f7: T7 ~> U7,
+    f8: T8 ~> U8,
+    f9: T9 ~> U9,
+  ): (U0, U1, U2, U3, U4, U5, U6, U7, U8, U9) {
+    res = Parallel.tabulate(10, i ~>
+      i match {
+      | 0 -> C10_0(f0(this.i0))
+      | 1 -> C10_1(f1(this.i1))
+      | 2 -> C10_2(f2(this.i2))
+      | 3 -> C10_3(f3(this.i3))
+      | 4 -> C10_4(f4(this.i4))
+      | 5 -> C10_5(f5(this.i5))
+      | 6 -> C10_6(f6(this.i6))
+      | 7 -> C10_7(f7(this.i7))
+      | 8 -> C10_8(f8(this.i8))
+      | 9 -> C10_9(f9(this.i9))
+      | _ -> invariant_violation("Tuple.parallelMap")
+      }
+    );
+    (
+      res[0] match {
+      | C10_0(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[1] match {
+      | C10_1(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[2] match {
+      | C10_2(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[3] match {
+      | C10_3(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[4] match {
+      | C10_4(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[5] match {
+      | C10_5(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[6] match {
+      | C10_6(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[7] match {
+      | C10_7(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[8] match {
+      | C10_8(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+      res[9] match {
+      | C10_9(x) -> x
+      | _ -> invariant_violation("Tuple.parallelMap")
+      },
+    )
+  }
+}
+
+module end;
+
+module Serialization;
+
+extension mutable base class TupleReader {
+  mutable fun readTuple2<T0, S0: Serializer<T0>, T1, S1: Serializer<T1>>(
+    serializer0: S0,
+    serializer1: S1,
+  ): (T0, T1) {
+    result = (this.readValue(serializer0), this.readValue(serializer1));
+    this.end();
+    result
+  }
+
+  mutable fun readTuple3<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+  ): (T0, T1, T2) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple4<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+  ): (T0, T1, T2, T3) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple5<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+  ): (T0, T1, T2, T3, T4) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple6<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+    serializer5: S5,
+  ): (T0, T1, T2, T3, T4, T5) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+      this.readValue(serializer5),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple7<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+    serializer5: S5,
+    serializer6: S6,
+  ): (T0, T1, T2, T3, T4, T5, T6) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+      this.readValue(serializer5),
+      this.readValue(serializer6),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple8<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+    serializer5: S5,
+    serializer6: S6,
+    serializer7: S7,
+  ): (T0, T1, T2, T3, T4, T5, T6, T7) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+      this.readValue(serializer5),
+      this.readValue(serializer6),
+      this.readValue(serializer7),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple9<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+    T8,
+    S8: Serializer<T8>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+    serializer5: S5,
+    serializer6: S6,
+    serializer7: S7,
+    serializer8: S8,
+  ): (T0, T1, T2, T3, T4, T5, T6, T7, T8) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+      this.readValue(serializer5),
+      this.readValue(serializer6),
+      this.readValue(serializer7),
+      this.readValue(serializer8),
+    );
+    this.end();
+    result
+  }
+
+  mutable fun readTuple10<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+    T8,
+    S8: Serializer<T8>,
+    T9,
+    S9: Serializer<T9>,
+  >(
+    serializer0: S0,
+    serializer1: S1,
+    serializer2: S2,
+    serializer3: S3,
+    serializer4: S4,
+    serializer5: S5,
+    serializer6: S6,
+    serializer7: S7,
+    serializer8: S8,
+    serializer9: S9,
+  ): (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) {
+    result = (
+      this.readValue(serializer0),
+      this.readValue(serializer1),
+      this.readValue(serializer2),
+      this.readValue(serializer3),
+      this.readValue(serializer4),
+      this.readValue(serializer5),
+      this.readValue(serializer6),
+      this.readValue(serializer7),
+      this.readValue(serializer8),
+      this.readValue(serializer9),
+    );
+    this.end();
+    result
+  }
+}
+
+extension mutable base class TupleWriter {
+  mutable fun writeTuple2<T0, S0: Serializer<T0>, T1, S1: Serializer<T1>>(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.end();
+  }
+
+  mutable fun writeTuple3<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.end();
+  }
+
+  mutable fun writeTuple4<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.end();
+  }
+
+  mutable fun writeTuple5<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.end();
+  }
+
+  mutable fun writeTuple6<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+    value5: T5,
+    serializer5: S5,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.writeValue(value5, serializer5);
+    this.end();
+  }
+
+  mutable fun writeTuple7<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+    value5: T5,
+    serializer5: S5,
+    value6: T6,
+    serializer6: S6,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.writeValue(value5, serializer5);
+    this.writeValue(value6, serializer6);
+    this.end();
+  }
+
+  mutable fun writeTuple8<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+    value5: T5,
+    serializer5: S5,
+    value6: T6,
+    serializer6: S6,
+    value7: T7,
+    serializer7: S7,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.writeValue(value5, serializer5);
+    this.writeValue(value6, serializer6);
+    this.writeValue(value7, serializer7);
+    this.end();
+  }
+
+  mutable fun writeTuple9<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+    T8,
+    S8: Serializer<T8>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+    value5: T5,
+    serializer5: S5,
+    value6: T6,
+    serializer6: S6,
+    value7: T7,
+    serializer7: S7,
+    value8: T8,
+    serializer8: S8,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.writeValue(value5, serializer5);
+    this.writeValue(value6, serializer6);
+    this.writeValue(value7, serializer7);
+    this.writeValue(value8, serializer8);
+    this.end();
+  }
+
+  mutable fun writeTuple10<
+    T0,
+    S0: Serializer<T0>,
+    T1,
+    S1: Serializer<T1>,
+    T2,
+    S2: Serializer<T2>,
+    T3,
+    S3: Serializer<T3>,
+    T4,
+    S4: Serializer<T4>,
+    T5,
+    S5: Serializer<T5>,
+    T6,
+    S6: Serializer<T6>,
+    T7,
+    S7: Serializer<T7>,
+    T8,
+    S8: Serializer<T8>,
+    T9,
+    S9: Serializer<T9>,
+  >(
+    value0: T0,
+    serializer0: S0,
+    value1: T1,
+    serializer1: S1,
+    value2: T2,
+    serializer2: S2,
+    value3: T3,
+    serializer3: S3,
+    value4: T4,
+    serializer4: S4,
+    value5: T5,
+    serializer5: S5,
+    value6: T6,
+    serializer6: S6,
+    value7: T7,
+    serializer7: S7,
+    value8: T8,
+    serializer8: S8,
+    value9: T9,
+    serializer9: S9,
+  ): void {
+    this.writeValue(value0, serializer0);
+    this.writeValue(value1, serializer1);
+    this.writeValue(value2, serializer2);
+    this.writeValue(value3, serializer3);
+    this.writeValue(value4, serializer4);
+    this.writeValue(value5, serializer5);
+    this.writeValue(value6, serializer6);
+    this.writeValue(value7, serializer7);
+    this.writeValue(value8, serializer8);
+    this.writeValue(value9, serializer9);
+    this.end();
+  }
+}
+
+module end;
+
+extension class Tuple2 {
+  static fun meta<T0, C0: MetaClass<T0>, T1, C1: MetaClass<T1>>(
+    class0: C0,
+    class1: C1,
+  ): Tuple2MetaClass<T0, C0, T1, C1> {
+    Tuple2MetaClass(class0, class1)
+  }
+}
+
+extension class Tuple3 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+  ): Tuple3MetaClass<T0, C0, T1, C1, T2, C2> {
+    Tuple3MetaClass(class0, class1, class2)
+  }
+}
+
+extension class Tuple4 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+  ): Tuple4MetaClass<T0, C0, T1, C1, T2, C2, T3, C3> {
+    Tuple4MetaClass(class0, class1, class2, class3)
+  }
+}
+
+extension class Tuple5 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+  ): Tuple5MetaClass<T0, C0, T1, C1, T2, C2, T3, C3, T4, C4> {
+    Tuple5MetaClass(class0, class1, class2, class3, class4)
+  }
+}
+
+extension class Tuple6 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+    T5,
+    C5: MetaClass<T5>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+    class5: C5,
+  ): Tuple6MetaClass<T0, C0, T1, C1, T2, C2, T3, C3, T4, C4, T5, C5> {
+    Tuple6MetaClass(class0, class1, class2, class3, class4, class5)
+  }
+}
+
+extension class Tuple7 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+    T5,
+    C5: MetaClass<T5>,
+    T6,
+    C6: MetaClass<T6>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+    class5: C5,
+    class6: C6,
+  ): Tuple7MetaClass<T0, C0, T1, C1, T2, C2, T3, C3, T4, C4, T5, C5, T6, C6> {
+    Tuple7MetaClass(class0, class1, class2, class3, class4, class5, class6)
+  }
+}
+
+extension class Tuple8 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+    T5,
+    C5: MetaClass<T5>,
+    T6,
+    C6: MetaClass<T6>,
+    T7,
+    C7: MetaClass<T7>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+    class5: C5,
+    class6: C6,
+    class7: C7,
+  ): Tuple8MetaClass<
+    T0,
+    C0,
+    T1,
+    C1,
+    T2,
+    C2,
+    T3,
+    C3,
+    T4,
+    C4,
+    T5,
+    C5,
+    T6,
+    C6,
+    T7,
+    C7,
+  > {
+    Tuple8MetaClass(
+      class0,
+      class1,
+      class2,
+      class3,
+      class4,
+      class5,
+      class6,
+      class7,
+    )
+  }
+}
+
+extension class Tuple9 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+    T5,
+    C5: MetaClass<T5>,
+    T6,
+    C6: MetaClass<T6>,
+    T7,
+    C7: MetaClass<T7>,
+    T8,
+    C8: MetaClass<T8>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+    class5: C5,
+    class6: C6,
+    class7: C7,
+    class8: C8,
+  ): Tuple9MetaClass<
+    T0,
+    C0,
+    T1,
+    C1,
+    T2,
+    C2,
+    T3,
+    C3,
+    T4,
+    C4,
+    T5,
+    C5,
+    T6,
+    C6,
+    T7,
+    C7,
+    T8,
+    C8,
+  > {
+    Tuple9MetaClass(
+      class0,
+      class1,
+      class2,
+      class3,
+      class4,
+      class5,
+      class6,
+      class7,
+      class8,
+    )
+  }
+}
+
+extension class Tuple10 {
+  static fun meta<
+    T0,
+    C0: MetaClass<T0>,
+    T1,
+    C1: MetaClass<T1>,
+    T2,
+    C2: MetaClass<T2>,
+    T3,
+    C3: MetaClass<T3>,
+    T4,
+    C4: MetaClass<T4>,
+    T5,
+    C5: MetaClass<T5>,
+    T6,
+    C6: MetaClass<T6>,
+    T7,
+    C7: MetaClass<T7>,
+    T8,
+    C8: MetaClass<T8>,
+    T9,
+    C9: MetaClass<T9>,
+  >(
+    class0: C0,
+    class1: C1,
+    class2: C2,
+    class3: C3,
+    class4: C4,
+    class5: C5,
+    class6: C6,
+    class7: C7,
+    class8: C8,
+    class9: C9,
+  ): Tuple10MetaClass<
+    T0,
+    C0,
+    T1,
+    C1,
+    T2,
+    C2,
+    T3,
+    C3,
+    T4,
+    C4,
+    T5,
+    C5,
+    T6,
+    C6,
+    T7,
+    C7,
+    T8,
+    C8,
+    T9,
+    C9,
+  > {
+    Tuple10MetaClass(
+      class0,
+      class1,
+      class2,
+      class3,
+      class4,
+      class5,
+      class6,
+      class7,
+      class8,
+      class9,
+    )
+  }
+}
+
+class Tuple2MetaClass<T0, C0: MetaClass<T0>, T1, C1: MetaClass<T1>>(
+  class0: C0,
+  class1: C1,
+)
+  extends MetaClass<Tuple2<T0, T1>>
+  uses
+    Serialization.Serializer<Tuple2<T0, T1>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+    ],
+   {
+  fun description(): String {
+    `Tuple2<${this.class0.description()}, ${this.class1.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+  ](
+    value: Tuple2<T0, T1>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(2);
+    tupleWriter.writeTuple2(value.i0, this.class0, value.i1, this.class1)
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple2<T0, T1> {
+    tupleReader = reader.readTuple(2);
+    tupleReader.readTuple2(this.class0, this.class1)
+  }
+}
+
+class Tuple3MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+)
+  extends MetaClass<Tuple3<T0, T1, T2>>
+  uses
+    Serialization.Serializer<Tuple3<T0, T1, T2>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+    ],
+   {
+  fun description(): String {
+    `Tuple3<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+  ](
+    value: Tuple3<T0, T1, T2>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(3);
+    tupleWriter.writeTuple3(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple3<T0, T1, T2> {
+    tupleReader = reader.readTuple(3);
+    tupleReader.readTuple3(this.class0, this.class1, this.class2)
+  }
+}
+
+class Tuple4MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+)
+  extends MetaClass<Tuple4<T0, T1, T2, T3>>
+  uses
+    Serialization.Serializer<Tuple4<T0, T1, T2, T3>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+    ],
+   {
+  fun description(): String {
+    `Tuple4<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+  ](
+    value: Tuple4<T0, T1, T2, T3>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(4);
+    tupleWriter.writeTuple4(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple4<T0, T1, T2, T3> {
+    tupleReader = reader.readTuple(4);
+    tupleReader.readTuple4(this.class0, this.class1, this.class2, this.class3)
+  }
+}
+
+class Tuple5MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+)
+  extends MetaClass<Tuple5<T0, T1, T2, T3, T4>>
+  uses
+    Serialization.Serializer<Tuple5<T0, T1, T2, T3, T4>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+    ],
+   {
+  fun description(): String {
+    `Tuple5<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+  ](
+    value: Tuple5<T0, T1, T2, T3, T4>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(5);
+    tupleWriter.writeTuple5(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple5<T0, T1, T2, T3, T4> {
+    tupleReader = reader.readTuple(5);
+    tupleReader.readTuple5(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+    )
+  }
+}
+
+class Tuple6MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+  T5,
+  C5: MetaClass<T5>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+  class5: C5,
+)
+  extends MetaClass<Tuple6<T0, T1, T2, T3, T4, T5>>
+  uses
+    Serialization.Serializer<Tuple6<T0, T1, T2, T3, T4, T5>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+      C5: Serialization.Serializer<T5>,
+    ],
+   {
+  fun description(): String {
+    `Tuple6<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}, ${this.class5.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+  ](
+    value: Tuple6<T0, T1, T2, T3, T4, T5>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(6);
+    tupleWriter.writeTuple6(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+      value.i5,
+      this.class5,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple6<T0, T1, T2, T3, T4, T5> {
+    tupleReader = reader.readTuple(6);
+    tupleReader.readTuple6(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+      this.class5,
+    )
+  }
+}
+
+class Tuple7MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+  T5,
+  C5: MetaClass<T5>,
+  T6,
+  C6: MetaClass<T6>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+  class5: C5,
+  class6: C6,
+)
+  extends MetaClass<Tuple7<T0, T1, T2, T3, T4, T5, T6>>
+  uses
+    Serialization.Serializer<Tuple7<T0, T1, T2, T3, T4, T5, T6>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+      C5: Serialization.Serializer<T5>,
+      C6: Serialization.Serializer<T6>,
+    ],
+   {
+  fun description(): String {
+    `Tuple7<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}, ${this.class5.description()}, ${this.class6.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+  ](
+    value: Tuple7<T0, T1, T2, T3, T4, T5, T6>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(7);
+    tupleWriter.writeTuple7(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+      value.i5,
+      this.class5,
+      value.i6,
+      this.class6,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple7<T0, T1, T2, T3, T4, T5, T6> {
+    tupleReader = reader.readTuple(7);
+    tupleReader.readTuple7(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+      this.class5,
+      this.class6,
+    )
+  }
+}
+
+class Tuple8MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+  T5,
+  C5: MetaClass<T5>,
+  T6,
+  C6: MetaClass<T6>,
+  T7,
+  C7: MetaClass<T7>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+  class5: C5,
+  class6: C6,
+  class7: C7,
+)
+  extends MetaClass<Tuple8<T0, T1, T2, T3, T4, T5, T6, T7>>
+  uses
+    Serialization.Serializer<Tuple8<T0, T1, T2, T3, T4, T5, T6, T7>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+      C5: Serialization.Serializer<T5>,
+      C6: Serialization.Serializer<T6>,
+      C7: Serialization.Serializer<T7>,
+    ],
+   {
+  fun description(): String {
+    `Tuple8<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}, ${this.class5.description()}, ${this.class6.description()}, ${this.class7.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+  ](
+    value: Tuple8<T0, T1, T2, T3, T4, T5, T6, T7>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(8);
+    tupleWriter.writeTuple8(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+      value.i5,
+      this.class5,
+      value.i6,
+      this.class6,
+      value.i7,
+      this.class7,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple8<T0, T1, T2, T3, T4, T5, T6, T7> {
+    tupleReader = reader.readTuple(8);
+    tupleReader.readTuple8(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+      this.class5,
+      this.class6,
+      this.class7,
+    )
+  }
+}
+
+class Tuple9MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+  T5,
+  C5: MetaClass<T5>,
+  T6,
+  C6: MetaClass<T6>,
+  T7,
+  C7: MetaClass<T7>,
+  T8,
+  C8: MetaClass<T8>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+  class5: C5,
+  class6: C6,
+  class7: C7,
+  class8: C8,
+)
+  extends MetaClass<Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8>>
+  uses
+    Serialization.Serializer<Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+      C5: Serialization.Serializer<T5>,
+      C6: Serialization.Serializer<T6>,
+      C7: Serialization.Serializer<T7>,
+      C8: Serialization.Serializer<T8>,
+    ],
+   {
+  fun description(): String {
+    `Tuple9<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}, ${this.class5.description()}, ${this.class6.description()}, ${this.class7.description()}, ${this.class8.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+    C8: Serialization.Serializer<T8>,
+  ](
+    value: Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(9);
+    tupleWriter.writeTuple9(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+      value.i5,
+      this.class5,
+      value.i6,
+      this.class6,
+      value.i7,
+      this.class7,
+      value.i8,
+      this.class8,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+    C8: Serialization.Serializer<T8>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8> {
+    tupleReader = reader.readTuple(9);
+    tupleReader.readTuple9(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+      this.class5,
+      this.class6,
+      this.class7,
+      this.class8,
+    )
+  }
+}
+
+class Tuple10MetaClass<
+  T0,
+  C0: MetaClass<T0>,
+  T1,
+  C1: MetaClass<T1>,
+  T2,
+  C2: MetaClass<T2>,
+  T3,
+  C3: MetaClass<T3>,
+  T4,
+  C4: MetaClass<T4>,
+  T5,
+  C5: MetaClass<T5>,
+  T6,
+  C6: MetaClass<T6>,
+  T7,
+  C7: MetaClass<T7>,
+  T8,
+  C8: MetaClass<T8>,
+  T9,
+  C9: MetaClass<T9>,
+>(
+  class0: C0,
+  class1: C1,
+  class2: C2,
+  class3: C3,
+  class4: C4,
+  class5: C5,
+  class6: C6,
+  class7: C7,
+  class8: C8,
+  class9: C9,
+)
+  extends MetaClass<Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>>
+  uses
+    Serialization.Serializer<Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>>[
+      C0: Serialization.Serializer<T0>,
+      C1: Serialization.Serializer<T1>,
+      C2: Serialization.Serializer<T2>,
+      C3: Serialization.Serializer<T3>,
+      C4: Serialization.Serializer<T4>,
+      C5: Serialization.Serializer<T5>,
+      C6: Serialization.Serializer<T6>,
+      C7: Serialization.Serializer<T7>,
+      C8: Serialization.Serializer<T8>,
+      C9: Serialization.Serializer<T9>,
+    ],
+   {
+  fun description(): String {
+    `Tuple10<${this.class0.description()}, ${this.class1.description()}, ${this.class2.description()}, ${this.class3.description()}, ${this.class4.description()}, ${this.class5.description()}, ${this.class6.description()}, ${this.class7.description()}, ${this.class8.description()}, ${this.class9.description()}>`
+  }
+
+  fun serialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+    C8: Serialization.Serializer<T8>,
+    C9: Serialization.Serializer<T9>,
+  ](
+    value: Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>,
+    writer: mutable Serialization.Writer,
+  ): void {
+    tupleWriter = writer.writeTuple(10);
+    tupleWriter.writeTuple10(
+      value.i0,
+      this.class0,
+      value.i1,
+      this.class1,
+      value.i2,
+      this.class2,
+      value.i3,
+      this.class3,
+      value.i4,
+      this.class4,
+      value.i5,
+      this.class5,
+      value.i6,
+      this.class6,
+      value.i7,
+      this.class7,
+      value.i8,
+      this.class8,
+      value.i9,
+      this.class9,
+    )
+  }
+
+  fun deserialize[
+    C0: Serialization.Serializer<T0>,
+    C1: Serialization.Serializer<T1>,
+    C2: Serialization.Serializer<T2>,
+    C3: Serialization.Serializer<T3>,
+    C4: Serialization.Serializer<T4>,
+    C5: Serialization.Serializer<T5>,
+    C6: Serialization.Serializer<T6>,
+    C7: Serialization.Serializer<T7>,
+    C8: Serialization.Serializer<T8>,
+    C9: Serialization.Serializer<T9>,
+  ](
+    reader: mutable Serialization.Reader,
+  ): Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> {
+    tupleReader = reader.readTuple(10);
+    tupleReader.readTuple10(
+      this.class0,
+      this.class1,
+      this.class2,
+      this.class3,
+      this.class4,
+      this.class5,
+      this.class6,
+      this.class7,
+      this.class8,
+      this.class9,
+    )
+  }
+}

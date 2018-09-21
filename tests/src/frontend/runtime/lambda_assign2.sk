@@ -1,0 +1,37 @@
+fun main(): void {
+  n = 37;
+  lambda1 = (
+    () -> {
+      lambda2 = (
+        () -> {
+          q = 100;
+          r = 1000;
+          lambda3 = (
+            () -> {
+              lambda4 = (
+                () -> {
+                  n + q + r
+                }
+              );
+              !r = 2000;
+              lambda4()
+            }
+          );
+          invariant(lambda3() == n + q + r, "");
+          !q = 200;
+          invariant(lambda3() == n + q + r, "");
+
+          lambda3()
+        }
+      );
+      lambda2()
+    }
+  );
+
+  invariant(lambda1() == 37 + 200 + 2000, "");
+  !n = 38;
+
+  invariant(lambda1() == 38 + 200 + 2000, "");
+
+  print_string("OK")
+}

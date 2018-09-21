@@ -1,0 +1,3 @@
+base class B{f: Int}
+base class D final {f2: Int} extends B
+class Foo{f3: Int} extends B, D

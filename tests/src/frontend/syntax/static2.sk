@@ -1,0 +1,12 @@
+base class Foo {
+  overridable const name: String = "Foo";
+}
+
+class Bar() extends Foo {
+  const name: String = "Bar\n";
+}
+
+fun main(): void {
+  x = Bar();
+  print_raw(Foo::name + class(x)::name)
+}

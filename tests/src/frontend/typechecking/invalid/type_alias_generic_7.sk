@@ -1,0 +1,16 @@
+class MyMap<+K: Orderable, +V>(K, V)
+base class P {
+  children =
+  | L()
+  | R()
+}
+
+type Triple<T0, T1, T2> = (T0, T1, T2);
+type MM<K, V> = MyMap<K, V>;
+
+fun no1(): Triple<Bool, String, Int> {
+  (0, "", false)
+}
+fun no2(): MM<P, String> {
+  MyMap("", L());
+}

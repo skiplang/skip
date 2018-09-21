@@ -1,0 +1,5 @@
+mutable const x: String = "Fail";
+fun main(): String {
+  x
+}
+

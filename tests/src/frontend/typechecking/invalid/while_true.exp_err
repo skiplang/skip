@@ -1,0 +1,8 @@
+File "./typechecking/invalid/while_true.sk", line 2, characters 3-19:
+Unnecessary usage of 'while' since the 'else' branch is never taken.
+Replace 'while (true)' with 'loop' to make the non-terminating loop explicit.
+Unlike 'while', 'loop' has the type of the value in 'break', or any type needed when there is no 'break'.
+1 | fun no(): void {
+2 |   while (true) void
+  |   ^^^^^^^^^^^^^^^^^
+3 | }

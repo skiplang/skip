@@ -1,0 +1,9 @@
+mutable class Foo<T: frozen>(x: mutable Array<Array<T>>) {
+  static fun test(T): void {
+    void
+  }
+}
+
+fun test(): void {
+  Foo::test(mutable Array[])
+}

@@ -1,0 +1,118 @@
+// NOTE: As a NBE optimization this implementation is customized in
+// native/FastOption.sk, and the APIs must be kept in sync.
+base class Option<+T> uses
+  Show[T: Show],
+  Hashable[T: Hashable],
+  Orderable[T: Orderable],
+  Equality[T: Equality],
+{
+  children =
+  | Some(value: T)
+  | None()
+
+  fun map<T2>(f: T -> T2): ?T2
+  | None() -> None()
+  | Some(x) -> Some(f(x))
+
+  fun flatMap<T2>(f: T -> ?T2): ?T2
+  | None() -> None()
+  | Some(x) -> f(x)
+
+  fun maybe<T2>(nothing: T2, mjust: T -> T2): T2
+  | None() -> nothing
+  | Some(x) -> mjust(x)
+
+  fun default<T2>[T: T2](x: T2): T2
+  | None() -> x
+  | Some(y) -> y
+
+  fun defaultOption<T2>[T: T2](x: ?T2): ?T2
+  | None _ -> x
+  | y @ Some _ -> y
+
+  fun test(f: T -> Bool): Bool
+  | None _ -> false
+  | Some(x) -> f(x)
+
+  fun fromSome(msg: String = "fromSome called on None"): T
+  | None() -> invariant_violation(msg)
+  | Some(x) -> x
+
+  fun isSome(): Bool
+  | None() -> false
+  | Some _ -> true
+
+  fun isNone(): Bool
+  | None() -> true
+  | Some _ -> false
+
+  fun hash[T: Hashable](): Int
+  | None() -> 1027410261
+  | Some(x) -> x.hash() + 1
+
+  fun each(f: T -> void): void
+  | None() -> void
+  | Some(value) -> f(value)
+
+  fun ==<U: Equality>[T: U](other: ?U): Bool
+  | None() -> other.isNone()
+  | Some(x) ->
+    other match {
+    | Some(y) -> x == y
+    | None() -> false
+    }
+
+  fun !=<U: Equality>[T: U](other: ?U): Bool {
+    !(this == other)
+  }
+
+  fun <<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) == LT()
+  }
+
+  fun ><U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) == GT()
+  }
+
+  fun <=<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) != GT()
+  }
+
+  fun >=<U: Orderable>[T: U](other: ?U): Bool {
+    this.compare(other) != LT()
+  }
+
+  // None() is less than Some().
+  fun compare<U: Orderable>[T: U](other: ?U): Order
+  | None() ->
+    if (other.isNone()) {
+      EQ()
+    } else {
+      LT()
+    }
+  | Some(x) ->
+    other match {
+    | Some(y) -> compare(x, y)
+    | None() -> GT()
+    }
+
+  static fun none(): ?T {
+    None()
+  }
+
+  fun toString[T: Show](): String
+  | None() -> "None()"
+  | Some(x) -> `Some(${x.toString()})`
+
+  // async frozen fun gen<U>[T: ^U](): ^?U
+  // | None() -> None()
+  // | Some(x) -> Some(await x)
+
+  async frozen fun genMap<U>(f: T ~> ^U): ^?U
+  | None() -> None()
+  | Some(x) -> Some(await f(x))
+
+  async frozen fun genFilter(p: T ~> ^Bool): ^?T
+  | None() -> None()
+  | option @ Some(x) -> if (await p(x)) option else None()
+}

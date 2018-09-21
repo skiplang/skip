@@ -1,0 +1,116 @@
+class NumException(n: Int) extends Exception
+
+memoized fun stringify(n: Int): String {
+  "This is a string of questionable value: " + n
+}
+
+@test
+fun testSimple(): void {
+  x = Parallel.tabulate(3, i ~> i * 3);
+  assertTrue(x == Array[0, 3, 6])
+}
+
+@test
+fun testStrings(): void {
+  x = Parallel.tabulate(3, i ~> "longish string #" + i);
+  assertTrue(
+    x == Array["longish string #0", "longish string #1", "longish string #2"],
+  )
+}
+
+@test
+fun testValueClasses(): void {
+  x = Parallel.tabulate(3, i ~> (i, i * 12, "hello", i.toFloat()));
+  assertEqual(x.size(), 3);
+  assertTrue(x[0] == (0, 0, "hello", 0.0));
+  assertTrue(x[1] == (1, 12, "hello", 1.0));
+  assertTrue(x[2] == (2, 24, "hello", 2.0));
+}
+
+@test
+fun testException(): void {
+  // We should throw the first failing index, even if many throw.
+  v = try {
+    _ = Parallel.tabulate(1000, i ~> {
+      if (i >= 505) {
+        throw NumException(i)
+      };
+      i
+    });
+    -1
+  } catch {
+  | NumException(n) -> n
+  };
+
+  assertEqual(v, 505)
+}
+
+@test
+fun testEmpty(): void {
+  v = Parallel.tabulate(0, id);
+  assertTrue(v.isEmpty())
+}
+
+@test
+@gc
+fun testManyBools(): void {
+  count = 50001;
+  v = Parallel.tabulate(count, i ~> i % 99 == 0);
+  assertEqual(count, v.size());
+
+  i = -1;
+  assertTrue(
+    v.all(flag -> {
+      !i = i + 1;
+      flag == (i % 99 == 0)
+    }),
+  );
+}
+
+@test
+// Create some large objects.
+@gc
+fun testLarge(): void {
+  count = 10;
+  v = Parallel.tabulate(count, i ~> {
+    Array<Bool>::fillBy(100000, j ~> j % (i + 1) == 0)
+  });
+
+  assertEqual(count, v.size());
+
+  v.eachWithIndex((i, a) -> {
+    assertEqual(a.size(), 100000);
+    a.eachWithIndex((j, n) -> {
+      assertEqual(n, j % (i + 1) == 0)
+    })
+  })
+}
+
+@test
+// Try a nested tabulate.
+fun testNested(): void {
+  count = 1000;
+  v = Parallel.tabulate(count, i ~> {
+    Parallel.tabulate(count, j ~> j % (i + 1) == 0)
+  });
+
+  assertEqual(count, v.size());
+
+  v.eachWithIndex((i, a) -> {
+    assertEqual(a.size(), count);
+    a.eachWithIndex((j, n) -> {
+      assertEqual(n, j % (i + 1) == 0)
+    })
+  })
+}
+
+@test
+fun testMemoized(): void {
+  count = 100000;
+  v = Parallel.tabulate(count, stringify);
+
+  assertEqual(count, v.size());
+  v.eachWithIndex((i, a) -> {
+    assertEqual(a, stringify(i))
+  })
+}

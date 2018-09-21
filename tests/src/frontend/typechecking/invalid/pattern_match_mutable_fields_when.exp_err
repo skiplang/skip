@@ -1,0 +1,15 @@
+File "./typechecking/invalid/pattern_match_mutable_fields_when.sk", line 16, characters 18-29:
+Cannot access a mutable method on a readonly object
+14 |   | z @ Foo(y) if (
+15 |     y match {
+16 |     | Bar(_) if (y.checkBaz() == "Fail") -> true
+   |                  ^^^^^^^^^^^^
+17 |     | Bar _ -> false
+
+File "./typechecking/invalid/pattern_match_mutable_fields_when.sk", line 3, characters 3-9:
+This is where this method was declared as mutable
+1 | mutable class Foo(bar: mutable Bar)
+2 | mutable class Bar(mutable baz: String) {
+3 |   mutable fun checkBaz(): String {
+  |   ^^^^^^^
+4 |     val = this.baz;

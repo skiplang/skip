@@ -1,0 +1,4 @@
+File "./expand/invalid/recursive_extends.sk", line 1, characters 7-7:
+Cyclic class hierarchy
+1 | class X() extends X
+  |       ^

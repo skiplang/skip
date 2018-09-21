@@ -1,0 +1,5 @@
+File "./typechecking/invalid/use_arg_in_default.sk", line 1, characters 24-24:
+Unbound variable: i
+1 | fun f(i: Int, d: Int = i): Int {
+  |                        ^
+2 |   _ = i;

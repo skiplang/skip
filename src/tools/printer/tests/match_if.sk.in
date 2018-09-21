@@ -1,0 +1,36 @@
+fun main(): void {
+  x = Bar{x => Baz{y => Woah(true)}};
+  print_raw(
+    x match {
+    | Bar{x => t} if (t match {
+    | Baz{y => q} if (q match {
+    | Woah(h) if (h) -> true
+    | _ -> false
+    }) ->
+      true
+    | _ -> false
+    }) ->
+      "Pass\n"
+    | _ -> "Fail\n"
+    },
+  );
+  sk_memoized match {
+  | Some(pos) if (!is_untracked_or_deferred) ->
+    params.each(p ->
+      assert_frozen_type(
+        env,
+        acc,
+        pos,
+        "memoized",
+        p.par_name.i0,
+        "Invalid parameter. All parameters to a '",
+        p.par_type,
+        false,
+      )
+    );
+    assert_legal_memo_return_type(env, acc, pos, return_ty.i0, return_ty)
+  | _ ->
+    void
+  };
+
+}

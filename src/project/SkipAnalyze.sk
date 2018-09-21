@@ -1,0 +1,41 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias Config = SkipProjectConfig;
+
+module SkipAnalyze;
+
+// filename must be a .sk file, not a target.
+untracked fun checkFile(
+  filename: String,
+): Result<SkipTypedAst.Program, Vector<SkipError.Error>> {
+  SkipProject.getFilesToAnalyze(filename).flatMap(files ->
+    SkipMain.compileWithErrors(List::createFromItems(files))
+  )
+}
+
+// filename must be a .sk file, not a target.
+untracked fun analyzeFile(filename: String): Vector<SkipError.Error> {
+  checkFile(filename).maybeFailure().default(Vector[]).take(100)
+}
+
+// TODO: These are used by nuclide/skipCheck and nuclide/skipCheckJson.
+// Should move them there.
+fun fail<Ta>(message: String): Ta {
+  print_error(message);
+  SkipError.fail()
+}
+
+fun pathOfArguments(): String {
+  List::createFromItems(arguments()).size() match {
+  | 0 -> getcwd()
+  | 1 -> Path.normalize(arguments()[0])
+  | _ -> fail("Usage: skip_check [ROOT | FILE]\n")
+  }
+}
+
+module end;

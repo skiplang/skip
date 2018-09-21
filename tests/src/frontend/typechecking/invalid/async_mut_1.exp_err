@@ -1,0 +1,23 @@
+File "./typechecking/invalid/async_mut_1.sk", line 1, characters 14-29:
+Invalid parameter. All parameters to a 'async' function must be frozen
+1 | async fun no(mutable Ref<Int>): ^void {
+  |              ^^^^^^^^^^^^^^^^
+2 |   void
+
+File "./typechecking/invalid/async_mut_1.sk", line 1, characters 1-5:
+The function was declared 'async' here
+1 | async fun no(mutable Ref<Int>): ^void {
+  | ^^^^^
+2 |   void
+
+File "./typechecking/invalid/async_mut_1.sk", line 1, characters 14-29:
+The following type is not frozen: mutable Ref<Int>
+1 | async fun no(mutable Ref<Int>): ^void {
+  |              ^^^^^^^^^^^^^^^^
+2 |   void
+
+File "./typechecking/invalid/async_mut_1.sk", line 1, characters 14-29:
+Try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+1 | async fun no(mutable Ref<Int>): ^void {
+  |              ^^^^^^^^^^^^^^^^
+2 |   void

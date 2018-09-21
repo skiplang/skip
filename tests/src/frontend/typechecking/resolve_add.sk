@@ -1,0 +1,43 @@
+module TestAdd;
+base class MyList<+T> {
+  children =
+  | Nil()
+  fun add<T2>[T: T2](T2): MyList<T2> {
+    Nil()
+  }
+
+  fun add2<U, T2: U>[T: U](T2): MyList<U> {
+    Nil()
+  }
+}
+base class A
+class B() extends A
+class C() extends A
+
+fun makeMyListB(): MyList<B> {
+  Nil()
+}
+fun makeMyListA(): MyList<A> {
+  Nil()
+}
+
+fun testMyListA(): MyList<A> {
+  l = makeMyListB();
+  l.add(C())
+}
+
+fun testAddB(): MyList<A> {
+  l = makeMyListA();
+  l.add(B())
+}
+
+fun testAdd2(): MyList<A> {
+  l = makeMyListB();
+  foo = l.add2(C());
+  foo
+}
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

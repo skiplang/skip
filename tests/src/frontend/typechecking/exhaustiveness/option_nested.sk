@@ -1,0 +1,29 @@
+base class P {
+  children =
+  | X()
+  | Y()
+}
+
+base class MaybeNully<T> {
+  children =
+  | NotNully(T)
+  | Nully()
+}
+
+fun tester(x: MaybeNully<P>, y: MaybeNully<P>): Int {
+  (x, y) match {
+  | (NotNully _, Nully())
+  | (Nully(), NotNully _)
+  | (NotNully(X()), NotNully(X()))
+  | (NotNully(Y()), NotNully(Y()))
+  | (NotNully(X()), NotNully(Y()))
+  | (NotNully(Y()), NotNully(X()))
+  | (Nully(), Nully()) ->
+    void
+  };
+  0
+}
+
+fun main(): void {
+  print_string("Pass")
+}

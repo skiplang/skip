@@ -1,0 +1,6 @@
+File "./syntax/invalid/for_c_3.sk", line 2, characters 12-12:
+Unexpected 'var'. Variables are declared without a leading keyword: 'for (i in ...)'
+1 | fun main(): void {
+2 |   for (var i = 0; i < 10; ++i) {
+  |            ^
+3 |     void

@@ -1,0 +1,6 @@
+trait X(x: String)
+trait Y(y: String)
+
+base class B{b: String}
+
+class C extends B uses X, Y

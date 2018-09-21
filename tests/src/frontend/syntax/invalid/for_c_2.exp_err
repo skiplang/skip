@@ -1,0 +1,9 @@
+File "./syntax/invalid/for_c_2.sk", line 2, characters 10-10:
+Unexpected '='. 'for (;;)' loops are not supported, you can use instead:
+  - for (i in collection)
+  - for (i in Range(0, 10))
+  - i = 1; while (i < 10) { ...; !i = i * 2 }
+1 | fun main(): void {
+2 |   for (i = 0; i < 10; ++i) {
+  |          ^
+3 |     void

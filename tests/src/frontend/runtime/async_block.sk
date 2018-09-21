@@ -1,0 +1,15 @@
+async fun gen_string(): ^String {
+  "Pass\n"
+}
+
+async fun asyncMain(): ^void {
+  print_raw(
+    await async {
+      await gen_string()
+    },
+  )
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

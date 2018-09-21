@@ -1,0 +1,6 @@
+class Boxy<T>(x: T)
+class Foo<-Tbad>{x: Boxy<Tbad>}
+
+fun main(): void {
+  void
+}

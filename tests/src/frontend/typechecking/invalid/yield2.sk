@@ -1,0 +1,7 @@
+fun bad(): mutable Iterator<Int> {
+  yield "oops"
+}
+
+fun main(): void {
+  void
+}

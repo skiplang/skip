@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/many_parents_overrides_named_dead_pat2.sk", line 21, characters 5-8:
+The following pattern is unused:
+ | P1 _
+19 |   | Join{sp2 => "c"} -> "s2"
+20 |   | Join _ -> "\n"
+21 |   | P1 _ -> "\n"
+   |     ^^^^
+22 |   }

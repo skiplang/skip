@@ -1,0 +1,9 @@
+base class A uses Equality
+// If Equality gets expanded on this class, a type error will result.
+base class Val<T>(value: T) extends A
+class StringVal extends Val<String>
+class IntVal extends Val<Int>
+
+fun main(): void {
+  print_string("PASS")
+}

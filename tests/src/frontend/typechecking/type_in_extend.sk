@@ -1,0 +1,14 @@
+base class A {
+  type T: Test.MixedScalar;
+}
+base class Foo<T: this::T2::T> {
+  type T: this::T2::T;
+  type T2: A;
+}
+base class Bar extends Foo<this::T> {
+  type T = Test.MixedInt;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

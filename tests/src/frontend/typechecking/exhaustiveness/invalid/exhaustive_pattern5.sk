@@ -1,0 +1,13 @@
+base class Foo
+
+class Bar() extends Foo
+class Baz() extends Foo
+
+fun main(): void {
+  foo: Foo = Baz();
+  print_raw(
+    foo match {
+    | Bar() -> "Fail"
+    },
+  )
+}

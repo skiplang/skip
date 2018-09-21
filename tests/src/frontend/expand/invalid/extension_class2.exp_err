@@ -1,0 +1,5 @@
+File "./expand/invalid/extension_class2.sk", line 2, characters 1-6:
+Invalid modifier in a class extension
+1 | class A()
+2 | native extension class A
+  | ^^^^^^

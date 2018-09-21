@@ -1,0 +1,393 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module IntrinsicsInliner;
+
+mutable class .IntrinsicsInliner{
+  inlinedTupleResults: mutable UnorderedMap<
+    InstrID,
+    Array<InstrID>,
+  > = mutable UnorderedMap[],
+} extends Rewrite {
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    d = mutable static{optinfo => OptimizerInfo::make(f), env, pos => f.pos};
+    d.go("intrinsics", true)
+  }
+
+  // Emit one possibly transformed/expanded Instr. Returns true if
+  // it succeeded in making changes, false if not (in which case the
+  // caller should emit it).
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    instr match {
+    | c @ CallFunctionBase _ -> this.maybeInlineIntrinsic(c)
+    | TupleExtract{id, typ, pos, obj, index} ->
+      this.inlinedTupleResults.maybeGet(obj) match {
+      | Some(bv) ->
+        _ = this.emitInstr(Cast{id, typ, pos, value => bv[index]});
+        true
+      | None() -> false
+      }
+    | _ -> false
+    }
+  }
+
+  private mutable fun emitShift(
+    binop: Concrete<BinOp>,
+    call: CallFunctionBase,
+  ): Bool {
+    // Shift counts are automatically taken mod 64.
+    shift = this.emitIntAnd{
+      lhs => call.args[1],
+      rhs => this.constantInt(63).id,
+      pos => call.pos,
+    };
+    this.makeBinOp(binop, call, call.args[0], shift.id)
+  }
+
+  // Try to inline either a Call or an Invoke. If it's a Call, invokeSuccessors
+  // will be an empty array, else it will be the Invoke's two successors.
+  private mutable fun maybeInlineIntrinsic(call: CallFunctionBase): Bool {
+    a = call.args;
+    pos = call.pos;
+
+    calledFunction = this.env.getFunction(call.name, pos);
+    calledFunction.gfunction.id match {
+    | "Bool::!" -> this.emitNot(call, a[0])
+    | "Bool::==" -> this.makeBinOp(BoolCmpEq, call, a[0], a[1])
+    | "Bool::!=" -> this.makeBinOp(BoolCmpNe, call, a[0], a[1])
+    | "Bool::<" -> this.makeBinOp(BoolCmpLt, call, a[0], a[1])
+    | "Bool::<=" -> this.makeBinOp(BoolCmpLe, call, a[0], a[1])
+    | "Bool::>" -> this.makeBinOp(BoolCmpLt, call, a[1], a[0])
+    | "Bool::>=" -> this.makeBinOp(BoolCmpLe, call, a[1], a[0])
+
+    | "Char::!=" ->
+      this.makeBinOp(
+        IntCmpNe,
+        call,
+        this.zeroExtend(pos, a[0]),
+        this.zeroExtend(pos, a[1]),
+      )
+    | "Char::==" ->
+      this.makeBinOp(
+        IntCmpEq,
+        call,
+        this.zeroExtend(pos, a[0]),
+        this.zeroExtend(pos, a[1]),
+      )
+    | "Char::<" ->
+      this.makeBinOp(
+        IntCmpLt,
+        call,
+        this.zeroExtend(pos, a[0]),
+        this.zeroExtend(pos, a[1]),
+      )
+    | "Char::<=" ->
+      this.makeBinOp(
+        IntCmpLe,
+        call,
+        this.zeroExtend(pos, a[0]),
+        this.zeroExtend(pos, a[1]),
+      )
+    | "Char::>" ->
+      this.makeBinOp(
+        IntCmpLt,
+        call,
+        this.zeroExtend(pos, a[1]),
+        this.zeroExtend(pos, a[0]),
+      )
+    | "Char::>=" ->
+      this.makeBinOp(
+        IntCmpLe,
+        call,
+        this.zeroExtend(pos, a[1]),
+        this.zeroExtend(pos, a[0]),
+      )
+    | "Char::code" -> this.makeUnaryOp(ZeroExtend, call, a[0])
+
+    | "Float::==" -> this.makeBinOp(FloatCmpEq, call, a[0], a[1])
+    | "Float::!=" -> this.makeBinOp(FloatCmpNe, call, a[0], a[1])
+    | "Float::<" -> this.makeBinOp(FloatCmpLt, call, a[0], a[1])
+    | "Float::<=" -> this.makeBinOp(FloatCmpLe, call, a[0], a[1])
+    | "Float::>" -> this.makeBinOp(FloatCmpLt, call, a[1], a[0])
+    | "Float::>=" -> this.makeBinOp(FloatCmpLe, call, a[1], a[0])
+    | "Float::+" -> this.makeBinOp(FloatAdd, call, a[0], a[1])
+    | "Float::-" -> this.makeBinOp(FloatSub, call, a[0], a[1])
+    | "Float::*" -> this.makeBinOp(FloatMul, call, a[0], a[1])
+    | "Float::/" -> this.makeBinOp(FloatDiv, call, a[0], a[1])
+    | "Float::toBits" -> this.makeUnaryOp(FloatBits, call, a[0])
+    | "Float::toInt" -> this.makeUnaryOp(FloatToInt, call, a[0])
+    | "Float::toString" -> this.makeUnaryOp(FloatToString, call, a[0])
+
+    | "Int::eqImpl" -> this.makeBinOp(IntCmpEq, call, a[0], a[1])
+    | "Int::neImpl" -> this.makeBinOp(IntCmpNe, call, a[0], a[1])
+    | "Int::ltImpl" -> this.makeBinOp(IntCmpLt, call, a[0], a[1])
+    | "Int::leImpl" -> this.makeBinOp(IntCmpLe, call, a[0], a[1])
+    | "Int::gtImpl" -> this.makeBinOp(IntCmpLt, call, a[1], a[0])
+    | "Int::geImpl" -> this.makeBinOp(IntCmpLe, call, a[1], a[0])
+    | "Int::uleImpl" -> this.makeBinOp(IntCmpUle, call, a[0], a[1])
+    | "Int::ultImpl" -> this.makeBinOp(IntCmpUlt, call, a[0], a[1])
+    | "Int::ugeImpl" -> this.makeBinOp(IntCmpUle, call, a[1], a[0])
+    | "Int::ugtImpl" -> this.makeBinOp(IntCmpUlt, call, a[1], a[0])
+    | "Int::plusImpl" -> this.makeBinOp(IntAdd, call, a[0], a[1])
+    | "Int::minusImpl" -> this.makeBinOp(IntSub, call, a[0], a[1])
+    | "Int::timesImpl" -> this.makeBinOp(IntMul, call, a[0], a[1])
+    | "Int::unsafe_chrImpl" -> this.makeUnaryOp(Truncate, call, a[0])
+    | "Int::unsafe_divImpl" -> this.makeBinOp(IntDiv, call, a[0], a[1])
+    | "Int::unsafe_remImpl" -> this.makeBinOp(IntRem, call, a[0], a[1])
+    | "Int::andImpl" -> this.makeBinOp(IntAnd, call, a[0], a[1])
+    | "Int::orImpl" -> this.makeBinOp(IntOr, call, a[0], a[1])
+    | "Int::xorImpl" -> this.makeBinOp(IntXor, call, a[0], a[1])
+    // TODO: Shifts need to bitwise-and the shift count with 63 to be
+    // well-defined in LLVM. That will optimize away to nothing on x86.
+    | "Int::shlImpl" -> this.emitShift(IntSll, call)
+    | "Int::shrImpl" -> this.emitShift(IntSra, call)
+    | "Int::ushrImpl" -> this.emitShift(IntSrl, call)
+    | "Int::clzImpl" -> this.makeUnaryOp(IntClz, call, a[0])
+    | "Int::ctzImpl" -> this.makeUnaryOp(IntCtz, call, a[0])
+    | "Int::popcountImpl" -> this.makeUnaryOp(IntPopcount, call, a[0])
+    | "Int::toFloatImpl" -> this.makeUnaryOp(IntToFloat, call, a[0])
+    | "Int::toStringImpl" ->
+      !targetIsWasm() && this.makeUnaryOp(IntToString, call, a[0])
+    | "Int8::toInt" | "Int16::toInt" | "Int32::toInt" ->
+      this.makeUnaryOp(SignExtend, call, a[0])
+    | "Int8::.ConcreteMetaImpl::truncate" | "Int16::.ConcreteMetaImpl::truncate"
+    | "Int32::.ConcreteMetaImpl::truncate" ->
+      this.makeUnaryOp(Truncate, call, a[1])
+    | "localGC" ->
+      _ = this.emitInstr(
+        LocalGC{
+          id => call.id,
+          typ => call.typ,
+          pos => call.pos,
+          prettyName => call.prettyName,
+        },
+      );
+
+      this.jumpIfInvoke(call)
+
+    | "Debug.getMemoryFrameUsage" ->
+      _ = this.emitInstr(
+        ObstackUsage{
+          id => call.id,
+          typ => call.typ,
+          pos => call.pos,
+          prettyName => call.prettyName,
+        },
+      );
+
+      this.jumpIfInvoke(call)
+
+    | "Runtime.NonGCPointer::.ConcreteMetaImpl::zero"
+    | "Unsafe.RawStorage::.ConcreteMetaImpl::uninitialized" ->
+      returnType = calledFunction.funType.returnType;
+      isScalar = returnType.size() == 1;
+
+      if (!isScalar) {
+        // Produce a tuple of zeroed values.
+        this.inlinedTupleResults.set(
+          call.id,
+          returnType.map(t -> this.constantZero(t).id),
+        )
+      } else {
+        cz = this.constantZero(call.typ);
+        this.optinfo.idToInstr.set(call.id, cz);
+      };
+
+      this.jumpIfInvoke(call)
+    | "Unsafe.RawStorage::.ConcreteMetaImpl::make"
+    | "Unsafe.RawStorage::.ConcreteMetaImpl::unsafeGet" ->
+      returnType = calledFunction.funType.returnType;
+      isScalar = returnType.size() == 1;
+
+      // Simply return the arguments.
+      if (!isScalar) {
+        argsExcludingStatic = call.args.slice(
+          call.args.size() - returnType.size(),
+          call.args.size(),
+        );
+        this.inlinedTupleResults.set(call.id, argsExcludingStatic)
+      } else {
+        this.optinfo.idToInstr.set(
+          call.id,
+          this.optinfo.getInstr(call.args[call.args.size() - 1]),
+        )
+      };
+
+      this.jumpIfInvoke(call)
+    | "String::concat" ->
+      _ = this.emitInstr(
+        StringConcat{id => call.id, typ => call.typ, pos, args => call.args},
+      );
+      this.jumpIfInvoke(call)
+    | "String::compare_raw" -> this.makeBinOp(StringCmp, call, a[0], a[1])
+    | "String::==" -> this.makeBinOp(StringCmpEq, call, a[0], a[1])
+    | "String::!=" ->
+      // Compile 'x != "foo"' as !(x == "foo").
+      c = this.emitStringCmpEq{rhs => a[1], pos, lhs => a[0]};
+      this.emitNot(call, c.id)
+    | "String::hash" -> this.makeUnaryOp(StringHash, call, a[0])
+    | "String::isEmpty" ->
+      // Because of our short string optimization, comparing against
+      // empty string is faster than getting the length and comparing
+      // to zero.
+      this.makeBinOp(StringCmpEq, call, a[0], this.constantString("").id)
+    | "Array::chill" | "Array::clone" ->
+      this.makeUnaryOp(ArrayClone, call, a[0])
+    | "Array::size" | "Array::sizeImpl" ->
+      this.makeUnaryOp(ArraySize, call, a[0])
+    | "Unsafe.array_get" | "Array::unsafe_get" ->
+      returnType = calledFunction.funType.returnType;
+      isScalar = returnType.size() == 1;
+
+      results = returnType.mapWithIndex((i, typ) ->
+        this.emitArrayUnsafeGet{
+          index => call.args[1],
+          typ,
+          pos,
+          obj => call.args[0],
+          tupleIndex => if (isScalar) -1 else i,
+          prettyName => call.prettyName,
+        }
+      );
+
+      if (!isScalar) {
+        this.inlinedTupleResults.set(call.id, results.map(t -> t.id))
+      } else {
+        this.optinfo.idToInstr.set(call.id, results[0]);
+      };
+
+      this.jumpIfInvoke(call)
+    | "Unsafe.array_make" | "Array::.ConcreteMetaImpl::unsafe_make" ->
+      _ = this.emitInstr(
+        ArrayAlloc{
+          id => call.id,
+          typ => call.typ,
+          pos,
+          size => call.args[call.args.size() - 1],
+        },
+      );
+      this.jumpIfInvoke(call)
+    | "Unsafe.array_set" | "Array::unsafe_set" ->
+      vec = this.getInstr(call.args[0]);
+      index = call.args[1];
+      sc = vec.typ.exampleSClass(this.env);
+      slotInfo = sc.getArraySlotInfo(pos);
+      isScalar = slotInfo.types.size() == 1;
+
+      pos.invariant(
+        call.args.size() == 2 + slotInfo.types.size(),
+        "Vector slot size mismatch",
+      );
+
+      for (i in Range(0, slotInfo.types.size())) {
+        _ = this.emitArrayUnsafeSet{
+          index,
+          pos,
+          value => call.args[i + 2],
+          obj => vec.id,
+          tupleIndex => if (isScalar) -1 else i,
+          prettyName => call.prettyName,
+        }
+      };
+
+      this.jumpIfInvoke(call)
+    | "intern" ->
+      returnType = calledFunction.funType.returnType;
+      isScalar = returnType.size() == 1;
+
+      // We will return each scalar argument interned.
+      interned = call.args.mapWithIndex((i, arg) -> {
+        this.emitIntern{value => arg, typ => returnType[i], pos}.id
+      });
+
+      if (!isScalar) {
+        this.inlinedTupleResults.set(call.id, interned)
+      } else {
+        this.optinfo.idToInstr.set(call.id, this.optinfo.getInstr(interned[0]))
+      };
+
+      this.jumpIfInvoke(call)
+    | _ -> false
+    }
+  }
+
+  private mutable fun makeUnaryOp(
+    unop: Concrete<SimpleUnaryStmt>,
+    callBeingReplaced: CallFunctionBase,
+    value: InstrID,
+  ): Bool {
+    // NOTE: We steal the ID of the original call instruction so its users
+    // don't need to be modified.
+    _ = this.emitInstr(
+      unop{
+        id => callBeingReplaced.id,
+        typ => callBeingReplaced.typ,
+        pos => callBeingReplaced.pos,
+        prettyName => callBeingReplaced.prettyName,
+        value,
+      },
+    );
+
+    this.jumpIfInvoke(callBeingReplaced)
+  }
+
+  private mutable fun makeBinOp(
+    binop: Concrete<BinOp>,
+    callBeingReplaced: CallFunctionBase,
+    lhs: InstrID,
+    rhs: InstrID,
+  ): Bool {
+    // NOTE: We steal the ID of the original call instruction so its users
+    // don't need to be modified.
+    _ = this.emitInstr(
+      binop{
+        id => callBeingReplaced.id,
+        typ => callBeingReplaced.typ,
+        pos => callBeingReplaced.pos,
+        prettyName => callBeingReplaced.prettyName,
+        lhs,
+        rhs,
+      },
+    );
+
+    this.jumpIfInvoke(callBeingReplaced)
+  }
+
+  private mutable fun jumpIfInvoke(call: CallFunctionBase): Bool {
+    invokeSuccessors = call.getSuccessors();
+    if (!invokeSuccessors.isEmpty()) {
+      _ = this.emitJump{target => invokeSuccessors[0], pos => call.pos};
+      this.startNewBlock()
+    };
+
+    true
+  }
+
+  // !x -> (x == false), replacing 'call'.
+  private mutable fun emitNot(call: CallFunctionBase, arg: InstrID): Bool {
+    this.makeBinOp(BoolCmpEq, call, arg, this.constantBool(false).id)
+  }
+
+  private mutable fun zeroExtend(pos: Pos, value: InstrID): InstrID {
+    this.emitZeroExtend{typ => tInt, pos, value}.id
+  }
+
+  private mutable fun replaceScalarCall(
+    call: CallFunctionBase,
+    f: Function,
+    value: Instr,
+  ): Bool {
+    returnType = f.funType.returnType;
+    isScalar = returnType.size() == 1;
+    if (!isScalar) {
+      call.pos.die(`Cannot update with non-scalar return ${returnType}`);
+    } else {
+      this.optinfo.idToInstr.set(call.id, value);
+    };
+    this.jumpIfInvoke(call)
+  }
+}

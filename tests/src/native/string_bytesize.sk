@@ -1,0 +1,22 @@
+// Avoid constant folding
+@no_inline
+fun stringLen(s: String): Int {
+  s.length()
+}
+
+fun main(): void {
+  s1 = "short";
+  s2 = "too long for SSO";
+  print_raw(
+    "short " +
+      stringLen(s1) +
+      " folded " +
+      s1.length() +
+      "\n" +
+      "long " +
+      stringLen(s2) +
+      " folded " +
+      s2.length() +
+      "\n",
+  )
+}

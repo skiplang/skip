@@ -1,0 +1,8 @@
+fun foo(z: Int, x: Int = 0, y: Int = -1, _a: Float = -1.0, _b: Int = 112): Int {
+  z + x + y
+}
+
+fun main(): void {
+  _ = foo(1, 2);
+  print_string("Pass")
+}

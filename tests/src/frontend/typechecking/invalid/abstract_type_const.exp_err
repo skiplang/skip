@@ -1,0 +1,14 @@
+File "./typechecking/invalid/abstract_type_const.sk", line 6, characters 11-16:
+Only `this` can use abstract type constants in constraints
+4 |
+5 | base class Bar {
+6 |   type T: Foo::T;
+  |           ^^^^^^
+7 | }
+
+File "./typechecking/invalid/abstract_type_const.sk", line 2, characters 8-8:
+This type is, or contains, an uninistantiated type constant
+1 | base class Foo {
+2 |   type T;
+  |        ^
+3 | }

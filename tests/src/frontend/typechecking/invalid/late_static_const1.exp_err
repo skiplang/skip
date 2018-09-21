@@ -1,0 +1,14 @@
+File "./typechecking/invalid/late_static_const1.sk", line 6, characters 13-18:
+Invalid abstract call
+4 |
+5 | fun main(): void {
+6 |   print_raw(Foo::x)
+  |             ^^^^^^
+7 | }
+
+File "./typechecking/invalid/late_static_const1.sk", line 2, characters 9-9:
+'x' is abstract. It can be used only from 'static' or a Concrete<_> object
+1 | base class Foo {
+2 |   const x: String;
+  |         ^
+3 | }

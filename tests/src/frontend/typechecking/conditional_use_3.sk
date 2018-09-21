@@ -1,0 +1,19 @@
+base class P<+T>(value: T) uses Show[T: Show] {
+  fun toString[T: Show](): String {
+    "" + this.value
+  }
+}
+
+class C<T> extends P<T>
+class D extends P<String>
+
+class MyBox<T>(value: T) uses Show[T: Show] {
+  fun toString[T: Show](): String {
+    "" + this.value
+  }
+}
+
+fun main(): void {
+  print_string("" + C(MyBox("Pass")));
+  print_string("" + D("Pass"))
+}

@@ -1,0 +1,7 @@
+File "./syntax/invalid/macro_typeid_expr_dot.sk", line 3, characters 5-14:
+Expected expression
+1 | base class B {
+2 |   macro fun m(): void {
+3 |     #ThisClass.f()
+  |     ^^^^^^^^^^
+4 |   }

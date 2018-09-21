@@ -1,0 +1,27 @@
+fun no1(): Int {
+  break 42
+}
+
+fun no2(): void {
+  while (break false) void
+}
+
+fun no3(): void {
+  do void while (break false)
+}
+
+fun no4(): void {
+  for (_ in Vector[1, 2]) void else break void
+}
+
+fun no5(): void {
+  while (false) (() -> break void)()
+}
+
+fun no6(): void {
+  while (false) {
+    async {
+      break void
+    }
+  }
+}

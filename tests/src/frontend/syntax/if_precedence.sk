@@ -1,0 +1,12 @@
+fun f(): String {
+  "Pass\n"
+}
+
+fun g(): String {
+  "Fail"
+}
+
+fun main(): void {
+  x = true;
+  print_raw(if (x) f() else g())
+}

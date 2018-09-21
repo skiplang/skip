@@ -1,0 +1,9 @@
+class Foo<T>(x: T) {
+  fun bar[T: Int](): T {
+    this.x
+  }
+}
+
+fun main(): void {
+  print_raw(Foo("Fail").bar().toString())
+}

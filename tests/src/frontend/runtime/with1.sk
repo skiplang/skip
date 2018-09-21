@@ -1,0 +1,12 @@
+class Foo(x: String, y: String, z: String)
+
+fun trace(s: String): String {
+  print_string(s);
+  s
+}
+
+fun main(): void {
+  foo = Foo("", "", "Pass\n");
+  bar = foo with {y => trace("y"), x => trace("x")};
+  print_raw(bar.z)
+}

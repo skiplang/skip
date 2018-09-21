@@ -1,0 +1,38 @@
+trait Foo<+T>
+
+trait XIntable {
+  fun xintable(): Int;
+}
+
+class XCIntable() uses XIntable {
+  fun xintable(): Int {
+    112
+  }
+}
+
+module M;
+mutable base class .XSeq<+T>(value: T)
+module end;
+mutable class XCSeq<V> extends XSeq<V>
+
+extension base class XSeq uses Foo<T>
+extension base class XSeq uses XIntable[T: XIntable] {
+  fun xintable[T: XIntable](): Int {
+    this.value.xintable() + 1
+  }
+}
+extension base class XSeq {
+  fun addem<T: Int>(x: T, y: T): Int {
+    (x : T) + (y : T)
+  }
+}
+
+extension base class XSeq {
+  fun vecit(): Vector<T> {
+    Vector<T>[this.value]
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,9 @@
+fun f(c: Bool): String {
+  value = "FAIL";
+  if (c) !value = "Pa" else !value = "ss";
+  value;
+}
+
+fun main(): void {
+  print_string(f(true) + f(false));
+}

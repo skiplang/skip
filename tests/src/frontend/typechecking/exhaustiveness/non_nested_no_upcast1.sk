@@ -1,0 +1,13 @@
+base class A {
+  children =
+  | X()
+  | Y()
+}
+
+fun main(): void {
+  print_raw(
+    X() match {
+    | X() -> "Pass\n"
+    },
+  )
+}

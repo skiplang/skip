@@ -1,0 +1,23 @@
+File "./syntax/invalid/when_pattern4.sk", line 4, characters 17-17:
+Invalid when condition
+2 |   print_raw(
+3 |     2 match {
+4 |     | i @ 2 if (i) -> "Pass\n"
+  |                 ^
+5 |     | _ -> "Fail\n"
+
+File "./syntax/invalid/when_pattern4.sk", line 4, characters 11-11:
+The type: Int
+2 |   print_raw(
+3 |     2 match {
+4 |     | i @ 2 if (i) -> "Pass\n"
+  |           ^
+5 |     | _ -> "Fail\n"
+
+File "./syntax/invalid/when_pattern4.sk", line 4, characters 17-17:
+Is not a subtype of: Bool
+2 |   print_raw(
+3 |     2 match {
+4 |     | i @ 2 if (i) -> "Pass\n"
+  |                 ^
+5 |     | _ -> "Fail\n"

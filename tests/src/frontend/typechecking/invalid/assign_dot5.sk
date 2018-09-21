@@ -1,0 +1,6 @@
+class Foo(x: Int)
+
+fun bar(): void {
+  f = Foo(2);
+  f.!x = 1
+}

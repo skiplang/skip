@@ -1,0 +1,22 @@
+const MyVal: Int = C1::c1a;
+const MyOtherVal: Int = C2::c1a;
+
+base class C1 final (parm: Int) {
+  overridable const c1a: Int = 42;
+}
+
+class C2 extends C1 {
+  const c1a: Int = -12;
+}
+
+fun shouldPass(x: Int): String {
+  x match {
+  | MyVal -> "Matched the wrong value..\n"
+  | MyOtherVal -> "Pass\n"
+  | _ -> "You shouldn't be seeing this\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldPass(MyOtherVal))
+}

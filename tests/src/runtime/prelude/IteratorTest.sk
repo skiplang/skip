@@ -1,0 +1,613 @@
+@test
+fun testCollect(): void {
+  values = Range(0, 10);
+  valuesIterator = () -> values.values();
+  assertEqual(Array::createFromItems(values), valuesIterator().collect(Array));
+  assertEqual(
+    Vector::createFromItems(values),
+    valuesIterator().collect(Vector),
+  );
+  assertEqual(Set::createFromItems(values), valuesIterator().collect(Set));
+  assertEqual(
+    UnorderedSet::createFromItems(values),
+    valuesIterator().collect(UnorderedSet),
+  );
+  items = values.map(x -> ("" + x, x));
+  itemsIterator = () -> items.values();
+  assertEqual(Map::createFromItems(items), itemsIterator().collect(Map));
+  assertEqual(
+    UnorderedMap::createFromItems(items),
+    itemsIterator().collect(UnorderedMap),
+  );
+}
+
+@test
+fun testRangeIterator(): void {
+  make = n ~> Range(0, n).values();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testRangeReverseIterator(): void {
+  make = n ~> Range(0, n).reversedValues();
+  (ReversedOrderTest(make)).test()
+}
+
+@test
+fun testListIterator(): void {
+  make = n ~> List::createFromItems(Range(0, n)).values();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testArrayValuesIterator(): void {
+  make = n ~> Array::fillBy(n, id).values();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testArrayKeysIterator(): void {
+  make = n ~> Array::fillBy(n, id).keys();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testArrayItemKeysIterator(): void {
+  make = n ~> Array::fillBy(n, id).items().map(item -> item.i0);
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testArrayItemValuesIterator(): void {
+  make = n ~> Array::fillBy(n, id).items().map(item -> item.i1);
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testArrayReversedValuesIterator(): void {
+  make = n ~> Array::fillBy(n, id).reversedValues();
+  (ReversedOrderTest(make)).test();
+}
+
+@test
+fun testVectorValuesIterator(): void {
+  make = n ~> Vector::fillBy(n, id).values();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testVectorKeysIterator(): void {
+  make = n ~> Vector::fillBy(n, id).keys();
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testVectorItemKeysIterator(): void {
+  make = n ~> Vector::fillBy(n, id).items().map(item -> item.i0);
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testVectorItemValuesIterator(): void {
+  make = n ~> Vector::fillBy(n, id).items().map(item -> item.i1);
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testVectorReversedValuesIterator(): void {
+  make = n ~> Vector::fillBy(n, id).reversedValues();
+  (ReversedOrderTest(make)).test();
+}
+
+@test
+fun testUnorderedMapValuesIterator(): void {
+  make = n ~> {
+    map = mutable UnorderedMap[];
+    for (i in Range(0, n)) map![i] = i;
+    map.values()
+  };
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testUnorderedMapKeysIterator(): void {
+  make = n ~> {
+    map = mutable UnorderedMap[];
+    for (i in Range(0, n)) map![i] = i;
+    map.keys()
+  };
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testUnorderedMapItemKeysIterator(): void {
+  make = n ~> {
+    map = mutable UnorderedMap[];
+    for (i in Range(0, n)) map![i] = i;
+    map.items().map(item -> item.i0)
+  };
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testUnorderedMapItemValuesIterator(): void {
+  make = n ~> {
+    map = mutable UnorderedMap[];
+    for (i in Range(0, n)) map![i] = i;
+    map.items().map(item -> item.i1)
+  };
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testSortedMapValuesIterator(): void {
+  make = n ~> {
+    map = SortedMap<Int, Int>[];
+    for (i in Range(0, n)) !map = map.set(i, i);
+    map.values()
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testSortedMapKeysIterator(): void {
+  make = n ~> {
+    map = SortedMap<Int, Int>[];
+    for (i in Range(0, n)) !map = map.set(i, i);
+    map.keys()
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testSortedMapItemKeysIterator(): void {
+  make = n ~> {
+    map = SortedMap<Int, Int>[];
+    for (i in Range(0, n)) !map = map.set(i, i);
+    map.items().map(item -> item.i0)
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testSortedMapItemValuesIterator(): void {
+  make = n ~> {
+    map = SortedMap<Int, Int>[];
+    for (i in Range(0, n)) !map = map.set(i, i);
+    map.items().map(item -> item.i1)
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testMapValuesIterator(): void {
+  make = n ~> {
+    map = mutable Map[];
+    for (i in Range(0, n)) map![i] = i;
+    map.values()
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testMapKeysIterator(): void {
+  make = n ~> {
+    map = mutable Map[];
+    for (i in Range(0, n)) map![i] = i;
+    map.keys()
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testMapItemKeysIterator(): void {
+  make = n ~> {
+    map = mutable Map[];
+    for (i in Range(0, n)) map![i] = i;
+    map.items().map(item -> item.i0)
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testMapItemValuesIterator(): void {
+  make = n ~> {
+    map = mutable Map[];
+    for (i in Range(0, n)) map![i] = i;
+    map.items().map(item -> item.i1)
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testUnorderedSetValuesIterator(): void {
+  make = n ~> {
+    UnorderedSet::createFromItems(Range(0, n)).values()
+  };
+  (UnorderedTest(make)).test();
+}
+
+@test
+fun testSetValuesIterator(): void {
+  make = n ~> {
+    Set::createFromItems(Range(0, n)).values()
+  };
+  (OrderedTest(make)).test();
+  (UnorderedTest(make)).test();
+}
+
+// tests an enumerable over consecutive ints [0..n) returned by up(n)
+class OrderedTest(up: Int ~> mutable Iterator<Int>) {
+  fun test(): void {
+    this.all();
+    this.any();
+    this.drop();
+    this.dropWhile();
+    this.enumerated();
+    this.filter();
+    this.find();
+    this.reduce();
+    this.each();
+    this.map();
+    this.flatMap();
+    this.take();
+    this.takeWhile();
+    this.zip();
+    this.zipWith();
+  }
+
+  fun all(): void {
+    assertTrue(this.up(10).all(i -> i >= 0));
+    assertFalse(this.up(10).all(i -> i > 0))
+  }
+
+  fun any(): void {
+    assertTrue(this.up(10).any(i -> i <= 0));
+    assertFalse(this.up(10).any(i -> i < 0))
+  }
+
+  fun enumerated(): void {
+    f = (acc, item) -> {
+      (index, _) = item;
+      (acc + 2) * (index + 1);
+    };
+    assertEqual(this.up(10).enumerated().reduce(f, 1), 23357000)
+  }
+
+  fun drop(): void {
+    assertEqual(sum(this.up(10).drop(5)), 35)
+  }
+
+  fun dropWhile(): void {
+    assertEqual(sum(this.up(10).dropWhile(i -> i < 5)), 35)
+  }
+
+  fun filter(): void {
+    even = i -> i % 2 == 0;
+    assertEqual(sum(this.up(10).filter(even)), 20)
+  }
+
+  fun find(): void {
+    assertEqual(this.up(10).find(i -> i == 5).fromSome(), 5)
+  }
+
+  fun reduce(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.up(10).reduce(f, 1), 23357000)
+  }
+
+  fun each(): void {
+    n = 1;
+    f = i -> !n = (n + 2) * (i + 1);
+    this.up(10).each(f);
+    assertEqual(n, 23357000)
+  }
+
+  fun map(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.up(10).map(i -> i + 1).reduce(f, 1), 177093422)
+  }
+
+  fun flatMap(): void {
+    assertEqual(sum(this.up(5).flatMap(i -> this.up(i + 1))), 20);
+  }
+
+  fun take(): void {
+    assertEqual(sum(this.up(10).take(5)), 10)
+  }
+
+  fun takeWhile(): void {
+    assertEqual(sum(this.up(10).takeWhile(i -> i < 5)), 10)
+  }
+
+  fun zip(): void {
+    accpair = (n, xy) -> {
+      (x, y) = xy;
+      n + x + y
+    };
+    assertEqual(this.up(10).zip(this.up(10)).reduce(accpair, 0), 90);
+    assertEqual(this.up(10).zip(this.up(100)).reduce(accpair, 0), 90);
+    assertEqual(this.up(100).zip(this.up(10)).reduce(accpair, 0), 90);
+  }
+
+  fun zipWith(): void {
+    f = (x, y) -> x + y;
+    assertEqual(sum(this.up(10).zipWith(this.up(10), f)), 90);
+  }
+}
+
+// tests a reverse iterator over consecutive ints [0..n) returned by down(n)
+class ReversedOrderTest(down: Int ~> mutable Iterator<Int>) {
+  fun test(): void {
+    this.all();
+    this.any();
+    this.drop();
+    this.dropWhile();
+    this.filter();
+    this.find();
+    this.reduce();
+    this.each();
+    this.map();
+    this.take();
+    this.takeWhile();
+    this.zip();
+    this.zipWith();
+  }
+
+  fun all(): void {
+    assertTrue(this.down(10).all(i -> i >= 0));
+    assertFalse(this.down(10).all(i -> i > 0))
+  }
+
+  fun any(): void {
+    assertTrue(this.down(10).any(i -> i <= 0));
+    assertFalse(this.down(10).any(i -> i < 0))
+  }
+
+  fun drop(): void {
+    assertEqual(sum(this.down(10).drop(5)), 10)
+  }
+
+  fun dropWhile(): void {
+    assertEqual(sum(this.down(10).dropWhile(i -> i >= 5)), 10)
+  }
+
+  fun filter(): void {
+    even = i -> i % 2 == 0;
+    assertEqual(sum(this.down(10).filter(even)), 20)
+  }
+
+  fun find(): void {
+    assertEqual(this.down(10).find(i -> i == 5).fromSome(), 5)
+  }
+
+  fun reduce(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.down(10).reduce(f, 1), 11704626)
+  }
+
+  fun each(): void {
+    n = 1;
+    f = i -> !n = (n + 2) * (i + 1);
+    this.down(10).each(f);
+    assertEqual(n, 11704626)
+  }
+
+  fun map(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    assertEqual(this.down(10).map(i -> i + 1).reduce(f, 1), 127826224)
+  }
+
+  fun take(): void {
+    assertEqual(sum(this.down(10).take(5)), 35)
+  }
+
+  fun takeWhile(): void {
+    assertEqual(sum(this.down(10).takeWhile(i -> i >= 5)), 35)
+  }
+
+  fun zip(): void {
+    accpair = (n, xy) -> {
+      (x, y) = xy;
+      n + x + y
+    };
+    assertEqual(this.down(10).zip(this.down(10)).reduce(accpair, 0), 90);
+    assertEqual(this.down(10).zip(this.down(100)).reduce(accpair, 0), 990);
+    assertEqual(this.down(100).zip(this.down(10)).reduce(accpair, 0), 990);
+  }
+
+  fun zipWith(): void {
+    f = (x, y) -> x + y;
+    assertEqual(sum(this.down(10).zipWith(this.down(10), f)), 90);
+  }
+}
+
+// Tests an iterator over an unordered collection of ints. The order in
+// which items are yielded is undefined. The tests check two invariants:
+// - each() must yield exactly each element exactly once
+// - All composition operators must produce the same result, and iterate
+//   items in the same order, as a manual implementation of the operator
+//   via each().
+//
+// To test this, composition operators compare their results against
+// the same operator applied to the results of writing the items to
+// a vector via each().
+class UnorderedTest(make: Int ~> mutable Iterator<Int>) {
+  fun test(): void {
+    this.all();
+    this.any();
+    this.drop();
+    this.dropWhile();
+    this.filter();
+    this.find();
+    this.reduce();
+    this.each();
+    this.map();
+    this.take();
+    this.takeWhile();
+    this.zip();
+    this.zipWith();
+  }
+
+  fun all(): void {
+    assertTrue(this.make(10).all(i -> i >= 0));
+    assertFalse(this.make(10).all(i -> i > 0));
+    // all 0 elements in this iterator are true
+    assertTrue(this.make(0).all(i -> i >= 0));
+    assertFalse(this.make(10).all(i -> (i % 2) == 0))
+  }
+
+  fun any(): void {
+    assertTrue(this.make(10).any(i -> i <= 0));
+    assertFalse(this.make(10).any(i -> i < 0));
+    // none of the 0 elements in this iterator are true
+    assertFalse(this.make(0).any(i -> i > 0));
+    assertTrue(this.make(10).any(i -> i % 2 == 0))
+  }
+
+  fun drop(): void {
+    iterator = () -> this.make(10).drop(5);
+    fixed = fix(iterator());
+    assertEqual(sum(iterator()), sum(fixed))
+  }
+
+  fun dropWhile(): void {
+    iterator1 = () -> this.make(10).dropWhile(i -> i >= 5);
+    fixed1 = fix(iterator1());
+    assertEqual(sum(iterator1()), sum(fixed1));
+    // make sure empty iterators are supported
+    iterator2 = () -> this.make(0).dropWhile(i -> i >= 0);
+    assertTrue(isEmpty(iterator2()));
+  }
+
+  fun filter(): void {
+    even = i -> i % 2 == 0;
+    f = (x, y) -> (x + 2) * (y + 1);
+    iterator = () -> this.make(10).filter(even);
+    fixed = fix(iterator());
+    assertEqual(iterator().reduce(f, 1), fixed.reduce(f, 1))
+  }
+
+  fun find(): void {
+    vector1 = mutable Vector[];
+    vector2 = mutable Vector[];
+    res1 = this.make(10).find(i -> {
+      vector1.push(i);
+      i == 5
+    });
+    res2 = fix(this.make(10)).find(i -> {
+      vector2.push(i);
+      i == 5
+    });
+    assertEqual(res1.fromSome(), 5);
+    assertEqual(res2.fromSome(), 5);
+    assertTrue(vector1 == vector2); // same items should be yielded
+  }
+
+  fun reduce(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    iterator = () -> this.make(10);
+    fixed = fix(iterator());
+    assertEqual(iterator().reduce(f, 1), fixed.reduce(f, 1))
+  }
+
+  fun each(): void {
+    set = mutable UnorderedSet[];
+    this.make(10).each(set.add);
+    assertEqual(set.size(), 10);
+    set.clear();
+    this.make(100).each(set.add);
+    assertEqual(set.size(), 100);
+  }
+
+  fun map(): void {
+    f = (x, y) -> (x + 2) * (y + 1);
+    iterator = () -> this.make(10);
+    fixed = fix(iterator());
+    assertEqual(
+      iterator().map(i -> i + 1).reduce(f, 1),
+      fixed.map(i -> i + 1).reduce(f, 1),
+    )
+  }
+
+  fun take(): void {
+    iterator = () -> this.make(10).take(5);
+    fixed = fix(iterator());
+    assertEqual(sum(iterator()), sum(fixed))
+  }
+
+  fun takeWhile(): void {
+    iterator1 = () -> this.make(10).takeWhile(i -> i >= 5);
+    fixed1 = fix(iterator1());
+    assertEqual(sum(iterator1()), sum(fixed1));
+    // make sure empty iterators are supported
+    iterator2 = () -> this.make(0).takeWhile(i -> i >= 0);
+    assertTrue(isEmpty(iterator2()))
+  }
+
+  fun zip(): void {
+    accpair = (n, xy) -> {
+      (x, y) = xy;
+      n + x + y
+    };
+    iterator10 = () -> this.make(10);
+    iterator100 = () -> this.make(100);
+    fixed10 = () -> fix(iterator10());
+    fixed100 = () -> fix(iterator100());
+    reduce = x -> x.reduce(accpair, 0);
+
+    assertEqual(
+      reduce(iterator10().zip(iterator10())),
+      reduce(fixed10().zip(fixed10())),
+    );
+    assertEqual(
+      reduce(iterator10().zip(iterator100())),
+      reduce(fixed10().zip(fixed100())),
+    );
+    assertEqual(
+      reduce(iterator100().zip(iterator10())),
+      reduce(fixed100().zip(fixed10())),
+    );
+  }
+
+  fun zipWith(): void {
+    f = (x, y) -> x + y;
+    iterator = () -> this.make(10);
+    fixed = () -> fix(iterator());
+    assertEqual(
+      sum(iterator().zipWith(iterator(), f)),
+      sum(fixed().zipWith(fixed(), f)),
+    );
+  }
+}
+
+// helpers
+fun sum(items: mutable Iterator<Int>): Int {
+  items.reduce((x, y) -> x + y, 0)
+}
+
+fun fix(items: mutable Iterator<Int>): mutable Iterator<Int> {
+  Vector::createFromIterator(items).values()
+}
+
+fun isEmpty(items: mutable Iterator<Int>): Bool {
+  items.next() == None()
+}

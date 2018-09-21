@@ -1,0 +1,25 @@
+base class A
+class B() extends A
+
+class Foo<-T>()
+
+class Container<+T>(x: T) {
+  fun add<T2>(y: T2): Container<T2> {
+    Container(y)
+  }
+}
+
+fun aFoo(): Foo<A> {
+  Foo()
+}
+fun bFoo(): Foo<B> {
+  Foo()
+}
+
+fun make(): Container<Foo<B>> {
+  (Container(aFoo()) : Container<Foo<B>>).add(bFoo())
+}
+
+fun main(): void {
+  print_string("Pass")
+}

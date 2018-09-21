@@ -1,0 +1,9 @@
+// expand upper case const
+
+fun main(): void {
+  print_raw(Test.x.toString() + "\n")
+}
+
+module Test;
+
+const x: Int = 42;

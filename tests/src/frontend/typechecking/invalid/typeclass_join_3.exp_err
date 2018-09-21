@@ -1,0 +1,23 @@
+File "./typechecking/invalid/typeclass_join_3.sk", line 12, characters 7-17:
+Incompatible vector values
+10 |
+11 | fun bad<T: Add, T2: Foo>(x: T, y: T2): Int {
+12 |   v = Array[x, y];
+   |       ^^^^^^^^^^^
+13 |   v[0] + v[1]
+
+File "./typechecking/invalid/typeclass_join_3.sk", line 11, characters 29-29:
+The type: T
+ 9 | }
+10 |
+11 | fun bad<T: Add, T2: Foo>(x: T, y: T2): Int {
+   |                             ^
+12 |   v = Array[x, y];
+
+File "./typechecking/invalid/typeclass_join_3.sk", line 11, characters 35-36:
+Does not share a common super type with: T2
+ 9 | }
+10 |
+11 | fun bad<T: Add, T2: Foo>(x: T, y: T2): Int {
+   |                                   ^^
+12 |   v = Array[x, y];

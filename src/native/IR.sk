@@ -1,0 +1,1581 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// TODO: Rename "input" to "operand"?
+
+// Mac Clang seems to align stack arrays mod 16 -- is that required to always
+// keep the stack aligned or is 8 OK or what? Does Linux do that too?
+// x86-64 ABI on linux and mac require 16 byte alignment.
+// Does LLVM provide an portable abstraction?
+const stackAlign: Int = if (targetIsWasm()) 8 else 16;
+const stackAlignStr: String = stackAlign.toString();
+const ptrByteSize: Int = if (targetIsWasm()) 4 else 8;
+const ptrBitSize: Int = ptrByteSize * 8;
+const vtableByteSize: Int = ptrByteSize;
+
+// Unique IDs for Instr and Block. These are only unique within the owning
+// Function, and specifically a lambda nested in another function is free
+// to use the same IDs as the containing function, because the lambda
+// is represented as a separate Function object.
+value class InstrID() uses TypeSafeID<Int> {
+  const none: InstrID = InstrID(-1);
+}
+
+value class BlockID() uses TypeSafeID<Int> {
+  const none: BlockID = BlockID(-1);
+}
+
+// Globally unique ID for each specialized function.
+value class SFunctionID() uses TypeSafeID<Int> {
+  const none: SFunctionID = SFunctionID(-1);
+}
+
+// Globally unique ID for each specialized class.
+value class SClassID() uses TypeSafeID<String> {
+  const none: SClassID = SClassID(".none.");
+}
+
+// Global constant.
+value class ConstID() uses TypeSafeID<String> {
+  const none: ConstID = ConstID(".none.");
+}
+
+// Maps a method name and its Targs to an implementation function.
+value class MethodKey(
+  name: String,
+  targs: MethodSuperpositionID,
+) uses Hashable, Equality, Show {
+  fun toString(): String {
+    s = this.name.toString();
+    if (this.targs.id.isEmpty()) {
+      s
+    } else {
+      s + "<" + this.targs.id + ">"
+    }
+  }
+}
+
+// Probably want these classes in separate files
+
+base class ClassKind extends GClassKind {
+  children =
+  | KBase()
+  | KClass()
+  | KValue()
+}
+
+base class HasFileRange{pos: FileRange} {
+  // Any error detected in the back end is fatal.
+  fun die(msg: String): _ {
+    this.pos.die(msg)
+  }
+}
+
+base class HasPos{pos: Pos} {
+  // Any error detected in the back end is fatal.
+  fun die(msg: String): _ {
+    this.pos.die(msg)
+  }
+}
+
+// Maps SFunctionID -> Function.
+mutable class FunctionIDToFunction extends
+  OptimizerInfo.InsertableIDMap<SFunctionID, Function>,
+{
+  mutable fun allocID(): SFunctionID {
+    SFunctionID(this.allocIndex())
+  }
+}
+
+mutable base class ClassLookupEnv {
+  readonly fun getSClass(sid: SClassID): SClass;
+}
+
+class GlobalEnv{
+  // Specialized classes.
+  sclasses: Map<SClassID, SClass>,
+
+  // Specialized functions, keyed by ID.
+  sfuns: FunctionIDToFunction = freeze(FunctionIDToFunction::mcreate()),
+
+  // Maps consts to the function that computes its value.
+  consts: UnorderedMap<ConstID, SFunctionID> = UnorderedMap[],
+
+  vtables: ?VTable.VTableInfo = None(),
+
+  // Once known, the function that runs all top-level initializers.
+  initializeAllConstsID: SFunctionID = SFunctionID::none,
+
+  // All non-parametric functions exported by the runtime.
+  runtimeFunctions: UnorderedMap<String, SFunctionID> = UnorderedMap[],
+} extends ClassLookupEnv {
+  static fun make(sclasses: Map<SClassID, SClass>): GlobalEnv {
+    GlobalEnv{sclasses}
+  }
+
+  fun getFunction(fid: SFunctionID, pos: Pos): Function {
+    this.sfuns.maybeGet(fid) match {
+    | Some(f) -> f
+    | None() -> pos.die("Could not find function " + fid)
+    }
+  }
+
+  fun getSClass(sid: SClassID): SClass {
+    this.sclasses[sid]
+  }
+}
+
+// A UTF8-encoded string that knows its Skip checksum.
+base class UTF8String{
+  // Although this says Int, they are guaranteed to be bytes [0, 255].
+  utf8: Array<Int>,
+  string: String,
+} uses Hashable, Orderable, Show {
+  static fun useShortStrings(): Bool {
+    !targetIsWasm()
+  }
+
+  static fun make(string: String): UTF8String {
+    // Some of our back ends already expose utf8 from the string, some don't.
+    backEndUsesUtf8 = ("\u1234".length() != 1);
+
+    utf8 = if (backEndUsesUtf8) {
+      Array::fillBy(string.length(), i -> string[i].code())
+    } else {
+      // UCS4 code points.
+      vector = mutable Vector<Int>[];
+      vector.ensureCapacity(string.length());
+      for (c in string) c.utf8Encode().each(vector.push);
+      vector.toArray()
+    };
+
+    if (utf8.size() < ptrByteSize && static::useShortStrings()) {
+      ShortUTF8String{utf8, string}
+    } else {
+      LongUTF8String::makeLong(utf8, string)
+    }
+  }
+
+  fun isShortString(): Bool
+  | ShortUTF8String _ -> true
+  | LongUTF8String _ -> false
+
+  fun compare(other: UTF8String): Order {
+    this.utf8.compare(other.utf8)
+  }
+
+  fun +(other: UTF8String): UTF8String {
+    utf8 = this.utf8.concat(other.utf8);
+    string = this.string + other.string;
+
+    if (utf8.size() < ptrByteSize && static::useShortStrings()) {
+      ShortUTF8String{utf8, string}
+    } else {
+      LongUTF8String::makeLong(utf8, string)
+    }
+  }
+
+  fun countCharacters(): Int {
+    this.utf8.foldl(
+      (acc, ch) -> {
+        // Continuation bytes look like 10xxxxxx.
+        acc + (if (ch.ushr(6) != 0x2) 1 else 0)
+      },
+      0,
+    )
+  }
+
+  fun toString(): String {
+    this.string
+  }
+
+  fun hash(): Int {
+    this.utf8.hash()
+  }
+}
+
+class ShortUTF8String extends UTF8String {
+  fun bits(): Int {
+    invariant(
+      UTF8String::useShortStrings(),
+      "Should not be creating ShortString.",
+    );
+
+    shift = -8;
+    this.utf8.foldl(
+      (acc, byte) -> {
+        !shift = shift + 8;
+        acc.or(byte.shl(shift))
+      },
+      (this.utf8.size() - 8).shl(59),
+    )
+  }
+}
+
+class LongUTF8String{runtimeHash: Int} extends UTF8String {
+  static fun makeLong(utf8: Array<Int>, string: String): LongUTF8String {
+    invariant(
+      utf8.size() >= 8 || !UTF8String::useShortStrings(),
+      "This is not a long string.",
+    );
+    LongUTF8String{utf8, string, runtimeHash => computeStringHash(utf8)}
+  }
+}
+
+// A raw field in an object's reserved storage.
+value class LayoutSlot(
+  name: String,
+  bitOffset: Int,
+  typ: ScalarType,
+) uses Show {
+  fun endBitOffset(): Int {
+    this.bitOffset + this.typ.bitSize
+  }
+
+  fun toString(): String {
+    "<LayoutSlot \"" +
+      this.name +
+      "\", " +
+      this.typ +
+      ", " +
+      this.bitOffset +
+      ", " +
+      this.typ.bitSize +
+      ">"
+  }
+}
+
+class ArraySlotInfo(
+  types: Array<Tclass>,
+  // Bit offset of each entry in types. Note that these may not be
+  // in ascending order.
+  bitOffsets: Array<Int>,
+  // Currently this is always a multiple of 8, and may be zero.
+  bitSize: Int,
+)
+
+// An instance of a GClass with specific "real" types applied.
+class SClass{
+  id: SClassID,
+  gclassName: GClassName,
+  superposition: ClassSuperpositionID,
+  isMutable: Bool,
+  isNative: Bool = false,
+  isLambda: Bool,
+  isMemoizeThunk: Bool,
+  // Can pointers be stored in this object, or via some object reachable
+  // from this object? (These are computed later).
+  allowsPointerEscapeIfMutable: Bool = true,
+  allowsPointerEscapeIfReadonly: Bool = true,
+  kind: ClassKind,
+  // All super- and subtypes in the entire program (including combinations of
+  // "extends" and Tparam co/contravariance). Each SClass includes itself in
+  // both sets.
+  supertypes: UnorderedSet<SClassID>,
+  subtypes: UnorderedSet<SClassID>,
+  methods: UnorderedMap<MethodKey, SFunctionID>,
+  annotations: SSet,
+  fields: Array<SField>,
+  // Once computed, the fields assigned bit offsets and sorted by those offsets.
+  layout: ?Array<LayoutSlot> = None(),
+  bitSize: Int = 0,
+  // Some types can never have instances at runtime. Tany never can, nor
+  // can classes containing a !canInstantiate field. A KBase with no KClasses
+  // also cannot be instantiated but we are not currently smart enough to
+  // record that here.
+  canInstantiate: Bool,
+  private scalarType: ?ScalarType = None(),
+  // If a Vector, the layout describing its elements.
+  arraySlot: ?ArraySlotInfo = None(),
+  // True if this type can refer to aliased mutable types (and thus needs
+  // special handling during freeze).  False if any reference can only appear
+  // once in an object of this type.  Note that 'this' needs to be included in
+  // that set.
+  canAliasMutableTypes: Bool = true,
+} extends HasFileRange uses Show {
+  fun isArray(): Bool {
+    this.arraySlot.isSome()
+  }
+
+  // Is this one of the special value classes we use for multivalue returns?
+  fun isReturnTuple(): Bool {
+    this.gclassName.id.startsWith("<builtin>.ReturnTuple")
+  }
+
+  fun maybeGetScalarType(): ?ScalarType {
+    this.scalarType match {
+    | s @ Some _ -> s
+    | None() ->
+      this.kind match {
+      | KBase()
+      | KClass() ->
+        Some(ScalarType::gcPointer)
+      | KValue() -> None()
+      }
+    }
+  }
+
+  fun getScalarType(): ScalarType {
+    this.maybeGetScalarType() match {
+    | Some(p) -> p
+    | None() -> this.die(`Expected scalar type, but got ${this}`)
+    }
+  }
+
+  fun toString(): String {
+    this.id.id
+  }
+
+  fun getMethod(
+    name: String,
+    sposn: MethodSuperpositionID,
+    pos: Pos,
+  ): SFunctionID {
+    key = MethodKey(name, sposn);
+
+    this.methods.maybeGet(key) match {
+    | Some(f) -> f
+    | None() -> pos.die(`Unable to find method ${key} in class ${this}`)
+    }
+  }
+
+  fun maybeGetField(name: String): ?SField {
+    field = (None() : ?SField);
+    _ = this.fields.any(f ->
+      f.name == name &&
+        {
+          !field = Some(f);
+          true
+        }
+    );
+    field
+  }
+
+  fun getField(name: String, pos: Pos): SField {
+    this.maybeGetField(name) match {
+    | Some(field) -> field
+    | None() ->
+      pos.die(
+        "Could not find field '" +
+          name +
+          "' in class " +
+          this +
+          (if (this.fields.isEmpty()) {
+            "; there are no fields."
+          } else {
+            "; choices are " + this.fields.map(f -> f.name).join(", ")
+          }),
+      )
+    }
+  }
+
+  fun getFieldIndex(field: String, pos: Pos): Int {
+    i = -1;
+    if (
+      !this.fields.any(f -> {
+        !i = i + 1;
+        f.name == field
+      })
+    ) {
+      pos.die("Could not find field '" + field + "'")
+    };
+    i
+  }
+
+  fun getLayout(): Array<LayoutSlot> {
+    this.layout match {
+    | Some(layout) -> layout
+    | None() -> this.die(`Layout not computed for ${this}`)
+    }
+  }
+
+  fun maybeGetLayoutSlot(name: String): ?LayoutSlot {
+    slot = (None() : ?LayoutSlot);
+    _ = this.getLayout().any(f ->
+      f.name == name &&
+        {
+          !slot = Some(f);
+          true
+        }
+    );
+    slot
+  }
+
+  fun getLayoutSlot(name: String, pos: Pos): LayoutSlot {
+    this.maybeGetLayoutSlot(name) match {
+    | Some(slot) -> slot
+    | None() ->
+      pos.die("Could not find layout slot for field " + this + "." + name)
+    }
+  }
+
+  fun getArraySlotInfo(pos: Pos): ArraySlotInfo {
+    this.arraySlot match {
+    | Some(t) -> t
+    | None() -> pos.die("Class " + this + " is not a Vector")
+    }
+  }
+}
+
+base class ExportStyle{} {
+  children =
+  | NotExported{}
+  | HhvmExport{
+    stringReturn: Bool,
+    name: String,
+    wrapperParamTypes: Array<Svmi.ParamType> = Array[],
+    wrapperReturnType: Svmi.ParamType = Svmi.ParamTypeVoid(),
+  }
+
+  fun isExported(): Bool
+  | NotExported _ -> false
+  | HhvmExport _ -> true
+}
+
+mutable base class FunInfoCommon{
+  isNative: Bool = false,
+  isMemoized: Bool = false,
+  exportStyle: ExportStyle = NotExported{},
+  annotations: SSet = SSet[],
+  gfunction: GFunctionName,
+}
+
+base class FunPosBase{name: String} extends HasID<SFunctionID>, HasFileRange
+
+class FunPos extends FunPosBase uses Hashable, Orderable
+
+base class FunInfoBase{
+  funType: Tfun,
+
+  // A function marked with 'isDisasm' is labeled in the LLVM output for
+  // disassembly.  This is controlled by the --disasm-* flags.
+  isDisasm: Bool = false,
+
+  // A function annotated with @cpp_extern, @cpp_runtime or @cpp_export.  If it
+  // has a body then it is exported, otherwise it's expected as an external
+  // linkage.
+  isRuntimeExport: Bool = false,
+} extends FunInfoCommon, FunPosBase uses Show {
+  fun toString(): String {
+    this.name
+  }
+}
+
+class FunInfo extends FunInfoBase
+
+class SField{
+  name: String,
+  typ: Tclass,
+  // Can this field be assigned a new value if the containing instance
+  // is not frozen?
+  isAssignable: Bool,
+  // User-assigned index of the field.  This is currently only used for
+  // cpp_export classes.  In other classes (such as codegen classes) it's fine
+  // to use -1 for all fields.
+  index: Int,
+} extends HasPos
+
+mutable base class HasID<T: HasIDValue<Int>>{id: T} uses HasIDValue<Int> {
+  readonly fun idValue(): Int {
+    this.id.idValue()
+  }
+}
+
+base class Instr{
+  typ: Type,
+  prettyName: String = "",
+} extends HasID<InstrID> uses Show, Equality, Hashable {
+  overridable fun toString(): String {
+    `<${this.opname()} ${this.id}>`
+  }
+
+  overridable fun posOrDefault(default: Pos): Pos {
+    default
+  }
+
+  overridable macro fun ==(x: Instr): Bool {
+    // Only call compare2 once we have established the two objects
+    // are of the same class and have the same type.
+    x match {
+    | other @ #ThisClass _ ->
+      #forEachField (#field, #fieldName) {
+        // Ignore fields that aren't relevant for CSE. These comparisons
+        // will get optimized away at compile time.
+        if (
+          #fieldName != "id" &&
+          #fieldName != "pos" &&
+          #fieldName != "prettyName" &&
+          this.#field != other.#field
+        ) {
+          return false
+        }
+      };
+
+      true
+    | _ -> false
+    }
+  }
+
+  overridable macro fun hash(): Int {
+    h = #thisClassName.hash();
+    #forEachField (#field, #fieldName) {
+      // Ignore fields that aren't relevant for CSE. These comparisons
+      // will get optimized away at compile time.
+      if (
+        #fieldName != "id" &&
+        #fieldName != "pos" &&
+        #fieldName != "prettyName"
+      ) {
+        !h = Hashable.combine(h, this.#field)
+      }
+    };
+
+    h
+  }
+
+  overridable fun visitNonBlockArgInputs(
+    f: (InstrID -> void),
+    optinfo: mutable OptimizerInfo,
+  ): void
+  | SimpleUnaryStmt{value}
+  | Freeze{value}
+  | IntSwitch{value}
+  | TypeSwitch{value}
+  | ArrayClone{value} ->
+    f(value)
+  | Alloca _
+  | AsyncReturn _
+  | GetCurrentAwaitable _ ->
+    void
+  | BinOp{lhs, rhs} ->
+    f(lhs);
+    f(rhs)
+  | x @ BlockParam _ ->
+    b = optinfo.instrToBlock[x.id];
+    for (p in optinfo.getPredecessors(b)) {
+      for (s in optinfo.idToBlock[p].successors()) {
+        if (s.target == b) {
+          f(s.args[x.index])
+        }
+      }
+    }
+  | BytePointerAdd{addr, offset} ->
+    f(addr);
+    f(offset)
+  | FunParam _ -> void
+  | GetConst _ -> void
+  | GetField{obj} -> f(obj)
+  | If{predicate} -> f(predicate)
+  | IndirectJump{label} -> f(label)
+  | Jump _ -> void
+  | LandingPad _ -> void
+  | Load{addr} -> f(addr)
+  | LoadVTableEntry{vtable} -> f(vtable)
+  | LocalGC _ -> void
+  | Constant _ -> void
+  | Object{args}
+  | CallBase{args}
+  | NamedCall{args}
+  | StringConcat{args}
+  | ArrayNew{args} ->
+    args.each(f)
+  | ObstackAlloc{byteSize} -> f(byteSize)
+  | ObstackNote _ -> void
+  | ObstackUsage _ -> void
+  | RawCallBase{code, args} ->
+    f(code);
+    args.each(f)
+  | Return{values}
+  | Yield{values} ->
+    values.each(f)
+  | SetField{obj, value} ->
+    f(obj);
+    f(value)
+  | Store{addr, value} ->
+    f(addr);
+    f(value)
+  | StringSwitch{value, cases} ->
+    f(value);
+    cases.each(f)
+  | Throw{exception} -> f(exception)
+  | TupleExtract{obj} -> f(obj)
+  | Unreachable _ -> void
+  | ArrayAlloc{size} -> f(size)
+  | ArrayUnsafeGet{obj, index} ->
+    f(obj);
+    f(index)
+  | ArrayUnsafeSet{obj, index, value} ->
+    f(obj);
+    f(index);
+    f(value)
+  | With{obj, fieldAssignments} ->
+    f(obj);
+    for (p in fieldAssignments) f(p.i1)
+  | YieldBreak{} -> void
+
+  // Special version of visitInputs that skips outgoing block args.
+  overridable fun visitInputs(
+    f: (InstrID -> void),
+    optinfo: mutable OptimizerInfo,
+  ): void {
+    // Default to using the normal algorithm.
+    this.visitNonBlockArgInputs(f, optinfo)
+  }
+
+  fun inputsAsArray(optinfo: mutable OptimizerInfo): Array<InstrID>
+  | BinOp{lhs, rhs} -> Array[lhs, rhs]
+  | CallBase{args} -> args
+  | Object{args} -> args
+  | StringConcat{args} -> args
+  | Return{values}
+  | Yield{values} ->
+    values
+  | _ ->
+    // Count inputs.
+    count = 0;
+    this.visitInputs(_ -> !count = count + 1, optinfo);
+
+    // Allocate storage.
+    ret = Array<InstrID>::mfill(count, InstrID::none);
+
+    // Fill in the array.
+    i = 0;
+    this.visitInputs(
+      x -> {
+        ret.set(i, x);
+        !i = i + 1
+      },
+      optinfo,
+    );
+    invariant(i == count, "input mismatch");
+
+    freeze(ret)
+
+  overridable fun isConstant(): Bool {
+    false
+  }
+
+  overridable fun constantInteger(): ?Int {
+    None()
+  }
+
+  macro fun opname(): String {
+    #thisClassName
+  }
+}
+
+base class Constant extends Instr {
+  fun isConstant(): Bool {
+    true
+  }
+}
+
+// Convert to UTF8 and escape nonprintable bytes.
+fun escapedString(s: String): String {
+  buf = mutable TextOutputStream.StringTextOutputStream{};
+  buf.writeEscapedString(s);
+  buf.toString()
+}
+
+base class SimpleConstantBase extends Constant {
+  fun toString(): String {
+    `<${this.opname()}:${this.idValue()} ${this.valueToString()}>`
+  }
+
+  fun valueToString(): String;
+}
+
+class ConstantVoid extends Constant
+
+class ConstantBool{value: Bool} extends SimpleConstantBase {
+  fun valueToString(): String {
+    this.value.toString()
+  }
+
+  fun constantInteger(): ?Int {
+    Some(if (this.value) 1 else 0)
+  }
+}
+
+class ConstantChar{value: Char} extends SimpleConstantBase {
+  fun valueToString(): String {
+    if (this.value == '\'') {
+      // escapedString won't quote single quotes so do that ourselves.
+      "'\''"
+    } else {
+      "'" + escapedString(this.value.toString()) + "'"
+    }
+  }
+
+  fun constantInteger(): ?Int {
+    Some(this.value.code())
+  }
+}
+
+// For efficiency, create singleton copies of the constants for all byte values.
+const kByteConstants: Array<ConstantInt> = Array::fillBy(256, i -> {
+  ConstantInt{id => InstrID::none, typ => tInt8, value => sext(i, 8)}
+});
+
+class ConstantInt{value: Int} extends SimpleConstantBase {
+  fun constantInteger(): ?Int {
+    Some(this.value)
+  }
+
+  fun valueToString(): String {
+    this.value.toString()
+  }
+}
+
+// A pointer with a specific bit pattern, ususally 0 but occasionally
+// a different value like -1.
+class ConstantPointer{value: Int} extends SimpleConstantBase {
+  fun valueToString(): String {
+    this.value.toString()
+  }
+}
+
+class ConstantFloat{value: Float} extends SimpleConstantBase {
+  fun hash(): Int {
+    ("ConstantFloat", this.value.toBits()).hash()
+  }
+
+  fun ==(x: Instr): Bool {
+    // Compare raw bits to distinguish 0.0 from -0.0, and make NaNs "equal".
+    x match {
+    | ConstantFloat{typ, value} ->
+      this.value.toBits() == value.toBits() && this.typ == typ
+    | _ -> false
+    }
+  }
+
+  fun valueToString(): String {
+    this.value.toString()
+  }
+}
+
+class ConstantFun{value: SFunctionID} extends SimpleConstantBase {
+  fun valueToString(): String {
+    this.value.toString()
+  }
+}
+
+class ConstantString{value: UTF8String} extends SimpleConstantBase {
+  fun valueToString(): String {
+    escapedString(this.value.string)
+  }
+}
+
+// A raw block of memory (not a Skip object). Its "value" is a pointer
+// to the start of its storage. This is useful for things like C strings.
+class ConstantStruct{
+  values: Array<StaticImageField>,
+  byteAlignment: Int,
+  private cachedHash: Int,
+} extends Constant {
+  fun hash(): Int {
+    // We cache the hash because it could be very expensive for large
+    // DAGs of objects.
+    this.cachedHash
+  }
+}
+
+base class ConstantImage{
+  values: Array<Constant>,
+  protected cachedHash: Int,
+} extends Constant {
+  fun hash(): Int {
+    // We cache the hash because it could be very expensive for large
+    // DAGs of objects.
+    this.cachedHash
+  }
+}
+
+// An instance of a stateless class. For this case we might as well just
+// allocate one statically and always use it, rather than allocating an
+// empty object on the heap.
+class ConstantObject extends ConstantImage {
+  static fun make(
+    id: InstrID,
+    typ: Type,
+    values: Array<Constant>,
+  ): ConstantObject {
+    static{
+      id,
+      typ,
+      values,
+      cachedHash => ("ConstantObject", typ, values).hash(),
+    }
+  }
+}
+
+// A compile-time constant Array.
+//
+// Note that the Array's size is NOT the same as its values.size().
+// This is because, as with ArrayNew, this.values holds "flattened out"
+// scalars. So an Array<(Int, Int)> will have twice as many values
+// in the value array as its size, and an Array<void> will have no
+// values at all, since each takes zero bits. But in either case we need
+// to preserve the logical size for user-level bounds-checking etc.
+class ConstantArray{size: Int} extends ConstantImage {
+  static fun make(
+    id: InstrID,
+    typ: Type,
+    values: Array<Constant>,
+    size: Int,
+  ): ConstantArray {
+    static{
+      id,
+      typ,
+      values,
+      size,
+      cachedHash => ("ConstantArray", typ, values, size).hash(),
+    }
+  }
+}
+
+class ConstantVTable{
+  value: SClassID,
+  // Is this the vtable for the mutable variant or the frozen variant?
+  // See kFrozenMask.
+  frozen_: Bool,
+} extends SimpleConstantBase {
+  fun valueToString(): String {
+    `VTable(${this.value}, frozen=${this.frozen_})`
+  }
+}
+
+// This corresponds to a pointer into the middle of the mega vtable at
+// the given byte offset, and is used to refer to a physical vtable pointer
+// after vtables are laid out and identical ones are collapsed.
+//
+// These are only created very late, during final LLVM generation.
+// Unlike ConstantVTable instances, which are "not equal" if their SClasses
+// differ in any way, if two SClasses happen to share identical vtables,
+// the ConstantMegaVTableMember for their vtables will be equal. In turn,
+// this allows ConstantObject or ConstantArray StaticImages
+// for such objects to potentially be shared.
+class ConstantMegaVTableMember{value: Int} extends SimpleConstantBase {
+  fun valueToString(): String {
+    this.value.toString()
+  }
+}
+
+// A pointer to a code label in a function (only used in vtables for "match").
+class ConstantCodeLabel{
+  function: SFunctionID,
+  tag: String,
+  case: Int,
+} extends Constant
+
+// Pointer to a special singleton object that holds all global consts as
+// fields. These fields are read and written using GetField/SetField.
+class ConstantGlobalSingleton extends Constant
+
+base class InstrWithPos extends Instr, HasPos {
+  fun posOrDefault(_default: Pos): Pos {
+    this.pos
+  }
+}
+
+class BlockParam{index: Int} extends InstrWithPos {
+  fun visitNonBlockArgInputs(
+    f: (InstrID -> void),
+    optinfo: mutable OptimizerInfo,
+  ): void {
+    b = optinfo.instrToBlock[this.id];
+    for (p in optinfo.getPredecessors(b)) {
+      for (s in optinfo.idToBlock[p].successors()) {
+        if (s.target == b) {
+          f(s.args[this.index])
+        }
+      }
+    }
+  }
+}
+
+// Function parameter.
+class FunParam extends InstrWithPos
+
+fun remapSuccessors(
+  override: ?Array<BlockSuccessor>,
+  default: Array<BlockSuccessor>,
+  remap: (InstrID -> InstrID),
+): Array<BlockSuccessor> {
+  override match {
+  | Some(v) -> v
+  | None() ->
+    default.map(s -> {
+      if (s.args.isEmpty()) {
+        s
+      } else {
+        s with {args => s.args.map(remap)}
+      }
+    })
+  }
+}
+
+// These are Instrs that can appear inside Blocks.
+base class Stmt extends InstrWithPos {
+  children =
+  // TODO: Should GetField and SetField just use an integer field index
+  // rather than a string name?
+  | GetField{obj: InstrID, field: String}
+  // TODO: Can we change this to know the SFunctionID of its const?
+  // Then do we need GlobalEnv.consts?
+  | SetField{obj: InstrID, field: String, value: InstrID}
+  | StringConcat{args: Array<InstrID>}
+  | TupleExtract{obj: InstrID, index: Int}
+  | ArrayAlloc{size: InstrID}
+  // NOTE: The size is the logical array size, which is almost always
+  // args.size() divided by ArraySlotInfo.types.size(). But for
+  // Array<void>, there are no args, but the size is non-zero.
+  | ArrayNew{args: Array<InstrID>, size: Int}
+  | ArrayUnsafeGet{obj: InstrID, index: InstrID, tupleIndex: Int}
+  | ArrayUnsafeSet{
+    obj: InstrID,
+    index: InstrID, // index of element in array
+    tupleIndex: Int, // index of field in element
+    value: InstrID,
+  }
+  | Yield{values: Array<InstrID>}
+
+  overridable fun getSuccessors(): Array<BlockSuccessor> {
+    // Work around compiler bugs with diamond inheritance.
+    this match {
+    | t @ Terminator _ -> t.successors
+    | _ -> Array[]
+    }
+  }
+
+  // Clones the instruction, mapping it into a new numbering/typing system.
+  fun clone(
+    id: InstrID,
+    typ: Type,
+    remap: (InstrID -> InstrID),
+    newSuccessors: ?Array<BlockSuccessor> = None(),
+  ): Stmt
+  | SimpleUnaryStmt{value} -> this with {id, typ, value => remap(value)}
+  | BinOp{lhs, rhs} -> this with {id, typ, lhs => remap(lhs), rhs => remap(rhs)}
+  | InvokeBase{args, successors} ->
+    this with {
+      id,
+      typ,
+      args => args.map(remap),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | CallBase{args} -> this with {id, typ, args => args.map(remap)}
+  | RawCall{code, args} ->
+    this with {id, typ, code => remap(code), args => args.map(remap)}
+  | RawInvoke{code, args, successors} ->
+    this with {
+      id,
+      typ,
+      code => remap(code),
+      args => args.map(remap),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | Alloca _ -> this with {id, typ}
+  | x @ AsyncReturn _ -> x with {id, typ}
+  | BytePointerAdd{addr, offset} ->
+    this with {id, typ, addr => remap(addr), offset => remap(offset)}
+  | Freeze{value} -> this with {id, typ, value => remap(value)}
+  | GetConst _ -> this with {id, typ}
+  | x @ GetCurrentAwaitable _ -> x with {id, typ}
+  | GetField{obj} -> this with {id, typ, obj => remap(obj)}
+  | If{predicate, successors} ->
+    this with {
+      id,
+      typ,
+      predicate => remap(predicate),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | IndirectJump{label, successors} ->
+    this with {
+      id,
+      typ,
+      label => remap(label),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | IntSwitch{value, successors} ->
+    this with {
+      id,
+      typ,
+      value => remap(value),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | Jump{successors} ->
+    this with {
+      id,
+      typ,
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | LandingPad{successors} ->
+    this with {
+      id,
+      typ,
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | Load{addr} -> this with {id, typ, addr => remap(addr)}
+  | LoadVTableEntry{vtable} -> this with {id, typ, vtable => remap(vtable)}
+  | LocalGC{} -> this with {id, typ}
+  | NamedCall{args} -> this with {id, typ, args => args.map(remap)}
+  | Object{args} -> this with {id, typ, args => args.map(remap)}
+  | ObstackAlloc{byteSize} -> this with {id, typ, byteSize => remap(byteSize)}
+  | ObstackNote _ -> this with {id, typ}
+  | ObstackUsage{} -> this with {id, typ}
+  | x @ SetField{obj, value} ->
+    x with {id, typ, obj => remap(obj), value => remap(value)}
+  | x @ Return{values} -> x with {id, typ, values => values.map(remap)}
+  | Store{addr, value} ->
+    this with {id, typ, addr => remap(addr), value => remap(value)}
+  | StringConcat{args} -> this with {id, typ, args => args.map(remap)}
+  | x @ StringSwitch{value, cases, successors} ->
+    x with {
+      id,
+      typ,
+      value => remap(value),
+      cases => cases.map(remap),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | Throw{exception, successors} ->
+    this with {id, typ, successors, exception => remap(exception)}
+  | TupleExtract{obj} -> this with {id, typ, obj => remap(obj)}
+  | x @ TypeSwitch{value, successors} ->
+    x with {
+      id,
+      typ,
+      value => remap(value),
+      successors => remapSuccessors(newSuccessors, successors, remap),
+    }
+  | Unreachable{} -> this with {id, typ}
+  | ArrayAlloc{size} -> this with {id, typ, size => remap(size)}
+  | ArrayNew{args} -> this with {id, typ, args => args.map(remap)}
+  | ArrayUnsafeGet{obj, index} ->
+    this with {id, typ, obj => remap(obj), index => remap(index)}
+  | ArrayUnsafeSet{obj, index, value} ->
+    this with {
+      id,
+      typ,
+      obj => remap(obj),
+      index => remap(index),
+      value => remap(value),
+    }
+  | With{obj, fieldAssignments} ->
+    this with {
+      id,
+      typ,
+      obj => remap(obj),
+      fieldAssignments => fieldAssignments.map(p -> (p.i0, remap(p.i1))),
+    }
+  | x @ Yield{values} -> x with {id, typ, values => values.map(remap)}
+  | YieldBreak{} -> this with {id, typ}
+
+  fun replaceInputs(remap: (InstrID -> InstrID)): Stmt {
+    this.clone(this.id, this.typ, remap)
+  }
+}
+
+class GetConst{name: ConstID, tupleIndex: Int} extends Stmt {
+  fun globalFieldName(): String {
+    if (this.tupleIndex < 0) {
+      this.name.id
+    } else {
+      this.name.id + ".v" + this.tupleIndex
+    }
+  }
+}
+
+class BytePointerAdd{addr: InstrID, offset: InstrID} extends Stmt
+
+base class LoadOrStore{
+  addr: InstrID,
+  bitOffset: Int,
+  addrByteAlignment: Int,
+} extends Stmt
+
+class Load{
+  // Does this read from immutable memory (i.e. can we CSE two loads?)
+  // This includes a superset of reading from completely immutable memory.
+  // For example, an object's vtable will get assigned exactly once, so that
+  // memory slot is not technically immutable, but every load from then on
+  // must produce the same value so they can CSE.
+  canCSE: Bool,
+  // See LLVM's "invariant.load". Is this memory always unchanging, not
+  // even assigned once? This is even stricter than canCSE.
+  invariant: Bool = false,
+} extends LoadOrStore
+
+base class Store{value: InstrID} extends LoadOrStore {
+  children =
+  | StackStore{} // to the execution stack
+  | ObstackInit{} // initializing store to obstack
+  | ObstackStore{} // store to obstack
+}
+
+class LoadVTableEntry{
+  vtable: InstrID,
+
+  // The offset is determined late in the compilation process; this is the
+  // key that lets the final code generator determine what offset was selected.
+  offset: VTable.VTableRequestID,
+} extends Stmt
+
+// Simple unary statements (no extra operands allowed!)
+base class SimpleUnaryStmt final {value: InstrID} extends Stmt {
+  children =
+  | Cast
+  | FloatBits
+  | FloatToInt
+  | FloatToString
+  | IntClz
+  | IntCtz
+  | IntToFloat
+  | IntToString
+  | Intern
+  | IntPopcount
+  | ObstackShallowClone
+  | Reinterpret
+  | StringHash
+  | Suspend
+  | ArrayClone
+  | ArraySize
+}
+
+base class TruncateOrExtend extends SimpleUnaryStmt
+class Truncate extends TruncateOrExtend
+
+base class ExtendBase extends TruncateOrExtend
+class ZeroExtend extends ExtendBase
+class SignExtend extends ExtendBase
+
+class Freeze{value: InstrID, nop: Bool = false} extends Stmt
+
+// This is a temporary placeholder Instr that produces the Awaitable object
+// being processed by the current async function. It gets lowered away by
+// LowerCoroutine.
+class GetCurrentAwaitable{} extends Stmt
+
+class Alloca{byteSize: Int, byteAlignment: Int, zero: Bool} extends Stmt
+
+class ObstackAlloc{byteSize: InstrID, zero: Bool, pinned: Bool} extends Stmt
+
+class ObstackNote extends Stmt
+class ObstackUsage extends Stmt
+
+class LocalGC extends Stmt
+
+class Object{args: Array<InstrID>, pinned: Bool} extends Stmt
+
+class With{
+  obj: InstrID,
+  fieldAssignments: Array<(String, InstrID)>,
+} extends Stmt
+
+// Common base class for function/method call/invoke.
+base class CallBase{
+  args: Array<InstrID>,
+  // Functions we are not allowed to inline.
+  blacklist: Array<SFunctionID> = Array[],
+  // Do we believe the function we are calling might return?
+  returns: Bool = true,
+} extends Stmt
+
+base class CallFunctionBase{
+  name: SFunctionID,
+  // For each superposition of this function, which one are we in the callee?
+  // If they are all the same we just provide one.
+  smap: SuperpositionMap<FunSuperpositionID>,
+} extends CallBase
+
+base class CallMethodBase{
+  method: String,
+  smap: SuperpositionMap<MethodSuperpositionID>,
+} extends CallBase {
+  // The first argument is the object on which we are calling the method.
+  fun obj(): InstrID {
+    this.args[0]
+  }
+}
+
+// Direct call to a function (including methods whose implementation can be
+// resolved at compile time).
+class CallFunction extends CallFunctionBase
+
+class CallMethod extends CallMethodBase
+
+base class RawCallBase{
+  code: InstrID,
+  args: Array<InstrID>,
+  returns: Bool,
+} extends Stmt
+
+class RawCall extends RawCallBase
+
+class NamedCall{
+  name: String,
+  args: Array<InstrID>,
+  // If true, this came from a LocalGC and may relocate pointers. That means,
+  // for example, that it's illegal to batch ObstackAlloc calls across such
+  // a call.
+  mayRelocatePointers: Bool = false,
+  // Normally we assume each argument is already the expected type, but
+  // sometimes they won't be, e.g. a C runtime function might want i8**
+  // but we call it i8*. In those cases you can specify the callee's type
+  // for each parameter here. Arguments whose indices are past the end of
+  // the casts array, or whose entry is "", will not receive any casts.
+  casts: Array<String> = Array[],
+  // Interprocedural results are normally stashed in an OptDone in
+  // Function.status. These are here because there is no target Function.
+  canThrow: Bool,
+  allocAmount: AllocAmount,
+  // If the called function returns a different type and needs a raw cast to
+  // turn it into the proper type retType can be used to declare the proper
+  // function type and retCast can be used to cast it to the typ. In the retCast
+  // string "%s" will be replaced by the value returned by the function.
+  llvmRetType: String = "",
+  llvmRetCast: String = "",
+} extends Stmt
+
+base class BinOp final {lhs: InstrID, rhs: InstrID} extends Stmt {
+  fun isCommutative(): Bool;
+}
+
+base class IntBinOp extends BinOp {
+  // NOTE: IntDiv and IntRem are guaranteed the second operand is nonzero.
+  // If it might be zero an external "If" needs to check it first.
+  children =
+  | IntAdd
+  | IntAnd
+  | IntCmpEq
+  | IntCmpLe
+  | IntCmpLt
+  | IntCmpNe
+  | IntCmpUle
+  | IntCmpUlt
+  | IntDiv
+  | IntMul
+  | IntOr
+  | IntRem
+  | IntSll
+  | IntSra
+  | IntSrl
+  | IntSub
+  | IntXor
+
+  fun isCommutative(): Bool
+  | IntAdd _
+  | IntAnd _
+  | IntCmpEq _
+  | IntCmpNe _
+  | IntMul _
+  | IntOr _
+  | IntXor _ ->
+    true
+  | IntCmpLe _
+  | IntCmpLt _
+  | IntCmpUle _
+  | IntCmpUlt _
+  | IntDiv _
+  | IntRem _
+  | IntSll _
+  | IntSra _
+  | IntSrl _
+  | IntSub _ ->
+    false
+}
+
+base class FloatBinOp extends BinOp {
+  // NOTE: IntDiv and IntRem are guaranteed the second operand is nonzero.
+  // If it might be zero an external "If" needs to check it first.
+  children =
+  | FloatAdd
+  | FloatCmpEq
+  | FloatCmpLe
+  | FloatCmpLt
+  | FloatCmpNe
+  | FloatDiv
+  | FloatMul
+  | FloatSub
+
+  fun isCommutative(): Bool
+  | FloatAdd _
+  | FloatCmpEq _
+  | FloatCmpNe _
+  | FloatMul _ ->
+    true
+  | FloatCmpLe _
+  | FloatCmpLt _
+  | FloatDiv _
+  | FloatSub _ ->
+    false
+}
+
+base class BoolBinOp extends BinOp {
+  children =
+  | BoolCmpEq
+  | BoolCmpNe
+  | BoolCmpLt
+  | BoolCmpLe
+
+  fun isCommutative(): Bool
+  | BoolCmpEq _
+  | BoolCmpNe _ ->
+    true
+  | BoolCmpLt _
+  | BoolCmpLe _ ->
+    false
+}
+
+base class StringBinOp extends BinOp {
+  children =
+  | StringCmp
+  | StringCmpEq
+
+  fun isCommutative(): Bool
+  | StringCmpEq _ -> true
+  | StringCmp _ -> false
+}
+
+value class BlockSuccessor(
+  // The block to which we are branching.
+  target: BlockID,
+  // The parameters passed to that block.
+  args: Array<InstrID> = Array[],
+) uses Orderable, Hashable {
+  fun compare(other: BlockSuccessor): Order {
+    compare(this.target, other.target) match {
+    | EQ() -> this.args.compare(other.args)
+    | c -> c
+    }
+  }
+}
+
+// Stmts that are appear only as the last Stmt in a Block. They cannot
+// appear anywhere else, and a Block must always end with one of these.
+base class Terminator{
+  successors: Array<BlockSuccessor> = Array[],
+} extends Stmt {
+  children =
+  | AsyncReturn{}
+  | If{predicate: InstrID}
+  | IndirectJump{label: InstrID, tag: String}
+  | Jump{}
+  | LandingPad{}
+  | Return{values: Array<InstrID>}
+  | Throw{exception: InstrID}
+  | TypeSwitch{value: InstrID, cases: Array<GClassName>}
+  | Unreachable{why: String}
+  | YieldBreak{}
+
+  fun visitInputs(f: (InstrID -> void), optinfo: mutable OptimizerInfo): void {
+    this.visitNonBlockArgInputs(f, optinfo);
+    for (s in this.successors) s.args.each(f)
+  }
+
+  fun allSuccessorsIdentical(): Bool {
+    succ = this.successors;
+    if (succ.size() <= 1) {
+      true
+    } else {
+      target = succ[0].target;
+      args = succ[0].args;
+      succ.all(s -> s.target == target && s.args == args)
+    }
+  }
+}
+
+base class InvokeBase extends Terminator, CallBase {
+  fun visitInputs from Terminator;
+}
+
+// A "call" inside a "try". Ends a block, which has two successors:
+// where to go if no exception thrown, and where to go if exception thrown.
+class InvokeFunction extends InvokeBase, CallFunctionBase {
+  fun visitInputs from InvokeBase;
+}
+
+class InvokeMethod extends InvokeBase, CallMethodBase {
+  fun visitInputs from InvokeBase;
+}
+
+class RawInvoke extends Terminator, RawCallBase {
+  fun visitInputs from Terminator;
+}
+
+// The first successor is "default".
+base class ValueSwitch<T: Equality & Hashable>{
+  value: InstrID,
+  cases: Array<T>,
+} extends Terminator {}
+
+class IntSwitch extends ValueSwitch<Int> {}
+
+class StringSwitch extends ValueSwitch<InstrID> {
+  fun getCase(i: Int, optinfo: mutable OptimizerInfo): UTF8String {
+    optinfo.getInstr(this.cases[i]) match {
+    | ConstantString{value} -> value
+    | op ->
+      this.die(`Operand to StringSwitch is ${op.opname()}, not ConstantString`)
+    }
+  }
+}
+
+class Block{
+  params: Array<BlockParam>,
+  prettyName: String = "",
+  instrs: Array<Stmt> = Array[],
+} extends HasID<BlockID>, HasPos {
+  fun terminator(): Terminator {
+    this.instrs[this.instrs.size() - 1] match {
+    | t @ Terminator _ -> t
+    | _ -> this.die("Block not terminated")
+    }
+  }
+
+  fun successors(): Array<BlockSuccessor> {
+    this.terminator().successors
+  }
+}
+
+const kNoFunctions: UnorderedSet<SFunctionID> = UnorderedSet[];
+
+// How much memory might an Instr or Function allocate?
+base class AllocAmount uses Hashable, Orderable, Show {
+  children =
+  | AllocNothing()
+  | AllocBounded()
+  | AllocUnbounded()
+
+  protected fun order(): Int
+  | AllocNothing() -> 0
+  | AllocBounded() -> 1
+  | AllocUnbounded() -> 2
+
+  fun compare(other: AllocAmount): Order {
+    this.order().compare(other.order())
+  }
+
+  macro fun toString(): String {
+    #thisClassName
+  }
+}
+
+// This indicates how far along the optimization pipeline a function is.
+//
+// Initially it starts out in "OptPartial" state, with no optimizations
+// applied.
+//
+// Then we try to apply a bunch of optimizations. If all of them reach a
+// fixed point, the status moves on to "OptDone".
+//
+// If, however, some (like inlining) cannot complete because they are waiting
+// for a subroutine to first reach OptDone state, then OptPartial::donePasses
+// indicates which passes are complete, and unfinishedDependencies indicataes
+// with other functions should reach OptDone before we try again.
+//
+// Note that successfully completing an optimization pass will reset donePasses
+// so we retry other optimizations that previously hit a fixed point. For
+// example, inlining may enable new peephole opportunities.
+base class OptimizationStatus {
+  children =
+  | OptPartial{
+    // Bit mask of kOpt* flags for which optimizations are currently known
+    // to have hit a fixed point (i.e. nothing more for them to do, until
+    // perhaps some other optimization changes things, which may reveal
+    // new opportunities).
+    donePasses: Int = 0,
+
+    // Which other functions need to reach the OptDone state before we
+    // can finish optimizing this one?
+    //
+    // Interprocedural optimizations (e.g. inlining) require certain
+    // referenced functions to be fully optimized. This saves work
+    // (because we only inline functions which themselves don't have
+    // additional inlining to do). It also makes the inlining heuristics more
+    // accurate; for example, a function may initially look small enough to
+    // inline, but after it has finished doing its own inlining it may become
+    // too big.
+    unfinishedDependencies: Array<SFunctionID> = Array[],
+  }
+  | OptDone{
+    // Cached value of computeInlineComplexity(); Int::max if we estimate
+    // it should not be inlined, else a cost.
+    inlineComplexity: Int,
+
+    // Does this function have any Return statements?
+    returns: Bool,
+
+    // Can this function possibly throw an exception?
+    canThrow: Bool = true,
+
+    // Can this function possibly allocate Obstack memory?
+    allocAmount: AllocAmount,
+  }
+}
+
+// The result of running one optimization pass. Either it changed something
+// (PassChanged) or did didn't (PassUnchanged). In the latter case, if the
+// reason it didn't change was because it's waiting for other functions to
+// hit OptDone state, those are recorded in unfinishedDependencies.
+base class PassResult {
+  children =
+  | PassChanged()
+  | PassUnchanged(unfinishedDependencies: UnorderedSet<SFunctionID>)
+}
+
+const kEmptyConstants: UnorderedSet<Constant> = UnorderedSet[];
+
+base class CoroutineInfo {
+  children =
+  | UnfinishedCoroutine{
+    // The values corresponding to None<T>() (for Iterator<T> end-of-iteration).
+    // Empty for async functions (which are implemented as returning void).
+    none: Array<Constant>,
+    isGenerator: Bool,
+  }
+  | UnfinishedNext{
+    // This function is the "next" method of a coroutine Iterator subclass,
+    // which can't be compiled until the rampUp function is complete.
+    rampUpID: SFunctionID,
+  }
+}
+
+class Function{
+  params: Array<FunParam>,
+
+  // A set of unique Constant Instrs. These Instrs only appear here, not in
+  // Blocks, but can of course serve as Instr Operands.
+  constants: UnorderedSet<Constant> = kEmptyConstants,
+
+  // Array of Blocks. The first Block is designated as the special "entry"
+  // block to which callers transfer control. There is no designated "exit"
+  // Block -- any block that ends with a "return" acts as an exit.
+  blocks: Array<Block>,
+
+  status: OptimizationStatus = OptPartial{},
+
+  // All of the Targ array combinations used in this function. Non-empty.
+  superpositions: UnorderedSet<FunSuperpositionID>,
+
+  // Extra compilation information for coroutines.
+  coroutineInfo: ?CoroutineInfo = None(),
+} extends FunInfoBase uses Show {
+  fun hasImplementation(): Bool {
+    // External (native) functions have no implementation.
+    !this.blocks.isEmpty()
+  }
+
+  fun isFullyOptimized(): Bool {
+    this.status is OptDone _
+  }
+
+  // Debugging dump routine.
+  fun dump(env: GlobalEnv): void {
+    PrettyIR.debugWriteFunction(this, env)
+  }
+}

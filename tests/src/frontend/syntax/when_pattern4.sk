@@ -1,0 +1,8 @@
+fun main(): void {
+  print_raw(
+    2 match {
+    | i @ 2 if (i == 2) -> "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

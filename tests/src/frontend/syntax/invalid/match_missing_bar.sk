@@ -1,0 +1,8 @@
+fun main(): String {
+  _ = 1 match {
+    1 -> 2
+    2 -> 3
+    _ -> 4
+  };
+  "Hello Skip!\n"
+}

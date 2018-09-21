@@ -1,0 +1,17 @@
+mutable class Foo(mutable x: Int) {
+  readonly fun frozen_(): Foo {
+    // Make sure freezing a "this" is not a no-op.
+    freeze(this)
+  }
+}
+
+fun main(): void {
+  a = mutable Foo(1);
+
+  b: Foo = a.frozen_();
+  invariant(b.x == 1, "");
+
+  a.!x = 2;
+
+  print_raw(a.x.toString() + " " + b.x + "\n")
+}

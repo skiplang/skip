@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("Pass")
+}
+base class B {
+  protected fun hello(): void;
+}
+
+base class C extends B {
+  protected fun hello(): void {
+    void
+  }
+}
+
+class X() extends C, B

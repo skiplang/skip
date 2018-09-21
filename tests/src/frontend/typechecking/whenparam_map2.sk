@@ -1,0 +1,16 @@
+class Container_<T>(x: T) {
+  fun nullthrows<Tout: nonNullable>[T: Nullable<Tout>](): Tout {
+    this.x match {
+    | Box(x) -> x
+    | _ -> invariant_violation("nullthrows")
+    }
+  }
+}
+
+fun get_nullable_string(): Nullable<String> {
+  Box("Pass\n")
+}
+
+fun main(): void {
+  print_raw(Container_(get_nullable_string()).nullthrows())
+}

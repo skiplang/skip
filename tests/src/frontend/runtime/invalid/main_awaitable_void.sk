@@ -1,0 +1,3 @@
+async fun main(): ^void {
+  await something()
+}

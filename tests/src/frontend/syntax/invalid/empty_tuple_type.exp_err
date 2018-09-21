@@ -1,0 +1,5 @@
+File "./syntax/invalid/empty_tuple_type.sk", line 1, characters 10-11:
+Tuple types may not be empty. Did you mean 'void'?
+1 | fun f(): () {
+  |          ^^
+2 |   void

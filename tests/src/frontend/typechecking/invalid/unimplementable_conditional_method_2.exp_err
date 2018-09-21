@@ -1,0 +1,28 @@
+File "./typechecking/invalid/unimplementable_conditional_method_2.sk", line 4, characters 7-7:
+In 'C's version of the member 'abs' inherited from 'BNo'
+2 |   fun abs[T: Show](): void;
+3 | }
+4 | class C<T>() extends BNo<(T, T)>
+  |       ^
+
+File "./typechecking/invalid/unimplementable_conditional_method_2.sk", line 4, characters 7-7:
+Missing implementation for the method abs
+2 |   fun abs[T: Show](): void;
+3 | }
+4 | class C<T>() extends BNo<(T, T)>
+  |       ^
+
+File "./typechecking/invalid/unimplementable_conditional_method_2.sk", line 2, characters 7-9:
+Defined here
+1 | base class BNo<T> {
+2 |   fun abs[T: Show](): void;
+  |       ^^^
+3 | }
+
+File "./typechecking/invalid/unimplementable_conditional_method_2.sk", line 2, characters 7-9:
+Note that implementations are not needed if the conditional constraints on the method are impossible to satisfy.
+But due to conditional trait usage, we were unable to determine if the conditions on this method are possible to satisfy
+1 | base class BNo<T> {
+2 |   fun abs[T: Show](): void;
+  |       ^^^
+3 | }

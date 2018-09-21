@@ -1,0 +1,159 @@
+@test
+fun testInt8Valid(): void {
+  assertCreatesCorrectly(Int8::min, Int8::create);
+  assertCreatesCorrectly(Int8::max, Int8::create);
+  runSignedTest(Int8::min, Int8::max, Int8::create);
+}
+@test
+fun testInt16Valid(): void {
+  assertCreatesCorrectly(Int16::min, Int16::create);
+  assertCreatesCorrectly(Int16::max, Int16::create);
+  runSignedTest(Int16::min, Int16::max, Int16::create);
+}
+@test
+fun testInt32Valid(): void {
+  assertCreatesCorrectly(Int32::min, Int32::create);
+  assertCreatesCorrectly(Int32::max, Int32::create);
+  runSignedTest(Int32::min, Int32::max, Int32::create);
+}
+@test
+fun testUInt8Valid(): void {
+  assertCreatesCorrectly(UInt8::min, UInt8::create);
+  assertCreatesCorrectly(UInt8::max, UInt8::create);
+  runUnsignedTest(UInt8::min, UInt8::max, UInt8::create);
+}
+@test
+fun testUInt16Valid(): void {
+  assertCreatesCorrectly(UInt16::min, UInt16::create);
+  assertCreatesCorrectly(UInt16::max, UInt16::create);
+  runUnsignedTest(UInt16::min, UInt16::max, UInt16::create);
+}
+@test
+fun testUInt32Valid(): void {
+  assertCreatesCorrectly(UInt32::min, UInt32::create);
+  assertCreatesCorrectly(UInt32::max, UInt32::create);
+  runUnsignedTest(UInt32::min, UInt32::max, UInt32::create);
+}
+@test
+fun testInt8LessThanMin(): void {
+  assertThrowsInvalidIntegralError(Int8::min - 1, Int8::create);
+}
+@test
+fun testInt16LessThanMin(): void {
+  assertThrowsInvalidIntegralError(Int16::min - 1, Int16::create);
+}
+@test
+fun testInt32LessThanMin(): void {
+  assertThrowsInvalidIntegralError(Int32::min - 1, Int32::create);
+}
+@test
+fun testUInt8LessThanMin(): void {
+  assertThrowsInvalidIntegralError(UInt8::min - 1, UInt8::create);
+}
+@test
+fun testUInt16LessThanMin(): void {
+  assertThrowsInvalidIntegralError(UInt16::min - 1, UInt16::create);
+}
+@test
+fun testUInt32LessThanMin(): void {
+  assertThrowsInvalidIntegralError(UInt32::min - 1, UInt32::create);
+}
+@test
+fun testInt8GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(Int8::max + 1, Int8::create);
+}
+@test
+fun testInt16GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(Int16::max + 1, Int16::create);
+}
+@test
+fun testInt32GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(Int32::max + 1, Int32::create);
+}
+@test
+fun testUInt8GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(UInt8::max + 1, UInt8::create);
+}
+@test
+fun testUInt16GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(UInt16::max + 1, UInt16::create);
+}
+@test
+fun testUInt32GreaterThanMax(): void {
+  assertThrowsInvalidIntegralError(UInt32::max + 1, UInt32::create);
+}
+@test
+fun testInt8Truncate(): void {
+  assertTruncatesCorrectly(Int8::max + 1, Int8::min + 0, Int8::truncate);
+  assertTruncatesCorrectly(Int8::min - 1, Int8::max + 0, Int8::truncate);
+}
+@test
+fun testInt16Truncate(): void {
+  assertTruncatesCorrectly(Int16::max + 1, Int16::min + 0, Int16::truncate);
+  assertTruncatesCorrectly(Int16::min - 1, Int16::max + 0, Int16::truncate);
+}
+@test
+fun testInt32Truncate(): void {
+  assertTruncatesCorrectly(Int32::max + 1, Int32::min + 0, Int32::truncate);
+  assertTruncatesCorrectly(Int32::min - 1, Int32::max + 0, Int32::truncate);
+}
+@test
+fun testUInt8Truncate(): void {
+  assertTruncatesCorrectly(UInt8::max + 1, UInt8::min + 0, UInt8::truncate);
+  assertTruncatesCorrectly(UInt8::min - 1, UInt8::max + 0, UInt8::truncate);
+}
+@test
+fun testUInt16Truncate(): void {
+  assertTruncatesCorrectly(UInt16::max + 1, UInt16::min + 0, UInt16::truncate);
+  assertTruncatesCorrectly(UInt16::min - 1, UInt16::max + 0, UInt16::truncate);
+}
+@test
+fun testUInt32Truncate(): void {
+  assertTruncatesCorrectly(UInt32::max + 1, UInt32::min + 0, UInt32::truncate);
+  assertTruncatesCorrectly(UInt32::min - 1, UInt32::max + 0, UInt32::truncate);
+}
+
+fun runSignedTest<I: Integral>(_min: I, max: I, create: Int ~> I): void {
+  QuickCheck.assert(
+    Int::generator(),
+    x ~> {
+      assertEqual(create(x).toInt(), x)
+    },
+    QuickCheck.Config{maxSize => max.toInt(), attempts => 10000},
+  );
+}
+
+fun runUnsignedTest<I: Integral>(_min: I, max: I, create: Int ~> I): void {
+  mid = (max + 1) / 2;
+  QuickCheck.assert(
+    Int::generator(),
+    x ~> {
+      assertEqual(create(x + mid).toInt(), x + mid)
+    },
+    QuickCheck.Config{maxSize => mid, attempts => 10000},
+  );
+}
+
+fun assertCreatesCorrectly<I: Integral>(num: I, create: Int ~> I): void {
+  assertEqual(create(num.toInt()), num)
+}
+
+fun assertTruncatesCorrectly<I: Integral>(
+  original: Int,
+  expected: Int,
+  truncate: Int ~> I,
+): void {
+  assertEqual(truncate(original).toInt(), expected)
+}
+
+fun assertThrowsInvalidIntegralError<I: Integral>(
+  num: Int,
+  create: Int ~> I,
+): void {
+  try {
+    _ = create(num);
+    assertFailure{message => "expected create to throw"}
+  } catch {
+  | InvalidIntegralCastError _ -> void
+  }
+}

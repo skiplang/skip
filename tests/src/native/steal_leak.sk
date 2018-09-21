@@ -1,0 +1,41 @@
+// Produce an array of test Strings.
+@no_inline
+@debug
+fun genStrings(prefix: String, count: Int): Array<String> {
+  Array::fillBy(count, i -> prefix + i)
+}
+
+// Verify an array of test Strings created by genStrings.
+fun verifyStrings(a: Array<String>, prefix: String, size: Int): void {
+  invariant(a.size() == size, "Size is wrong");
+
+  for (i => s in a) {
+    expected = prefix + i;
+    if (expected != s) {
+      invariant_violation(`Expected ${expected} but got ${s}`)
+    }
+  }
+}
+
+fun main(): void {
+  size = 4100;
+
+  // Create an array of array of Strings.
+  arrays = Parallel.tabulate(1000, j ~> {
+    prefix = `somestring.${j}`;
+    (prefix, genStrings(prefix, size));
+  });
+
+  // Do a double-GC to maybe trigger a bug.
+  localGC();
+  print_raw(""); // dummy so localGC() calls do not get combined.
+  localGC();
+
+  // Generate some garbage to clobber Obstack contents.
+  _ = genStrings("whatever", size * 20);
+
+  // Ensure the strings are still correct.
+  for (a in arrays) {
+    verifyStrings(a.i1, a.i0, size)
+  }
+}

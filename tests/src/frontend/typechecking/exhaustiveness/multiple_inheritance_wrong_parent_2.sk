@@ -1,0 +1,16 @@
+base class P
+base class L extends P
+base class R extends P
+class C() extends L, R
+class D() extends L
+
+fun shouldPass(l: L): String {
+  l match {
+  | R _ -> "Pass\n"
+  | _ -> "Fail\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldPass(C()))
+}

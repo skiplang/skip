@@ -1,0 +1,7 @@
+File "./syntax/invalid/invalid_dot.sk", line 3, characters 7-7:
+Expected identifier
+1 |
+2 | fun test(): void {
+3 |     x.0
+  |       ^
+4 | }

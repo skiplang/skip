@@ -1,0 +1,6 @@
+File "./syntax/invalid/matches_named_arg_name2.sk", line 2, characters 15-15:
+name pattern not permitted in 'is' expression. Did you mean '_', a wildcard pattern, to match any value?
+1 | fun main(): void {
+2 |   a is C{b => c};
+  |               ^
+3 | }

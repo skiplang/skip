@@ -1,0 +1,14 @@
+base class Foo {
+  const x: String;
+  fun doIt(): String {
+    static::x
+  }
+}
+
+class Bar() extends Foo {
+  const x: String = "Pass\n";
+}
+
+fun main(): void {
+  print_raw(Bar().doIt())
+}

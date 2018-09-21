@@ -1,0 +1,10 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "def": {
+      "sources": [],
+      "kind": "Program"
+    }
+  },
+  "default": "def"
+}

@@ -1,0 +1,4 @@
+File "./syntax/invalid/missing_const_type_true.sk", line 1, characters 9-9:
+Missing constant type annotation. ': Bool ='
+1 | const x = true;
+  |         ^

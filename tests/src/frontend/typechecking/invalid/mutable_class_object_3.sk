@@ -1,0 +1,5 @@
+mutable class Foo<T>(mutable v: T)
+
+fun no(x: mutable Foo<Foo<Int>>): void {
+  _ = class(x)(mutable Foo(42))
+}

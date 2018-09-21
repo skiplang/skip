@@ -1,0 +1,7 @@
+async fun g(): ^String {
+  "OK\n"
+}
+
+fun f(): String {
+  await g() // error, await within non-async fun
+}

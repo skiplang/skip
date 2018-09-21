@@ -1,0 +1,5 @@
+File "invalid/duplicate_variables/ref/skip.project.json"
+Duplicate variable name 'v'.
+
+File "invalid/duplicate_variables/skip.project.json"
+Referenced from

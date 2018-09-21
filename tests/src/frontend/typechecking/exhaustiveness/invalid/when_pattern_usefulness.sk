@@ -1,0 +1,6 @@
+fun shouldFail(): void {
+  2 match {
+  | _ -> void
+  | x if (x == 2) -> void
+  }
+}

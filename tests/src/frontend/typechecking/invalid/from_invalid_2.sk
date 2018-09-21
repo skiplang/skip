@@ -1,0 +1,4 @@
+base class Foo
+class MyFoo() {
+  fun foo from Foo;
+}

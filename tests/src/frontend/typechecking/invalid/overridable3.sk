@@ -1,0 +1,9 @@
+base class MyBase {
+  fun foo(): Int {
+    42
+  }
+}
+
+class Child() extends MyBase {
+  fun foo(): Int;
+}

@@ -1,0 +1,4 @@
+File "./syntax/invalid/lowercase_type.sk", line 1, characters 10-15:
+Type specifier expected. Types start with an uppercase letter, did you mean 'String'?
+1 | fun a(): string {}
+  |          ^^^^^^

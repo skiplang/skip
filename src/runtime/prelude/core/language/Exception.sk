@@ -1,0 +1,66 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+base class Exception {
+  overridable macro fun getMessage(): String {
+    "Exception " + #thisClassName
+  }
+}
+
+class OutOfBounds() extends Exception {
+  fun getMessage(): String {
+    "Out of bounds"
+  }
+}
+
+class Duplicate() extends Exception {
+  fun getMessage(): String {
+    "Duplicate element"
+  }
+}
+
+class KeyNotFound() extends Exception {
+  fun getMessage(): String {
+    "Key not found"
+  }
+}
+
+class ContainerChanged() extends Exception {
+  fun getMessage(): String {
+    "Container changed during iteration"
+  }
+}
+
+class InvalidCast(tOriginal: String, tExpected: String) extends Exception {
+  fun getMessage(): String {
+    `Failed to cast object of type ${this.tOriginal} to type ${
+      this.tExpected
+    } in 'as' expression`
+  }
+}
+
+// Exlined code to make uncommon case for compiled code smaller.
+@no_inline
+fun throwOutOfBounds(): _ {
+  throw OutOfBounds()
+}
+
+@no_inline
+fun throwKeyNotFound(): _ {
+  throw KeyNotFound()
+}
+
+@no_inline
+fun throwContainerChanged(): _ {
+  throw ContainerChanged()
+}
+
+class RuntimeError(msg: String) extends Exception {
+  fun getMessage(): String {
+    this.msg
+  }
+}

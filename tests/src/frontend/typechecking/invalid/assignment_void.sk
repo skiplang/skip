@@ -1,0 +1,7 @@
+fun foo(x : void, y : String): String {
+  y + "ss"
+}
+
+fun main(): String {
+  foo(_a = 112, "Pa")
+}

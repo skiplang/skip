@@ -1,0 +1,13 @@
+module M;
+
+class A private () {
+  static fun go(): void {
+    _ = A()
+  }
+}
+
+module end;
+
+fun main(): void {
+  print_string("Pass")
+}

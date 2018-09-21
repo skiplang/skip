@@ -1,0 +1,1628 @@
+fun main(): void {
+  print_raw(name.hash())
+}
+
+module Lexer;
+fun errorMissingAnnotationName(): void {
+  void
+}
+module end;
+module OuterIstToIR;
+fun metaMetaName(): void {
+  void
+}
+module end;
+module Parser;
+fun errorExpectedFunctionName(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun awaitable(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun base(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun default(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun end(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun extension(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun from(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun inst(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun match(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun nonNullable(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun nullable(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun underscore(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun value(): void {
+  void
+}
+module end;
+module SharedTuples;
+fun tuple_field_root_name(): void {
+  void
+}
+module end;
+module SharedTuples;
+fun tuple_root_name(): void {
+  void
+}
+module end;
+module SkipLowerMatches;
+fun literal_class_names(): void {
+  void
+}
+module end;
+module SkipLowerOuterIst;
+fun mutable_this_var_name(): void {
+  void
+}
+module end;
+module SkipLowerOuterIst;
+fun static_var_name(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun max_tuple(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun min_tuple(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun bool_type_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun char_type_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun float_type_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun int_type_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun string_type_name(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_empty_env(): void {
+  void
+}
+module end;
+module SkipTypingUtils;
+fun literal_class_names(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun cppExternalName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun debugWriteBlockName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun debugWriteName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmFunTypeName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmReturnTypeName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmTypeName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmWriteBlockName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmWriteBlockTypeAndName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmWriteName(): void {
+  void
+}
+module end;
+module AsmOutput;
+fun llvmWriteTypeAndName(): void {
+  void
+}
+module end;
+module BufferedPrinter;
+fun name(): void {
+  void
+}
+module end;
+module OuterIstToIR;
+fun computeSuperpositionNames(): void {
+  void
+}
+module end;
+module OuterIstToIR;
+fun parseClosureFieldName(): void {
+  void
+}
+module end;
+module Parser;
+fun getNamedParameterDefaultValue(): void {
+  void
+}
+module end;
+module Parser;
+fun getNamedParametersDefaultValues(): void {
+  void
+}
+module end;
+module PredefinedName;
+fun contextualKeywords(): void {
+  void
+}
+module end;
+module SharedTuples;
+fun tuple_name(): void {
+  void
+}
+module end;
+module SkipAstPp;
+fun name(): void {
+  void
+}
+module end;
+module SkipAstPp;
+fun named_type(): void {
+  void
+}
+module end;
+module SkipAstPp;
+fun named_type_list(): void {
+  void
+}
+module end;
+module SkipAstPp;
+fun object_name(): void {
+  void
+}
+module end;
+module SkipAstPp;
+fun type_name(): void {
+  void
+}
+module end;
+module SkipAstUtils;
+fun make_name(): void {
+  void
+}
+module end;
+module SkipAstUtils;
+fun make_name_subst(): void {
+  void
+}
+module end;
+module SkipAstUtils;
+fun pos_of_name(): void {
+  void
+}
+module end;
+module SkipAstUtils;
+fun string_of_name(): void {
+  void
+}
+module end;
+module SkipAstUtils;
+fun tparam_name(): void {
+  void
+}
+module end;
+module SkipCheckVariance;
+fun name_program(): void {
+  void
+}
+module end;
+module SkipError;
+fun didYouMeanUnboundName(): void {
+  void
+}
+module end;
+module SkipError;
+fun name_already_bound(): void {
+  void
+}
+module end;
+module SkipError;
+fun unboundNameMapping(): void {
+  void
+}
+module end;
+module SkipError;
+fun unbound_name(): void {
+  void
+}
+module end;
+module SkipError;
+fun unbound_name_with_msg(): void {
+  void
+}
+module end;
+module SkipExhaustivePatterns;
+fun canonical_param_names(): void {
+  void
+}
+module end;
+module SkipExhaustivePatterns;
+fun const_pat_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun cstr_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun expand_module_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun is_const_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun make_definition_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun make_dotted_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun make_qualified_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun maybe_malias_ty_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun name_of_module(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun named_type(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun type_name(): void {
+  void
+}
+module end;
+module SkipExpand;
+fun var_name(): void {
+  void
+}
+module end;
+module SkipFormat;
+fun name(): void {
+  void
+}
+module end;
+module SkipFormat;
+fun name_params(): void {
+  void
+}
+module end;
+module SkipFormat;
+fun type_name(): void {
+  void
+}
+module end;
+module SkipInherit;
+fun class_def_name(): void {
+  void
+}
+module end;
+module SkipInherit;
+fun make_class_name(): void {
+  void
+}
+module end;
+module SkipLowerMatches;
+fun add_field_names_to_parameters(): void {
+  void
+}
+module end;
+module SkipLowerMatches;
+fun is_weak_eq_name(): void {
+  void
+}
+module end;
+module SkipLowerMatches;
+fun literal_type_name(): void {
+  void
+}
+module end;
+module SkipLowerOuterIst;
+fun lower_this_local_name(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun call_args(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun compare_modifiers(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun compare_purity_modifiers(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun compare_set_elt(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun compare_tracking_modifiers(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun constantIsAbstract(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun constraint_of_tabstract(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun expr(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun exprBodyIsAbstract(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun expr_(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun is_pure(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun is_tdefined(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun is_tuple_class(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun is_tuple_class_(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun make_subst(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun make_subst_(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun match_branch(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun mk_tuple(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun ordered_expr(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun replace_tparams(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun same_mutability(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tparam_ident(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tparam_name(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tparam_subst(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_expr(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_name(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_not_supported(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_pattern(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_str(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tuple_type(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun tyd_def_name(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type__(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_fold(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_inter(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_iter(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_map(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_subst(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun type_tapply(): void {
+  void
+}
+module end;
+module SkipNamedAst;
+fun unfold_tnamed(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun annotations(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun binop(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun binop_(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun bool(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun cla_tyd(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun class_def(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun class_params(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun class_params_(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun const_def(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun expr(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun expr_call_args(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun expr_list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun field(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun field_list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun fun_def(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun fun_parameter(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun fun_params(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun lambda_modifiers(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun lambda_param(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun lambda_param_list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun lambda_params(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun let_obj_fields(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun match_branch(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun match_pattern(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun match_patterns(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun maybe_type(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun method_(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun method_body(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun name(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun named_info(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun named_type(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun named_type_list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun named_type_map(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun object_args(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun pattern_fields(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun program(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun purity_modifier(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun return_type(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun static_name(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun tfun_modifiers(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun tparams(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun tracking_modifier(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type__(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_args(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_def(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_identifier(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_list(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_map(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_parameter(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun type_params(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun unop(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun variance(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun whenclause(): void {
+  void
+}
+module end;
+module SkipNamedAstPp;
+fun whenparams(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun bind_named_type(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun bind_pattern_name(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun check_locals_name_lambda_parameters(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun check_locals_name_parameters(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun cla_tyd_object_name(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun classname(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun close_local_scope_name_parameters(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun get_tyd_name(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun get_tyd_name_(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun is_mutable_named_type(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun ordered_named_arg_to_pair(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun pattern_classname(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun pattern_object_name(): void {
+  void
+}
+module end;
+module SkipNaming;
+fun type_name(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun add_name(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_captured(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_captured_or_outer(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_read(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_read_local(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_written(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_written_captured(): void {
+  void
+}
+module end;
+module SkipOptimizeLocals;
+fun is_name_written_local(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun name(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun named_type(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun named_type_map(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun object_name(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun static_name(): void {
+  void
+}
+module end;
+module SkipOuterIstPp;
+fun ty_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun base_class_names(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun extract_classname_of_expr(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun make_named_type(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun make_named_type__(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun make_new_named_var(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun name_of_binding(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun name_of_local_var(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun new_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun obj_name_of_type_identifier(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binding(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_expr(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_labeled_stmt_list(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_match_branch_list(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_stmt(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_stmt_(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_switch_branch_list(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_binds_type_switch_branch_list(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun rename_name(): void {
+  void
+}
+module end;
+module SkipOuterIstUtils;
+fun unwrap_tnamed(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun addBinding(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun addMethodToMap(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun addName(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun addParameters(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun baseName(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun createEmptyMap(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun mapOfParameters(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun renameBinding(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun renameCapturedBindings(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun renameLocalVar(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun renameName(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun renameString(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_class_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_class_params_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_const_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_expression_locals_rec(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_function_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_initializer_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_method_initializer_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_method_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_method_parameter(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_method_parameters(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_parameter(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_parameters(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_statement_locals(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_statement_locals_rec(): void {
+  void
+}
+module end;
+module SkipRenameLocals;
+fun rename_statement_opt_locals(): void {
+  void
+}
+module end;
+module SkipSerGenPp;
+fun decoder_fun_name(): void {
+  void
+}
+module end;
+module SkipSerGenPp;
+fun encoder_fun_name(): void {
+  void
+}
+module end;
+module SkipSerGenPp;
+fun name_str(): void {
+  void
+}
+module end;
+module SkipSerGenPp;
+fun tuple_name(): void {
+  void
+}
+module end;
+module SkipSerGenPp;
+fun type_name_str(): void {
+  void
+}
+module end;
+module SkipTypedAstPp;
+fun binding_name(): void {
+  void
+}
+module end;
+module SkipTypedAstPp;
+fun named_type(): void {
+  void
+}
+module end;
+module SkipTypedAstPp;
+fun named_type_map(): void {
+  void
+}
+module end;
+module SkipTypedAstPp;
+fun object_name(): void {
+  void
+}
+module end;
+module SkipTypedAstPp;
+fun ty_name(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun class_def(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun frozen_param(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun fun_body(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun fun_def(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_bind(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_bind_params(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_empty_acc(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_expr_params(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_inner_lambda(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_lambda(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_local(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_match_branch(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_ordered_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_param_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_param_patterns(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_patterns(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_with_update(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun gfv_with_updates(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun info_of_name(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun method_def(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_bind_parameters(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_bind_var(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_bind_vars(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_call_args(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_expr_(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_lookup_name(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_match_branch(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_ordered_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_param_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_pattern_(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_pattern__(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_patterns(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun pl_with_updates(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun program(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_binding(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_call_args(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_expr_(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_frozen_params(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_match_branch(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_ordered_expr(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_param_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_pattern(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_patterns(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun sbr_with_updates(): void {
+  void
+}
+module end;
+module SkipTypedAstRename;
+fun type_program(): void {
+  void
+}
+module end;
+module SkipTypedAstUtils;
+fun get_class_by_name(): void {
+  void
+}
+module end;
+module SkipTypedAstUtils;
+fun is_class_object_name(): void {
+  void
+}
+module end;
+module SkipTypes;
+fun static_names(): void {
+  void
+}
+module end;
+module SkipTyping;
+fun obj_name_of_tid(): void {
+  void
+}
+module end;
+module SkipTypingUtils;
+fun classname_ty(): void {
+  void
+}
+module end;
+module SkipTypingUtils;
+fun fill_missing_named_params(): void {
+  void
+}
+module end;
+module SkipTypingUtils;
+fun literal_type_name(): void {
+  void
+}
+module end;
+fun name_fromJson(): void {
+  void
+}
+fun name_toJson(): void {
+  void
+}
+fun sk_new_var_name(): void {
+  void
+}

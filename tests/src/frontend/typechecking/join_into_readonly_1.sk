@@ -1,0 +1,13 @@
+base class P() {
+  children =
+  | X
+  | Y
+}
+mutable class Co<+T>(mutable v: T)
+
+fun main(): void {
+  x: readonly Co<P> = if (true) mutable Co(X()) else Co(Y());
+  y: readonly Co<P> = if (true) mutable Co(Y()) else x;
+  _: readonly Co<P> = if (true) y else Co(X());
+  print_string("Pass")
+}

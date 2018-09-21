@@ -1,0 +1,7 @@
+File "./typechecking/invalid/trait_pattern_match_2.sk", line 6, characters 7-9:
+Traits cannot be used as patterns
+4 |   fun no(): void {
+5 |     this match {
+6 |     | Z _ -> void
+  |       ^^^
+7 |     | _ -> void

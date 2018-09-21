@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/tuple_nested_boolean_wildcard1.sk", line 4, characters 5-13:
+The following pattern is unused:
+ | (1, true)
+2 |   (1, true) match {
+3 |   | _ -> "Fail\n"
+4 |   | (1, true) -> "Fail1\n"
+  |     ^^^^^^^^^
+5 |   | (_, true) -> "Fail2\n"

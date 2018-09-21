@@ -1,0 +1,11 @@
+// interesting exhaustiveness case: single unique instance of class Foo
+const MyVal: Foo = Foo();
+
+class Foo() {}
+
+fun shouldFail(x: Foo): String {
+  x match {
+  | MyVal -> "Pass\n"
+  | _ -> "You shouldn't be seeing this\n"
+  }
+}

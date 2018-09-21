@@ -1,0 +1,68 @@
+@test
+fun testSpecial(): void {
+  inspect: Inspect = InspectSpecial("foo");
+  _ = inspect match {
+  | InspectSpecial(value) -> value
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testString(): void {
+  inspect: Inspect = InspectString("foo");
+  _ = inspect match {
+  | InspectString(value) -> value
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testLiteral(): void {
+  inspect: Inspect = InspectLiteral("foo");
+  _ = inspect match {
+  | InspectLiteral(value) -> value
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testVector(): void {
+  inspect: Inspect = InspectVector("foo", Array[InspectString("item")]);
+  _ = inspect match {
+  | InspectVector(name, value) -> (name, value)
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testMap(): void {
+  inspect: Inspect = InspectMap(
+    "foo",
+    Array[(InspectString("key"), InspectString("value"))],
+  );
+  _ = inspect match {
+  | InspectMap(name, value) -> (name, value)
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testCall(): void {
+  inspect: Inspect = InspectCall("foo", Array[InspectString("argument")]);
+  _ = inspect match {
+  | InspectCall(name, value) -> (name, value)
+  | _ -> invariant_violation("unexpected type")
+  };
+}
+
+@test
+fun testObject(): void {
+  inspect: Inspect = InspectObject(
+    "foo",
+    Array[("field", InspectString("value"))],
+  );
+  _ = inspect match {
+  | InspectObject(name, value) -> (name, value)
+  | _ -> invariant_violation("unexpected type")
+  };
+}

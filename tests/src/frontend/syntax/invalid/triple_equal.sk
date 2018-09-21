@@ -1,0 +1,6 @@
+fun main(): String {
+  if (1 === 2 && 3 !== 4)
+    "true\n"
+  else
+    "false\n"
+}

@@ -1,0 +1,3 @@
+class No() {
+  fun abs[Int: String](): void;
+}

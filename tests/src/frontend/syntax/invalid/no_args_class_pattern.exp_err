@@ -1,0 +1,9 @@
+File "./syntax/invalid/no_args_class_pattern.sk", line 8, characters 3-8:
+Case B is missing.
+Note you cannot have multiple parents with algebraic patterns
+ 6 |
+ 7 |   fun bar(): void
+ 8 |   | A _ -> void
+   |   ^^^^^^^^^^^^^
+ 9 |   | B
+   |   ^^^

@@ -1,0 +1,31 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Token;
+
+class Token{
+  kind: TokenKind.TokenKind,
+  range: TextRange,
+  // TODO: Only a small fraction of tokens have non-const value: identifiers,
+  //  annotations, and literals. Only store value for those subsets of Tokens.
+  value: String,
+  leadingComments: Array<Token.Comment>,
+  errors: Array<SyntaxError>,
+  trailingComments: Array<Token.Comment>,
+} uses Show, Equality, Hashable {
+  fun hasError(): Bool {
+    !this.errors.isEmpty();
+  }
+
+  fun comments(): mutable Iterator<Token.Comment> {
+    this.leadingComments.values().concat(this.trailingComments.values());
+  }
+
+  fun toString(): String {
+    "(" + this.kind + "," + this.value + ", " + this.range + ")"
+  }
+}

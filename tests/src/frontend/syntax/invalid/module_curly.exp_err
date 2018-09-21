@@ -1,0 +1,5 @@
+File "./syntax/invalid/module_curly.sk", line 1, characters 19-19:
+Unexpected '{'. Modules are declared with 'module ModuleName;' and are optionally terminated with 'module end;'
+1 | module ModuleName {
+  |                   ^
+2 |

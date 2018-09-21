@@ -1,0 +1,9 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+mutable class Foo(x: mutable Ref<Int>) {
+  readonly fun get(): Int {
+    this.x.value
+  }
+}

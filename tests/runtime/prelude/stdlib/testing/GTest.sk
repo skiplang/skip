@@ -1,0 +1,169 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module GTest;
+
+// This harness it used to emulate a C++ test written with google_test.
+//
+// Example of use:
+//     fun main(): void {
+//       GTest.TestCase::new(
+//         "SkipTests",
+//         Map[
+//           "test1" => () ~> {
+//             assertEqual(2, 2);
+//           },
+//           "test2" => () ~> {
+//             assertEqual(1, 2);
+//           },
+//           "test3" => test3,
+//         ]).run();
+//     }
+//
+//     def test3(): void { ... }
+//
+class TestCase private {name: String, tests: UnorderedMap<String, () ~> void>} {
+  static fun new(
+    name: String,
+    tests: UnorderedMap<String, () ~> void>,
+  ): TestCase {
+    TestCase{name, tests}
+  }
+
+  fun usage(): void {
+    print_string("Skip Test Harness");
+    print_string("");
+    print_string("  --gtest_list_tests");
+    print_string("  --gtest_filter=POSTIVE_PATTERNS[-NEGATIVE_PATTERNS]");
+  }
+
+  fun list_tests(): void {
+    print_string(this.name + ".");
+    this.tests.each((name, _) -> {
+      print_string("  " + name);
+    });
+  }
+
+  untracked fun run(): void {
+    runTests = true;
+    positiveFilters = mutable Vector[];
+    arguments().each(arg -> {
+      if (arg == "--gtest_list_tests") {
+        this.list_tests();
+        !runTests = false;
+      } else if (arg.startsWith("--gtest_filter=")) {
+        value = arg.split("=" /*, 1 */)[1];
+        value.split(":").each(f ->
+          positiveFilters.push(Regex::create("^" + Glob.toRegex(f) + "$"))
+        );
+      } else if (
+        (arg == "--gtest_color=no") ||
+        (arg == "--gtest_catch_exceptions=0") ||
+        (arg == "--gtest_also_run_disabled_tests")
+      ) {
+        // ignored
+        void
+      } else if (arg == "--help") {
+        this.usage();
+        !runTests = false;
+      } else {
+        print_error("Unknown argument: " + arg + "\n");
+        this.usage();
+        exit(1);
+      }
+    });
+
+    if (runTests) {
+      tests = mutable Vector<(String, () ~> void)>[];
+      this.tests.each((name, fn) -> {
+        fullname = this.name + "." + name;
+        if (
+          positiveFilters.isEmpty() ||
+          positiveFilters.any(f -> fullname.matches(f))
+        ) {
+          tests.push((fullname, fn));
+        }
+      });
+
+      print_string(
+        "[==========] Running " + tests.size() + " tests from 1 test case.",
+      );
+      print_string("[----------] Global test environment set-up.");
+      print_string("[----------] " + tests.size() + " tests from " + this.name);
+
+      passed = 0;
+      failures = mutable Vector[];
+      totalDuration = 0;
+      tests.each(param -> {
+        param match {
+        | (fullname, fn) ->
+          if (
+            (positiveFilters.size() == 0) ||
+            positiveFilters.any(f -> fullname.matches(f))
+          ) {
+            print_string("[ RUN      ] " + fullname);
+            profile_start();
+            try {
+              fn();
+              !passed = passed + 1;
+              fnDuration = profile_stop().toInt();
+              print_string(
+                "[       OK ] " + fullname + " (" + fnDuration + " ms)",
+              );
+              !totalDuration = totalDuration + fnDuration;
+            } catch {
+            | e @ AssertionFailure _ ->
+              failures.push(fullname);
+              print_string(e.getMessage());
+              fnDuration = profile_stop().toInt();
+              print_string(
+                "[  FAILED  ] " + fullname + " (" + fnDuration + " ms)",
+              );
+              !totalDuration = totalDuration + fnDuration
+            }
+          }
+        };
+      });
+
+      print_string(
+        "[----------] " +
+          tests.size() +
+          " tests from " +
+          this.name +
+          " (" +
+          totalDuration +
+          " ms total)",
+      );
+
+      print_string("");
+      print_string("[----------] Global test environment tear-down");
+      print_string(
+        "[==========] " +
+          tests.size() +
+          " tests from 1 test case ran. (" +
+          totalDuration +
+          " ms total)",
+      );
+
+      if (passed != 0) {
+        print_string("[  PASSED  ] " + passed + " tests.");
+      };
+
+      if (failures.size() != 0) {
+        print_string(
+          "[  FAILED  ] " + failures.size() + " tests, listed below:",
+        );
+        failures.each(name -> print_string("[  FAILED  ] " + name));
+        exit(1);
+      };
+
+      if (failures.size() != 0) {
+        exit(1);
+      }
+    }
+  }
+}

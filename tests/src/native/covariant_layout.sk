@@ -1,0 +1,23 @@
+base class Q {
+  fun s(): String;
+}
+
+class A<+T>() extends Q {
+  fun s(): String {
+    "Pass\n"
+  }
+}
+
+base class B()
+class C extends B
+
+@no_inline
+fun consume(b: A<B>): String {
+  b.s()
+}
+
+const c: A<C> = A();
+
+fun main(): void {
+  print_raw(consume(A()))
+}

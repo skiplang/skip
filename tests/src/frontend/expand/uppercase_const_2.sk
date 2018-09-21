@@ -1,0 +1,13 @@
+fun main(): void {
+  print_string(M.doIt())
+}
+
+const STR: String = "FAIL";
+
+module M;
+
+const STR: String = "Pass";
+
+fun doIt(): String {
+  STR
+}

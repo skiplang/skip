@@ -1,0 +1,4 @@
+fun main(): String {
+  _ = Vec [1, 2, 3].map(e => e + 1);
+  ""
+}

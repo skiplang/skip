@@ -1,0 +1,10 @@
+fun yieldAndReturn(): mutable Iterator<Int> {
+  if (false) {
+    return void
+  };
+  yield 37
+}
+
+fun main(): void {
+  void
+}

@@ -1,0 +1,3 @@
+class Foo() {
+  overridable const i: Int = 100;
+}

@@ -1,0 +1,6 @@
+base class Foo {
+  const x: String;
+  deferred static fun foo(): String {
+    Foo::x
+  }
+}

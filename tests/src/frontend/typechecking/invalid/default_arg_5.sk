@@ -1,0 +1,21 @@
+fun dpos(_: Int = 42): void {
+  void
+}
+fun dname{x: Int = 42}: void {
+  void
+}
+fun pos(_: Int): void {
+  void
+}
+fun name{x: Int}: void {
+  void
+}
+fun p(): Bool {
+  true
+}
+
+fun foo(): void {
+  f = if (p()) dpos else (a -> dpos(a));
+  f(0);
+  f()
+}

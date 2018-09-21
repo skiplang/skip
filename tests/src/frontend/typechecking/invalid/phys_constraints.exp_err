@@ -1,0 +1,23 @@
+File "./typechecking/invalid/phys_constraints.sk", line 30, characters 7-23:
+Constraint not satisfied
+28 |   _ = makeIntThrower(t); // valid
+29 |   _ = takeShowThrower(t); // valid
+30 |   _ = makeStringThrower(t); // invalid
+   |       ^^^^^^^^^^^^^^^^^
+31 |   void
+
+File "./typechecking/invalid/phys_constraints.sk", line 12, characters 23-25:
+The type: Int
+10 |   void
+11 | }
+12 | fun makeIntThrower<T: Int>(f: Thrower<T>): () -> Int {
+   |                       ^^^
+13 |   f.die
+
+File "./typechecking/invalid/phys_constraints.sk", line 18, characters 26-31:
+Does not share a common super type with: String
+16 |   void
+17 | }
+18 | fun makeStringThrower<T: String>(f: Thrower<T>): () -> String {
+   |                          ^^^^^^
+19 |   f.die

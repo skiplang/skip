@@ -1,0 +1,348 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/**********************************************
+Benchmarking API for Skip
+
+Parameters to bench function:
+name            =>  display name of benchmark
+run             =>  the function that will be benchmarked, takes output of
+                    setup as input
+afterEach       =>  function that will be called after each iteration of run,
+                    useful for rebuilding any mutable variables needed for run
+options         =>  an optional Options object where you can put any custom
+                    options you want to set. The options include minIterations,
+                    itersPerGc, and displayOutput:
+
+Options fields:
+allowEmpty      =>  By default the benchmark runner will fail if no benchmark
+                    functions are provided, as this typically indicates an error
+                    in the pipeline collecting benchmark functions. Set to true
+                    to allow an empty benchmark suite.
+minIterations   =>  the minimum number of iterations to be run. The iteration
+                    count is determined by calculating the number of iterations
+                    that can be run in one ms (N) and then running that many
+                    iterations 300 times (300 * N). minIterations can override
+                    this by forcing it to run more iterations than it would
+                    have originally.
+itersPerGc      =>  number of iterations to run before forcing garbage
+                    collection. This number is recommended to be set lower when
+                    running a benchmark that allocates a lot of mutable data
+displayOutput   =>  boolean for whether to automatically print the benchmark
+                    results. Defaults to false.
+verbose         =>  boolean for whether to show results as they are evaluated,
+                    defaults to false.
+
+Example Usage:
+
+untracked fun benchmarkThis(bencher: Bencher): void {
+  // setup
+  mutableTree = createTree();
+
+  // run benchmark
+  bencher.bench{
+    name => "deleteTree.sk",
+    run => () -> {
+      destroyTree(mutableTree)
+    },
+    afterEach: () -> {
+      !mutableTree = createTree();
+    },
+    options => Bencher.Options{
+      minIterations => 100,
+      itersPerGc => 10,
+      displayOutput => true
+    },
+  };
+
+  // teardown
+  verifyTree(mutableTree);
+}
+
+**********************************************/
+
+module alias AP = ArgumentParser;
+
+module Bencher;
+
+// Run an array of benchmarks according to options provided via cli
+fun main(benchmarks: Array<(String, (Bencher) -> BenchmarkStats)>): void {
+  (options, outfile) = parseArgs();
+  if (!options.allowEmpty && benchmarks.isEmpty()) {
+    print_error_ln(
+      "No benchmarks provided: use `--allow-empty` if this is expected.",
+    );
+    exit(2);
+  };
+  b = Bencher(options);
+  results = benchmarks
+    .map((benchmark) -> {
+      if (options.verbose) {
+        print_string(`-- Benchmarking ${benchmark.i0} --`)
+      };
+      (benchmark.i0, benchmark.i1(b))
+    })
+    .collect(Map);
+  outfile match {
+  | Some(filepath) -> writeResultFile(results, filepath)
+  | None() -> void
+  };
+  if (options.displayOutput) {
+    sortedResults = results
+      .items()
+      .collect(Vector)
+      .sortedBy(entry ~> entry.i1.min)
+      .collect(Map);
+    displayStatsLineColumns();
+    for (name => stats in sortedResults) {
+      displayStatsLine(name, stats);
+    };
+  }
+}
+
+const schema: Array<AP.Param> = Array[
+  AP.BoolParam{name => "help", negatable => false},
+  AP.BoolParam{name => "allow-empty", negatable => false},
+  AP.BoolParam{
+    name => "display-output",
+    negatable => false,
+    help => "Display results after all benchmarks complete",
+  },
+  AP.BoolParam{
+    name => "keep-samples",
+    negatable => false,
+    help => "Include individual samples in the --output file in addition to summary statistics",
+  },
+  AP.BoolParam{
+    name => "verbose",
+    negatable => false,
+    help => "Display results as benchmarks are completed",
+  },
+  AP.StringParam{name => "output"},
+  AP.IntParam{name => "min-iterations", default => Some(defaultMinIterations)},
+  AP.IntParam{name => "iters-per-gc", default => Some(defaultItersPerGc)},
+];
+
+const defaultMinIterations: Int = 0;
+const defaultItersPerGc: Int = 50;
+
+const defaultNameColumns: Int = 40;
+const defaultStatsColumns: Int = 16;
+
+// NOTE: defaults here should match ArgumentParser schema in parseArgs
+class Options{
+  allowEmpty: Bool = false,
+  minIterations: Int = defaultMinIterations,
+  itersPerGc: Int = defaultItersPerGc,
+  displayOutput: Bool = false,
+  keepSamples: Bool = false,
+  verbose: Bool = false,
+}
+
+@serialize
+class BenchmarkStats{
+  average: Int,
+  median: Int,
+  standardDeviation: Int,
+  min: Int,
+  max: Int,
+  samples: Array<Int>,
+}
+
+mutable class .Bencher(options: Bencher.Options = Options{}) {
+  private const MS_ITERS: Float = 300.0;
+  private const REALLY_BIG_INT: Int = 99999999;
+
+  fun run<T>(run: () -> T): BenchmarkStats {
+    this.bench{run}
+  }
+
+  fun bench<T>{
+    run: () -> T,
+    afterEach: () -> void = () -> void,
+    options: Options = this.options,
+  }: BenchmarkStats {
+    iters = this.getNumIters(run, options);
+    // reset run by running afterEach
+    afterEach();
+
+    results = Stats.removeOutliers(
+      this.iter(run, afterEach, iters, options),
+      0.05,
+    );
+    stats = computeStats(results, options.keepSamples);
+    if (options.verbose) {
+      displayStats(stats)
+    };
+    stats
+  }
+
+  // calculate number of iterations to run for a given function
+  // if one run takes over 1 second, return 1
+  private readonly fun getNumIters<T>(fn: () -> T, options: Options): Int {
+    baseline = static::timeInBlackBox(fn).toFloat();
+    if (baseline > 1e9) 1 else {
+      iterPerMs = max(1.0, 1e6 / baseline);
+      iters = static::MS_ITERS * iterPerMs;
+      max(options.minIterations, iters.toInt())
+    }
+  }
+
+  // iterate,
+  // call afterEach after each run,
+  // run localGC every "itersPerGc" iterations
+  private readonly fun iter<T>(
+    run: () -> T,
+    afterEach: () -> void,
+    n: Int,
+    options: Options,
+  ): Vector<Int> {
+    results = Vector::mcreate(n);
+    for (i in Range(0, n)) {
+      results.push(static::timeInBlackBox(run));
+      afterEach();
+      if (options.itersPerGc > 0 && i % options.itersPerGc == 0) localGC()
+    };
+    freeze(results)
+  }
+
+  // time fn with no compiler optimizations.
+  // Gives an unsatisfiable condition check to stop llvm
+  // from making any optimizations.
+  @no_inline
+  @debug
+  private static fun timeInBlackBox<T>(fn: () -> T): Int {
+    if (arguments().size() == static::REALLY_BIG_INT) {
+      start = nowNanos();
+      debug(fn);
+      nowNanos() - start
+    } else {
+      start = nowNanos();
+      _ = blackBox(fn());
+      nowNanos() - start
+    }
+  }
+}
+
+private fun nsToMs(ns: Int): Float {
+  ns.toFloat() * 1e-6
+}
+
+private fun computeStats(
+  results: Sequence<Int>,
+  keepSamples: Bool,
+): BenchmarkStats {
+  BenchmarkStats{
+    median => Stats.median(results).fromSome().toInt(),
+    average => Stats.avg(results).fromSome().toInt(),
+    standardDeviation => Stats.stddev(results).fromSome().toInt(),
+    min => results.min().fromSome(),
+    max => results.max().fromSome(),
+    samples => if (keepSamples) results.collect(Array) else Array<Int>[],
+  }
+}
+
+// compute and display average, standard deviation, minimum, maximum
+private fun displayStats(stats: BenchmarkStats): void {
+  print_string(`min\t: ${stats.min}ns / ${nsToMs(stats.min)}ms`);
+  print_string(`max\t: ${stats.max}ns / ${nsToMs(stats.max)}ms`);
+  print_string(`median\t: ${stats.median}ns / ${nsToMs(stats.average)}ms`);
+  print_string(`average\t: ${stats.average}ns / ${nsToMs(stats.average)}ms`);
+  print_string(
+    `std dev\t: ${stats.standardDeviation}ns / ${nsToMs(
+      stats.standardDeviation,
+    )}ms`,
+  );
+}
+
+private fun displayStatsLineColumns(): void {
+  print_raw("name".padLeft(defaultNameColumns));
+  print_raw("min (ns)".padLeft(defaultStatsColumns));
+  print_raw("max (ns)".padLeft(defaultStatsColumns));
+  print_raw("median (ns)".padLeft(defaultStatsColumns));
+  print_raw("avg (ns)".padLeft(defaultStatsColumns));
+  print_raw("std dev (ns)".padLeft(defaultStatsColumns));
+  print_raw("\n");
+}
+
+private fun displayStatsLine(name: String, stats: BenchmarkStats): void {
+  print_raw(name.padLeft(defaultNameColumns));
+  print_raw(`${stats.min}`.padLeft(defaultStatsColumns));
+  print_raw(`${stats.max}`.padLeft(defaultStatsColumns));
+  print_raw(`${stats.median}`.padLeft(defaultStatsColumns));
+  print_raw(`${stats.average}`.padLeft(defaultStatsColumns));
+  print_raw(`${stats.standardDeviation}`.padLeft(defaultStatsColumns));
+  print_raw("\n");
+}
+
+// parse out benchmarking options and output filepath (if one exists)
+private fun parseArgs(): (Options, ?String) {
+  AP.parse(schema, arguments()) match {
+  | Success(results) ->
+    if (results.getBool("help")) {
+      print_string(AP.help(schema));
+      exit(0)
+    };
+    allowEmpty = results.getBool("allow-empty");
+    minIterations = results.getInt("min-iterations");
+    displayOutput = results.getBool("display-output");
+    keepSamples = results.getBool("keep-samples");
+    maybeOutfile = results.maybeGetString("output");
+    itersPerGc = results.getInt("iters-per-gc");
+    verbose = results.getBool("verbose");
+    if (keepSamples && maybeOutfile is None _) {
+      error(
+        "'--keep-samples' may only be used when writing results with '--output <file>'",
+      );
+    };
+    (
+      Options{
+        allowEmpty,
+        minIterations,
+        itersPerGc,
+        displayOutput,
+        keepSamples,
+        verbose,
+      },
+      maybeOutfile,
+    )
+  | Failure(exn) -> error(exn.getMessage())
+  };
+}
+
+private fun error(reason: String): _ {
+  print_error_ln(reason.trim());
+  print_error(AP.help(schema));
+  exit(1)
+}
+
+private fun writeResultFile(
+  results: Map<String, BenchmarkStats>,
+  filepath: String,
+): void {
+  FileSystem.writeTextFile(
+    filepath,
+    JSON.serialize(
+      results,
+      Map::meta(String::meta, BenchmarkStats::meta),
+    ) match {
+    | Success(result) -> result
+    | Failure(error) -> throw error
+    },
+  );
+}
+
+// run benchmark with a setup phase
+// A method to act as an opaque function call to the compiler
+// for avoiding optimizing away computations
+@no_inline
+@debug
+fun blackBox<T>(dummy: T): T {
+  dummy
+}
+
+module end;

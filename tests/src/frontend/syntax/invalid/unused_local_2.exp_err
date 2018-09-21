@@ -1,0 +1,7 @@
+File "./syntax/invalid/unused_local_2.sk", line 3, characters 6-6:
+Local variable 'x' was not used. Prefix it with an underscore to silence the error: '_x'
+1 | fun foo(): void {
+2 |   (1, 2) match {
+3 |   | (x, _) -> void
+  |      ^
+4 |   }

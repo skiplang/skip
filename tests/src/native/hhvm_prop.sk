@@ -1,0 +1,744 @@
+@cpp_extern
+untracked native fun internalMakeObject(t: String): mutable Runtime.HhvmHandle;
+
+@cpp_extern
+untracked native fun internalMakeArray(
+  t: String,
+  sz: Int,
+): mutable Runtime.HhvmHandle;
+
+@cpp_extern
+untracked native fun internalMakeShape(
+  t: String,
+): mutable Runtime.HhvmShapeHandle;
+
+@cpp_extern
+untracked native fun internalPushRet(value: HH.Mixed): void;
+
+@cpp_extern
+untracked native fun internalPushRetUndefined(): void;
+
+untracked fun internalPush(values: Array<HH.Mixed>): void {
+  values.each(v -> internalPushRet(v))
+}
+
+@cpp_extern
+untracked native fun internalSetRet(value: HH.Mixed): void;
+
+@cpp_extern
+untracked native fun internalUnsetRet(): void;
+
+@cpp_extern
+untracked native fun internalPushRet_obj(
+  value: readonly Runtime.HhvmHandle,
+): void;
+
+@cpp_extern
+untracked native fun internalPushRet_arr(
+  value: readonly Runtime.HhvmHandle,
+): void;
+
+// -----------------------------------------------------------------------------
+
+@hhvm_copy
+class Class1(
+  a1: Bool,
+  b1: Int,
+  c1: String,
+  d1: Float,
+) uses Show {
+  static untracked fun push(): void {
+    internalPushRet_obj(internalMakeObject("Class1"));
+    internalPushRet(HH.Bool(true));
+    internalPushRet(HH.Int(2));
+    internalPushRet(HH.String("3"));
+    internalPushRet(HH.Float(4.0));
+  }
+
+  fun toString(): String {
+    print_string("(toString)");
+    `Class1(${this.a1}, ${this.b1}, ${this.c1}, ${this.d1})`
+  }
+}
+
+@hhvm_import
+class Class2(
+  a2: Bool,
+  b2: Int,
+  c2: String,
+  d2: Float,
+) uses Show {
+  static untracked fun push(): void {
+    internalPushRet_obj(internalMakeObject("Class2"));
+  }
+
+  static untracked fun pushToString(): void {
+    internalPushRet(HH.Bool(true));
+    internalPushRet(HH.Int(2));
+    internalPushRet(HH.String("3"));
+    internalPushRet(HH.Float(4.0));
+  }
+
+  static untracked fun make(): Class2 {
+    HhvmInterop.createFromProxyPointerAndType(
+      internalMakeObject("Class2"),
+      "Class2",
+    )
+  }
+
+  fun toString(): String {
+    print_string("(toString)");
+    `Class2(${this.a2}, ${this.b2}, ${this.c2}, ${this.d2})`
+  }
+}
+
+// -----------------------------------------------------------------------------
+
+module HH;
+
+extension base class Mixed uses Show {}
+
+extension class Null uses Show {
+  fun toString(): .String {
+    "null"
+  }
+}
+
+extension class Bool uses Show {
+  fun toString(): .String {
+    if (this.x) "true" else "false"
+  }
+}
+
+extension class Float uses Show {
+  fun toString(): .String {
+    `${this.x}`
+  }
+}
+
+extension base class Object uses Show {
+  fun toString(): .String {
+    `<object>`
+  }
+}
+
+extension base class Resource uses Show {
+  fun toString(): .String {
+    `<resource>`
+  }
+}
+
+extension base class Arraybacked uses Show {
+  fun toString(): .String
+  | HH.Darray _ -> "<darray>"
+  | HH.Dict _ -> "<dict>"
+  | HH.Varray _ -> "<varray>"
+  | HH.Vec _ -> "<vec>"
+  | HH.Keyset _ -> "<keyset>"
+  | HH.Map _ -> "<map>"
+}
+
+extension base class Lambda uses Show {
+  fun toString(): .String
+  | HH.LambdaString(s) -> `lambda("${s}")`
+  | HH.LambdaObject(_) -> `lambda(object)`
+}
+
+module end;
+
+// -----------------------------------------------------------------------------
+
+module Vector;
+extension class HH_varray2 uses Show[T: Show] {
+  static untracked fun push(): void {
+    internalPushRet_arr(internalMakeArray("HH_varray", 3));
+  }
+
+  static untracked fun pushToString(): void {
+    internalPushRet(HH.Int(1));
+    internalPushRet(HH.Int(2));
+    internalPushRet(HH.Int(3));
+  }
+
+  readonly fun toString[T: Show](): String {
+    print_string("(toString)");
+    `HH_varray2(${this[0]}, ${this[1]}, ${this[2]})`
+  }
+
+  static untracked fun make(): HH_varray2<Int> {
+    HhvmInterop.createFromProxyPointer(internalMakeArray("HH_varray", 3))
+  }
+}
+module end;
+
+untracked fun copyArrayPush(name: String): void {
+  internalPushRet_arr(internalMakeArray(name, 3));
+  internalPushRet(HH.Int(1));
+  internalPushRet(HH.Int(2));
+  internalPushRet(HH.Int(3));
+}
+
+// -----------------------------------------------------------------------------
+
+module Map;
+extension class HH_darray2 uses Show[K: Show, V: Show] {
+  static untracked fun push(): void {
+    internalPushRet_arr(internalMakeArray("HH_darray", 3));
+  }
+
+  static untracked fun pushToString(): void {
+    internalPushRet(HH.String("a"));
+    internalPushRet(HH.Int(10));
+    internalPushRet(HH.String("b"));
+    internalPushRet(HH.Int(20));
+    internalPushRet(HH.String("c"));
+    internalPushRet(HH.Int(30));
+  }
+
+  static untracked fun make(): HH_darray2<String, Int> {
+    HhvmInterop.createFromProxyPointer(internalMakeArray("HH_darray", 3))
+  }
+
+  readonly fun toString[K: Show, V: Show](): String {
+    values = this.items()
+      .map(i -> `${i.i0} => ${i.i1}`)
+      .collect(Array)
+      .join(", ");
+    `HH_darray2(${values})`
+  }
+}
+module end;
+
+// -----------------------------------------------------------------------------
+
+module Set;
+extension class HH_keyset2 uses Show[T: Show] {
+  static untracked fun push(): void {
+    internalPushRet_arr(internalMakeArray("HH_keyset", 3));
+  }
+
+  static untracked fun pushToString(): void {
+    internalPushRet(HH.String("a"));
+    internalPushRet(HH.String("b"));
+    internalPushRet(HH.String("c"));
+  }
+
+  static untracked fun make(): HH_keyset2<String> {
+    HhvmInterop.createFromProxyPointer(internalMakeArray("HH_keyset", 3))
+  }
+
+  readonly fun toString[T: Show](): String {
+    `HH_keyset(${Array::createFromIterator(this.values()).join(", ")})`
+  }
+}
+module end;
+
+// -----------------------------------------------------------------------------
+
+@hhvm_shape
+class Shape1(
+  a1: Bool,
+  b1: Int,
+  c1: String,
+  d1: Float,
+) uses Show {
+  static untracked fun push(): void {
+    internalPushRet_arr(internalMakeArray("Shape1", 3));
+  }
+
+  static untracked fun pushToString(): void {
+    internalPushRet(HH.Bool(true));
+    internalPushRet(HH.Int(2));
+    internalPushRet(HH.String("3"));
+    internalPushRet(HH.Float(4.0));
+  }
+
+  static untracked fun make(): Shape1 {
+    HhvmInterop.createFromProxyPointer(internalMakeArray("Shape1", 3))
+  }
+
+  fun toString(): String {
+    print_string("(toString)");
+    `Shape1(${this.a1}, ${this.b1}, ${this.c1}, ${this.d1})`
+  }
+}
+
+@hhvm_shape_copy
+class Shape2(
+  a1: Bool,
+  b1: Int,
+  c1: String,
+  d1: Float,
+) uses Show {
+  static untracked fun push(): void {
+    internalPushRet_arr(internalMakeArray("Shape2", 4));
+    internalPushRet(HH.Bool(true));
+    internalPushRet(HH.Int(2));
+    internalPushRet(HH.String("3"));
+    internalPushRet(HH.Float(4.0));
+  }
+
+  fun toString(): String {
+    print_string("(toString)");
+    `Shape2(${this.a1}, ${this.b1}, ${this.c1}, ${this.d1})`
+  }
+}
+
+// -----------------------------------------------------------------------------
+
+untracked fun test_prop_get(): void {
+  obj = internalMakeObject("RootClass");
+
+  print_string("--- get nullable");
+  internalPushRet(HH.Null());
+  print_string(
+    `${(HhvmInterop.propertyGetHelper(obj, "n0") : Nullable<Bool>)}`,
+  );
+  internalPushRet(HH.Bool(false));
+  print_string(
+    `${(HhvmInterop.propertyGetHelper(obj, "n1") : Nullable<Bool>)}`,
+  );
+
+  print_string("--- get bool");
+  internalPushRet(HH.Bool(true));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "b0") : Bool)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "b1") : ?Bool)}`);
+  internalPushRet(HH.Bool(false));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "b2") : ?Bool)}`);
+
+  print_string("--- get int");
+  internalPushRet(HH.Int(42));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "i0") : Int)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "i1") : ?Int)}`);
+  internalPushRet(HH.Int(42));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "i2") : ?Int)}`);
+
+  print_string("--- get float");
+  internalPushRet(HH.Float(3.5));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "f0") : Float)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "f1") : ?Float)}`);
+  internalPushRet(HH.Float(3.5));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "f2") : ?Float)}`);
+
+  print_string("--- get string");
+  internalPushRet(HH.String("short"));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s0") : String)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s1") : ?String)}`);
+  internalPushRet(HH.String("this is a long string"));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s2") : ?String)}`);
+
+  print_string("--- get mixed");
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "m0") : HH.Mixed)}`);
+  internalPushRet(HH.Bool(true));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "m1") : HH.Mixed)}`);
+  internalPushRet(HH.Int(123));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "m2") : HH.Mixed)}`);
+  internalPushRet(HH.Float(23.5));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "m3") : HH.Mixed)}`);
+  internalPushRet(HH.String("hello"));
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "m4") : HH.Mixed)}`);
+
+  print_string("--- get hhvm_import class");
+  Class2::push();
+  Class2::pushToString();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o1") : Class2)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o2") : ?Class2)}`);
+  Class2::push();
+  Class2::pushToString();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o3") : ?Class2)}`);
+
+  print_string("--- get hhvm_copy class");
+  Class1::push();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o0") : Class1)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o1") : ?Class1)}`);
+  Class1::push();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "o2") : ?Class1)}`);
+
+  print_string("--- get HH_varray");
+  Vector.HH_varray2::push();
+  Vector.HH_varray2::pushToString();
+  print_string(
+    `${(HhvmInterop.propertyGetHelper(obj, "a1") : Vector.HH_varray2<Int>)}`,
+  );
+  internalPushRet(HH.Null());
+  print_string(
+    `${(HhvmInterop.propertyGetHelper(obj, "a1") : ?Vector.HH_varray2<Int>)}`,
+  );
+  Vector.HH_varray2::push();
+  Vector.HH_varray2::pushToString();
+  print_string(
+    `${(HhvmInterop.propertyGetHelper(obj, "a1") : ?Vector.HH_varray2<Int>)}`,
+  );
+
+  print_string("--- get Array");
+  {
+    copyArrayPush("Array1");
+    arr1 = (HhvmInterop.propertyGetHelper(obj, "a1") : Array<Int>);
+    print_string("(toString)");
+    print_string(`${arr1}`);
+
+    internalPushRet(HH.Null());
+    arr2 = (HhvmInterop.propertyGetHelper(obj, "a2") : ?Array<Int>);
+    print_string("(toString)");
+    print_string(`${arr2}`);
+
+    copyArrayPush("Array1");
+    arr3 = (HhvmInterop.propertyGetHelper(obj, "a3") : ?Array<Int>);
+    print_string("(toString)");
+    print_string(`${arr3}`);
+  };
+
+  print_string("--- get Vector");
+  {
+    copyArrayPush("Vector1");
+    arr1 = (HhvmInterop.propertyGetHelper(obj, "a1") : Vector<Int>);
+    print_string("(toString)");
+    print_string(`${arr1}`);
+
+    internalPushRet(HH.Null());
+    arr2 = (HhvmInterop.propertyGetHelper(obj, "a2") : ?Vector<Int>);
+    print_string("(toString)");
+    print_string(`${arr2}`);
+
+    copyArrayPush("Vector1");
+    arr3 = (HhvmInterop.propertyGetHelper(obj, "a3") : ?Vector<Int>);
+    print_string("(toString)");
+    print_string(`${arr3}`);
+  };
+
+  print_string("--- get hhvm_shape");
+  Shape1::push();
+  Shape1::pushToString();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s1") : Shape1)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s2") : ?Shape1)}`);
+  Shape1::push();
+  Shape1::pushToString();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s3") : ?Shape1)}`);
+
+  print_string("--- get hhvm_shape_copy");
+  Shape2::push();
+  print_string(`${(HhvmInterop.propertyGetHelper(obj, "s2") : Shape2)}`);
+
+  print_string("--- get HH_darray");
+  {
+    Map.HH_darray2::push();
+    Map.HH_darray2::pushToString();
+    d1 = (HhvmInterop.propertyGetHelper(obj, "d1") : Map.HH_darray2<
+      String,
+      Int,
+    >);
+    print_string("(toString)");
+    print_string(`${d1}`);
+
+    internalPushRet(HH.Null());
+    d2 = (HhvmInterop.propertyGetHelper(obj, "d2") : ?Map.HH_darray2<
+      String,
+      Int,
+    >);
+    print_string("(toString)");
+    print_string(`${d2}`);
+
+    Map.HH_darray2::push();
+    Map.HH_darray2::pushToString();
+    d3 = (HhvmInterop.propertyGetHelper(obj, "d1") : ?Map.HH_darray2<
+      String,
+      Int,
+    >);
+    print_string("(toString)");
+    print_string(`${d3}`);
+  };
+
+  print_string("--- get Map");
+  {
+    Map.HH_darray2::push();
+    Map.HH_darray2::pushToString();
+    d1 = (HhvmInterop.propertyGetHelper(obj, "d1") : Map<String, Int>);
+    print_string("(toString)");
+    print_string(`${d1}`);
+
+    internalPushRet(HH.Null());
+    d2 = (HhvmInterop.propertyGetHelper(obj, "d2") : ?Map<String, Int>);
+    print_string("(toString)");
+    print_string(`${d2}`);
+
+    Map.HH_darray2::push();
+    Map.HH_darray2::pushToString();
+    d3 = (HhvmInterop.propertyGetHelper(obj, "d1") : ?Map<String, Int>);
+    print_string("(toString)");
+    print_string(`${d3}`);
+  };
+
+  print_string("--- get HH_keyset");
+  {
+    Set.HH_keyset2::push();
+    ks1 = (HhvmInterop.propertyGetHelper(obj, "ks1") : Set.HH_keyset2<String>);
+    print_string("(toString)");
+    Set.HH_keyset2::pushToString();
+    print_string(`${ks1}`);
+  };
+
+  print_string("--- get Set");
+  {
+    Set.HH_keyset2::push();
+    Set.HH_keyset2::pushToString();
+    d1 = (HhvmInterop.propertyGetHelper(obj, "d1") : Set<String>);
+    print_string("(toString)");
+    print_string(`${d1}`);
+
+    internalPushRet(HH.Null());
+    d2 = (HhvmInterop.propertyGetHelper(obj, "d2") : ?Set<String>);
+    print_string("(toString)");
+    print_string(`${d2}`);
+
+    Set.HH_keyset2::push();
+    Set.HH_keyset2::pushToString();
+    d3 = (HhvmInterop.propertyGetHelper(obj, "d1") : ?Set<String>);
+    print_string("(toString)");
+    print_string(`${d3}`);
+  };
+
+  print_string("--- get Lambda");
+  {
+    internalPushRet(HH.String("abc"));
+    l1 = (HhvmInterop.propertyGetHelper(obj, "l1") : HH.Lambda);
+    print_string("(toString)");
+    print_string(`${l1}`);
+
+    internalPushRet_obj(internalMakeObject("Class1"));
+    l2 = (HhvmInterop.propertyGetHelper(obj, "l2") : HH.Lambda);
+    print_string("(toString)");
+    print_string(`${l2}`);
+  };
+
+  print_string("--- get tuple");
+  {
+    internalPushRet_arr(internalMakeArray("HH_varray", 3));
+    internalPush(Array[HH.String("a"), HH.Int(42), HH.Float(3.5)]);
+    t = (HhvmInterop.propertyGetHelper(obj, "t") : (String, Int, Float));
+    print_string("(toString)");
+    print_string(`${t}`);
+  };
+}
+
+untracked fun test_prop_get_shape(): void {
+  arr = internalMakeShape("RootClass");
+
+  print_string("--- get shape simple");
+  internalPushRet(HH.Int(7));
+  print_string(`${(HhvmInterop.propertyGetHelper(arr, "i") : Int)}`);
+
+  print_string("--- get shape nullable");
+  internalPushRet(HH.Int(7));
+  print_string(`${(HhvmInterop.propertyGetHelper(arr, "i") : ?Int)}`);
+  internalPushRet(HH.Null());
+  print_string(`${(HhvmInterop.propertyGetHelper(arr, "i") : ?Int)}`);
+
+  print_string("--- get shape optional");
+  internalPushRet(HH.Int(7));
+  print_string(`${(HhvmInterop.propertyGetHelper(arr, "i") : ??Int)}`);
+  internalPushRetUndefined();
+  print_string(`${(HhvmInterop.propertyGetHelper(arr, "i") : ??Int)}`);
+  internalPushRet(HH.Null());
+}
+
+// -----------------------------------------------------------------------------
+
+untracked fun test_prop_set(): void {
+  obj = internalMakeObject("RootClass");
+
+  print_string("--- set nullable");
+  HhvmInterop.propertySetHelper(obj, "n0", (Null() : Nullable<Int>));
+  HhvmInterop.propertySetHelper(obj, "n1", Box(123));
+
+  print_string("--- set bool");
+  HhvmInterop.propertySetHelper(obj, "b0", false);
+  HhvmInterop.propertySetHelper(obj, "b1", (None() : ?Bool));
+  HhvmInterop.propertySetHelper(obj, "b2", Some(true));
+
+  print_string("--- set int");
+  HhvmInterop.propertySetHelper(obj, "i0", 50);
+  HhvmInterop.propertySetHelper(obj, "i1", (None() : ?Int));
+  HhvmInterop.propertySetHelper(obj, "i2", Some(60));
+
+  print_string("--- set float");
+  HhvmInterop.propertySetHelper(obj, "f0", 3.5);
+  HhvmInterop.propertySetHelper(obj, "f1", (None() : ?Float));
+  HhvmInterop.propertySetHelper(obj, "f2", Some(4.5));
+
+  print_string("--- set string");
+  HhvmInterop.propertySetHelper(obj, "s0", "str1");
+  HhvmInterop.propertySetHelper(obj, "s1", (None() : ?String));
+  HhvmInterop.propertySetHelper(obj, "s2", Some("str2"));
+
+  print_string("--- set mixed");
+  HhvmInterop.propertySetHelper(obj, "m0", HH.Null());
+  HhvmInterop.propertySetHelper(obj, "m1", HH.Bool(true));
+  HhvmInterop.propertySetHelper(obj, "m2", HH.Int(234));
+  HhvmInterop.propertySetHelper(obj, "m3", HH.Float(5.25));
+  HhvmInterop.propertySetHelper(obj, "m4", HH.String("this is a long string"));
+
+  print_string("--- set hhvm_import class");
+  HhvmInterop.propertySetHelper(obj, "o0", Class2::make());
+  HhvmInterop.propertySetHelper(obj, "o1", (None() : ?Class2));
+  HhvmInterop.propertySetHelper(obj, "o2", Some(Class2::make()));
+
+  print_string("--- set hhvm_copy class");
+  {
+    cls = Class1(true, 123, "this is a long string", 10.5);
+    HhvmInterop.propertySetHelper(obj, "oc0", cls);
+    HhvmInterop.propertySetHelper(obj, "oc1", (None() : ?Class1));
+    HhvmInterop.propertySetHelper(obj, "oc2", Some(cls));
+  };
+
+  print_string("--- set HH_varray");
+  HhvmInterop.propertySetHelper(obj, "va0", Vector.HH_varray2::make());
+  HhvmInterop.propertySetHelper(obj, "va1", (None() : ?Vector.HH_varray2<Int>));
+  HhvmInterop.propertySetHelper(obj, "va2", Some(Vector.HH_varray2::make()));
+
+  print_string("--- set Array");
+  {
+    arr = Array[1, 2, 3];
+    HhvmInterop.propertySetHelper(obj, "ar0", arr);
+    HhvmInterop.propertySetHelper(obj, "ar1", (None() : ?Array<Int>));
+    HhvmInterop.propertySetHelper(obj, "ar2", Some(arr));
+  };
+
+  print_string("--- set Vector");
+  {
+    arr = Vector[1, 2, 3];
+    HhvmInterop.propertySetHelper(obj, "v0", arr);
+    HhvmInterop.propertySetHelper(obj, "v1", (None() : ?Vector<Int>));
+    HhvmInterop.propertySetHelper(obj, "v2", Some(arr));
+  };
+
+  print_string("--- set hhvm_shape");
+  HhvmInterop.propertySetHelper(obj, "s0", Shape1::make());
+  HhvmInterop.propertySetHelper(obj, "s1", (None() : ?Shape1));
+  HhvmInterop.propertySetHelper(obj, "s2", Some(Shape1::make()));
+
+  print_string("--- set hhvm_shape_copy");
+  {
+    cls = Shape2(true, 123, "this is a long string", 10.5);
+    HhvmInterop.propertySetHelper(obj, "sc0", cls);
+    HhvmInterop.propertySetHelper(obj, "sc1", (None() : ?Shape2));
+    HhvmInterop.propertySetHelper(obj, "sc2", Some(cls));
+  };
+
+  print_string("--- set HH_darray");
+  HhvmInterop.propertySetHelper(obj, "d0", Map.HH_darray2::make());
+  HhvmInterop.propertySetHelper(
+    obj,
+    "d0",
+    (None() : ?Map.HH_darray2<String, Int>),
+  );
+  HhvmInterop.propertySetHelper(obj, "d0", Some(Map.HH_darray2::make()));
+
+  print_string("--- set Map");
+  {
+    m = Map["a" => 1, "b" => 2, "c" => 3];
+    HhvmInterop.propertySetHelper(obj, "m0", m);
+  };
+
+  print_string("--- set HH_keyset");
+  HhvmInterop.propertySetHelper(obj, "d0", Set.HH_keyset2::make());
+  HhvmInterop.propertySetHelper(obj, "d0", (None() : ?Set.HH_keyset2<String>));
+  HhvmInterop.propertySetHelper(obj, "d0", Some(Set.HH_keyset2::make()));
+
+  print_string("--- set Set");
+  {
+    s = Set["a", "b", "c"];
+    HhvmInterop.propertySetHelper(obj, "s0", s);
+  };
+
+  print_string("--- set Lambda");
+  HhvmInterop.propertySetHelper(obj, "l1", HH.LambdaString("abc"));
+  HhvmInterop.propertySetHelper(
+    obj,
+    "l2",
+    HH.LambdaObject(
+      HhvmInterop.createFromProxyPointer(internalMakeObject("Class1")),
+    ),
+  );
+
+  print_string("--- set tuple");
+  HhvmInterop.propertySetHelper(obj, "tup", (3.5, 2, "abc"));
+}
+
+untracked fun test_prop_set_shape(): void {
+  arr = internalMakeShape("RootClass");
+
+  print_string("--- set shape simple");
+  HhvmInterop.propertySetHelper(arr, "i", 7);
+
+  print_string("--- set shape nullable");
+  HhvmInterop.propertySetHelper(arr, "i", Some(7));
+  HhvmInterop.propertySetHelper(arr, "i", None());
+
+  print_string("--- set shape optional");
+  HhvmInterop.propertySetHelper(arr, "i", Some(Some(7)));
+  HhvmInterop.propertySetHelper(arr, "i", Some((None() : ?Int)));
+  HhvmInterop.propertySetHelper(arr, "i", (None() : ??Int));
+}
+
+// -----------------------------------------------------------------------------
+
+untracked fun expectRuntimeError(action: () -> _): void {
+  try {
+    _ = action();
+    invariant_violation("Shouldn't get here");
+  } catch {
+  | RuntimeError(msg) -> print_string(`RuntimeError("${msg}")`)
+  };
+}
+
+untracked fun test_prop_error(): void {
+  obj = internalMakeObject("RootClass");
+
+  print_string("--- type errors");
+  internalSetRet(HH.Int(123));
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Bool)
+  );
+  //  expectRuntimeError(() -> (HhvmInterop.propertyGetHelper(obj, "value") : Int));
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Float)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : String)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Class1)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Class2)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Vector<Int>)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Shape1)
+  );
+  expectRuntimeError(() ->
+    (HhvmInterop.propertyGetHelper(obj, "value") : Shape2)
+  );
+
+  internalUnsetRet();
+}
+
+// -----------------------------------------------------------------------------
+
+untracked fun main(): void {
+  test_prop_get();
+  test_prop_get_shape();
+  test_prop_set();
+  test_prop_set_shape();
+  test_prop_error();
+}

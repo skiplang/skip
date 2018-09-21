@@ -1,0 +1,7 @@
+File "./typechecking/invalid/function_pattern_matching_1.sk", line 3, characters 3-15:
+Algebraic bodies can only be defined in base classes
+1 | class X() {
+2 |   fun test(): void
+3 |   | X() -> void
+  |   ^^^^^^^^^^^^^
+4 | }

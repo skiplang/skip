@@ -1,0 +1,604 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Adapated from https://www.fpcomplete.com/blog/2017/07/iterators-streams-rust-haskell
+// and https://gist.github.com/snoyberg/9b1c77b595c4adf90880213fc49f2a21
+module IteratorStream;
+
+const TEST_INPUT: Int = 100000;
+
+// Straighforward loop
+@bench
+fun loop_(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      i = 1;
+      while (i <= TEST_INPUT) {
+        if (i % 2 == 0) {
+          !total = total + i * 2
+        };
+        !i = i + 1
+      };
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Straighforward loop w Range
+@bench
+fun loop_range(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      for (i in Range(1, TEST_INPUT + 1)) {
+        if (i % 2 == 0) {
+          !total = total + i * 2
+        };
+        !i = i + 1
+      };
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Straighforward loop, bitwise multiply
+@bench
+fun bits(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      i = 1;
+      while (i <= TEST_INPUT) {
+        !total = total + ((i % 2) - 1).and(i + i);
+        !i = i + 1;
+      };
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Loop, cheating by exploiting knowledge of the specific structure of the problem
+@bench
+fun cheating(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  high = TEST_INPUT;
+  bencher.bench{
+    run => () -> {
+      i = 4;
+      !high = high * 2;
+      while (i <= high) {
+        !total = total + i;
+        !i = i + 4;
+      };
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+      !high = TEST_INPUT;
+    },
+  };
+}
+
+// Use the Sequence API: filter and map produce intermediate Vectors here
+@bench
+fun sequence(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = Range(1, TEST_INPUT + 1).filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use the Iterator API (via values()): filter and map are lazy
+@bench
+fun iterator(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = Range(1, TEST_INPUT + 1).values()
+        .filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use the custom, always_inline Iterator variant
+@bench
+fun inline_iterator(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = (mutable RangeIteratorInline(1, TEST_INPUT + 1))
+        .filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use the custom, trait/value-class Iterator variant
+@bench
+fun trait_iterator(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = (mutable RangeIteratorTrait(1, TEST_INPUT + 1))
+        .filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use a mutable Stream, Iterator-like but with a Skip() variant
+@bench
+fun stream(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = (mutable RangeStream(1, TEST_INPUT + 1))
+        .filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use an Enumerable
+@bench
+fun enumerable(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = (mutable RangeEnumerable(1, TEST_INPUT + 1))
+        .filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use an immutable Stream, persistent version of the above Stream
+@bench
+fun imm_stream(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = RangeStreamI(1, TEST_INPUT + 1).filter(x ~> x % 2 == 0)
+        .map(x ~> x * 2)
+        .reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+// Use a generator function to produce the values to be summed
+@bench
+fun generator(bencher: Bencher): Bencher.BenchmarkStats {
+  total = 0;
+  bencher.bench{
+    run => () -> {
+      !total = generatorImpl(TEST_INPUT).reduce((acc, x) ~> acc + x, 0)
+    },
+    afterEach => () -> {
+      invariant(
+        total == 5000100000,
+        `Error: incorrect result: ${total} != 5000100000`,
+      );
+      !total = 0;
+    },
+  };
+}
+
+fun generatorImpl(high: Int): mutable Iterator<Int> {
+  i = 1;
+  while (i <= high) {
+    if (i % 2 == 0) {
+      yield i * 2;
+    };
+    !i = i + 1
+  };
+}
+
+// Iterator variant with @always_inline
+mutable base class IteratorInline<+T>() {
+  @always_inline
+  mutable fun next(): ?T;
+
+  @always_inline
+  mutable fun map<U>(f: T -> U): mutable MapIteratorInline<T, U> {
+    mutable MapIteratorInline(this, f)
+  }
+
+  @always_inline
+  mutable fun filter(f: T -> Bool): mutable FilterIteratorInline<T> {
+    mutable FilterIteratorInline(this, f)
+  }
+
+  @always_inline
+  mutable fun reduce<R>(f: (R, T) -> R, init: R): R {
+    loop {
+      this.next() match {
+      | None() -> break init
+      | Some(x) -> !init = f(init, x)
+      };
+    }
+  }
+}
+
+mutable class MapIteratorInline<T, U>(
+  base: mutable IteratorInline<T>,
+  f: T -> U,
+) extends IteratorInline<U> {
+  @always_inline
+  mutable fun next(): ?U {
+    this.base.next() match {
+    | Some(x) -> Some(this.f(x))
+    | None() -> None()
+    }
+  }
+}
+
+mutable class FilterIteratorInline<T>(
+  base: mutable IteratorInline<T>,
+  f: T -> Bool,
+) extends IteratorInline<T> {
+  @always_inline
+  mutable fun next(): ?T {
+    this.base.next() match {
+    | Some(x) -> if (this.f(x)) Some(x) else this.next()
+    | None() -> None()
+    }
+  }
+}
+
+mutable class RangeIteratorInline(
+  mutable current: Int,
+  end: Int,
+) extends IteratorInline<Int> {
+  @always_inline
+  mutable fun next(): ?Int {
+    i = this.current;
+    if (i >= this.end) {
+      None()
+    } else {
+      this.!current = i + 1;
+      Some(i)
+    }
+  }
+}
+
+// Value/Trait based Iterator alternative
+trait IteratorTrait<+T>() {
+  @always_inline
+  mutable fun next(): ?T;
+
+  @always_inline
+  mutable fun map<U>(f: T -> U): mutable MapIteratorTrait<T, U, mutable this> {
+    mutable MapIteratorTrait(this, f)
+  }
+
+  @always_inline
+  mutable fun filter(
+    f: T -> Bool,
+  ): mutable FilterIteratorTrait<T, mutable this> {
+    mutable FilterIteratorTrait(this, f)
+  }
+
+  @always_inline
+  mutable fun reduce<R>(f: (R, T) -> R, init: R): R {
+    loop {
+      this.next() match {
+      | None() -> break init
+      | Some(x) -> !init = f(init, x)
+      };
+    }
+  }
+}
+
+mutable value class MapIteratorTrait<T, U, B: mutable IteratorTrait<T>>(
+  base: B,
+  f: T -> U,
+) uses IteratorTrait<U> {
+  @always_inline
+  mutable fun next(): ?U {
+    this.base.next() match {
+    | Some(x) -> Some(this.f(x))
+    | None() -> None()
+    }
+  }
+}
+
+mutable value class FilterIteratorTrait<T, B: mutable IteratorTrait<T>>(
+  base: B,
+  f: T -> Bool,
+) uses IteratorTrait<T> {
+  @always_inline
+  mutable fun next(): ?T {
+    this.base.next() match {
+    | Some(x) -> if (this.f(x)) Some(x) else this.next()
+    | None() -> None()
+    }
+  }
+}
+
+mutable class RangeIteratorTrait(
+  mutable current: Int,
+  end: Int,
+) uses IteratorTrait<Int> {
+  @always_inline
+  mutable fun next(): ?Int {
+    i = this.current;
+    if (i >= this.end) {
+      None()
+    } else {
+      this.!current = i + 1;
+      Some(i)
+    }
+  }
+}
+
+// Mutable Stream: produces zero or more Skip/Yield values followed by a Done.
+base class Step<+T> {
+  children =
+  | Done()
+  | Skip()
+  | Yield(T)
+}
+mutable base class Stream<+T> {
+  mutable fun next(): Step<T>;
+
+  mutable fun filter(p: T -> Bool): mutable Stream<T> {
+    mutable FilterStream(this, p)
+  }
+  mutable fun map<T2>(f: T -> T2): mutable Stream<T2> {
+    mutable MapStream(this, f)
+  }
+  mutable fun reduce<R>(f: (R, T) -> R, init: R): R {
+    loop {
+      this.next() match {
+      | Done() -> break init
+      | Skip() -> void
+      | Yield(x) -> !init = f(init, x)
+      };
+    }
+  }
+}
+
+mutable class RangeStream(mutable current: Int, end: Int) extends Stream<Int> {
+  mutable fun next(): Step<Int> {
+    i = this.current;
+    if (i >= this.end) {
+      Done()
+    } else {
+      this.!current = i + 1;
+      Yield(i)
+    }
+  }
+}
+mutable class MapStream<T, T2>(
+  src: mutable Stream<T>,
+  p: T -> T2,
+) extends Stream<T2> {
+  mutable fun next(): Step<T2> {
+    next = this.src.next();
+    next match {
+    | Done() -> Done()
+    | Skip() -> Skip()
+    | Yield(x) -> Yield(this.p(x))
+    }
+  }
+}
+mutable class FilterStream<T>(
+  src: mutable Stream<T>,
+  p: T -> Bool,
+) extends Stream<T> {
+  mutable fun next(): Step<T> {
+    next = this.src.next();
+    next match {
+    | Yield(x) -> if (this.p(x)) next else Skip()
+    | _ -> next
+    }
+  }
+}
+
+// Immutable Stream: produces zero or more Skip/Yield values followed by a Done, where
+// each Skip/Yield includes the next instance of the Stream.
+base class StepI<+S, +T> {
+  children =
+  | DoneI()
+  | SkipI(S)
+  | YieldI(S, T)
+}
+base class StreamI<+T> {
+  fun next(): StepI<this, T>;
+
+  fun filter(p: T ~> Bool): StreamI<T> {
+    FilterStreamI(this, p)
+  }
+  fun map<T2>(f: T ~> T2): StreamI<T2> {
+    MapStreamI(this, f)
+  }
+  fun reduce<R>(f: (R, T) -> R, init: R): R {
+    stream = this;
+    loop {
+      stream.next() match {
+      | DoneI() -> break init
+      | SkipI(s) -> !stream = s
+      | YieldI(s, x) ->
+        !init = f(init, x);
+        !stream = s
+      };
+    }
+  }
+}
+
+class RangeStreamI(current: Int, end: Int) extends StreamI<Int> {
+  fun next(): StepI<this, Int> {
+    i = this.current;
+    if (i >= this.end) {
+      DoneI()
+    } else {
+      !this.current = i + 1;
+      YieldI(this, i)
+    }
+  }
+}
+class MapStreamI<T, T2>(src: StreamI<T>, p: T ~> T2) extends StreamI<T2> {
+  fun next(): StepI<this, T2> {
+    next = this.src.next();
+    next match {
+    | DoneI() -> DoneI()
+    | SkipI(s) ->
+      !this.src = s;
+      SkipI(this)
+    | YieldI(s, x) ->
+      !this.src = s;
+      YieldI(this, this.p(x))
+    }
+  }
+}
+class FilterStreamI<T>(src: StreamI<T>, p: T ~> Bool) extends StreamI<T> {
+  fun next(): StepI<this, T> {
+    next = this.src.next();
+    next match {
+    | DoneI() -> DoneI()
+    | SkipI(s) ->
+      !this.src = s;
+      SkipI(this)
+    | YieldI(s, x) ->
+      !this.src = s;
+      if (this.p(x)) YieldI(this, x) else SkipI(this)
+    }
+  }
+}
+
+// Enumerable
+mutable base class Enumerable<+T>() {
+  mutable fun iterator(): mutable IteratorInline<T>;
+
+  @always_inline
+  mutable fun map<U>(f: T -> U): mutable MapEnumerable<T, U> {
+    mutable MapEnumerable(this, f)
+  }
+
+  @always_inline
+  mutable fun filter(f: T -> Bool): mutable FilterEnumerable<T> {
+    mutable FilterEnumerable(this, f)
+  }
+
+  @always_inline
+  mutable fun reduce<R>(f: (R, T) -> R, init: R): R {
+    this.iterator().reduce(f, init);
+  }
+}
+
+mutable class MapEnumerable<T, U>(
+  base: mutable Enumerable<T>,
+  f: T -> U,
+) extends Enumerable<U> {
+  @always_inline
+  mutable fun iterator(): mutable MapIteratorInline<T, U> {
+    mutable MapIteratorInline(this.base.iterator(), this.f)
+  }
+}
+
+mutable class FilterEnumerable<T>(
+  base: mutable Enumerable<T>,
+  f: T -> Bool,
+) extends Enumerable<T> {
+  @always_inline
+  mutable fun iterator(): mutable FilterIteratorInline<T> {
+    mutable FilterIteratorInline(this.base.iterator(), this.f)
+  }
+}
+
+mutable class RangeEnumerable(
+  mutable current: Int,
+  end: Int,
+) extends Enumerable<Int> {
+  @always_inline
+  mutable fun iterator(): mutable IteratorInline<Int> {
+    mutable RangeIteratorInline(this.current, this.end)
+  }
+}
+
+module end;

@@ -1,0 +1,11 @@
+base class Foo {
+  overridable fun hello(): _ {
+    invariant_violation("")
+  }
+}
+
+class Bar() extends Foo {
+  fun hello(): Int {
+    42
+  }
+}

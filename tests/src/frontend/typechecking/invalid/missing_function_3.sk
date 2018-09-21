@@ -1,0 +1,4 @@
+fun main(): void {
+  _ = String::noSuchMethod();
+  print_raw("wut")
+}

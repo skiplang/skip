@@ -1,0 +1,17 @@
+async fun asyncMain(): ^void {
+  print_raw(
+    if (await canSee()) {
+      "PASS"
+    } else {
+      "FAIL"
+    },
+  )
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}
+
+async fun canSee(): ^Bool {
+  true
+}

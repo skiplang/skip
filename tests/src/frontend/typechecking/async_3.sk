@@ -1,0 +1,11 @@
+async fun get_pass(): ^String {
+  "Pass\n"
+}
+
+async fun asyncMain(): ^void {
+  print_raw(await get_pass())
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

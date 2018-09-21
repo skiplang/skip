@@ -1,0 +1,31 @@
+File "./typechecking/invalid/method_as_lambda_2.sk", line 8, characters 18-37:
+Invalid annotation
+ 6 |
+ 7 | fun main(): void {
+ 8 |   _: () ~> Int = (mutable Foo(0)).foo;
+   |                  ^^^^^^^^^^^^^^^^^^^^
+ 9 |   print_raw("FAIL")
+
+File "./typechecking/invalid/method_as_lambda_2.sk", line 2, characters 16-18:
+The type: (() -> Int)
+1 | mutable class Foo(mutable x: Int) {
+2 |   readonly fun foo(): Int {
+  |                ^^^
+3 |     this.x
+
+File "./typechecking/invalid/method_as_lambda_2.sk", line 8, characters 6-14:
+Is not a subtype of: (() ~> Int)
+ 6 |
+ 7 | fun main(): void {
+ 8 |   _: () ~> Int = (mutable Foo(0)).foo;
+   |      ^^^^^^^^^
+ 9 |   print_raw("FAIL")
+
+File "./typechecking/invalid/method_as_lambda_2.sk", line 8, characters 6-14:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: (() -> Int)
+ 6 |
+ 7 | fun main(): void {
+ 8 |   _: () ~> Int = (mutable Foo(0)).foo;
+   |      ^^^^^^^^^
+ 9 |   print_raw("FAIL")

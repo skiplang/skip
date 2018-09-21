@@ -1,0 +1,300 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias P = ParseTree;
+
+module CodeModTemplate;
+
+const kVarTokenPrefix: String = "_this_is_a_variable__";
+
+// Helper class for CodeModTemplate
+mutable class MatchData{
+  vars: mutable UnorderedMap<String, P.ParseTree> = mutable UnorderedMap[],
+  nameListVars: mutable UnorderedMap<
+    String,
+    UnorderedMap<String, P.NamedArgumentTree>,
+  > = mutable UnorderedMap[],
+} extends P.CodeMod {
+  mutable fun transformTree(tree: P.ParseTree): ?P.ParseTree {
+    tree match {
+    | a @ P.TokenTree _ if (a.token.value.endsWith(kVarTokenPrefix)) ->
+      var = a.token.value.sub(
+        0,
+        a.token.value.length() - kVarTokenPrefix.length(),
+      );
+      Some(this.vars[var])
+    | t @ P.NamedArgumentsTree _ -> this.transformNamedArguments(t)
+    | _ -> None()
+    }
+  }
+
+  mutable fun transform(tree: P.ParseTree): (P.ParseTree, Vector<P.Subst>) {
+    this.transformTree(tree) match {
+    | None() -> this.transformChildren(tree)
+    | Some(transformedTree) -> (transformedTree, Vector[])
+    }
+  }
+
+  mutable private fun transformNamedArguments(
+    t: P.NamedArgumentsTree,
+  ): ?P.NamedArgumentsTree {
+    args = mutable Vector[];
+    seps = mutable Vector[];
+    replacedOne = false;
+
+    for (e in t.arguments.asList().elements) {
+      e match {
+      | P.NamedArgumentTree{
+        name => P.TokenTree{token => tok @ Token.Token{value}},
+      } if (value.endsWith(kVarTokenPrefix)) ->
+        !replacedOne = true;
+        var = value.sub(0, value.length() - kVarTokenPrefix.length());
+        for (f in this.nameListVars[var].values()) {
+          if (!args.isEmpty()) {
+            seps.push(
+              P.TokenTree{
+                token => Token.Token{
+                  kind => TokenKind.COMMA(),
+                  value => ",",
+                  errors => Array[],
+                  leadingComments => Array[],
+                  trailingComments => Array[],
+                  range => tok.range,
+                },
+                range => tok.range,
+              },
+            );
+          };
+          args.push(f);
+        }
+      | n @ P.NamedArgumentTree _ ->
+        if (!args.isEmpty()) {
+          seps.push(
+            P.TokenTree{
+              token => Token.Token{
+                kind => TokenKind.COMMA(),
+                value => ",",
+                errors => Array[],
+                leadingComments => Array[],
+                trailingComments => Array[],
+                range => n.range,
+              },
+              range => n.range,
+            },
+          );
+        };
+        args.push(this.transform(n).i0)
+      | _ -> invariant_violation("bad list entry")
+      }
+    };
+
+    if (replacedOne) {
+      Some(
+        t with {
+          arguments => t.arguments.asList() with {
+            elements => args.collect(Array),
+            separators => seps.collect(Array),
+          },
+        },
+      )
+    } else {
+      None()
+    }
+  }
+}
+
+class ParseTreeTemplate private {tree: P.ParseTree} {
+  static fun createFromString(source: String, what: String): ParseTreeTemplate {
+    !source = source.replaceRegex(Regex::create("!\\{([A-Za-z0-9_]+)\\}"), f ->
+      f[1] + kVarTokenPrefix
+    );
+    parser = SkipParser.SkipParser::create(source, false);
+    _ = parser.eatTree(TokenKind.BEGINNING_OF_FILE());
+    template = parser.parseExpressionSequence() match {
+    | P.ParseTreeList{elements} if (elements.size() == 1) -> elements.first()
+    | t @ _ -> t
+    };
+    _ = parser.eatTree(TokenKind.END_OF_FILE());
+    if (!parser.getErrors().isEmpty()) {
+      throw RuntimeError(`Syntax Error in ${what}! ${parser.getErrors()[0]}\n`);
+    };
+    ParseTreeTemplate{tree => template}
+  }
+
+  fun matches(tree: P.ParseTree): ?mutable MatchData {
+    m = mutable MatchData{};
+    if (this.matchElement(m, this.tree, tree)) Some(m) else None()
+  }
+
+  private fun matchList(
+    m: mutable MatchData,
+    template: mutable Iterator<P.ParseTree>,
+    code: mutable Iterator<P.ParseTree>,
+  ): Bool {
+    loop {
+      (template.next(), code.next()) match {
+      | (None _, None _) -> break true
+      | (Some(templateTree), Some(codeTree)) ->
+        if (!this.matchElement(m, templateTree, codeTree)) {
+          break false
+        }
+      | _ -> break false
+      }
+    }
+  }
+
+  private fun matchParseTreeList(
+    m: mutable MatchData,
+    a: P.ParseTreeList,
+    b: P.ParseTreeList,
+  ): Bool {
+    // Skip matching the separators - technically we should check that they
+    // match all but the optional last one
+    this.matchElement(m, a.startDelimiter, b.startDelimiter) &&
+      this.matchList(m, a.elements.values(), b.elements.values()) &&
+      this.matchElement(m, a.endDelimiter, b.endDelimiter)
+  }
+
+  private fun matchNamedArgumentsTree(
+    m: mutable MatchData,
+    template: P.NamedArgumentsTree,
+    code: P.NamedArgumentsTree,
+  ): Bool {
+    // We only allow variables when the list is "regular" - it has to be a List
+    // of NamedArgumentTree with commas separating each element.
+    if (!(template.arguments is P.ParseTreeList _)) {
+      return this.matchElement(m, template.arguments, code.arguments);
+    };
+
+    arguments = template.arguments.asList();
+
+    if (
+      !arguments.elements.all(e -> {
+        e is P.NamedArgumentTree _
+      })
+    ) {
+      return this.matchElement(m, template.arguments, code.arguments);
+    };
+
+    if (arguments.separators.size() < arguments.elements.size() - 1) {
+      return this.matchElement(m, template.arguments, code.arguments);
+    };
+
+    if (
+      !arguments.separators.all(e -> {
+        e.getTokenKind() == TokenKind.COMMA()
+      })
+    ) {
+      return this.matchElement(m, template.arguments, code.arguments);
+    };
+
+    // If template has a var then we extract the known parts out of code and
+    // make a var from the rest
+    var = "";
+    hasVar = arguments.elements.any(e -> {
+      e match {
+      | P.NamedArgumentTree{
+        name => P.TokenTree{token => Token.Token{value}},
+      } if (value.endsWith(kVarTokenPrefix)) ->
+        !var = value.sub(0, value.length() - kVarTokenPrefix.length());
+        true
+      | _ -> false
+      }
+    });
+    if (!hasVar) {
+      return this.matchElement(m, template.arguments, code.arguments);
+    };
+
+    templateMap = mutable UnorderedMap[];
+    for (e in arguments.elements) {
+      name = (e as P.NamedArgumentTree _).name.asToken().token.value;
+      if (!name.endsWith(kVarTokenPrefix)) {
+        templateMap![name] = e;
+      }
+    };
+
+    varMap = mutable UnorderedMap[];
+    matched = code.arguments.asList().elements.all(e -> {
+      name = (e as P.NamedArgumentTree _).name.asToken().token.value;
+      if (!templateMap.containsKey(name)) {
+        varMap![name] = e as P.NamedArgumentTree _;
+        true
+      } else {
+        this.matchElement(m, templateMap[name], e)
+      }
+    });
+
+    m.nameListVars![var] = freeze(varMap);
+    matched
+  }
+
+  private fun matchElement(
+    m: mutable MatchData,
+    template: P.ParseTree,
+    code: P.ParseTree,
+  ): Bool {
+    (template, code) match {
+    | (a @ P.TokenTree _, b @ _) if (a.token.value.endsWith(kVarTokenPrefix)) ->
+      var = a.token.value.sub(
+        0,
+        a.token.value.length() - kVarTokenPrefix.length(),
+      );
+      if (m.vars.maybeSet(var, b)) {
+        // first time seeing token
+        true
+      } else {
+        // second+ time seeing token
+        this.matchElement(m, m.vars[var], b)
+      }
+    | (a @ P.TokenTree _, b @ P.TokenTree _) ->
+      (a.token.kind == b.token.kind && a.token.value == b.token.value)
+    | (a @ P.NamedArgumentsTree _, b @ P.NamedArgumentsTree _) ->
+      this.matchNamedArgumentsTree(m, a, b)
+    | (a @ P.ParseTreeList _, b @ P.ParseTreeList _) ->
+      this.matchParseTreeList(m, a, b)
+    | _ if (template.getKind() == code.getKind()) ->
+      this.matchList(m, template.getChildren(), code.getChildren())
+    | _ -> false
+    }
+  }
+}
+
+// This class takes in an input and output template.  Whenever it finds the
+// input template in the code it replaces it with the output template.
+// Variables can be specified using !{name}.  If a variable appears multiple
+// times in the input then all instances must match for the code to match.  Any
+// instances of a variable in the output are replaced by the matched pattern in
+// the input.
+mutable class .CodeModTemplate{
+  templateIn: ParseTreeTemplate,
+  templateOut: ParseTreeTemplate,
+} extends P.CodeMod {
+  static fun create(
+    transformIn: String,
+    transformOut: String,
+  ): mutable CodeModTemplate {
+    mutable CodeModTemplate{
+      templateIn => ParseTreeTemplate::createFromString(
+        transformIn,
+        "transform-in",
+      ),
+      templateOut => ParseTreeTemplate::createFromString(
+        transformOut,
+        "transform-out",
+      ),
+    }
+  }
+
+  mutable fun transformTree(tree: ParseTree): ?ParseTree {
+    this.templateIn.matches(tree) match {
+    | Some(m) -> Some(m.transform(this.templateOut.tree).i0)
+    | _ -> None()
+    }
+  }
+}
+
+module end;

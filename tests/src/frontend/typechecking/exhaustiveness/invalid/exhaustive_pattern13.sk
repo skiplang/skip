@@ -1,0 +1,14 @@
+class A() extends P
+class B() extends P
+
+base class P {
+  fun get(): Int {
+    42
+  }
+  fun test(): Int {
+    x = this match {
+    | o @ B _ -> o
+    };
+    x.get()
+  }
+}

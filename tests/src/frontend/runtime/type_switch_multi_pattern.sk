@@ -1,0 +1,19 @@
+base class B final () {
+  children =
+  | W
+  | X
+  | Y
+  | Z
+}
+
+fun main(): void {
+  print_raw(
+    (Y() : B) match {
+    | W()
+    | X()
+    | Y() ->
+      "Pass\n"
+    | Z() -> "Fail"
+    },
+  )
+}

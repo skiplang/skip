@@ -1,0 +1,15 @@
+File "./typechecking/invalid/invalid_extension_subst_tparams_3.sk", line 14, characters 5-5:
+Unbound class: 'T'
+12 | extension base class XSeq {
+13 |   fun no1(): void {
+14 |     T
+   |     ^
+15 |   }
+
+File "./typechecking/invalid/invalid_extension_subst_tparams_3.sk", line 14, characters 5-5:
+Generics cannot be used as expressions
+12 | extension base class XSeq {
+13 |   fun no1(): void {
+14 |     T
+   |     ^
+15 |   }

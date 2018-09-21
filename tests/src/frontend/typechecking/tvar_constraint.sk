@@ -1,0 +1,13 @@
+class Toto<T: Orderable>() {
+  fun toString[T: Show](): String {
+    "Hello"
+  }
+
+  static fun createFromItems<I: Sequence<T>>(I): Toto<T> {
+    Toto<T>()
+  }
+}
+
+fun main(): void {
+  print_raw(Toto<String>[].toString())
+}

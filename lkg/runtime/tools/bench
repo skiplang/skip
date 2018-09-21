@@ -1,0 +1,84 @@
+#!/usr/bin/env python
+# Usage: run_benchmark [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native', 'js']] [...benchmark options]
+#
+# optional --backend arg is the backend used to compile the benchmark (native, js).
+#
+# The optional .sk files are library code to be compiled with the benchmark.
+#
+# The last positional argument is the benchmark file or program unit.
+#
+# [...benchmark options] are any flags to pass to to Skip bencher, including:
+# --display-output  =>  when included, benchmark results will be printed to stdout
+# --output          =>  path to json file in which to dump result output
+# --min-iterations  =>  minimum number of iterations to run per benchmark
+# --iters-per-gc    =>  maximum number of benchmark iterations to run before
+#                       forcing garbage collection
+
+import argparse
+import imp
+import logging
+import os
+import pipes
+import re
+import subprocess
+import sys
+import tempfile
+import textwrap
+import common
+import unittest
+
+logger = logging.getLogger(__name__)
+
+
+def main(stack):
+    parser = argparse.ArgumentParser(
+        description="Run skip benchmarks", parents=[common.commonArguments(needsBackend=False)]
+    )
+    parser.add_argument("srcs", nargs="+", help="the .sk files to benchmark")
+    parser.add_argument("--backend", choices=['native','js'], default='native', help="is one of native, js")
+    parser.add_argument("--display-output", action="store_true", help="print benchmark results to stdout")
+    parser.add_argument("--keep-samples", action="store_true", help="store all gathered samples when writing to output file")
+    parser.add_argument("--output", required=False, help="output file to store results in")
+    parser.add_argument("--min-iterations", required=False, type=int, help="minimum number of iterations per benchmark")
+    parser.add_argument("--iters-per-gc", required=False, type=int, help="maximum number of benchmark iterations before forcing a GC run")
+    args = common.parse_args(parser)
+
+    benchmark_program_unit = common.computeRelativePath(args.srcs[-1])
+
+    if args.relative:
+        os.chdir(args.relative)
+
+    sk_main = unittest.build_main_file(
+        stack,
+        benchmark_program_unit,
+        args.backend,
+        annotation='bench',
+        delegate_function='Bencher.main')
+
+    logger.debug("Generated main() script at %s)" % (sk_main))
+
+    env = os.environ.copy()
+
+    displayOutput = ['--display-output',] if args.display_output else []
+    keepSamples = ['--keep-samples',] if args.keep_samples else []
+    output = ['--output', args.output] if args.output else []
+    minIterations = ['--min-iterations', args.min_iterations] if args.min_iterations else []
+    itersPerGc = ['--iters-per-gc', args.iters_per_gc] if args.iters_per_gc else []
+
+    backend_gen = common.fullBackendGen('skip_{}_exec'.format(args.backend))
+
+    cmd = (
+        [backend_gen, common.prelude()]
+        + map(common.computeRelativePath, args.srcs)
+        + [sk_main, '--']
+    ) + displayOutput + output + minIterations + itersPerGc + keepSamples
+
+
+    logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+    common.callHelper( cmd, env=env, )
+
+
+if __name__ == "__main__":
+    with common.ExitStack() as stack:
+        rc = main(stack)
+    sys.exit(rc)

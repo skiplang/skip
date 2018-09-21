@@ -1,0 +1,5 @@
+mutable class Foo(() -> void)
+
+fun test(): void {
+  _foo = Foo(() -> void)
+}

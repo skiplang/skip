@@ -1,0 +1,7 @@
+File "./syntax/invalid/invalid_modifier2.sk", line 3, characters 14-16:
+Expected ':'. Found 'fun'.
+1 |
+2 | class X {
+3 |   mymodifier fun foo(): void {}
+  |              ^^^
+4 | }

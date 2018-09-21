@@ -1,0 +1,14 @@
+base class Foo final () {
+  children =
+  | Bar
+  | Baz
+
+  static fun foo(): String {
+    "Pass\n"
+  }
+}
+
+fun main(): void {
+  f = () -> Foo::foo();
+  print_raw(f())
+}

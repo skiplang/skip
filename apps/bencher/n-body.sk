@@ -1,0 +1,232 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Adapted from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/nbody-hack-5.html
+module NBody;
+
+const PI: Float = 3.141592653589793;
+const SOLAR_MASS: Float = 4.0 * PI * PI;
+const DAYS_PER_YEAR: Float = 365.24;
+
+mutable class Body{
+  mutable x: Float,
+  mutable y: Float,
+  mutable z: Float,
+  mutable vx: Float,
+  mutable vy: Float,
+  mutable vz: Float,
+  mass: Float,
+} {
+  static fun jupiter(): mutable Body {
+    mutable Body{
+      x => 4.84143144246472090e+00,
+      y => -1.16032004402742839e+00,
+      z => -1.03622044471123109e-01,
+      vx => 1.66007664274403694e-03 * DAYS_PER_YEAR,
+      vy => 7.69901118419740425e-03 * DAYS_PER_YEAR,
+      vz => -6.90460016972063023e-05 * DAYS_PER_YEAR,
+      mass => 9.54791938424326609e-04 * SOLAR_MASS,
+    };
+  }
+
+  static fun saturn(): mutable Body {
+    mutable Body{
+      x => 8.34336671824457987e+00,
+      y => 4.12479856412430479e+00,
+      z => -4.03523417114321381e-01,
+      vx => -2.76742510726862411e-03 * DAYS_PER_YEAR,
+      vy => 4.99852801234917238e-03 * DAYS_PER_YEAR,
+      vz => 2.30417297573763929e-05 * DAYS_PER_YEAR,
+      mass => 2.85885980666130812e-04 * SOLAR_MASS,
+    };
+  }
+
+  static fun uranus(): mutable Body {
+    mutable Body{
+      x => 1.28943695621391310e+01,
+      y => -1.51111514016986312e+01,
+      z => -2.23307578892655734e-01,
+      vx => 2.96460137564761618e-03 * DAYS_PER_YEAR,
+      vy => 2.37847173959480950e-03 * DAYS_PER_YEAR,
+      vz => -2.96589568540237556e-05 * DAYS_PER_YEAR,
+      mass => 4.36624404335156298e-05 * SOLAR_MASS,
+    };
+  }
+
+  static fun neptune(): mutable Body {
+    mutable Body{
+      x => 1.53796971148509165e+01,
+      y => -2.59193146099879641e+01,
+      z => 1.79258772950371181e-01,
+      vx => 2.68067772490389322e-03 * DAYS_PER_YEAR,
+      vy => 1.62824170038242295e-03 * DAYS_PER_YEAR,
+      vz => -9.51592254519715870e-05 * DAYS_PER_YEAR,
+      mass => 5.15138902046611451e-05 * SOLAR_MASS,
+    };
+  }
+
+  static fun sun(): mutable Body {
+    mutable Body{
+      x => 0.0,
+      y => 0.0,
+      z => 0.0,
+      vx => 0.0,
+      vy => 0.0,
+      vz => 0.0,
+      mass => SOLAR_MASS,
+    };
+  }
+
+  mutable fun offsetMomentum(px: Float, py: Float, pz: Float): void {
+    this.!vx = -px / SOLAR_MASS;
+    this.!vy = -py / SOLAR_MASS;
+    this.!vz = -pz / SOLAR_MASS;
+  }
+}
+
+mutable class NBodySystem{private bodies: Array<mutable Body>} {
+  static fun create(): mutable this {
+    bodies = Array[
+      Body::sun(),
+      Body::jupiter(),
+      Body::saturn(),
+      Body::uranus(),
+      Body::neptune(),
+    ];
+    px = 0.0;
+    py = 0.0;
+    pz = 0.0;
+    for (body in bodies) {
+      !px = px + body.vx * body.mass;
+      !py = py + body.vy * body.mass;
+      !pz = pz + body.vz * body.mass;
+    };
+    bodies[0].offsetMomentum(px, py, pz);
+    mutable NBodySystem{bodies};
+  }
+  mutable fun advance(dt: Float): void {
+    bodies = this.bodies.size();
+    i = 0;
+    while (
+      i < bodies &&
+      {
+        iBody = this.bodies[i];
+        j = i + 1;
+        while (
+          j < bodies &&
+          {
+            jBody = this.bodies[j];
+            dx = iBody.x - jBody.x;
+            dy = iBody.y - jBody.y;
+            dz = iBody.z - jBody.z;
+            distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            mag = dt / (distance * distance * distance);
+            iBody.!vx = iBody.vx - dx * jBody.mass * mag;
+            iBody.!vy = iBody.vy - dy * jBody.mass * mag;
+            iBody.!vz = iBody.vz - dz * jBody.mass * mag;
+            jBody.!vx = jBody.vx + dx * iBody.mass * mag;
+            jBody.!vy = jBody.vy + dy * iBody.mass * mag;
+            jBody.!vz = jBody.vz + dz * iBody.mass * mag;
+            true;
+          }
+        ) {
+          !j = j + 1;
+        };
+        true;
+      }
+    ) {
+      !i = i + 1;
+    };
+    !i = 0;
+    while (
+      i < bodies &&
+      {
+        body = this.bodies[i];
+        body.!x = body.x + dt * body.vx;
+        body.!y = body.y + dt * body.vy;
+        body.!z = body.z + dt * body.vz;
+        true;
+      }
+    ) {
+      !i = i + 1;
+    };
+  }
+
+  readonly fun energy(): Float {
+    e = 0.0;
+    bodies = this.bodies.size();
+    i = 0;
+    while (
+      i < bodies &&
+      {
+        body = this.bodies[i];
+        !e =
+          e +
+          0.5 *
+            body.mass *
+            (body.vx * body.vx + body.vy * body.vy + body.vz * body.vz);
+        j = i + 1;
+        while (
+          j < bodies &&
+          {
+            jBody = this.bodies[j];
+            dx = body.x - jBody.x;
+            dy = body.y - jBody.y;
+            dz = body.z - jBody.z;
+            distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            !e = e - (body.mass * jBody.mass) / distance;
+            true;
+          }
+        ) {
+          !j = j + 1;
+        };
+        true;
+      }
+    ) {
+      !i = i + 1;
+    };
+    e;
+  }
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  x = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(1000);
+  n = x;
+  bodies = NBodySystem::create();
+  invariant(
+    bodies.energy() == -0.16907516382852447,
+    "Initial bodies have incorrect energy value",
+  );
+
+  stats = bencher.bench{
+    run => () -> {
+      while (
+        {
+          !n = n - 1;
+          n > 0
+        } &&
+        {
+          bodies.advance(0.01);
+          true;
+        }
+      ) void;
+    },
+    afterEach => () -> {
+      !n = x;
+      invariant(
+        bodies.energy() == -0.16908758284183203,
+        `Final bodies have incorrect energy value: ${bodies.energy()}`,
+      );
+      !bodies = NBodySystem::create();
+    },
+  };
+
+  stats
+}
+
+module end;

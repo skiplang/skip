@@ -1,0 +1,32 @@
+File "./typechecking/invalid/variance_3.sk", line 20, characters 3-25:
+The value returned from the function is incompatible with the return type '((Parent) ~> Int)'
+18 |
+19 | fun child_to_parent(x: ChildA ~> Int): Parent ~> Int {
+20 |   ClosureBreaker(x).get()
+   |   ^^^^^^^^^^^^^^^^^^^^^^^
+21 | }
+
+File "./typechecking/invalid/variance_3.sk", line 19, characters 40-45:
+The type: Parent
+17 | }
+18 |
+19 | fun child_to_parent(x: ChildA ~> Int): Parent ~> Int {
+   |                                        ^^^^^^
+20 |   ClosureBreaker(x).get()
+
+File "./typechecking/invalid/variance_3.sk", line 19, characters 24-29:
+Is not a subtype of: ChildA
+17 | }
+18 |
+19 | fun child_to_parent(x: ChildA ~> Int): Parent ~> Int {
+   |                        ^^^^^^
+20 |   ClosureBreaker(x).get()
+
+File "./typechecking/invalid/variance_3.sk", line 19, characters 24-29:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Parent
+17 | }
+18 |
+19 | fun child_to_parent(x: ChildA ~> Int): Parent ~> Int {
+   |                        ^^^^^^
+20 |   ClosureBreaker(x).get()

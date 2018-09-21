@@ -1,0 +1,13 @@
+fun main(): void {
+  void
+}
+
+module Test;
+
+fun test(): void {
+  bar()
+}
+
+fun bar(): void {
+  void
+}

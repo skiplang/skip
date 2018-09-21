@@ -1,0 +1,55 @@
+module T;
+base class List<+T> extends Sequence<T> {
+  children =
+  | Nil()
+  | Cons(head: T, tail: List<T>)
+
+  fun size(): Int {
+    this.foldl((size, _) -> size + 1, 0)
+  }
+
+  fun values(): mutable Iterator<T> {
+    mutable ListIterator(this)
+  }
+
+  static fun createFromItems<C: readonly Sequence<T>>(items: C): List<T> {
+    result: List<T> = Nil();
+    items.each(element -> {
+      !result = Cons(element, result)
+    });
+    result.reversed()
+  }
+
+  fun reversed(): List<T> {
+    reverseRec(this, Nil())
+  }
+}
+
+fun reverseRec<U>(cur: List<U>, tail: List<U>): List<U> {
+  cur match {
+  | Nil _ -> tail
+  | Cons(x, xs) -> reverseRec(xs, Cons(x, tail))
+  }
+}
+
+mutable class ListIterator<+T>(
+  private mutable list: List<T>,
+) extends Iterator<T> {
+  mutable fun next(): ?T {
+    this.list match {
+    | Nil() -> None()
+    | Cons(head, tail) ->
+      this.!list = tail;
+      Some(head)
+    }
+  }
+}
+module end;
+
+fun main(): void {
+  list = T.Cons("Pass", T.Nil());
+  list.reversed() match {
+  | T.Cons(r, _) -> print_string(r)
+  | _ -> print_string("fail")
+  }
+}

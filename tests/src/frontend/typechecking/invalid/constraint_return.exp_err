@@ -1,0 +1,28 @@
+File "./typechecking/invalid/constraint_return.sk", line 7, characters 33-35:
+Constraint not satisfied
+5 | }
+6 |
+7 | fun returns_invalid_bar_type(): Bar<Test.MixedString> {
+  |                                 ^^^
+8 |   invariant_violation("")
+
+File "./typechecking/invalid/constraint_return.sk", line 7, characters 37-52:
+The type: Test.MixedString
+5 | }
+6 |
+7 | fun returns_invalid_bar_type(): Bar<Test.MixedString> {
+  |                                     ^^^^^^^^^^^^^^^^
+8 |   invariant_violation("")
+
+File "./typechecking/invalid/constraint_return.sk", line 1, characters 14-26:
+Is not a subtype of: Test.MixedInt
+1 | class Bar<T: Test.MixedInt>(x: T) {
+  |              ^^^^^^^^^^^^^
+2 |   fun get(): T {
+
+File "./typechecking/invalid/constraint_return.sk", line 1, characters 14-26:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Test.MixedScalar
+1 | class Bar<T: Test.MixedInt>(x: T) {
+  |              ^^^^^^^^^^^^^
+2 |   fun get(): T {

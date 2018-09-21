@@ -1,0 +1,11 @@
+mutable class Foo(mutable value: String) {
+  mutable fun set(value: String): void {
+    this.!value = value
+  }
+}
+
+fun main(): void {
+  foo = mutable Foo("fail");
+  foo.set("Pass\n");
+  print_raw(foo.value)
+}

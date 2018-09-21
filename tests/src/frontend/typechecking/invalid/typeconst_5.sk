@@ -1,0 +1,10 @@
+base class MyParent final {x: this::T} {
+  type T: (Test.MixedScalar ~> String);
+  fun get(): this::T {
+    this.x
+  }
+}
+
+class MyChild extends MyParent {
+  type T = (Test.MixedString ~> String);
+}

@@ -1,0 +1,7 @@
+fun main(): String {
+  i = 42;
+  i match {
+  | 0 -> i j()
+  | 1 -> "Fail"
+  }
+}

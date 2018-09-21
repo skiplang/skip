@@ -1,0 +1,29 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Test;
+
+// A simple "String or Int" type for use in pattern matching tests
+base class MixedScalar {
+  children =
+  | MixedInt(.Int)
+  | MixedString(.String)
+
+  fun toString(): String
+  | MixedInt(i) -> i.toString()
+  | MixedString(s) -> s
+
+  fun asString(): String
+  | MixedInt _ -> invariant_violation("asString() called on MixedInt")
+  | MixedString(s) -> s
+
+  fun asInt(): Int
+  | MixedInt(i) -> i
+  | MixedString _ -> invariant_violation("asString() called on MixedInt")
+}
+
+module end;

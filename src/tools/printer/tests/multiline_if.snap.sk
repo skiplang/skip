@@ -1,0 +1,21 @@
+fun main(): void {
+  if (true) somethingSmall();
+
+  if (true) {
+    someVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLong()
+  };
+
+  if (true) somethingSmall() else somethingSmall();
+
+  if (true) {
+    somethingSmall()
+  } else {
+    someVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLong()
+  };
+
+  if (true) {
+    someVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryVeryLong()
+  } else {
+    somethingSmall()
+  };
+}

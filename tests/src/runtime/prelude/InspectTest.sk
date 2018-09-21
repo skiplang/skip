@@ -1,0 +1,37 @@
+@test
+fun testSpecial(): void {
+  _: Inspect = InspectSpecial("foo");
+}
+
+@test
+fun testString(): void {
+  _: Inspect = InspectString("foo");
+}
+
+@test
+fun testLiteral(): void {
+  _: Inspect = InspectLiteral("foo");
+}
+
+@test
+fun testVector(): void {
+  _: Inspect = InspectVector("foo", Array[InspectString("item")]);
+}
+
+@test
+fun testMap(): void {
+  _: Inspect = InspectMap(
+    "foo",
+    Array[(InspectString("key"), InspectString("value"))],
+  );
+}
+
+@test
+fun testCall(): void {
+  _: Inspect = InspectCall("foo", Array[InspectString("argument")]);
+}
+
+@test
+fun testObject(): void {
+  _: Inspect = InspectObject("foo", Array[("field", InspectString("value"))]);
+}

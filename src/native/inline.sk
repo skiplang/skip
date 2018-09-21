@@ -1,0 +1,783 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Inline;
+
+// Combine two blacklists into a bigger blacklist, uniquifying entries.
+private fun mergeBlacklists(
+  b1: Array<SFunctionID>,
+  b2: Array<SFunctionID>,
+): Array<SFunctionID> {
+  if (b1.isEmpty()) {
+    b2
+  } else if (b2.isEmpty()) {
+    b1
+  } else {
+    buf = mutable Vector[];
+    maxSize = b1.size() + b2.size();
+    buf.ensureCapacity(maxSize);
+    seen = UnorderedSet::mcreate(maxSize);
+    for (b in b1) {
+      buf.push(b);
+      seen.add(b)
+    };
+    for (b in b2) {
+      if (!seen.contains(b)) {
+        buf.push(b)
+      }
+    };
+    buf.sort();
+    buf.toArray()
+  }
+}
+
+mutable class .Inline{
+  inlinedTupleResults: mutable UnorderedMap<
+    InstrID,
+    Array<InstrID>,
+  > = UnorderedMap::mcreate(0),
+
+  // Maps the Block containing a LandingPad to the trampoline Block that
+  // inlined Throw should jump to. These are created lazily, by the first
+  // inlined Throw, then reused by other inline Throws connected to the same
+  // LandingPad.
+  catchTrampolines: mutable UnorderedMap<
+    BlockID,
+    BlockID,
+  > = UnorderedMap::mcreate(0),
+} extends Rewrite {
+  // Inlines some calls.
+  static fun run(f: Function, env: GlobalEnv): (Function, PassResult) {
+    d = mutable static{optinfo => OptimizerInfo::make(f), env, pos => f.pos};
+    d.go("inline", true)
+  }
+
+  private mutable fun updateLandingPad(
+    land: LandingPad,
+    trampID: BlockID,
+  ): void {
+    // Create a trampoline block that gets spliced in between the LandingPad
+    // block and the catch block it jumps to.
+    //
+    // This provides a place for inlined "Throw" to jump and still pass through
+    // any parameters the catch block is expecting, including the exception.
+    //
+    // One subtlety is that the trampoline block "steals" the InstrIDs formerly
+    // used by the LandingPad block, in case the catch block (or some other
+    // dominated block) is simply referencing them by ID. So where the catch
+    // block may have been using the LandingPad's InstrID, that same ID will
+    // refer to the BlockParam that holds an Exception (maybe coming from the
+    // LandingPad, or maybe from an inlined Throw).
+    //
+    // Before inlining:
+    //
+    //       ...
+    //      Invoke (of func containing "Throw")
+    //       |  |
+    //       |  --------------> LandingPad
+    //       v                      |
+    //  (no exception)              |
+    //                              v
+    //                        (catch match)
+    //
+    //
+    // After inlining:
+    //
+    //      ...
+    //     Jump (was Throw)     LandingPad
+    //       |                      |
+    //       |                      |
+    //       |                      v
+    //        ------------> (new trampoline block)
+    //                              |
+    //                              |
+    //                              v
+    //                        (catch match)
+    //
+    //
+    // If all Invokes get inlined, the LandingPad block will of course be
+    // deleted like any other dead code.
+    bp = this.blockParams;
+    excParam = BlockParam{
+      id => land.id,
+      typ => land.typ,
+      pos => land.pos,
+      index => bp.size(),
+    };
+    trampParams = bp.concat(Array[excParam]);
+
+    this.!blockParams = bp.map(p -> p with {id => this.iid()});
+
+    newLandID = this.iid();
+    _ = this.emitInstr(
+      land with {
+        id => newLandID,
+        successors => Array[
+          BlockSuccessor(
+            trampID,
+            Array::fillBy(bp.size() + 1, i ->
+              if (i < bp.size()) {
+                this.blockParams[i].id
+              } else {
+                newLandID
+              }
+            ),
+          ),
+        ],
+      },
+    );
+
+    this.startNewBlock();
+
+    // Emit the trampoline block.
+    this.!pos = land.pos;
+    this.!nextBlockID = trampID;
+    this.!prettyBlockName = "inline_catch_trampoline";
+    this.!blockParams = trampParams;
+    this.!blockChanged = true;
+
+    _ = this.emitInstr(
+      Jump{
+        id => this.iid(),
+        typ => tVoid,
+        pos => land.pos,
+        successors => land.successors,
+      },
+    )
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    instr match {
+    | CallFunctionBase{name, args, smap} ->
+      this.tryInline(instr, name, args, smap)
+    | GetConst{id, typ, pos, name, tupleIndex} ->
+      // Each static "const" variable has its value computed by
+      // a "compute const" (kComputeConstSuffix) function. In the general
+      // case it may do a lot of work so we only run it once and cache
+      // its value in global storage, via another function that wraps the
+      // "compute const" function with a "have-I-already-initialized-this"
+      // check.
+      //
+      // However, if the "compute const" function is "free", e.g. simply
+      // returns a constant, then there is no harm in inlining it into
+      // every use and skipping the runtime check. So we do that here.
+      //
+      // Note that we may not realize a "compute const" is "free" until later
+      // in the optimization process, after constant folding, inlining
+      // other global consts it may reference, etc.
+      constFunID = this.env.consts[name];
+      f = this.env.getFunction(constFunID, pos);
+      f.status match {
+      | OptDone{inlineComplexity} ->
+        if (
+          inlineComplexity <= 0 &&
+          this.tryInline(instr, f.id, Array[], kNonParametricFunSmap)
+        ) {
+          this.inlinedTupleResults.maybeGet(instr.id) match {
+          | None() -> void
+          | Some(iv) ->
+            _ = this.emitInstr(Cast{id, typ, pos, value => iv[tupleIndex]})
+          };
+          true
+        } else {
+          false
+        }
+      | _ ->
+        this.unfinishedDependencies.insert(constFunID);
+        false
+      }
+    | land @ LandingPad _ ->
+      block = this.optinfo.instrToBlock[land.id];
+
+      this.catchTrampolines.maybeGet(block) match {
+      | Some(tramp) ->
+        this.updateLandingPad(land, tramp);
+        true
+      | None() ->
+        // Indicate that this LandingPad has been blessed already,
+        // preventing Invoke inlining (see tooLateToInlineInvoke).
+        this.catchTrampolines.set(block, BlockID::none);
+        false
+      }
+    | TupleExtract{id, typ, pos, obj, index} ->
+      this.inlinedTupleResults.maybeGet(obj) match {
+      | Some(iv) ->
+        // This is a TupleExtract from an inlined Function. We need
+        // to replace it with the BlockParam from the inline_return
+        // block that is holding the corresponding return value.
+        //
+        // Cast the BlockParam to the expected type. The types can
+        // mismatch somewhat due to covariant return values.
+        _ = this.emitInstr(Cast{id, typ, pos, value => iv[index]});
+
+        true
+      | None() -> false
+      }
+    | _ -> false
+    }
+  }
+
+  private mutable fun inline(
+    call: Stmt,
+    subf: Function,
+    args: Array<InstrID>,
+    smap: SuperpositionMap<FunSuperpositionID>,
+    callerBlacklist: Array<SFunctionID>,
+    invokeSuccessors: Array<BlockSuccessor>,
+  ): void {
+    optinfo = this.optinfo;
+    f = optinfo.f;
+    idToInstr = optinfo.idToInstr;
+
+    // Swap in a position rewriter that handles inlining.
+    oldPositionRewriter = this.positionRewriter;
+    subfFunPos = FunPos{name => subf.name, id => subf.id, pos => subf.pos};
+    // TODO: Intern these?
+    rewriter = pos ~> InlinedPos::inlineAt(call.pos, pos, subfFunPos);
+    this.!positionRewriter = Some(rewriter);
+
+    subinfo = OptimizerInfo::make(subf);
+
+    remapType: (Instr -> Type) = instr -> {
+      h = UnorderedMap::mcreate(f.superpositions.size());
+      itype = instr.typ;
+      for (s in f.superpositions) h.set(s, itype.typeInSuperposition(smap[s]));
+      Type::make(freeze(h))
+    };
+
+    // Replace parameters with the actual arguments.
+    subIDToInstr = subinfo.idToInstr;
+    subf.params.eachWithIndex((i, param) -> {
+      arg = this.getInstr(args[i]);
+
+      // Cast the argument to the parameter type. This is critical
+      // for downcasts like "this". We'll let the Cast peepholer remove
+      // upcasts.
+      paramType = remapType(param);
+      castArg = if (arg.typ == paramType) {
+        arg
+      } else {
+        this.emitInstr(
+          Cast{
+            id => this.iid(),
+            typ => paramType,
+            pos => arg.posOrDefault(call.pos),
+            value => arg.id,
+          },
+        )
+      };
+
+      subIDToInstr.set(param.id, castArg)
+    });
+
+    // Replace constants with equivalents in the outer function.
+    for (c in subf.constants) {
+      outer = optinfo.getConstant(
+        // TODO: Why does this not just say "id => this.iid()"? Legacy?
+        c with {id => idToInstr.allocID(), typ => remapType(c)},
+      );
+      subIDToInstr.set(c.id, outer)
+    };
+
+    // Create new block IDs that don't collide with the outer function.
+    blockRemap = Array<BlockID>::mfill(subinfo.idToBlock.size(), BlockID::none);
+    subBlocks = subinfo.reversePostorder();
+    for (b in subBlocks) blockRemap.set(b.id, this.newBlockID());
+
+    // Jump to the inlined entry block.
+    subEntryBlock = subf.blocks[0];
+    if (!subEntryBlock.params.isEmpty()) {
+      subEntryBlock.pos.die("Entry block should not take block parameters.")
+    };
+    _ = this.emitInstr(
+      Jump{
+        id => this.iid(),
+        typ => tVoid,
+        pos => call.pos,
+        successors => Array[
+          BlockSuccessor(blockRemap[subEntryBlock.idValue()]),
+        ],
+      },
+    );
+    this.startNewBlock();
+
+    returnBlockID = this.newBlockID();
+
+    remap: (InstrID -> InstrID) = (x -> subinfo.getInstr(x).id);
+
+    sawReturn = false;
+
+    subBlocks.each(blockID -> {
+      // Set up block flushing state.
+      b = subinfo.getBlock(blockID);
+      this.!nextBlockID = blockRemap[blockID.id];
+      this.!prettyBlockName = b.prettyName;
+      this.!pos = b.pos;
+      this.!blockChanged = true;
+
+      // Map the block params.
+      this.!blockParams = b.params.map(p -> {
+        newParam = p with {
+          id => this.iid(),
+          typ => remapType(p),
+          pos => rewriter(p.pos),
+        };
+        subIDToInstr.set(p.id, newParam);
+        idToInstr.insert(newParam);
+        newParam
+      });
+      // Map the body.
+      b.instrs.each(instr -> {
+        newID = this.iid();
+
+        done = instr match {
+        | Return{values} ->
+          // A "return" becomes a jump to the return block.
+          !sawReturn = true;
+          subIDToInstr.set(
+            instr.id,
+            this.emitInstr(
+              Jump{
+                id => newID,
+                typ => tVoid,
+                pos => instr.pos,
+                prettyName => instr.prettyName,
+                successors => Array[
+                  BlockSuccessor(returnBlockID, values.map(remap)),
+                ],
+              },
+            ),
+          );
+          true
+        | CallFunction{
+          name,
+          args => inner_args,
+          smap => subsmap,
+          pos,
+          blacklist,
+        } ->
+          if (invokeSuccessors.isEmpty()) {
+            false
+          } else {
+            // When an Invoke is inlined, any calls in the inlined function
+            // themselves become Invokes, because they are now "lexically"
+            // inside a "try". Invokes in the inlined function remain Invokes
+            // because they still have their own nested "try".
+            noThrowBlockID = this.newBlockID();
+            subIDToInstr.set(
+              instr.id,
+              this.emitInstr(
+                InvokeFunction{
+                  id => newID,
+                  typ => remapType(instr),
+                  pos,
+                  name,
+                  args => inner_args.map(remap),
+                  smap => {
+                    buf = mutable Vector[];
+                    for (s in f.superpositions) {
+                      buf.push((s, subsmap[smap[s]]))
+                    };
+                    SuperpositionMap::make(buf)
+                  },
+                  prettyName => instr.prettyName,
+                  blacklist => mergeBlacklists(callerBlacklist, blacklist),
+                  successors => Array[
+                    BlockSuccessor(noThrowBlockID),
+                    invokeSuccessors[1],
+                  ],
+                },
+              ),
+            );
+            this.startNewBlock();
+            this.!nextBlockID = noThrowBlockID;
+            this.!pos = pos;
+            true
+          }
+        | CallMethod{
+          method,
+          args => inner_args,
+          smap => subsmap,
+          pos,
+          blacklist,
+        } ->
+          if (invokeSuccessors.isEmpty()) {
+            false
+          } else {
+            noThrowBlockID = this.newBlockID();
+            subIDToInstr.set(
+              instr.id,
+              this.emitInstr(
+                InvokeMethod{
+                  id => newID,
+                  typ => remapType(instr),
+                  pos,
+                  method,
+                  args => inner_args.map(remap),
+                  smap => {
+                    buf = mutable Vector[];
+                    for (s in f.superpositions) {
+                      buf.push((s, subsmap[smap[s]]))
+                    };
+                    SuperpositionMap::make(buf)
+                  },
+                  prettyName => instr.prettyName,
+                  blacklist => mergeBlacklists(callerBlacklist, blacklist),
+                  successors => Array[
+                    BlockSuccessor(noThrowBlockID),
+                    invokeSuccessors[1],
+                  ],
+                },
+              ),
+            );
+            this.startNewBlock();
+            this.!nextBlockID = noThrowBlockID;
+            this.!pos = pos;
+            true
+          }
+        | Throw{exception} ->
+          if (invokeSuccessors.isEmpty()) {
+            false
+          } else {
+            // An inlined "throw" inside a "try" becomes a jump
+            // to the "catch" block, which is the immediate successor
+            // of the invoke's landing pad block.
+
+            // The Invoke's second successor must be a block containing
+            // only a LandingPad.
+            lpBlock = this.getBlock(invokeSuccessors[1].target);
+
+            // Create a trampoline block.
+            tramp = this.catchTrampolines.getOrAdd(lpBlock.id, this.newBlockID);
+
+            subIDToInstr.set(
+              instr.id,
+              this.emitInstr(
+                Jump{
+                  id => newID,
+                  typ => tVoid,
+                  pos => instr.pos,
+                  prettyName => instr.prettyName,
+                  successors => Array[
+                    BlockSuccessor(
+                      tramp,
+                      invokeSuccessors[1].args.concat(Array[remap(exception)]),
+                    ),
+                  ],
+                },
+              ),
+            );
+
+            this.startNewBlock();
+
+            true
+          }
+        | _ -> false
+        };
+
+        if (!done) {
+          oldSuccessors = instr.getSuccessors();
+          successors = if (oldSuccessors.isEmpty()) {
+            oldSuccessors
+          } else {
+            oldSuccessors.map(succ ->
+              BlockSuccessor(
+                blockRemap[succ.target.id],
+                succ.args.map(a -> if (a == instr.id) newID else remap(a)),
+              )
+            )
+          };
+
+          clonedInstr = instr.clone(
+            newID,
+            remapType(instr),
+            remap,
+            Some(successors),
+          );
+
+          // Merge blacklists for calls to prevent infinite inlining.
+          keep = clonedInstr match {
+          | c @ CallBase{blacklist} ->
+            c with {blacklist => mergeBlacklists(callerBlacklist, blacklist)}
+          | x -> x
+          };
+
+          subIDToInstr.set(instr.id, this.emitInstr(keep))
+        }
+      });
+
+      this.startNewBlock()
+    });
+
+    // Resume executing at the return block.
+    this.!nextBlockID = returnBlockID;
+    this.!prettyBlockName = "inline_return";
+    this.!pos = call.pos;
+
+    subf.funType.returnType.size() match {
+    | 0 -> void
+    | 1 ->
+      callResultParam = BlockParam{
+        id => call.id,
+        typ => call.typ,
+        pos => call.pos,
+        prettyName => call.prettyName,
+        index => 0,
+      };
+      idToInstr.insert(callResultParam);
+      this.!blockParams = Array[callResultParam]
+    | _ ->
+      blockParams = subf.funType.returnType.mapWithIndex((i, retType) -> {
+        BlockParam{
+          id => this.iid(),
+          typ => retType,
+          pos => call.pos,
+          prettyName => call.prettyName,
+          index => i,
+        }
+      });
+
+      // Remember where each result went so we can replace TupleExtract.
+      this.inlinedTupleResults.set(call.id, blockParams.map(p -> p.id));
+
+      this.!blockParams = blockParams
+    };
+
+    if (!invokeSuccessors.isEmpty()) {
+      // It was previously an invoke so we need to jump wherever it went.
+      _ = this.emitInstr(
+        Jump{
+          id => this.iid(),
+          typ => tVoid,
+          pos => call.pos,
+          successors => Array[invokeSuccessors[0]],
+        },
+      )
+    };
+
+    this.!positionRewriter = oldPositionRewriter
+  }
+
+  // Attempt to inline the given Call or Invoke. Returns true on success,
+  // else false.
+  private mutable fun tryInline(
+    call: Stmt,
+    funcToInline: SFunctionID,
+    args: Array<InstrID>,
+    smap: SuperpositionMap<FunSuperpositionID>,
+  ): Bool {
+    pos = call.pos;
+    optinfo = this.optinfo;
+    f = optinfo.f;
+
+    callerBlacklist = call match {
+    | CallBase{blacklist => b} -> b
+    | GetConst _ -> Array[]
+    | _ -> pos.die("Expected Call, Invoke, or GetConst, but got " + call)
+    };
+
+    // We should normally process any Invoke before its LandingPad block
+    // but if we somehow ended up with an irreducible CFG maybe that
+    // wouldn't happen, in which case it would be too late to inline
+    // an Invoke since the required LandingPad updates wouldn't happen.
+    tooLateToInlineInvoke = call match {
+    | InvokeBase{successors} ->
+      this.catchTrampolines.maybeGet(successors[1].target) match {
+      | Some(x) -> x == BlockID::none
+      | None() -> false
+      }
+    | _ -> false
+    };
+
+    sfunc = this.env.getFunction(funcToInline, pos);
+
+    if (
+      !isLegalToInline(sfunc) ||
+      tooLateToInlineInvoke ||
+      f.id == sfunc.id ||
+      callerBlacklist.contains(sfunc.id)
+    ) {
+      false
+    } else {
+      sfunc.status match {
+      | OptPartial _ ->
+        // Wait until the subroutine is finished to try inlining it.
+        this.unfinishedDependencies.insert(sfunc.id);
+        false
+      | OptDone{inlineComplexity, returns} ->
+        // As heuristics we don't inline large functions or functions that
+        // never return.
+        if (
+          ((inlineComplexity < Int::max && returns) ||
+            annotationsContain(sfunc.annotations, "@always_inline", pos))
+        ) {
+          blacklist = mergeBlacklists(callerBlacklist, Array[f.id, sfunc.id]);
+          this.inline(call, sfunc, args, smap, blacklist, call.getSuccessors());
+          true
+        } else {
+          false
+        }
+      }
+    }
+  }
+}
+
+fun isLegalToInline(f: Function): Bool {
+  pos = f.pos;
+
+  f.hasImplementation() &&
+    !f.isMemoized &&
+    !annotationsContain(f.annotations, "@no_inline", pos) &&
+    !annotationsContain(f.annotations, "@gc", pos) &&
+    !Hhvm.isExportAnnotation(f.annotations, pos) &&
+    !Hhvm.isImportAnnotation(f.annotations, pos)
+}
+
+// Super-rough guess for how many machine instructions an Instr might
+// expand to. Used for inlining heuristics.
+//
+// TODO: Super-slow instructions like FloatToString make inlining pretty
+// pointless (unless the argument happens to be a constant). So we should
+// take into account speed, not just space.
+//
+// TODO: Return a Float?
+fun estimateSize(instr: Stmt, env: GlobalEnv): Int {
+  instr match {
+  | Alloca _ -> 1
+  | AsyncReturn _ -> 0
+  | BinOp _ -> 1
+  | BytePointerAdd _ -> 1
+  | YieldBreak _ -> 0
+  | CallFunctionBase{args}
+  | NamedCall{args} ->
+    2 + args.size()
+  | CallMethodBase{args} -> 3 + args.size()
+  | Cast _ -> 0
+  | GetCurrentAwaitable _ -> 0
+  | If _ -> 1
+  | IndirectJump _ -> 1
+  | IntClz _ -> 2
+  | IntCtz _ -> 2
+  | Jump _ -> 1
+  | FloatBits _ -> 0
+  | FloatToInt _ -> 1
+  | FloatToString _ -> 2
+  | Freeze _ -> 3
+  | GetField _ -> 1
+  | GetConst _ -> 3
+  | IntPopcount _ -> 1
+  | IntSwitch{successors} -> 3 + successors.size()
+  | IntToFloat _ -> 1
+  | IntToString _ -> 2
+  | Intern _ -> 2
+  | LandingPad _ -> 0
+  | Load _ -> 1
+  | LoadVTableEntry _ -> 1
+  | LocalGC _ -> 4
+  | ObstackUsage _ -> 3
+  | Object{typ, args} ->
+    defaultCost = 2 + args.size();
+
+    // Creating a value class is considered "zero cost" since it
+    // does not allocate any memory.
+    if (typ.exampleSClass(env).kind.isValueClass()) {
+      0
+    } else {
+      defaultCost
+    }
+  | ObstackAlloc _
+  | ObstackNote _
+  | ObstackShallowClone _ ->
+    2
+  | RawCallBase{args} -> 2 + args.size()
+  | Reinterpret _ -> 0
+  | Return _ -> 0
+  | SetField _ -> 1
+  | SignExtend _ -> 1
+  | Store _ -> 1
+  | StringConcat{args} -> 2 + args.size()
+  | StringHash _ -> 2
+  | StringSwitch{successors} -> 5 + successors.size()
+  | Suspend _ -> 20
+  | Throw _ -> 3
+  | Truncate _ -> 1
+  | TupleExtract _ -> 0
+  | TypeSwitch{successors} -> 2 + successors.size()
+  | Unreachable _ -> 0
+  | ArrayAlloc _ -> 3
+  | ArrayClone _ -> 6
+  | ArrayNew{args} -> 3 + args.size()
+  | ArrayUnsafeGet _ -> 1
+  | ArrayUnsafeSet _ -> 1
+  | ArraySize _ -> 1
+  | With{fieldAssignments} -> 5 + fieldAssignments.size()
+  | Yield _ -> 3
+  | ZeroExtend _ -> 1
+  }
+}
+
+// Does f have any loops?
+private fun containsLoop(f: Function): Bool {
+  if (!f.hasImplementation()) {
+    false
+  } else {
+    optinfo = OptimizerInfo::make(f);
+    seen = Array::mfill(optinfo.idToBlock.size(), false);
+    optinfo.reversePostorder().any(bid -> {
+      seen.set(bid.id, true);
+      optinfo.getBlock(bid).successors().any(succ -> seen[succ.target.id])
+    })
+  }
+}
+
+private fun takesLambdaParameter(f: Function, env: GlobalEnv): Bool {
+  f.params.any(p -> !p.typ.forEachTclass(tc -> !tc.sclass(env).isLambda))
+}
+
+// Roughly estimate how many machine instructions this function would
+// consume if inlined.
+//
+// If the function looks "too large to inline" this returns Int::max.
+// We could return a more precise answer but this lets us short-circuit
+// analysing large functions.
+//
+// NOTE: Because of the kComputeConstSuffix functions used by global constant
+// folding, it is important that for a zero-argument function this can
+// only return zero cost if it really is completely free (notably, no
+// memory allocation).
+fun computeInlineComplexity(f: Function, env: GlobalEnv): Int {
+  if (!isLegalToInline(f)) {
+    Int::max
+  } else {
+    // TODO: Use a less arbitrary size limit.
+    limit = 15;
+
+    // Inlining a function will save the effort of passing parameters, so we
+    // will credit an additional instruction per parameter that the function
+    // can require and still be break-even.
+    cost = -f.funType.params.size();
+
+    _ = f.blocks.all(b -> {
+      b.instrs.all(instr -> {
+        !cost = cost + estimateSize(instr, env);
+        cost <= limit
+      })
+    });
+
+    if (cost <= limit) {
+      if (!takesLambdaParameter(f, env) && containsLoop(f)) {
+        // Heuristically we don't like to inline functions with loops,
+        // unless they take a lambda parameter.
+        Int::max
+      } else {
+        max(cost, 0)
+      }
+    } else {
+      Int::max
+    }
+  }
+}

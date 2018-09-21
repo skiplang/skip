@@ -1,0 +1,15 @@
+fun no1(): void {
+  _: String = while (false) "is this how it works?" else "no"
+}
+
+fun no2(): void {
+  _: String = do "is this how it works?" while (true) else "no"
+}
+
+fun no3(): void {
+  _: String = for (_ in Vector[]) "is this how it works?" else "no"
+}
+
+fun no4(): void {
+  _: String = loop "is this how it works? no";
+}

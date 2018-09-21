@@ -1,0 +1,2 @@
+class Foo<+T> extends Bar<T> {}
+base class Bar<-T>{}

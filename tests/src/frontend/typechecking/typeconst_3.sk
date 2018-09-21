@@ -1,0 +1,10 @@
+base class MyParent final {x: this::T} {
+  type T: Test.MixedScalar;
+  static fun call(x: this::T): String {
+    x.toString()
+  }
+}
+
+fun main(): void {
+  print_raw(MyParent::call(Test.MixedString("Pass\n")))
+}

@@ -1,0 +1,1366 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Map;
+
+// A mutable, growable collection of key => value associations with O(1) key
+// lookup/update and amortized O(1) insertion of new keys. Iteration order
+// corresponds to the order in which keys were first added to the Map (ie
+// updating the value of an existing key does not affect iteration order).
+//
+// ## Notes
+//
+// This uses a "Robin Hood hashing" open-addressed linear-probed hash table.
+// Each slot knows its own hash, where its slot index comes from the high
+// bits, which makes Robin Hood distance comparisons trivial -- just subtract.
+// Empty slots use a hash value that looks like a "perfect" (distance 0)
+// fit from the Robin Hood perspective, which makes them look like good
+// candidates for "displacing" without an additional check in the inner loop.
+//
+// ## TODO
+// - Make generation_PRIVATE private to the module (once that is supported in the language).
+// - Either use a different scheme for invalidating iterators in order to allow more than
+//   2**32 entries, or exploit this size limit and use UInt32 for sz, used, and shift (
+//   and possibly store just the high 32 bits of the hash after finalization).
+mutable class .Map<+K: Hashable & Equality, +V>(
+  // Sparse hash table where non-empty entries point to indices in the dense slots array
+  private mutable table: mutable Array<MapIndex>,
+  // Dense array of map entries in key-insertion order
+  private mutable slots: mutable Array<MapEntry<K, V>>,
+  // 64 minus log base two of the this.table.size().
+  private mutable shift: Int,
+  // How many live values are in the hash table.
+  private mutable sz: Int,
+  // The number of slots used (filled or tombstone)
+  private mutable used: Int,
+  // Increased whenever any iterator-invalidating operation is done.
+  mutable generation_PRIVATE: Int,
+)
+  extends MutableKeyedSequence<K, V>
+  uses
+    IntoIterator<(K, V)>,
+    FromIterator<(K, V)>,
+    Show[K: readonly Show, V: readonly Show],
+    Hashable[K: Hashable, V: Hashable],
+    Equality[K: Equality, V: Equality],
+   {
+  // # Creating a Map
+
+  // Creates a new hash table. If specified, "size" is how many values can
+  // be added to the hash table without rehashing.
+  static fun mcreate(capacity: Int = 0): mutable this {
+    log2NumSlots = getLogSlotSizeForCapacity(capacity);
+    shift = getShiftForLogTableSize(log2NumSlots);
+    table = Array::mfill(1.shl(log2NumSlots), MapIndex::empty());
+    slots = Array::mfill(
+      getSlotSizeForLogTableSize(log2NumSlots),
+      MapEntry::empty(),
+    );
+
+    mutable static(
+      table,
+      slots,
+      shift,
+      0, // size
+      0, // used
+      0, // generation
+    )
+  }
+
+  @no_inline
+  static fun createFromItems<I: readonly Sequence<(K, V)>>(items: I): this {
+    unsafe_chill_trust_me(static::mcreateFromItems(items))
+  }
+
+  @no_inline
+  static fun mcreateFromItems<I: readonly Sequence<(K, V)>>(
+    items: I,
+  ): mutable this {
+    size = items.size();
+    if (size == 0) {
+      static::mcreate(-1)
+    } else {
+      map = static::mcreate(size);
+      for ((key, value) in items) {
+        map.set(key, value)
+      };
+      map
+    }
+  }
+
+  @no_inline
+  static fun createFromIterator<I: mutable Iterator<(K, V)>>(
+    iterator: I,
+  ): this {
+    unsafe_chill_trust_me(static::mcreateFromIterator(iterator))
+  }
+
+  @no_inline
+  static fun mcreateFromIterator<I: mutable Iterator<(K, V)>>(
+    iterator: I,
+  ): mutable this {
+    map = static::mcreate(iterator.sizeHint().default(0));
+    for ((key, value) in iterator) {
+      map.set(key, value)
+    };
+    map
+  }
+
+  // Creates a mutable, minimally-sized clone of this table. The optional
+  // 'reserveCapacity' parameter is the number of additional values that can be added
+  // after cloning without forcing a rehash.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this {
+    capacity = this.sz + reserveCapacity;
+    if (capacity.ule(this.capacityImpl())) {
+      // Capacity is the same or less, so simply copy over the raw existing slots.
+      mutable Map(
+        this.table.clone(),
+        this.slots.clone(),
+        this.shift,
+        this.sz,
+        this.used,
+        0,
+      )
+    } else {
+      // Capacity increased, so we need to do a full reinsert.
+      map = Map::mcreate(capacity);
+      this.unsafeEach(entry -> {
+        map.setLoop(entry.hash, entry.unsafeKey(), entry.unsafeValue())
+      });
+      map
+    }
+  }
+
+  readonly fun chill(): this {
+    Map(
+      this.table.chill(),
+      this.slots.chill(),
+      this.shift,
+      this.sz,
+      this.used,
+      0,
+    )
+  }
+
+  // # Sizing
+
+  readonly fun size(): Int {
+    this.sz
+  }
+
+  // NOTE: Making capacity observable on frozen values prevents optimizations such
+  // as shrinking to fit on freeze. By making it mutable we preserve option value
+  // to add such optimizations in the future.
+  mutable fun capacity(): Int {
+    this.capacityImpl()
+  }
+
+  private readonly fun capacityImpl(): Int {
+    this.slots.size()
+  }
+
+  readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  mutable fun ensureCapacity(capacity: Int): void {
+    invariant(
+      capacity >= 0,
+      "Map::ensureCapacity(): Expected capacity to be nonnegative.",
+    );
+    if (capacity.ugt(this.capacityImpl())) {
+      log2NumSlots = getLogSlotSizeForCapacity(capacity);
+      this.growCapacity(log2NumSlots);
+    }
+  }
+
+  mutable fun clear(): void {
+    this.invalidateIterators();
+
+    if (this.sz != 0) {
+      table = this.table;
+      for (i in Range(0, table.size())) {
+        unsafeSet(table, i, MapIndex::empty())
+      };
+    };
+    slots = this.slots;
+    for (i in Range(0, this.used)) {
+      unsafeSet(slots, i, MapEntry::empty())
+    };
+    this.!sz = 0;
+    this.!used = 0;
+  }
+
+  // # Accessing Items
+
+  readonly fun get<K2: Hashable & Equality>[K: K2](k: K2): V {
+    // TODO: Once this is tested and working we should create a specialized
+    // getLoop() for this case.
+    this.getItem(k).i1
+  }
+
+  readonly fun maybeGet<K2: Hashable & Equality>[K: K2](k: K2): ?V {
+    this.maybeGetItem(k) match {
+    | Some(p) -> Some(p.i1)
+    | None() -> None()
+    }
+  }
+
+  // Like get(), but returns both the key and the value.
+  readonly fun getItem<K2: Hashable & Equality>[K: K2](k: K2): (K, V) {
+    this.maybeGetItem(k) match {
+    | Some(p) -> p
+    | None() -> throwKeyNotFound()
+    }
+  }
+
+  // Like maybeGet(), but returns both the key and the value.
+  readonly fun maybeGetItem<K2: Hashable & Equality>[K: K2](k: K2): ?(K, V) {
+    h = finalizeHash(k.hash());
+    this.maybeGetItemLoop(h, k)
+  }
+
+  // Get the first item in the Map, throws if the container is empty.
+  readonly fun firstItem(): (K, V) {
+    this.firstEntry().fromSome()
+  }
+
+  // Get the first item in the Map as Some() if non-empty, or None() if
+  // empty.
+  readonly fun maybeFirstItem(): ?(K, V) {
+    this.firstEntry()
+  }
+
+  // Get the last item in the Map, throws if the container is empty.
+  readonly fun lastItem(): (K, V) {
+    this.lastEntry().fromSome()
+  }
+
+  // Get the last item in the Map as Some() if non-empty, or None() if
+  // empty.
+  readonly fun maybeLastItem(): ?(K, V) {
+    this.lastEntry()
+  }
+
+  // If k exists in this map, returns its value. Else, runs f() to get
+  // a new value, inserts it, and returns that new value.
+  mutable fun getOrAdd(k: K, f: () -> V): V {
+    h = finalizeHash(k.hash());
+    this.maybeGetItemLoop(h, k) match {
+    | Some(x) -> x.i1
+    | None() ->
+      // Lazily create the value and record it for future lookups.
+      v = f();
+      this.rehashIfFull();
+      _ = this.setLoop(h, k, v);
+      v
+    }
+  }
+
+  // Returns true if the Map has a value associated with the given key, else false.
+  readonly fun containsKey<K2: Hashable & Equality>[K: K2](k: K2): Bool {
+    this.maybeGetItem(k).isSome()
+  }
+
+  // # Modifying Items
+
+  // Associate key with value in this Map:
+  // - If the key already exists in this Map, associates it to the new value.
+  // - Else add the key/value association.
+  mutable fun set(k: K, v: V): void {
+    this.rehashIfFull();
+    h = finalizeHash(k.hash());
+    this.setLoop(h, k, v);
+  }
+
+  // Like mset(), but throws a Duplicate() exception if the key already exists.
+  mutable fun add(k: K, v: V): void {
+    if (!this.maybeSet(k, v)) {
+      throw Duplicate()
+    }
+  }
+
+  // If the key does not already exist, inserts it and returns true. Else
+  // returns false.
+  mutable fun maybeSet(k: K, v: V): Bool {
+    this.rehashIfFull();
+    h = finalizeHash(k.hash());
+    this.maybeAddLoop(h, k, v);
+  }
+
+  // Adds all of the key/value associations from the second Map to this one,
+  // replacing values for keys already present and adding key/value associations
+  // for keys not yet in this Map.
+  mutable fun extend(second: readonly KeyedSequence<K, V>): void {
+    second match {
+    | map @ Map _ -> this.extendMap(map)
+    | _ -> this.extendKeyedSequence(second)
+    }
+  }
+
+  private mutable fun extendMap(second: readonly Map<K, V>): void {
+    second.unsafeEach(entry -> {
+      this.rehashIfFull();
+      this.setLoop(entry.hash, entry.unsafeKey(), entry.unsafeValue())
+    });
+  }
+
+  private mutable fun extendKeyedSequence(
+    second: readonly KeyedSequence<K, V>,
+  ): void {
+    for (k => v in second) {
+      this.set(k, v)
+    }
+  }
+
+  // Remove the given key from this Map:
+  // - If the key is present remove it and return true.
+  // - Otherwise do nothing and return false.
+  mutable fun maybeRemove(k: K): Bool {
+    h = finalizeHash(k.hash());
+    this.maybeRemoveLoop(h, k)
+  }
+
+  // Remove the key from this Map if present, otherwise throw.
+  mutable fun remove(k: K): void {
+    if (!this.maybeRemove(k)) {
+      throwKeyNotFound()
+    }
+  }
+
+  // # Iteration
+
+  readonly fun each(f: (K, V) -> void): void {
+    this.eachWhileImpl(entry -> {
+      f(entry.unsafeKey(), entry.unsafeValue());
+      true
+    })
+  }
+
+  // # Aggregation
+
+  readonly fun find(p: (K, V) -> Bool): ?V {
+    this.findItem(p).map(item ~> item.i1)
+  }
+
+  readonly fun findItem(p: (K, V) -> Bool): ?(K, V) {
+    result: ?(K, V) = None();
+    this.eachWhileImpl(entry -> {
+      k = entry.unsafeKey();
+      v = entry.unsafeValue();
+      if (p(k, v)) {
+        t: (K, V) = (k, v);
+        !result = Some(t);
+        false
+      } else {
+        true
+      }
+    });
+    result
+  }
+
+  // # Composition
+
+  readonly fun map<V2>(f: (K, V) -> V2): Map<K, V2> {
+    // The quantity of items and their keys won't change, so we can simply
+    // map the entries and copy the existing hash table structure without
+    // needing even a naive reinsertion.
+    indexMinusGeneration = -this.generation_PRIVATE;
+    used = this.used;
+    oldSlots = this.slots;
+    slots = Unsafe.array_make(oldSlots.size());
+    loop {
+      index = indexMinusGeneration + this.generation_PRIVATE;
+      if (index.uge(used)) {
+        // NOTE: If the map is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "map size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each iteration of the loop.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        break void;
+      };
+      !indexMinusGeneration = indexMinusGeneration + 1;
+      entry = Unsafe.array_get(oldSlots, index);
+      nextEntry = if (entry.isEmpty()) {
+        MapEntry<K, V2>::empty();
+      } else {
+        k = entry.unsafeKey();
+        v = entry.unsafeValue();
+        v2 = f(k, v);
+        MapEntry<K, V2>::create(entry.hash, k, v2);
+      };
+      Unsafe.array_set(slots, index, nextEntry);
+    };
+    Map(
+      this.table.chill(),
+      unsafe_chill_trust_me(slots),
+      this.shift,
+      this.sz,
+      this.used,
+      0,
+    )
+  }
+
+  readonly fun mapItems<K2: Hashable & Equality, V2>(
+    s: (K, V) -> (K2, V2),
+  ): Map<K2, V2> {
+    // It's possible that some/all items could map to duplicate keys such that
+    // the result is smaller than this map. However the expected usage is to
+    // map items to distinct keys such that the result size will be the same.
+    result = Map::mcreate(this.sz);
+    this.eachWhileImpl(entry -> {
+      (k2, v2) = s(entry.unsafeKey(), entry.unsafeValue());
+      h = finalizeHash(k2.hash());
+      result.setLoop(h, k2, v2);
+      true
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  readonly fun filter(p: (K, V) -> Bool): Map<K, V> {
+    result = static::mcreate(0);
+    this.eachWhileImpl(entry -> {
+      k = entry.unsafeKey();
+      v = entry.unsafeValue();
+      if (p(k, v)) {
+        result.rehashIfFull();
+        h = entry.hash;
+        result.setLoop(h, k, v);
+      };
+      true
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  readonly fun filterNone<U>[V: ?U](): Map<K, U> {
+    result = Map::mcreate(0);
+    this.eachWhileImpl(entry -> {
+      k = entry.unsafeKey();
+      entry.unsafeValue() match {
+      | Some(v) ->
+        result.rehashIfFull();
+        h = entry.hash;
+        result.setLoop(h, k, v)
+      | _ -> void
+      };
+      true
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // # Async
+
+  async fun gen<V2: frozen>[K: Orderable, V: ^V2](): ^Map<K, V2> {
+    slots = this.slots;
+    handles = List::tabulate(this.used, index -> {
+      entry = unsafeGet(slots, index);
+      hash = entry.hash;
+      if (entry.isEmpty()) {
+        async {
+          MapEntry<K, V2>::empty()
+        }
+      } else {
+        key = entry.unsafeKey();
+        async {
+          value = await entry.unsafeValue();
+          MapEntry::create(hash, key, value);
+        }
+      }
+    });
+    nextSlots = Array::mcreateFromItems(await handles.genReverse());
+    nextSlots.reverse();
+    Map(
+      this.table,
+      unsafe_chill_trust_me(nextSlots),
+      this.shift,
+      this.sz,
+      this.used,
+      0,
+    )
+  }
+
+  async fun genMap<V2: frozen>[K: Orderable, V: frozen](
+    s: (K, V) ~> ^V2,
+  ): ^Map<K, V2> {
+    slots = this.slots;
+    nextSlots = await ASIO.genFillBy(this.used, index ~> {
+      entry = unsafeGet(slots, index);
+      hash = entry.hash;
+      if (entry.isEmpty()) {
+        async {
+          MapEntry<K, V2>::empty()
+        }
+      } else {
+        key = entry.unsafeKey();
+        awaitable_value = s(key, entry.unsafeValue());
+        async {
+          value = await awaitable_value;
+          MapEntry::create(hash, key, value);
+        }
+      }
+    });
+    Map(
+      this.table,
+      unsafe_chill_trust_me(nextSlots),
+      this.shift,
+      this.sz,
+      this.used,
+      0,
+    )
+  }
+
+  async fun genFilter<V2>[K: Orderable, V: frozen](
+    p: (K, V) ~> ^Bool,
+  ): ^Map<K, V> {
+    slots = this.slots;
+    // Asynchronously map each entry to whether it passes the predicate or not
+    // empty slots map to false
+    predicates = await ASIO.genFillBy(this.used, index ~>
+      async {
+        entry = unsafeGet(slots, index);
+        !entry.isEmpty() && await p(entry.unsafeKey(), entry.unsafeValue())
+      }
+    );
+    // Count the number of matching items to allocate a single exactly sized result
+    nextSize = predicates.reduce(
+      (sum, predicate) -> if (predicate) sum + 1 else sum,
+      0,
+    );
+    if (nextSize == this.sz) {
+      this
+    } else {
+      // Insert slots for which the predicate returned true, maintaining insertion order
+      map = Map::mcreate(nextSize);
+      for (index in Range(0, this.used)) {
+        if (unsafeGet(predicates, index)) {
+          // if predicate passed than the corresponding entry must be non-empty
+          entry = unsafeGet(slots, index);
+          map.setLoop(entry.hash, entry.unsafeKey(), entry.unsafeValue())
+        }
+      };
+      unsafe_chill_trust_me(map)
+    }
+  }
+
+  // # Trait Implementations
+
+  readonly fun toString[K: readonly Show, V: readonly Show](): String {
+    if (this.isEmpty()) {
+      "Map{}"
+    } else {
+      buf = Array::mfill(this.size(), "");
+      out = 0;
+
+      this.unsafeEach(entry -> {
+        buf.set(out, `${entry.unsafeKey()} => ${entry.unsafeValue()}`);
+        !out = out + 1
+      });
+
+      // Theoretically the user's toString() could modify this table
+      // while we are looping, but that would be evil.
+      invariant(out == buf.size(), "Table size changed during iteration");
+
+      "Map{" + buf.join(", ") + "}"
+    }
+  }
+
+  readonly fun inspect(): Inspect {
+    items = Vector::mcreate(this.size());
+    this.unsafeEach(entry -> {
+      items.push((inspect(entry.unsafeKey()), inspect(entry.unsafeValue())));
+    });
+    InspectMap("Map", items.toArray())
+  }
+
+  // For use when developing Map
+  readonly fun inspectInternal(): Inspect {
+    InspectObject(
+      "Map",
+      Array[
+        (
+          "table",
+          InspectObject(
+            "",
+            this.table.items()
+              .map(item ~> (item.i0.toString(), inspect(item.i1)))
+              .collect(Array),
+          ),
+        ),
+        // format the table as a map of index => entry
+        (
+          "slots",
+          InspectObject(
+            "",
+            this.slots.items()
+              .map(item ~> (item.i0.toString(), inspect(item.i1)))
+              .collect(Array),
+          ),
+        ),
+        ("sz", inspect(this.sz)),
+        ("used", inspect(this.used)),
+        ("shift", inspect(this.shift)),
+        ("generation", inspect(this.generation_PRIVATE)),
+      ],
+    )
+  }
+
+  readonly fun ==<K2: Hashable & Equality, V2: Equality>[K: K2, V: V2](
+    other: readonly Map<K2, V2>,
+  ): Bool {
+    this.size() == other.size() &&
+      (this : readonly Map<K2, V2>).slots.all(entry -> {
+        entry.isEmpty() ||
+          {
+            other.maybeGetItemLoop(entry.hash, entry.unsafeKey()) match {
+            | Some((_, v)) -> entry.unsafeValue() == v
+            | None() -> false
+            }
+          }
+      })
+  }
+
+  readonly fun !=<K2: Hashable & Equality, V2: Equality>[K: K2, V: V2](
+    other: readonly Map<K2, V2>,
+  ): Bool {
+    !(this == other)
+  }
+
+  readonly fun hash[V: Hashable](): Int {
+    acc = 0;
+    this.unsafeEach(entry -> {
+      // NOTE: We need to combine slot hashes in an order-independent
+      // way so that two == hash tables that happen to be differently
+      // ordered have the same hash.
+      kh = entry.hash;
+      vh = entry.unsafeValue().hash();
+
+      // Rotate vh by kh to make it somewhat nonlinear and so same keys with
+      // permuted values does not yield the same hash. And this function
+      // is also chosen so it optimizes away to nothing for Set,
+      // where vh == 0.
+      lshift = kh.ushr(64 - 6);
+      rshift = (-lshift).and(63);
+      vh1 = vh.shl(lshift);
+      vh2 = vh.ushr(rshift);
+      vRotated = vh1.or(vh2);
+
+      !acc = acc + kh + vRotated;
+    });
+    acc
+  }
+
+  // # Iterators
+
+  readonly fun keys(): mutable MapKeysIterator<K, V> {
+    mutable MapKeysIterator(
+      this,
+      this.sz,
+      this.used,
+      this.slots,
+      -this.generation_PRIVATE,
+    )
+  }
+
+  readonly fun values(): mutable MapValuesIterator<K, V> {
+    mutable MapValuesIterator(
+      this,
+      this.sz,
+      this.used,
+      this.slots,
+      -this.generation_PRIVATE,
+    )
+  }
+
+  readonly fun items(): mutable MapItemsIterator<K, V> {
+    mutable MapItemsIterator(
+      this,
+      this.sz,
+      this.used,
+      this.slots,
+      -this.generation_PRIVATE,
+    )
+  }
+
+  // # Private Functions
+
+  // Indicate that all existing iterators are no longer valid, to help
+  // catch bugs in user code. All changes to the Map invalidate iterators
+  // except changing the value associated with an existing key.
+  //
+  // This hack works by inexpensively effectively moving each iterator's
+  // slot index past the end of the table's array, which moves the iterator
+  // next() method into the "slow" path where it can check for this case.
+  private mutable fun invalidateIterators(): void {
+    this.!generation_PRIVATE = this.generation_PRIVATE + generationSkip
+  }
+
+  // Execute some number of operations (fn) that may call invalidateIterators()
+  // multiple times such that the generation count is effectively incremented
+  // only once.
+  @always_inline
+  private mutable fun invalidateIteratorTransaction(fn: () -> void): void {
+    this.invalidateIterators();
+    generation = this.generation_PRIVATE;
+    fn();
+    this.!generation_PRIVATE = generation;
+  }
+
+  private readonly fun maybeGetItemLoop<K2: Hashable & Equality>[K: K2](
+    h: Int,
+    k: K2,
+  ): ?(K, V) {
+    table = this.table;
+    slots = this.slots;
+    tableIndex = h.ushr(this.shift);
+
+    loop {
+      entryIndex = unsafeGet(table, tableIndex);
+      if (!entryIndex.isEmpty()) {
+        // Load the (guaranteed non-empty) entry
+        entry = unsafeGet(slots, entryIndex.index.toInt());
+        delta = h - entry.hash;
+        if (delta == 0) {
+          if (k == entry.unsafeKey()) {
+            // Found an exact match
+            break Some((entry.unsafeKey(), entry.unsafeValue()))
+          }
+        } else if (delta < 0) {
+          // Hash collision: the existing entry is closer to its ideal location
+          // than the one we are searching for would be. If the search key were
+          // in the map we would have placed it here, so it's missing.
+          break None()
+        };
+        // Hash collision: the existing entry is farther from its ideal location
+        // than the one we are searching for would be, so keep searching.
+        !tableIndex = (tableIndex + 1).and(table.size() - 1);
+      } else {
+        break None()
+      }
+    }
+  }
+
+  // Helper loop to set this[k] to v:
+  // - Inserts the key/value if the key was not yet present in the map.
+  // - Otherwise updates the *value* for the given key.
+  mutable private fun setLoop(h: Int, k: K, v: V): void {
+    table = this.table;
+    slots = this.slots;
+    shift = this.shift;
+    tableIndex = h.ushr(shift);
+    // the index in slots where we will write the entry.
+    slotsIndex = this.used;
+
+    loop {
+      entryIndex = unsafeGet(table, tableIndex);
+      if (entryIndex.isEmpty()) {
+        // Found an empty slot: the key does not exist in the table so
+        // append to slots and update table[index] to reference that slot
+        this.invalidateIterators();
+        this.!sz = this.sz + 1;
+        this.!used = this.used + 1;
+        unsafeSet(slots, slotsIndex, MapEntry::create(h, k, v));
+        unsafeSet(table, tableIndex, MapIndex::create(slotsIndex));
+        break void;
+      } else {
+        // Load the (guaranteed non-empty) entry
+        entry = unsafeGet(slots, entryIndex.index.toInt());
+        delta = h - entry.hash;
+        if (delta == 0) {
+          if (k == entry.unsafeKey()) {
+            // Found an exact match for an existing entry: update the value
+            // NOTE: the old key is preserved intentionally, and this intentionally
+            // does not invalidate iterators.
+            unsafeSet(
+              slots,
+              entryIndex.index.toInt(),
+              MapEntry::create(h, entry.unsafeKey(), v),
+            );
+            break void;
+          }
+        } else if (delta < 0) {
+          // Hash collision: the existing entry is closer to its ideal slot than
+          // the new entry, so evict the existing entry (steal from the rich)
+          unsafeSet(slots, slotsIndex, MapEntry::create(h, k, v));
+          unsafeSet(table, tableIndex, MapIndex::create(slotsIndex));
+          !slotsIndex = entryIndex.index.toInt();
+          !h = entry.hash;
+          !k = entry.unsafeKey();
+          !v = entry.unsafeValue();
+        };
+        // Hash collision: the existing entry is *farther* from its ideal slot
+        // than the new entry, so keep searching for a slot for the new entry
+        !tableIndex = (tableIndex + 1).and(table.size() - 1);
+      }
+    }
+  }
+
+  // Helper loop to conditionally insert a new key in the map:
+  // - If the key was not yet present, inserts the key/value and returns true.
+  // - Otherwise does nothing and returns false.
+  mutable private fun maybeAddLoop(h: Int, k: K, v: V): Bool {
+    table = this.table;
+    slots = this.slots;
+    shift = this.shift;
+    tableIndex = h.ushr(shift);
+    // the index in slots where we will write the entry.
+    slotsIndex = this.used;
+
+    loop {
+      entryIndex = unsafeGet(table, tableIndex);
+      if (entryIndex.isEmpty()) {
+        // Found an empty slot: the key does not exist in the table so
+        // append to slots and update table[index] to reference that slot
+        this.invalidateIterators();
+        this.!sz = this.sz + 1;
+        this.!used = this.used + 1;
+        unsafeSet(slots, slotsIndex, MapEntry::create(h, k, v));
+        unsafeSet(table, tableIndex, MapIndex::create(slotsIndex));
+        break true;
+      } else {
+        // Load the (guaranteed non-empty) entry
+        entry = unsafeGet(slots, entryIndex.index.toInt());
+        delta = h - entry.hash;
+        if (delta == 0) {
+          if (k == entry.unsafeKey()) {
+            // Key exists: don't update since this is add-only
+            break false;
+          }
+        } else if (delta < 0) {
+          // Hash collision: the existing entry is closer to its ideal slot than
+          // the new entry, so evict the existing entry (steal from the rich)
+          unsafeSet(slots, slotsIndex, MapEntry::create(h, k, v));
+          unsafeSet(table, tableIndex, MapIndex::create(slotsIndex));
+          !slotsIndex = entryIndex.index.toInt();
+          !h = entry.hash;
+          !k = entry.unsafeKey();
+          !v = entry.unsafeValue();
+        };
+        // Hash collision: the existing entry is *farther* from its ideal slot
+        // than the new entry, so keep searching for a slot for the new entry
+        !tableIndex = (tableIndex + 1).and(table.size() - 1);
+      }
+    }
+  }
+
+  mutable private fun maybeRemoveLoop(h: Int, k: K): Bool {
+    table = this.table;
+    slots = this.slots;
+    shift = this.shift;
+    tableIndex = h.ushr(shift);
+
+    loop {
+      entryIndex = unsafeGet(table, tableIndex);
+      if (entryIndex.isEmpty()) {
+        // Found an empty slot: the key does not exist in the table
+        break false;
+      } else {
+        // Load the (guaranteed non-empty) entry
+        entry = unsafeGet(slots, entryIndex.index.toInt());
+        delta = h - entry.hash;
+        if (delta == 0) {
+          if (k == entry.unsafeKey()) {
+            // Found an exact match for the key, remove the entry
+            this.invalidateIterators();
+            this.!sz = this.sz - 1;
+            // TODO: consider resetting this.used on deletion special cases:
+            // - if this.sz becomes 0, set this.used to zero
+            // - if entryIndex.index == this.used, decrement this.used
+            unsafeSet(slots, entryIndex.index.toInt(), MapEntry::empty());
+            this.slideOver(tableIndex);
+            break true;
+          }
+        } else if (delta < 0) {
+          // Hash collision: the existing entry is closer to its ideal location
+          // than the one we are searching for would be. If the search key were
+          // in the map we would have placed it here, so it's missing.
+          break false;
+        };
+        // Hash collision: the existing entry is farther from its ideal location
+        // than the one we are searching for would be, so keep searching.
+        !tableIndex = (tableIndex + 1).and(table.size() - 1);
+      }
+    }
+  }
+
+  mutable private fun slideOver(tableIndex: Int): void {
+    table = this.table;
+    slots = this.slots;
+    shift = this.shift;
+
+    loop {
+      nextTableIndex = (tableIndex + 1).and(table.size() - 1);
+      nextEntryIndex = unsafeGet(table, nextTableIndex);
+      if (
+        nextEntryIndex.isEmpty() ||
+        {
+          nextEntry = unsafeGet(slots, nextEntryIndex.index.toInt());
+          nextEntry.hash.ushr(shift) == nextTableIndex
+        }
+      ) {
+        // The next entry is empty or at its ideal location, stop sliding and
+        // empty the current index
+        unsafeSet(table, tableIndex, MapIndex::empty());
+        break void;
+      } else {
+        unsafeSet(table, tableIndex, nextEntryIndex);
+        !tableIndex = nextTableIndex;
+      }
+    }
+  }
+
+  // Rehash in two cases:
+  // 1. The `table` is one entry away from reaching the max load factor,
+  //    and the internal storage needs to be reallocated and entries
+  //    reinserted.
+  // 2. The `slots` are all "used". If the table still has room then at least
+  //    one entry has been deleted and one or more slots are empty. In order to
+  //    maintain amortized O(1) time for inserts/removals, we ensure that the
+  //    Map only needs to grow/reorder at most once every N operations:
+  //    a. If the ratio of filled/used slots is > 50%, grow the Map.
+  //    b. Otherwise, reorder the entries to remove gaps.
+  //
+  //    Both of these strategies leave the Map such that this.sz == this.used
+  //    and at least the trailing half of `slots` is empty.
+  private mutable fun rehashIfFull(): void {
+    // Check if increasing the number of used *slots* would cause the table
+    // to reach the max load factor. If there have been no removals
+    // then this.used == this.sz, and if the result is true then we are in
+    // case 1 above. If no keys have been removed and the result is true
+    // then we may be in case 2. This single check allows returning quickly
+    // in the common case (neither case 1 or 2).
+    used = this.used;
+    mayNeedRehash = (used + 1).shl(this.shift) < 0;
+    if (mayNeedRehash) {
+      size = this.sz;
+      if (size + 1 == emptyIndex) {
+        // Map is full
+        invariant_violation(`Map: maximum capacity exceeded`)
+      };
+      this.invalidateIteratorTransaction(() -> {
+        if (used == size || size * 2 > used) {
+          // Case 1 or 2a: grow storage
+          log2NumSlots = getLogSlotSizeForCapacity(this.table.size() + 1);
+          this.growCapacity(log2NumSlots);
+        } else {
+          // Case 2b: reorder entries within the existing storage
+          this.reorderEntries();
+        };
+      });
+    }
+  }
+
+  private mutable fun growCapacity(log2NumSlots: Int): void {
+    oldSlots = this.slots;
+    sz = this.sz;
+
+    // Start over with an empty array.
+    shift = getShiftForLogTableSize(log2NumSlots);
+    this.!shift = shift;
+    this.!sz = 0;
+    this.!used = 0;
+    this.!table = Array::mfill(1.shl(log2NumSlots), MapIndex::empty());
+    this.!slots = Array::mfill(
+      getSlotSizeForLogTableSize(log2NumSlots),
+      MapEntry::empty(),
+    );
+
+    // Insert our old values.
+    oldSlots.each(entry -> {
+      if (!entry.isEmpty()) {
+        this.setLoop(entry.hash, entry.unsafeKey(), entry.unsafeValue())
+      }
+    });
+
+    // TODO T22587720: make the message argument lazy
+    if (this.sz != sz) {
+      invariant_violation(
+        "Map size changed during rehashing (" +
+          sz +
+          " to " +
+          this.sz +
+          ") " +
+          "which probably indicates a mismatch between hash and " +
+          "equality methods, or an object's state changing after it " +
+          "was first inserted.",
+      )
+    };
+  }
+
+  // Reorder entries within existing storage
+  private mutable fun reorderEntries(): void {
+    slots = this.slots;
+    table = this.table;
+    used = this.used;
+    shift = this.shift;
+    fromIndex = 0;
+    toIndex = 0;
+    while (fromIndex < used) {
+      entry = unsafeGet(slots, fromIndex);
+      if (!entry.isEmpty()) {
+        if (fromIndex != toIndex) {
+          unsafeSet(slots, toIndex, entry);
+          unsafeSet(slots, fromIndex, MapEntry::empty());
+          // Naive linear scan forward from the ideal table slot for this entry:
+          // we know that a table entry for `fromIndex` must exist, so just
+          // compare ints until we find it
+          tableIndex = entry.hash.ushr(shift);
+          loop {
+            entryIndex = unsafeGet(table, tableIndex);
+            if (entryIndex.index == fromIndex) {
+              unsafeSet(table, tableIndex, MapIndex::create(toIndex));
+              break void;
+            } else {
+              !tableIndex = (tableIndex + 1).and(table.size() - 1);
+            }
+          }
+        };
+        !toIndex = toIndex + 1;
+      };
+      !fromIndex = fromIndex + 1;
+    };
+    this.!used = this.sz;
+  }
+
+  private readonly fun firstEntry(): ?(K, V) {
+    for (entry in this.slots) {
+      if (!entry.isEmpty()) {
+        break Some((entry.unsafeKey(), entry.unsafeValue()))
+      }
+    } else {
+      None()
+    }
+  }
+
+  private readonly fun lastEntry(): ?(K, V) {
+    for (entry in this.slots.reversedValues()) {
+      if (!entry.isEmpty()) {
+        break Some((entry.unsafeKey(), entry.unsafeValue()))
+      }
+    } else {
+      None()
+    }
+  }
+
+  // Iterates over all the slots of this map without guarding against
+  // concurrent modification. Only use when the callback cannot
+  // modify this map.
+  @always_inline
+  private readonly fun unsafeEach(f: MapEntry<K, V> -> void): void {
+    for (entry in this.slots) {
+      if (!entry.isEmpty()) {
+        f(entry)
+      }
+    }
+  }
+
+  // Internal helper for iteration guarding against concurrent modifiction.
+  @always_inline
+  readonly fun eachWhileImpl(f: MapEntry<K, V> -> Bool): void {
+    slots = this.slots;
+    used = this.used;
+    indexMinusGeneration = -this.generation_PRIVATE;
+    loop {
+      index = indexMinusGeneration + this.generation_PRIVATE;
+      if (index.uge(used)) {
+        // NOTE: If the map is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "map size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each iteration of the loop.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        break void;
+      } else {
+        entry = unsafeGet(slots, index);
+        !indexMinusGeneration = indexMinusGeneration + 1;
+        if (!entry.isEmpty()) {
+          if (!f(entry)) {
+            break void
+          }
+        }
+      }
+    }
+  }
+}
+
+// See Map::invalidateIterators(). NOTE: This assumes tables have
+// fewer than 2**32 entries.
+private const generationSkip: Int = 0x100000000;
+
+/*
+// Hash finalizer from MurmurHash: swirls around the bits.
+// Probably overkill for a reasonably-sized hash table.
+fun strongFinalizeHash(h: Int): Int {
+  !h = h.xor(h.ushr(33));
+  !h = h * 0xff51afd7ed558ccd;
+  !h = h.xor(h.ushr(33));
+  !h = h * 0xc4ceb9fe1a85ec53;
+  !h = h.xor(h.ushr(33));
+  h
+}
+*/
+
+// Quickly mixes up the hash bits, especially into the high bits, which are
+// used as the hash table index, using an even number to force the low bit
+// to be zero, indicating non-empty. This simple function doesn't hit
+// avalanche but we don't need that for all bits, just good data in the
+// high bits.
+private fun finalizeHash(h: Int): Int {
+  h * 0xc4ceb9fe1a85ec52
+}
+
+// Compute log2 of the number of slots necessary to hold the given capacity.
+@always_inline
+private fun getLogSlotSizeForCapacity(capacity: Int): Int {
+  if (capacity < 0) {
+    3
+  } else {
+    65 - capacity.clz()
+  }
+}
+
+// Compute the shift amount corresponding to the given (log2 of) slot size.
+@always_inline
+private fun getShiftForLogTableSize(log2NumSlots: Int): Int {
+  64 - log2NumSlots
+}
+
+@always_inline
+private fun getSlotSizeForLogTableSize(log2NumSlots: Int): Int {
+  1.shl(log2NumSlots - 1) - 1
+}
+
+private const emptyIndex: UInt32 = UInt32::max;
+
+private const emptyHash: Int = 1;
+
+private value class MapIndex private (index: UInt32) {
+  static fun empty(): this {
+    static(emptyIndex)
+  }
+
+  static fun create(index: Int): this {
+    static(UInt32::create(index))
+  }
+
+  fun isEmpty(): Bool {
+    this.index == emptyIndex
+  }
+
+  fun inspect(): Inspect {
+    if (this.isEmpty()) {
+      InspectCall("MapIndex", Array[InspectLiteral("<<empty>>")])
+    } else {
+      InspectCall("MapIndex", Array[inspect(this.index)])
+    }
+  }
+}
+
+value class MapEntry<+K: Hashable & Equality, +V> private (
+  hash: Int,
+  key: Unsafe.RawStorage<K>,
+  value: Unsafe.RawStorage<V>,
+) {
+  static fun create(hash: Int, key: K, value: V): this {
+    static(hash, Unsafe.RawStorage::make(key), Unsafe.RawStorage::make(value))
+  }
+
+  static fun empty(): this {
+    static(
+      emptyHash,
+      Unsafe.RawStorage::uninitialized(),
+      Unsafe.RawStorage::uninitialized(),
+    )
+  }
+
+  fun isEmpty(): Bool {
+    this.hash == emptyHash
+  }
+
+  fun map<T>(f: this -> T): ?T {
+    if (this.isEmpty()) {
+      None()
+    } else {
+      Some(f(this))
+    }
+  }
+
+  fun unsafeKey(): K {
+    Unsafe.RawStorage::unsafeGet(this.key)
+  }
+
+  fun maybeKey(): ?K {
+    if (!this.isEmpty()) {
+      Some(this.unsafeKey())
+    } else {
+      None()
+    }
+  }
+
+  fun expectKey(): K {
+    if (!this.isEmpty()) {
+      this.unsafeKey()
+    } else {
+      throwKeyNotFound()
+    }
+  }
+
+  fun unsafeValue(): V {
+    Unsafe.RawStorage::unsafeGet(this.value)
+  }
+
+  fun maybeValue(): ?V {
+    if (!this.isEmpty()) {
+      Some(this.unsafeValue())
+    } else {
+      None()
+    }
+  }
+
+  fun expectValue(): V {
+    if (!this.isEmpty()) {
+      this.unsafeValue()
+    } else {
+      throwKeyNotFound()
+    }
+  }
+
+  fun maybeItem(): ?(K, V) {
+    if (!this.isEmpty()) {
+      Some((this.unsafeKey(), this.unsafeValue()))
+    } else {
+      None()
+    }
+  }
+
+  fun expectItem(): (K, V) {
+    if (!this.isEmpty()) {
+      (this.unsafeKey(), this.unsafeValue())
+    } else {
+      throwKeyNotFound()
+    }
+  }
+
+  fun inspect(): Inspect {
+    if (this.isEmpty()) {
+      InspectCall("MapEntry", Array[InspectLiteral("<<empty>>")])
+    } else {
+      InspectObject(
+        "MapEntry",
+        Array[
+          ("hash", InspectLiteral(this.hash.toStringBinary())),
+          ("key", inspect(this.key)),
+          ("value", inspect(this.value)),
+        ],
+      )
+    }
+  }
+}
+
+// Toggle to true to use guarded set/get calls during development
+// to help identify unsafe out-of-bounds access.
+private const debugEnableBoundsCheck: Bool = false;
+
+// Debug wrapper for Unsafe.array_get
+@always_inline
+private fun unsafeGet<T>(array: readonly .Array<T>, index: Int): T {
+  if (debugEnableBoundsCheck && index.uge(array.size())) {
+    throwOutOfBounds()
+  };
+  Unsafe.array_get(array, index)
+}
+
+// Debug wrapper for Unsafe.array_set
+@always_inline
+private fun unsafeSet<T>(array: mutable .Array<T>, index: Int, value: T): void {
+  if (debugEnableBoundsCheck && index.uge(array.size())) {
+    throwOutOfBounds()
+  };
+  Unsafe.array_set(array, index, value)
+}
+
+// Common implementation for OrderedMap iterators.
+private trait MapIterator<+T, +K: Hashable & Equality, +V>(
+  protected table: readonly Map<K, V>,
+  protected sz: Int,
+  protected used: Int,
+  protected slots: readonly Array<MapEntry<K, V>>,
+  protected mutable indexMinusGeneration: Int,
+) {
+  overridable readonly fun sizeHint(): ?Int {
+    index = this.indexMinusGeneration + this.table.generation_PRIVATE;
+    size = max(0, this.sz - index);
+    Some(size)
+  }
+
+  @always_inline
+  mutable fun next(): ?T {
+    slots = this.slots;
+
+    loop {
+      index = this.indexMinusGeneration + this.table.generation_PRIVATE;
+      if (index.uge(this.used)) {
+        // NOTE: If the hash table is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "table size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each next() call.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        break None()
+      } else {
+        entry = unsafeGet(slots, index);
+        this.!indexMinusGeneration = this.indexMinusGeneration + 1;
+        if (!entry.isEmpty()) {
+          break Some(this.extractEntryResult(entry))
+        }
+      }
+    }
+  }
+
+  protected mutable fun extractEntryResult(entry: MapEntry<K, V>): T;
+}
+
+private mutable class MapKeysIterator<+K: Hashable & Equality, +V>
+  extends Iterator<K>
+  uses MapIterator<K, K, V> {
+  readonly fun sizeHint from MapIterator;
+
+  @always_inline
+  protected mutable fun extractEntryResult(entry: MapEntry<K, V>): K {
+    entry.unsafeKey()
+  }
+}
+
+private mutable class MapValuesIterator<+K: Hashable & Equality, +V>
+  extends Iterator<V>
+  uses MapIterator<V, K, V> {
+  readonly fun sizeHint from MapIterator;
+
+  @always_inline
+  protected mutable fun extractEntryResult(entry: MapEntry<K, V>): V {
+    entry.unsafeValue()
+  }
+}
+
+private mutable class MapItemsIterator<+K: Hashable & Equality, +V>
+  extends Iterator<(K, V)>
+  uses MapIterator<(K, V), K, V> {
+  readonly fun sizeHint from MapIterator;
+
+  @always_inline
+  protected mutable fun extractEntryResult(entry: MapEntry<K, V>): (K, V) {
+    (entry.unsafeKey(), entry.unsafeValue())
+  }
+}
+
+module end;

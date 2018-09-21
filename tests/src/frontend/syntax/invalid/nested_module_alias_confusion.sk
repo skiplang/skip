@@ -1,0 +1,7 @@
+module A;
+
+const i: Int = 112;
+
+module alias B = A;
+
+module end;

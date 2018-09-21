@@ -1,0 +1,15 @@
+File "./typechecking/invalid/overridable7.sk", line 14, characters 7-8:
+Cannot override a final method. Class D1 attempted to override method m1 from parent B2
+12 |
+13 | class D1() extends B1, B2 {
+14 |   fun m1 from B1;
+   |       ^^
+15 | }
+
+File "./typechecking/invalid/overridable7.sk", line 8, characters 7-8:
+To override the method, B2::m1 must have the modifier 'overridable'
+ 6 |
+ 7 | base class B2 {
+ 8 |   fun m1(): void {
+   |       ^^
+ 9 |     void

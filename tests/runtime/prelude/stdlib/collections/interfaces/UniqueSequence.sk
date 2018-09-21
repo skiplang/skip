@@ -1,0 +1,159 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Sequence;
+
+// Represents a sequence of unique values: implementations must guarantee that
+// each value in the sequence is not equal (per Equality) to any other value.
+mutable base class .UniqueSequence<+T: Equality> extends Sequence<T> {
+  // # Creating Sequences
+
+  // Create a mutable container with the given capacity.
+  static fun mcreate(capacity: Int = 0): mutable this;
+
+  // Create a frozen container from a sequence of items.
+  static fun createFromItems<I: readonly Sequence<T>>(items: I): this;
+
+  // Create a mutable container from a sequence of items.
+  static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this;
+
+  // Create a mutable, shallow copy of the contents of this container.
+  // The capacity of the returned container is only guaranteed to be
+  // greater than or equal to this' size. To ensure space for more items,
+  // pass a non-zero reserveCapacity.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this;
+
+  // Return a chilled (shallowly frozen) copy of this sequence.
+  readonly fun chill(): this;
+
+  // # Sizing
+  // Methods to query or change the size or capacity of a container.
+
+  // Returns the total number of items contained by this container.
+  readonly fun size(): Int;
+
+  // Returns true if there are no items in this container (ie size() == 0).
+  overridable readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  // Grows the container's internal storage as necessary to ensure that the
+  // container has capacity for at least the specified number of items: the
+  // container may grow more than requested.
+  mutable fun ensureCapacity(capacity: Int): void;
+
+  // Remove all items, setting the container's size to 0 without changing its
+  // capacity.
+  mutable fun clear(): void;
+
+  // # Accessing Items
+
+  readonly fun contains<T2: Hashable & Equality>[T: T2](k: T2): Bool;
+
+  readonly fun get<T2: Hashable & Equality>[T: T2](k: T2): T;
+
+  readonly fun maybeGet<T2: Hashable & Equality>[T: T2](k: T2): ?T;
+
+  // # Modifying Items
+
+  // Adds the item to this sequence if is not present, otherwise throws.
+  mutable fun add(v: T): void;
+
+  // Removes the item from this sequence if present, otherwise throws.
+  mutable fun remove(v: T): void;
+
+  // Removes the item from this sequence:
+  // - If the item is present removes it and return true
+  // - Otherwise do nothing and returns false
+  mutable fun maybeRemove(v: T): Bool;
+
+  // Adds the item to this sequence if is not present, otherwise has no effect.
+  mutable fun insert(v: T): void;
+
+  // Inserts the item into this sequence:
+  // - If not already present adds it and returns true
+  // - If already present does nothing and returns false
+  mutable fun maybeInsert(v: T): Bool;
+
+  // Add all the items of the second sequence to this sequence. Ignores items already
+  // in this sequence.
+  overridable mutable fun extend<S: readonly Sequence<T>>(items: S): void {
+    items.each(x -> this.insert(x))
+  }
+
+  // Remove all the items of the second sequence from this sequence. Ignores items not
+  // in this sequence.
+  overridable mutable fun subtract<S: readonly Sequence<T>>(items: S): void {
+    items.each(x -> _ = this.maybeRemove(x));
+  }
+
+  // # Set Arithmetic
+
+  // Returns a new sequence containing all the items of this sequence and the second sequence.
+  readonly fun union<U: Hashable & Equality, S: readonly Sequence<U>>[T: U](
+    items: S,
+  ): UniqueSequence<U>;
+
+  // Returns a new sequence containing the items of this sequence that do not appear in
+  // the second sequence.
+  readonly fun difference<U: Hashable & Equality, S: readonly Sequence<U>>[
+    T: U,
+  ](
+    items: S,
+  ): UniqueSequence<U>;
+
+  // Return a new sequence containing the items of this sequence that appear in the
+  // second sequence.
+  readonly fun intersection<U: Hashable & Equality, S: readonly Sequence<U>>[
+    T: U,
+  ](
+    items: S,
+  ): UniqueSequence<U>;
+
+  // Returns true if this sequence contains all of the items in the second sequence.
+  overridable readonly fun containsAll<
+    T2: Hashable & Equality,
+    S: readonly Sequence<T2>,
+  >[T: T2](
+    items: S,
+  ): Bool {
+    items.all(this.contains)
+  }
+
+  // Returns true if this sequence contains any of the items in the second sequence.
+  overridable readonly fun containsAny<
+    T2: Hashable & Equality,
+    S: readonly Sequence<T2>,
+  >[T: T2](
+    items: S,
+  ): Bool {
+    items.any(this.contains)
+  }
+
+  // # Composition
+
+  overridable readonly fun filter(p: T -> Bool): UniqueSequence<T> {
+    set = static::mcreate();
+    this.each(x -> {
+      if (p(x)) {
+        set.add(x)
+      }
+    });
+    freeze(set)
+  }
+
+  // Workaround the conflict between Seq's `T: ?_` constraint for
+  // filterNone() and OrderedSet's `T: Hashable & Equality` constraint by
+  // explicitly declaring an impossible constraint.
+  readonly fun filterNone<U>[T: ?U](): Sequence<U> {
+    invariant_violation(
+      "UniqueSequence.filterNone(): undefined method, UniqueSequence<?_> cannot exist.",
+    )
+  }
+}
+
+module end;

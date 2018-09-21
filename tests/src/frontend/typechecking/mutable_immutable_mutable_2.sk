@@ -1,0 +1,35 @@
+trait Intable extends Equality {
+  readonly fun toInt(): Int;
+}
+
+mutable class X<T: mutable Intable>(mutable value: T) {
+  readonly fun foo(): Y<T, Foo<T>> {
+    Y(Foo(this.value))
+  }
+}
+
+class Y<U: mutable Intable, T: Foo<U>>(value: Foo<U>) {
+  fun error1(f: U -> void): Bool {
+    old = this.value.x.toInt();
+    f(this.value.x);
+    this.value.x.toInt() == old
+  }
+}
+
+class Foo<T>(x: T)
+mutable class MyRef(mutable value: Int) uses Intable {
+  readonly fun toInt(): Int {
+    this.value
+  }
+  readonly fun ==(other: this): Bool {
+    this.value == other.value
+  }
+}
+
+fun main(): void {
+  r = mutable MyRef(0);
+  x = mutable X(r);
+  y = x.foo();
+  btest = y.error1(r -> r.!value = 1);
+  if (btest) print_string("FAIL") else print_string("Pass")
+}

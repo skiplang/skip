@@ -1,0 +1,15 @@
+File "./typechecking/invalid/unbound_field_alias.sk", line 10, characters 3-5:
+The field z is undefined. Did you mean x or y?
+ 8 |
+ 9 | fun test(a: TA): void {
+10 |   a.z
+   |   ^^^
+11 | }
+
+File "./typechecking/invalid/unbound_field_alias.sk", line 9, characters 13-14:
+For the expression of type (TA = A)
+ 7 | type TA = A;
+ 8 |
+ 9 | fun test(a: TA): void {
+   |             ^^
+10 |   a.z

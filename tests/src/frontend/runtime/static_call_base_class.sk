@@ -1,0 +1,9 @@
+base class Foo {
+  static fun bar(): Int {
+    42
+  }
+}
+
+fun main(): void {
+  print_raw(Foo::bar().toString() + "\n")
+}

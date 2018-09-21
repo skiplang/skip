@@ -1,0 +1,22 @@
+trait Comparable {
+  fun compare(inst): Bool;
+}
+
+base class ArrayKey_ uses Comparable {
+  fun compare(x: ArrayKey_): Bool
+  | IntKey_(n1) ->
+    x match {
+    | IntKey_(n2) -> n1 == n2
+    | _ -> false
+    }
+  | StringKey_(s1) ->
+    x match {
+    | StringKey_(s2) -> s1 == s2
+    | _ -> false
+    }
+}
+class IntKey_(Int) extends ArrayKey_
+class StringKey_(String) extends ArrayKey_
+fun main(): void {
+  print_string("OK")
+}

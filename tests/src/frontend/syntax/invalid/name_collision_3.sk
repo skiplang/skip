@@ -1,0 +1,2 @@
+type Listy = Int;
+class Listy{}

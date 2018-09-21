@@ -1,0 +1,4 @@
+File "./visibility/invalid/global_private_const.sk", line 1, characters 1-7:
+Cannot declare a constant as private outside of a module
+1 | private const i: Int = 100000;
+  | ^^^^^^^

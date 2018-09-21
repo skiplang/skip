@@ -1,0 +1,70 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Given a function, find all the other Functions it may directly call
+// (including methods).
+fun findDirectDependencies(
+  f: Function,
+  visit: SFunctionID -> void,
+  env: GlobalEnv,
+): void {
+  for (c in f.constants) {
+    c match {
+    | ConstantFun{value} -> _ = visit(value)
+    | _ -> void
+    }
+  };
+
+  // Only create an OptimizerInfo when there's actually a call.
+  if (f.blocks.any(b -> b.instrs.any(instr -> instr is CallBase _))) {
+    optinfo = OptimizerInfo::make(f);
+
+    seen = mutable UnorderedSet[];
+
+    for (b in f.blocks) {
+      for (instr in b.instrs) {
+        instr match {
+        | CallFunctionBase{name} -> _ = visit(name)
+        | call @ CallMethodBase _ ->
+          // Don't process redundant method calls.
+          key = (optinfo.getInstr(call.obj()).typ, call.method, call.smap);
+          if (seen.maybeInsert(key)) {
+            // Visit every method implementation this might be calling.
+            _ = optinfo.allMethodImplementations(call, env, (_, code, _, _) -> {
+              _ = visit(code);
+              true
+            })
+          }
+        | _ -> void
+        }
+      }
+    }
+  }
+}
+
+fun findAllReachableFuns(
+  visitRoots: (SFunctionID -> void) -> void,
+  env: GlobalEnv,
+): FunctionIDToFunction {
+  stack = mutable Vector<Function>[];
+  visited = FunctionIDToFunction::mcreate();
+
+  // Record that a function is reachable and recurse to its children.
+  keep = fid -> {
+    if (!visited.contains(fid)) {
+      f = env.getFunction(fid, FileRange.builtin);
+      visited.insert(f);
+      stack.push(f)
+    }
+  };
+
+  visitRoots(keep);
+
+  while (!stack.isEmpty()) findDirectDependencies(stack.pop(), keep, env);
+
+  freeze(visited)
+}

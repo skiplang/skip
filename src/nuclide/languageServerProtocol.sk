@@ -1,0 +1,2050 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Implementation of the VS Code Language Server Protocol Messages
+// https://github.com/Microsoft/language-server-protocol/blob/gh-pages/specification.md
+
+module alias RPC = JsonRpc;
+
+module LanguageServerProtocol;
+
+const header: String = "Content-Length: ";
+const contentLength: Int = header.length();
+const newLine: String = "\r\n";
+
+// Defined by JSON RPC
+const ServerNotInitialized: Int = -32002;
+const UnknownErrorCode: Int = -32001;
+
+// Defined by the protocol.
+const RequestCancelled: Int = -32800;
+
+// Read a message from stdin.
+untracked fun readMessage(log: String -> void): String {
+  // Line is of the form "Content-Length: xxx\r"
+  line = loop {
+    read = read_line();
+    log(read);
+    if (read.startsWith(header)) {
+      break read
+    }
+  };
+
+  // Skip the extra \r\n
+  extraLine = read_line();
+  invariant(extraLine == "\r");
+  length = line.sub(contentLength, line.length() - contentLength - 1).toInt();
+  read_stdin_bytes(length)
+}
+
+fun messageToString(message: JSON.Value): String {
+  jsonString = message.encode();
+  `Content-Length: ${jsonString.length()}${newLine}${newLine}${jsonString}`
+}
+
+// Write a message to stdout
+fun writeMessage(message: JSON.Value): void {
+  print_raw(messageToString(message));
+  flush_stdout();
+}
+
+base class Message{} {
+  static fun fromJson(json: JSON.Value): Message {
+    RPC.Message::fromJson(json) match {
+    | RPC.Request{id, method, params} ->
+      method match {
+      | "initialize" ->
+        InitializeRequest{id, params => InitializeParams::fromJson(params)}
+      | "shutdown" -> ShutdownRequest{id}
+      | "textDocument/documentSymbol" ->
+        TextDocumentDocumentSymbolRequest{
+          id,
+          params => DocumentSymbolParams::fromJson(params),
+        }
+      | "textDocument/definition" ->
+        TextDocumentGotoDefinitionRequest{
+          id,
+          params => TextDocumentPositionParams::fromJson(params),
+        }
+      | "textDocument/formatting" ->
+        DocumentFormattingRequest{
+          id,
+          params => DocumentFormattingParams::fromJson(params),
+        }
+      | _ -> invariant_violation(`Unexpected Request method: '${method}'`)
+      }
+    | RPC.Notification{method, params} ->
+      method match {
+      | "exit" -> ExitNotification{}
+      | "$/cancelRequest" ->
+        CancelRequest{params => CancelParams::fromJson(params)}
+      | "textDocument/didOpen" ->
+        TextDocumentDidOpenNotification{
+          params => DidOpenTextDocumentParams::fromJson(params),
+        }
+      | "textDocument/didClose" ->
+        TextDocumentDidCloseNotification{
+          params => DidCloseTextDocumentParams::fromJson(params),
+        }
+      | "textDocument/didSave" ->
+        TextDocumentDidSaveNotification{
+          params => DidSaveTextDocumentParams::fromJson(params),
+        }
+      | "textDocument/didChange" ->
+        DidChangeTextDocumentNotification{
+          params => DidChangeTextDocumentParams::fromJson(params),
+        }
+      | _ -> invariant_violation(`Unexpected notification method: '${method}'`)
+      }
+    | _ -> invariant_violation(`Unexpected RPC Message: '${json.toString()}'`)
+    }
+  }
+}
+
+base class Request{id: Int} extends Message {}
+
+// Notifications must have a method field and a params field.
+base class Notification{} extends Message {
+  macro fun toRpc(): RPC.Notification {
+    RPC.Notification{method => this.method, params => this.params.toJson()}
+  }
+}
+
+base class Trace() uses Jsonable {
+  children =
+  | Off()
+  | Messages()
+  | Verbose()
+
+  const default: Trace = Off();
+
+  fun toString(): String
+  | Off() -> "off"
+  | Messages() -> "message"
+  | Verbose() -> "verbose"
+
+  fun toJson(): JSON.Value {
+    this.toString().toJson()
+  }
+
+  static fun fromJson(json: ?JSON.Value): Trace {
+    if (json.isNone()) {
+      Trace::default
+    } else {
+      json.fromSome().expectString() match {
+      | "off" -> Off()
+      | "messages" -> Messages()
+      | "verbose" -> Verbose()
+      | _ -> invariant_violation("Unexpected Trace value")
+      }
+    }
+  }
+}
+
+class WorkspaceFolder{uri: String, name: String} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): WorkspaceFolder {
+    fields = json.expectMap();
+    WorkspaceFolder{
+      uri => fields["uri"].expectString(),
+      name => fields["name"].expectString(),
+    }
+  }
+}
+
+/**
+ * The kind of a completion entry.
+ */
+class CompletionItemKind(value: Int) uses Jsonable {
+  const Text: CompletionItemKind = CompletionItemKind(1);
+  const Method: CompletionItemKind = CompletionItemKind(2);
+  const Function: CompletionItemKind = CompletionItemKind(3);
+  const Constructor: CompletionItemKind = CompletionItemKind(4);
+  const Field: CompletionItemKind = CompletionItemKind(5);
+  const Variable: CompletionItemKind = CompletionItemKind(6);
+  const Class: CompletionItemKind = CompletionItemKind(7);
+  const Interface: CompletionItemKind = CompletionItemKind(8);
+  const Module: CompletionItemKind = CompletionItemKind(9);
+  const Property: CompletionItemKind = CompletionItemKind(10);
+  const Unit: CompletionItemKind = CompletionItemKind(11);
+  const Value: CompletionItemKind = CompletionItemKind(12);
+  const Enum: CompletionItemKind = CompletionItemKind(13);
+  const Keyword: CompletionItemKind = CompletionItemKind(14);
+  const Snippet: CompletionItemKind = CompletionItemKind(15);
+  const Color: CompletionItemKind = CompletionItemKind(16);
+  const File: CompletionItemKind = CompletionItemKind(17);
+  const Reference: CompletionItemKind = CompletionItemKind(18);
+  const Folder: CompletionItemKind = CompletionItemKind(19);
+  const EnumMember: CompletionItemKind = CompletionItemKind(20);
+  const Constant: CompletionItemKind = CompletionItemKind(21);
+  const Struct: CompletionItemKind = CompletionItemKind(22);
+  const Event: CompletionItemKind = CompletionItemKind(23);
+  const Operator: CompletionItemKind = CompletionItemKind(24);
+  const TypeParameter: CompletionItemKind = CompletionItemKind(25);
+
+  fun toJson(): JSON.Value {
+    this.value.toJson()
+  }
+}
+
+class WorkspaceEditCapabilities{
+  /**
+   * The client supports versioned document changes in `WorkspaceEdit`s
+   */
+  documentChanges: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): WorkspaceEditCapabilities {
+    if (json.isNone()) {
+      WorkspaceEditCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      WorkspaceEditCapabilities{
+        documentChanges => object
+          .maybeGetBool("documentChanges")
+          .default(false),
+      }
+    }
+  }
+}
+
+class DynamicRegistrationCapabilities{
+  dynamicRegistration: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): DynamicRegistrationCapabilities {
+    if (json.isNone()) {
+      DynamicRegistrationCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      DynamicRegistrationCapabilities{
+        dynamicRegistration => object
+          .maybeGetBool("dynamicRegistration")
+          .default(false),
+      }
+    }
+  }
+  static fun fromJsonField(
+    json: JSON.Value,
+    fieldName: String,
+  ): DynamicRegistrationCapabilities {
+    static::fromJson(json.expectObject().maybeGet(fieldName))
+  }
+}
+
+/**
+ * A symbol kind.
+ */
+class SymbolKind(value: Int) uses Jsonable {
+  // Always supported
+  const File: SymbolKind = SymbolKind(1);
+  const Module: SymbolKind = SymbolKind(2);
+  const Namespace: SymbolKind = SymbolKind(3);
+  const Package: SymbolKind = SymbolKind(4);
+  const Class: SymbolKind = SymbolKind(5);
+  const Method: SymbolKind = SymbolKind(6);
+  const Property: SymbolKind = SymbolKind(7);
+  const Field: SymbolKind = SymbolKind(8);
+  const Constructor: SymbolKind = SymbolKind(9);
+  const Enum: SymbolKind = SymbolKind(10);
+  const Interface: SymbolKind = SymbolKind(11);
+  const Function: SymbolKind = SymbolKind(12);
+  const Variable: SymbolKind = SymbolKind(13);
+  const Constant: SymbolKind = SymbolKind(14);
+  const String: SymbolKind = SymbolKind(15);
+  const Number: SymbolKind = SymbolKind(16);
+  const Boolean: SymbolKind = SymbolKind(17);
+  const Array: SymbolKind = SymbolKind(18);
+
+  // May not be supported.
+  // Only supported if mentioned in the capabilities in the initialize method.
+  const Object: SymbolKind = SymbolKind(19);
+  const Key: SymbolKind = SymbolKind(20);
+  const Null: SymbolKind = SymbolKind(21);
+  const EnumMember: SymbolKind = SymbolKind(22);
+  const Struct: SymbolKind = SymbolKind(23);
+  const Event: SymbolKind = SymbolKind(24);
+  const Operator: SymbolKind = SymbolKind(25);
+  const TypeParameter: SymbolKind = SymbolKind(26);
+
+  static fun fromJson(json: JSON.Value): SymbolKind {
+    SymbolKind(json.expectInt())
+  }
+
+  fun toJson(): JSON.Value {
+    this.value.toJson()
+  }
+}
+
+class SymbolCapabilities{
+  /**
+   * Symbol request supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * Specific capabilities for the `SymbolKind` in the `workspace/symbol` request.
+   */
+  /**
+   * The symbol kind values the client supports. When this
+   * property exists the client also guarantees that it will
+   * handle values outside its set gracefully and falls back
+   * to a default value when unknown.
+   *
+   * If this property is not present the client only supports
+   * the symbol kinds from `File` to `Array` as defined in
+   * the initial version of the protocol.
+   */
+  symbolKind: Vector<SymbolKind> = Vector[],
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): SymbolCapabilities {
+    if (json.isNone()) {
+      SymbolCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      SymbolCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        symbolKind => object
+          .maybeGetArray("symbolKind")
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(SymbolKind::fromJson),
+      }
+    }
+  }
+}
+
+/**
+ * Workspace specific client capabilities.
+ */
+class WorkspaceClientCapabilities{
+  /**
+   * The client supports applying batch edits to the workspace by supporting
+   * the request 'workspace/applyEdit'
+   */
+  applyEdit: Bool = false,
+
+  /**
+   * Capabilities specific to `WorkspaceEdit`s
+   */
+  workspaceEdit: WorkspaceEditCapabilities = WorkspaceEditCapabilities{},
+
+  /**
+   * Capabilities specific to the `workspace/didChangeConfiguration` notification.
+   */
+  didChangeConfiguration: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `workspace/didChangeWatchedFiles` notification.
+   */
+  didChangeWatchedFiles: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `workspace/symbol` request.
+   */
+  symbol: SymbolCapabilities = SymbolCapabilities{},
+
+  /**
+   * Capabilities specific to the `workspace/executeCommand` request.
+   */
+  executeCommand: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * The client has support for workspace folders.
+   *
+   * Since 3.6.0
+   */
+  workspaceFolders: Bool = false,
+
+  /**
+   * The client supports `workspace/configuration` requests.
+   *
+   * Since 3.6.0
+   */
+  configuration: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): WorkspaceClientCapabilities {
+    if (json.isNone()) {
+      WorkspaceClientCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      WorkspaceClientCapabilities{
+        applyEdit => object.maybeGetBool("applyEdit").default(false),
+        workspaceEdit => WorkspaceEditCapabilities::fromJson(
+          object.maybeGet("workspaceEdit"),
+        ),
+        didChangeConfiguration => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "didChangeConfiguration",
+        ),
+        didChangeWatchedFiles => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "didChangeWatchedFiles",
+        ),
+        symbol => SymbolCapabilities::fromJson(object.maybeGet("symbol")),
+        executeCommand => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "executeCommand",
+        ),
+        workspaceFolders => object
+          .maybeGetBool("workspaceFolders")
+          .default(false),
+        configuration => object.maybeGetBool("configuration").default(false),
+      }
+    }
+  }
+}
+
+class SynchronizationCapabilities{
+  /**
+   * Whether text document synchronization supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * The client supports sending will save notifications.
+   */
+  willSave: Bool = false,
+
+  /**
+   * The client supports sending a will save request and
+   * waits for a response providing text edits which will
+   * be applied to the document before it is saved.
+   */
+  willSaveWaitUntil: Bool = false,
+
+  /**
+   * The client supports did save notifications.
+   */
+  didSave: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): SynchronizationCapabilities {
+    if (json.isNone()) {
+      SynchronizationCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      SynchronizationCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        willSave => object.maybeGetBool("willSave").default(false),
+        willSaveWaitUntil => object
+          .maybeGetBool("willSaveWaitUntil")
+          .default(false),
+        didSave => object.maybeGetBool("didSave").default(false),
+      }
+    }
+  }
+}
+
+/**
+ * Describes the content type that a client supports in various
+ * result literals like `Hover`, `ParameterInfo` or `CompletionItem`.
+ *
+ * Please note that `MarkupKinds` must not start with a `$`. This kinds
+ * are reserved for internal usage.
+ */
+base class MarkupKind() uses Show, Jsonable {
+  static fun fromJson(json: JSON.Value): MarkupKind {
+    json.expectString() match {
+    | "plaintext" -> PlainText()
+    | "markdown" -> Markdown()
+    | _ -> invariant_violation("Unexpected MarkupKind")
+    }
+  }
+
+  fun toJson(): JSON.Value {
+    this.toString().toJson()
+  }
+}
+
+/**
+ * Plain text is supported as a content format
+ */
+class PlainText() extends MarkupKind {
+  fun toString(): String {
+    "plaintext"
+  }
+}
+
+/**
+ * Markdown is supported as a content format
+ */
+class Markdown() extends MarkupKind {
+  fun toString(): String {
+    "markdown"
+  }
+}
+
+class CompletionItemCapabilities{
+  /**
+   * Client supports snippets as insert text.
+   *
+   * A snippet can define tab stops and placeholders with `$1`, `$2`
+   * and `${3:foo}`. `$0` defines the final tab stop, it defaults to
+   * the end of the snippet. Placeholders with equal identifiers are linked,
+   * that is typing in one will update others too.
+   */
+  snippetSupport: Bool = false,
+
+  /**
+   * Client supports commit characters on a completion item.
+   */
+  commitCharactersSupport: Bool = false,
+
+  /**
+   * Client supports the follow content formats for the documentation
+   * property. The order describes the preferred format of the client.
+   */
+  documentationFormat: Vector<MarkupKind> = Vector[],
+
+  /**
+   * Client supports the deprecated property on a completion item.
+   */
+  deprecatedSupport: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): CompletionItemCapabilities {
+    if (json.isNone()) {
+      CompletionItemCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      CompletionItemCapabilities{
+        snippetSupport => object.maybeGetBool("snippetSupport").default(false),
+        commitCharactersSupport => object
+          .maybeGetBool("commitCharactersSupport")
+          .default(false),
+        documentationFormat => object
+          .maybeGetArray("documentationFormat")
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(MarkupKind::fromJson),
+        deprecatedSupport => object
+          .maybeGetBool("deprecatedSupport")
+          .default(false),
+      }
+    }
+  }
+}
+
+class CompletionCapabilities{
+  /**
+   * Whether completion supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * The client supports the following `CompletionItem` specific
+   * capabilities.
+   */
+  completionItem: CompletionItemCapabilities = CompletionItemCapabilities{},
+
+  /**
+   * The completion item kind values the client supports. When this
+   * property exists the client also guarantees that it will
+   * handle values outside its set gracefully and falls back
+   * to a default value when unknown.
+   *
+   * If this property is not present the client only supports
+   * the completion items kinds from `Text` to `Reference` as defined in
+   * the initial version of the protocol.
+   */
+  completionItemKind: Vector<CompletionItemKind> = Vector[],
+
+  /**
+   * The client supports to send additional context information for a
+   * `textDocument/completion` request.
+   */
+  contextSupport: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): CompletionCapabilities {
+    if (json.isNone()) {
+      CompletionCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      CompletionCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        completionItem => CompletionItemCapabilities::fromJson(
+          object.maybeGet("completionItem"),
+        ),
+        contextSupport => object.maybeGetBool("contextSupport").default(false),
+      }
+    }
+  }
+}
+
+class HoverCapabilities{
+  /**
+   * Whether hover supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * Client supports the follow content formats for the content
+   * property. The order describes the preferred format of the client.
+   */
+  contentFormat: Vector<MarkupKind> = Vector[],
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): HoverCapabilities {
+    if (json.isNone()) {
+      HoverCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      HoverCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        contentFormat => object
+          .maybeGetArray("contentFormat")
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(MarkupKind::fromJson),
+      }
+    }
+  }
+}
+
+class SignatureInformationCapabilities{
+  /**
+   * Client supports the follow content formats for the documentation
+   * property. The order describes the preferred format of the client.
+   */
+  documentationFormat: Vector<MarkupKind> = Vector[],
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): SignatureInformationCapabilities {
+    if (json.isNone()) {
+      SignatureInformationCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      SignatureInformationCapabilities{
+        documentationFormat => object
+          .maybeGetArray("documentationFormat")
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(MarkupKind::fromJson),
+      }
+    }
+  }
+}
+
+class SignatureHelpCapabilities{
+  /**
+   * Whether signature help supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * The client supports the following `SignatureInformation`
+   * specific properties.
+   */
+  signatureInformation: SignatureInformationCapabilities = SignatureInformationCapabilities{},
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): SignatureHelpCapabilities {
+    if (json.isNone()) {
+      SignatureHelpCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      SignatureHelpCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        signatureInformation => SignatureInformationCapabilities::fromJson(
+          object.maybeGet("signatureInformation"),
+        ),
+      }
+    }
+  }
+}
+
+class PublishDiagnosticsCapabilities{
+  /**
+   * Whether the clients accepts diagnostics with related information.
+   */
+  relatedInformation: Bool = false,
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): PublishDiagnosticsCapabilities {
+    if (json.isNone()) {
+      PublishDiagnosticsCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      PublishDiagnosticsCapabilities{
+        relatedInformation => object
+          .maybeGetBool("relatedInformation")
+          .default(false),
+      }
+    }
+  }
+}
+
+class DocumentSymbolCapabilities{
+  /**
+   * Whether document symbol supports dynamic registration.
+   */
+  dynamicRegistration: Bool = false,
+
+  /**
+   * Specific capabilities for the `SymbolKind`.
+   */
+  /**
+   * The symbol kind values the client supports. When this
+   * property exists the client also guarantees that it will
+   * handle values outside its set gracefully and falls back
+   * to a default value when unknown.
+   *
+   * If this property is not present the client only supports
+   * the symbol kinds from `File` to `Array` as defined in
+   * the initial version of the protocol.
+   */
+  symbolKind: Vector<SymbolKind> = Vector[],
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): DocumentSymbolCapabilities {
+    if (json.isNone()) {
+      DocumentSymbolCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      DocumentSymbolCapabilities{
+        dynamicRegistration => DynamicRegistrationCapabilities::fromJson(
+          json,
+        ).dynamicRegistration,
+        symbolKind => object
+          .maybeGetArray("symbolKind")
+          .map(array -> array.value)
+          .default(Vector[])
+          .map(SymbolKind::fromJson),
+      }
+    }
+  }
+}
+
+/**
+ * Text document specific client capabilities.
+ */
+class TextDocumentClientCapabilities{
+  synchronization: SynchronizationCapabilities = SynchronizationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/completion`
+   */
+  completion: CompletionCapabilities = CompletionCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/hover`
+   */
+  hover: HoverCapabilities = HoverCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/signatureHelp`
+   */
+  signatureHelp: SignatureHelpCapabilities = SignatureHelpCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/references`
+   */
+  references: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/documentHighlight`
+   */
+  documentHighlight: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/documentSymbol`
+   */
+  documentSymbol: DocumentSymbolCapabilities = DocumentSymbolCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/formatting`
+   */
+  formatting: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/rangeFormatting`
+   */
+  rangeFormatting: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/onTypeFormatting`
+   */
+  onTypeFormatting: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/definition`
+   */
+  definition: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/typeDefinition`
+   *
+   * Since 3.6.0
+   */
+  /**
+   * Whether typeDefinition supports dynamic registration. If this is set to `true`
+   * the client supports the new `(TextDocumentRegistrationOptions & StaticRegistrationOptions)`
+   * return value for the corresponding server capability as well.
+   */
+  typeDefinition: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/implementation`.
+   *
+   * Since 3.6.0
+   */
+  /**
+   * Whether implementation supports dynamic registration. If this is set to `true`
+   * the client supports the new `(TextDocumentRegistrationOptions & StaticRegistrationOptions)`
+   * return value for the corresponding server capability as well.
+   */
+  implementation: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/codeAction`
+   */
+  codeAction: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/codeLens`
+   */
+  codeLens: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/documentLink`
+   */
+  documentLink: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/documentColor` and the
+   * `textDocument/colorPresentation` request.
+   *
+   * Since 3.6.0
+   */
+  /**
+   * Whether colorProvider supports dynamic registration. If this is set to `true`
+   * the client supports the new `(ColorProviderOptions & TextDocumentRegistrationOptions & StaticRegistrationOptions)`
+   * return value for the corresponding server capability as well.
+   */
+  colorProvider: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to the `textDocument/rename`
+   */
+  rename: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+
+  /**
+   * Capabilities specific to `textDocument/publishDiagnostics`.
+   */
+  publishDiagnostics: PublishDiagnosticsCapabilities = PublishDiagnosticsCapabilities{},
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): TextDocumentClientCapabilities {
+    if (json.isNone()) {
+      TextDocumentClientCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      TextDocumentClientCapabilities{
+        synchronization => SynchronizationCapabilities::fromJson(
+          object.maybeGet("synchronization"),
+        ),
+        completion => CompletionCapabilities::fromJson(
+          object.maybeGet("completion"),
+        ),
+        hover => HoverCapabilities::fromJson(object.maybeGet("hover")),
+        signatureHelp => SignatureHelpCapabilities::fromJson(
+          object.maybeGet("signatureHelp"),
+        ),
+        references => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "references",
+        ),
+        documentHighlight => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "documentHighlight",
+        ),
+        formatting => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "formatting",
+        ),
+        rangeFormatting => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "rangeFormatting",
+        ),
+        onTypeFormatting => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "onTypeFormatting",
+        ),
+        definition => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "definition",
+        ),
+        typeDefinition => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "typeDefinition",
+        ),
+        implementation => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "implementation",
+        ),
+        codeAction => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "codeAction",
+        ),
+        codeLens => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "codeLens",
+        ),
+        documentLink => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "documentLink",
+        ),
+        colorProvider => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "colorProvider",
+        ),
+        rename => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "rename",
+        ),
+        publishDiagnostics => PublishDiagnosticsCapabilities::fromJson(
+          object.maybeGet("publishDiagnostics"),
+        ),
+      }
+    }
+  }
+}
+
+// TODO: UnDocumented
+class WindowCapabilities{
+  status: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+  progress: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+  actionRequired: DynamicRegistrationCapabilities = DynamicRegistrationCapabilities{},
+} uses JsonableObject {
+  static fun fromJson(json: ?JSON.Value): WindowCapabilities {
+    if (json.isNone()) {
+      WindowCapabilities{}
+    } else {
+      object = json.fromSome().expectObject();
+      WindowCapabilities{
+        status => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "status",
+        ),
+        progress => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "progress",
+        ),
+        actionRequired => DynamicRegistrationCapabilities::fromJsonField(
+          object,
+          "actionRequired",
+        ),
+      }
+    }
+  }
+}
+
+class ClientCapabilities{
+  // Not Documented
+  window: WindowCapabilities = WindowCapabilities{},
+  /**
+   * Workspace specific client capabilities.
+   */
+  workspace: WorkspaceClientCapabilities = WorkspaceClientCapabilities{},
+
+  /**
+   * Text document specific client capabilities.
+   */
+  textDocument: TextDocumentClientCapabilities = TextDocumentClientCapabilities{},
+
+  /**
+   * Experimental client capabilities.
+   */
+  experimental: ?JSON.Value = None(),
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): ClientCapabilities {
+    object = json.expectObject();
+    ClientCapabilities{
+      window => WindowCapabilities::fromJson(object.maybeGet("window")),
+      workspace => WorkspaceClientCapabilities::fromJson(
+        object.maybeGet("workspace"),
+      ),
+      textDocument => TextDocumentClientCapabilities::fromJson(
+        object.maybeGet("textDocument"),
+      ),
+      experimental => object.maybeGet("experimental"),
+    }
+  }
+}
+
+class InitializeParams{
+  processId: ?Int,
+  rootPath: ?String, // deprecated in favor of rootUri
+  rootUri: String,
+  initializationOptions: ?JSON.Value,
+  capabilities: ClientCapabilities,
+  trace: Trace,
+  workspaceFolders: Vector<WorkspaceFolder>,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): InitializeParams {
+    fields = json.expectObject();
+    InitializeParams{
+      processId => fields.maybeGetInt("processId"),
+      rootPath => fields.maybeGetString("rootPath"),
+      rootUri => fields.getString("rootUri"),
+      initializationOptions => fields.maybeGet("initializationOptions"),
+      capabilities => ClientCapabilities::fromJson(fields["capabilities"]),
+      trace => Trace::fromJson(fields.maybeGet("trace")),
+      workspaceFolders => fields.maybeGet("workspaceFolders") match {
+      | None()
+      | Some(JSON.Null()) ->
+        Vector[]
+      | Some(values) -> values.expectVector().map(WorkspaceFolder::fromJson)
+      },
+    }
+  }
+}
+
+// initialize
+class InitializeRequest{
+  method: String = "initialize",
+  params: InitializeParams,
+} extends Request {}
+
+class DocumentFilter{
+  /**
+   * A language id, like `typescript`.
+   */
+  language: ?String,
+
+  /**
+   * A Uri [scheme](#Uri.scheme), like `file` or `untitled`.
+   */
+  scheme: ?String,
+
+  /**
+   * A glob pattern, like `*.{ts,js}`.
+   */
+  pattern: ?String,
+} uses JsonableObject {}
+
+type DocumentSelector = Vector<DocumentFilter>;
+
+base class TextDocumentRegistrationOptions{
+  /**
+   * A document selector to identify the scope of the registration. If set to null
+   * the document selector provided on the client side will be used.
+   */
+  documentSelector: ?DocumentSelector,
+} uses JsonableObject {}
+
+/**
+ * Describe options to be used when registering for text document change events.
+ */
+class TextDocumentChangeRegistrationOptions{
+  /**
+   * How documents are synced to the server. See TextDocumentSyncKind.Full
+   * and TextDocumentSyncKind.Incremental.
+   */
+  syncKind: Int,
+} extends TextDocumentRegistrationOptions
+
+class TextDocumentSaveRegistrationOptions{
+  /**
+   * The client is supposed to include the content on save.
+   */
+  includeText: Bool,
+} extends TextDocumentRegistrationOptions
+
+class CompletionRegistrationOptions{
+  /**
+   * Most tools trigger completion request automatically without explicitly requesting
+   * it using a keyboard shortcut (e.g. Ctrl+Space). Typically they do so when the user
+   * starts to type an identifier. For example if the user types `c` in a JavaScript file
+   * code complete will automatically pop up present `console` besides others as a
+   * completion item. Characters that make up identifiers don't need to be listed here.
+   *
+   * If code complete should automatically be trigger on characters not being valid inside
+   * an identifier (for example `.` in JavaScript) list them in `triggerCharacters`.
+   */
+  triggerCharacters: Vector<String>,
+
+  /**
+   * The server provides support to resolve additional
+   * information for a completion item.
+   */
+  resolveProvider: Bool,
+} extends TextDocumentRegistrationOptions
+
+class SignatureHelpRegistrationOptions{
+  /**
+   * The characters that trigger signature help
+   * automatically.
+   */
+  triggerCharacters: Vector<String>,
+} extends TextDocumentRegistrationOptions
+
+class CodeLensRegistrationOptions{
+  /**
+   * Code lens has a resolve provider as well.
+   */
+  resolveProvider: Bool,
+} extends TextDocumentRegistrationOptions
+
+class DocumentLinkRegistrationOptions{
+  /**
+   * Document links have a resolve provider as well.
+   */
+  resolveProvider: Bool,
+} extends TextDocumentRegistrationOptions
+
+class DocumentOnTypeFormattingRegistrationOptions{
+  /**
+   * A character on which formatting should be triggered, like `}`.
+   */
+  firstTriggerCharacter: String,
+  /**
+   * More trigger characters.
+   */
+  moreTriggerCharacter: Vector<String>,
+} extends TextDocumentRegistrationOptions
+
+class InitializeResult{capabilities: ServerCapabilities} uses JsonableObject {}
+
+/**
+ * Defines how the host (editor) should sync document changes to the language server.
+ */
+class TextDocumentSyncKind(value: Int) uses Jsonable {
+  /**
+   * Documents should not be synced at all.
+   */
+  const None: TextDocumentSyncKind = TextDocumentSyncKind(0);
+
+  /**
+   * Documents are synced by always sending the full content
+   * of the document.
+   */
+  const Full: TextDocumentSyncKind = TextDocumentSyncKind(1);
+
+  /**
+   * Documents are synced by sending the full content on open.
+   * After that only incremental updates to the document are
+   * send.
+   */
+  const Incremental: TextDocumentSyncKind = TextDocumentSyncKind(2);
+
+  fun toJson(): JSON.Value {
+    this.value.toJson()
+  }
+}
+
+/**
+ * Completion options.
+ */
+class CompletionOptions{
+  /**
+   * The server provides support to resolve additional
+   * information for a completion item.
+   */
+  resolveProvider: Bool,
+
+  /**
+   * The characters that trigger completion automatically.
+   */
+  triggerCharacters: Vector<String>,
+} uses JsonableObject {}
+
+/**
+ * Signature help options.
+ */
+class SignatureHelpOptions{
+  /**
+   * The characters that trigger signature help
+   * automatically.
+   */
+  triggerCharacters: Vector<String>,
+} uses JsonableObject {}
+
+/**
+ * Code Lens options.
+ */
+class CodeLensOptions{
+  /**
+   * Code lens has a resolve provider as well.
+   */
+  resolveProvider: Bool,
+} uses JsonableObject {}
+
+/**
+ * Format document on type options
+ */
+class DocumentOnTypeFormattingOptions{
+  /**
+   * A character on which formatting should be triggered, like `}`.
+   */
+  firstTriggerCharacter: String,
+
+  /**
+   * More trigger characters.
+   */
+  moreTriggerCharacter: Vector<String>,
+} uses JsonableObject {}
+
+/**
+ * Document link options
+ */
+class DocumentLinkOptions{
+  /**
+   * Document links have a resolve provider as well.
+   */
+  resolveProvider: Bool,
+} uses JsonableObject {}
+
+/**
+ * Execute command options.
+ */
+class ExecuteCommandOptions{
+  /**
+   * The commands to be executed on the server
+   */
+  commands: Vector<String>,
+} uses JsonableObject {}
+
+/**
+ * Save options.
+ */
+class SaveOptions{
+  /**
+   * The client is supposed to include the content on save.
+   */
+  includeText: Bool,
+} uses JsonableObject {}
+
+/**
+ * Color provider Options
+ */
+class ColorProviderOptions{} uses JsonableObject {}
+
+class TextDocumentSyncOptions{
+  /**
+   * Open and close notifications are sent to the server.
+   */
+  openClose: Bool,
+  /**
+   * Change notifications are sent to the server. See TextDocumentSyncKind.None, TextDocumentSyncKind.Full
+   * and TextDocumentSyncKind.Incremental. If omitted it defaults to TextDocumentSyncKind.None.
+   */
+  change: TextDocumentSyncKind,
+  /**
+   * Will save notifications are sent to the server.
+   */
+  willSave: Bool,
+  /**
+   * Will save wait until requests are sent to the server.
+   */
+  willSaveWaitUntil: Bool,
+  /**
+   * Save notifications are sent to the server.
+   */
+  save: ?SaveOptions,
+} uses JsonableObject {}
+
+/**
+ * Static registration options to be returned in the initialize request.
+ */
+class StaticRegistrationOptions{
+  /**
+   * The id used to register the request. The id can be used to deregister
+   * the request again. See also Registration#id.
+   */
+  id: ?String,
+} uses JsonableObject {}
+
+class ServerCapabilities{
+  /**
+   * Defines how text documents are synced. Is either a detailed structure defining each notification or
+   * for backwards compatibility the TextDocumentSyncKind number. If omitted it defaults to `TextDocumentSyncKind.None`.
+   */
+  textDocumentSync: TextDocumentSyncOptions,
+  /**
+   * The server provides hover support.
+   */
+  hoverProvider: Bool,
+  /**
+   * The server provides completion support.
+   */
+  completionProvider: ?CompletionOptions,
+  /**
+   * The server provides signature help support.
+   */
+  signatureHelpProvider: ?SignatureHelpOptions,
+  /**
+   * The server provides goto definition support.
+   */
+  definitionProvider: Bool,
+  /**
+   * The server provides Goto Type Definition support.
+   *
+   * Since 3.6.0
+   */
+  typeDefinitionProvider: ?(
+    TextDocumentRegistrationOptions,
+    StaticRegistrationOptions,
+  ),
+  /**
+   * The server provides Goto Implementation support.
+   *
+   * Since 3.6.0
+   */
+  implementationProvider: ?(
+    TextDocumentRegistrationOptions,
+    StaticRegistrationOptions,
+  ),
+  /**
+   * The server provides find references support.
+   */
+  referencesProvider: Bool,
+  /**
+   * The server provides document highlight support.
+   */
+  documentHighlightProvider: Bool,
+  /**
+   * The server provides document symbol support.
+   */
+  documentSymbolProvider: Bool,
+  /**
+   * The server provides workspace symbol support.
+   */
+  workspaceSymbolProvider: Bool,
+  /**
+   * The server provides code actions.
+   */
+  codeActionProvider: Bool,
+  /**
+   * The server provides code lens.
+   */
+  codeLensProvider: ?CodeLensOptions,
+  /**
+   * The server provides document formatting.
+   */
+  documentFormattingProvider: Bool,
+  /**
+   * The server provides document range formatting.
+   */
+  documentRangeFormattingProvider: Bool,
+  /**
+   * The server provides document formatting on typing.
+   */
+  documentOnTypeFormattingProvider: ?DocumentOnTypeFormattingOptions,
+  /**
+   * The server provides rename support.
+   */
+  renameProvider: Bool,
+  /**
+   * The server provides document link support.
+   */
+  documentLinkProvider: ?DocumentLinkOptions,
+  /**
+   * The server provides color provider support.
+   *
+   * Since 3.6.0
+   */
+  colorProvider: ?(
+    ColorProviderOptions,
+    TextDocumentRegistrationOptions,
+    StaticRegistrationOptions,
+  ),
+  /**
+   * The server provides execute command support.
+   */
+  executeCommandProvider: ?ExecuteCommandOptions,
+  /**
+   * Workspace specific server capabilities
+   */
+  workspace: ?WorkspaceServerCapabilities,
+  /**
+   * Experimental server capabilities.
+   */
+  experimental: ?JSON.Value,
+} uses JsonableObject {}
+
+/**
+ * The server supports workspace folder.
+ *
+ * Since 3.6.0
+ */
+class WorkspaceServerCapabilities{
+  /**
+   * The server has support for workspace folders
+   */
+  supported: Bool,
+  /**
+   * Whether the server wants to receive workspace folder
+   * change notifications.
+   *
+   * If a strings is provided the string is treated as a ID
+   * under which the notification is registered on the client
+   * side. The ID can be used to unregister for these events
+   * using the `client/unregisterCapability` request.
+   */
+  changeNotifications: Result<String, Bool>,
+} uses JsonableObject {}
+
+class ShutdownRequest{
+  method: String = "shutdown",
+  params: JSON.Value = JSON.Null(),
+} extends Request {}
+
+class ExitNotification{
+  method: String = "exit",
+  params: JSON.Value = JSON.Null(),
+} extends Notification {}
+
+// The show message notification is sent from a server to a client to ask the
+// client to display a particular message in the user interface.
+//
+// NOTE: In Nuclide these show up as Atom notifications.
+class ShowMessageNotification{
+  method: String = "window/showMessage",
+  params: ShowMessageParams,
+} extends Notification uses JsonableObject {}
+
+class ShowMessageParams{
+  /**
+   * The message type. See {@link MessageType}.
+   */
+  type: MessageType,
+
+  /**
+   * The actual message.
+   */
+  message: String,
+} uses JsonableObject {}
+
+class MessageType(value: Int) uses Jsonable {
+  /**
+   * An error message.
+   */
+  const Error: MessageType = MessageType(1);
+  /**
+   * A warning message.
+   */
+  const Warning: MessageType = MessageType(2);
+  /**
+   * An information message.
+   */
+  const Info: MessageType = MessageType(3);
+  /**
+   * A log message.
+   */
+  const Log: MessageType = MessageType(4);
+
+  fun toJson(): JSON.Value {
+    this.value.toJson()
+  }
+}
+
+// The show message request is sent from a server to a client to ask the client
+// to display a particular message in the user interface. In addition to the
+// show message notification the request allows to pass actions and to wait for
+// an answer from the client.
+//
+// NOTE: In Nuclide these show up as Atom dialog boxes.
+class ShowMessageRequest{
+  method: String = "window/showMessageRequest",
+  params: ShowMessageRequestParams,
+} extends Request uses JsonableObject {}
+
+class ShowMessageRequestParams{
+  /**
+   * The message type. See {@link MessageType}
+   */
+  type: MessageType,
+
+  /**
+   * The actual message
+   */
+  message: String,
+
+  /**
+   * The message action items to present.
+   */
+  actions: Vector<MessageActionItem>,
+} uses JsonableObject {}
+
+class MessageActionItem{
+  /**
+   * A short title like 'Retry', 'Open Log' etc.
+   */
+  title: String,
+} uses JsonableObject {}
+
+// The log message notification is sent from the server to the client to ask the
+// client to log a particular message.
+//
+// NOTE: In Nuclide these show up in the Nuclide Console (not to be confused with
+// the Atom developer console).
+class LogMessageNotification{
+  method: String = "window/logMessage",
+  params: LogMessageParams,
+} extends Notification uses JsonableObject {}
+
+class LogMessageParams{
+  /**
+   * The message type. See {@link MessageType}
+   */
+  type: MessageType,
+
+  /**
+   * The actual message
+   */
+  message: String,
+} uses JsonableObject {}
+
+// The telemetry notification is sent from the server to the client to ask the
+// client to log a telemetry event.
+//
+// NOTE: In Nuclide these go to the Nuclide Logs, and has special handling if
+// params is a LogMessageParams.
+class TelemetryNotification{
+  method: String = "telemetry/event",
+  params: JSON.Value,
+} extends Notification {}
+
+type DocumentUri = String;
+
+class TextDocumentItem{
+  /**
+   * The text document's URI.
+   */
+  uri: DocumentUri,
+
+  /**
+   * The text document's language identifier.
+   */
+  languageId: String,
+
+  /**
+   * The version number of this document (it will increase after each
+   * change, including undo/redo).
+   */
+  version: Int,
+
+  /**
+   * The content of the opened text document.
+   */
+  text: String,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): TextDocumentItem {
+    fields = json.expectObject();
+    TextDocumentItem{
+      uri => fields.getString("uri"),
+      languageId => fields.getString("languageId"),
+      version => fields.getInt("version"),
+      text => fields.getString("text"),
+    }
+  }
+}
+
+class DidOpenTextDocumentParams{
+  /**
+   * The document that was opened.
+   */
+  textDocument: TextDocumentItem,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DidOpenTextDocumentParams {
+    DidOpenTextDocumentParams{
+      textDocument => TextDocumentItem::fromJson(
+        json.expectObject()["textDocument"],
+      ),
+    }
+  }
+}
+
+// textDocument/didOpen
+class TextDocumentDidOpenNotification{
+  method: String = "textDocument/didOpen",
+  params: DidOpenTextDocumentParams,
+} extends Notification {}
+
+class TextDocumentIdentifier{
+  /**
+   * The text document's URI.
+   */
+  uri: DocumentUri,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): TextDocumentIdentifier {
+    TextDocumentIdentifier{uri => json.expectObject().getString("uri")}
+  }
+}
+
+class DidCloseTextDocumentParams{
+  /**
+   * The document that was closed.
+   */
+  textDocument: TextDocumentIdentifier,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DidCloseTextDocumentParams {
+    DidCloseTextDocumentParams{
+      textDocument => TextDocumentIdentifier::fromJson(
+        json.expectObject()["textDocument"],
+      ),
+    }
+  }
+}
+
+// textDocument/didClose
+class TextDocumentDidCloseNotification{
+  method: String = "textDocument/didClose",
+  params: DidCloseTextDocumentParams,
+} extends Notification {}
+
+class DidSaveTextDocumentParams{
+  /**
+   * The document that was saved.
+   */
+  textDocument: TextDocumentIdentifier,
+
+  /**
+   * Optional the content when saved. Depends on the includeText value
+   * when the save notification was requested.
+   */
+  text: ?String,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DidSaveTextDocumentParams {
+    fields = json.expectObject();
+    DidSaveTextDocumentParams{
+      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+      text => fields.maybeGetString("text"),
+    }
+  }
+}
+
+// textDocument/didSave
+class TextDocumentDidSaveNotification{
+  method: String = "textDocument/didSave",
+  params: DidSaveTextDocumentParams,
+} extends Notification {}
+
+class DocumentSymbolParams{
+  /**
+   * The text document.
+   */
+  textDocument: TextDocumentIdentifier,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DocumentSymbolParams {
+    fields = json.expectObject();
+    DocumentSymbolParams{
+      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+    }
+  }
+}
+
+// textDocument/documentSymbol
+class TextDocumentDocumentSymbolRequest{
+  method: String = "textDocument/documentSymbol",
+  params: DocumentSymbolParams,
+} extends Request {}
+
+// textDocument/definition
+class TextDocumentGotoDefinitionRequest{
+  method: String = "textDocument/definition",
+  params: TextDocumentPositionParams,
+} extends Request {}
+
+class TextDocumentPositionParams{
+  /**
+   * The text document.
+   */
+  textDocument: TextDocumentIdentifier,
+
+  /**
+   * The position inside the text document.
+   */
+  position: Position,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): TextDocumentPositionParams {
+    fields = json.expectMap();
+    TextDocumentPositionParams{
+      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+      position => Position::fromJson(fields["position"]),
+    }
+  }
+}
+
+/**
+ * Represents information about programming constructs like variables, classes,
+ * interfaces etc.
+ */
+class SymbolInformation{
+  /**
+   * The name of this symbol.
+   */
+  name: String,
+
+  /**
+   * The kind of this symbol.
+   */
+  kind: SymbolKind,
+
+  /**
+   * Indicates if this symbol is deprecated.
+   */
+  deprecated: Bool = false,
+
+  /**
+   * The location of this symbol. The location's range is used by a tool
+   * to reveal the location in the editor. If the symbol is selected in the
+   * tool the range's start information is used to position the cursor. So
+   * the range usually spans more then the actual symbol's name and does
+   * normally include things like visibility modifiers.
+   *
+   * The range doesn't have to denote a node range in the sense of a abstract
+   * syntax tree. It can therefore not be used to re-construct a hierarchy of
+   * the symbols.
+   */
+  location: Location,
+
+  /**
+   * The name of the symbol containing this symbol. This information is for
+   * user interface purposes (e.g. to render a qualifier in the user interface
+   * if necessary). It can't be used to re-infer a hierarchy for the document
+   * symbols.
+   */
+  containerName: ?String = None(),
+} uses JsonableObject {}
+
+class Location{uri: DocumentUri, range: Range} uses JsonableObject {}
+
+class Range{
+  /**
+   * The range's start position.
+   */
+  start: Position,
+
+  /**
+   * The range's end position.
+   */
+  end: Position,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): Range {
+    fields = json.expectObject();
+    Range{
+      start => Position::fromJson(fields["start"]),
+      end => Position::fromJson(fields["end"]),
+    }
+  }
+}
+
+class Position{
+  /**
+   * Line position in a document (zero-based).
+   */
+  line: Int,
+
+  /**
+   * Character offset on a line in a document (zero-based). Assuming that the line is
+   * represented as a string, the `character` value represents the gap between the
+   * `character` and `character + 1`.
+   *
+   * If the character value is greater than the line length it defaults back to the
+   * line length.
+   */
+  character: Int,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): Position {
+    fields = json.expectObject();
+    Position{
+      line => fields.getInt("line"),
+      character => fields.getInt("character"),
+    }
+  }
+
+  fun toPosition(): .Position {
+    .Position::create(this.line, this.character)
+  }
+}
+
+class CancelParams{
+  /**
+   * The request id to cancel.
+   */
+  id: Int,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): CancelParams {
+    CancelParams{id => json.expectObject().getInt("id")}
+  }
+}
+
+// $/cancelRequest - Which is really a notification
+class CancelRequest{
+  method: String = "$/cancelRequest",
+  params: CancelParams,
+} extends Notification {}
+
+class DocumentFormattingParams{
+  /**
+   * The document to format.
+   */
+  textDocument: TextDocumentIdentifier,
+
+  /**
+   * The format options.
+   */
+  options: FormattingOptions,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DocumentFormattingParams {
+    fields = json.expectObject();
+    DocumentFormattingParams{
+      textDocument => TextDocumentIdentifier::fromJson(fields["textDocument"]),
+      options => FormattingOptions::fromJson(fields["options"]),
+    }
+  }
+}
+
+/**
+ * Value-object describing what options formatting should use.
+ */
+class FormattingOptions{
+  /**
+   * Size of a tab in spaces.
+   */
+  tabSize: Int,
+
+  /**
+   * Prefer spaces over tabs.
+   */
+  insertSpaces: Bool,
+  /**
+   * Signature for further properties.
+   */
+  // [key: string]: boolean | number | string;
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): FormattingOptions {
+    fields = json.expectObject();
+    FormattingOptions{
+      tabSize => fields.getInt("tabSize"),
+      insertSpaces => fields.getBool("insertSpaces"),
+    }
+  }
+}
+
+// textDocument/formatting
+class DocumentFormattingRequest{
+  method: String = "textDocument/formatting",
+  params: DocumentFormattingParams,
+} extends Request {
+  static fun fromRpc(request: RPC.Request): DocumentFormattingRequest {
+    DocumentFormattingRequest{
+      id => request.id,
+      params => DocumentFormattingParams::fromJson(request.params),
+    }
+  }
+}
+
+class TextEdit{
+  /**
+   * The range of the text document to be manipulated. To insert
+   * text into a document create a range where start === end.
+   */
+  range: Range,
+
+  /**
+   * The string to be inserted. For delete operations use an
+   * empty string.
+   */
+  newText: String,
+} uses JsonableObject {}
+
+class DidChangeTextDocumentParams{
+  /**
+   * The document that did change. The version number points
+   * to the version after all provided content changes have
+   * been applied.
+   */
+  textDocument: VersionedTextDocumentIdentifier,
+
+  /**
+   * The actual content changes. The content changes describe single state changes
+   * to the document. So if there are two content changes c1 and c2 for a document
+   * in state S10 then c1 move the document to S11 and c2 to S12.
+   */
+  contentChanges: Vector<TextDocumentContentChangeEvent>,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): DidChangeTextDocumentParams {
+    fields = json.expectObject();
+    DidChangeTextDocumentParams{
+      textDocument => VersionedTextDocumentIdentifier::fromJson(
+        fields["textDocument"],
+      ),
+      contentChanges => fields
+        .getArray("contentChanges")
+        .value.map(TextDocumentContentChangeEvent::fromJson),
+    }
+  }
+}
+
+/**
+ * An event describing a change to a text document. If range and rangeLength are omitted
+ * the new text is considered to be the full content of the document.
+ */
+class TextDocumentContentChangeEvent{
+  /**
+   * The range of the document that changed.
+   */
+  range: ?Range,
+
+  /**
+   * The length of the range that got replaced.
+   */
+  rangeLength: ?Int,
+
+  /**
+   * The new text of the range/document.
+   */
+  text: String,
+} uses JsonableObject {
+  static fun fromJson(json: JSON.Value): TextDocumentContentChangeEvent {
+    fields = json.expectObject();
+    TextDocumentContentChangeEvent{
+      range => fields.maybeGet("range").map(Range::fromJson),
+      rangeLength => fields.maybeGetInt("rangeLength"),
+      text => fields.getString("text"),
+    }
+  }
+
+  fun isFullChange(): Bool {
+    this.range.isNone() && this.range.isNone()
+  }
+}
+
+class VersionedTextDocumentIdentifier{
+  /**
+   * The text document's URI.
+   */
+  uri: DocumentUri,
+
+  /**
+   * The version number of this document. If a versioned text document identifier
+   * is sent from the server to the client and the file is not open in the editor
+   * (the server has not received an open notification before) the server can send
+   * `null` to indicate that the version is known and the content on disk is the
+   * truth (as speced with document content ownership)
+   */
+  version: ?Int,
+} uses Hashable, Equality, JsonableObject {
+  static fun fromJson(json: JSON.Value): VersionedTextDocumentIdentifier {
+    fields = json.expectObject();
+    VersionedTextDocumentIdentifier{
+      uri => fields.getString("uri"),
+      version => fields.maybeGetInt("version"),
+    }
+  }
+}
+
+// textDocument/didChange
+class DidChangeTextDocumentNotification{
+  method: String = "textDocument/didChange",
+  params: DidChangeTextDocumentParams,
+} extends Notification {
+  static fun fromRpc(request: RPC.Request): DidChangeTextDocumentNotification {
+    DidChangeTextDocumentNotification{
+      params => DidChangeTextDocumentParams::fromJson(request.params),
+    }
+  }
+}
+
+class PublishDiagnosticsParams{
+  /**
+   * The URI for which diagnostic information is reported.
+   */
+  uri: DocumentUri,
+
+  /**
+   * An array of diagnostic information items.
+   */
+  diagnostics: Vector<Diagnostic>,
+} uses JsonableObject {}
+
+class Diagnostic{
+  /**
+   * The range at which the message applies.
+   */
+  range: Range,
+
+  /**
+   * The diagnostic's severity. Can be omitted. If omitted it is up to the
+   * client to interpret diagnostics as error, warning, info or hint.
+   */
+  severity: ?DiagnosticSeverity,
+
+  /**
+   * The diagnostic's code, which might appear in the user interface.
+   */
+  code: ?Int,
+
+  /**
+   * A human-readable string describing the source of this
+   * diagnostic, e.g. 'typescript' or 'super lint'.
+   */
+  source: ?String,
+
+  /**
+   * The diagnostic's message.
+   */
+  message: String,
+
+  /**
+   * An array of related diagnostic information, e.g. when symbol-names within
+   * a scope collide all definitions can be marked via this property.
+   */
+  // TODO: This is compatible with Nuclide, but is not compatible with the latest spec.
+  relatedLocations: Vector<DiagnosticRelatedInformation>,
+} uses JsonableObject {}
+
+class DiagnosticSeverity(value: Int) uses Jsonable {
+  /**
+   * Reports an error.
+   */
+  const Error: DiagnosticSeverity = DiagnosticSeverity(1);
+  /**
+   * Reports a warning.
+   */
+  const Warning: DiagnosticSeverity = DiagnosticSeverity(2);
+  /**
+   * Reports an information.
+   */
+  const Information: DiagnosticSeverity = DiagnosticSeverity(3);
+  /**
+   * Reports a hint.
+   */
+  const Hint: DiagnosticSeverity = DiagnosticSeverity(4);
+
+  fun toJson(): JSON.Value {
+    this.value.toJson()
+  }
+}
+
+/**
+ * Represents a related message and source code location for a diagnostic. This should be
+ * used to point to code locations that cause or related to a diagnostics, e.g when duplicating
+ * a symbol in a scope.
+ */
+class DiagnosticRelatedInformation{
+  /**
+   * The location of this related diagnostic information.
+   */
+  location: Location,
+
+  /**
+   * The message of this related diagnostic information.
+   */
+  message: String,
+} uses JsonableObject {}
+
+// textDocument/publishDiagnostics
+class PublishDiagnosticsNotification{
+  method: String = "textDocument/publishDiagnostics",
+  params: PublishDiagnosticsParams,
+} extends Notification uses JsonableObject {}
+
+module end;

@@ -1,0 +1,684 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* - rename variables
+   - set byref flags in binders, parameters, patterns, lambda freevars
+   - check lambda purity */
+/*****************************************************************************/
+
+module alias AU = SkipAstUtils;
+module alias T = SkipTypedAst;
+module alias N = SkipNamedAst;
+module alias TU = SkipTypedAstUtils;
+
+module SkipTypedAstRename;
+/****************************************************************************/
+/* Rename variables, set lambda freevars, build updated/captured sets. */
+/*****************************************************************************/
+mutable class LocalsInfo{
+  captured: mutable UnorderedSet<String> = UnorderedSet::mcreate(),
+  updates: mutable UnorderedSet<String> = UnorderedSet::mcreate(),
+  reads: mutable UnorderedSet<String> = UnorderedSet::mcreate(),
+}
+
+fun pl_lookup_name(names: SMap<String>, name: T.Name): T.Name {
+  (pos, str) = name;
+  (pos, names.maybeGet(str).default(str))
+}
+
+fun pl_rekey_bindings(
+  names: SMap<String>,
+  bindings: SMap<T.Binding>,
+): SMap<T.Binding> {
+  bindings.reduce(
+    (new, var, binding) ->
+      names.maybeGet(var) match {
+      | None() -> new
+      | Some(new_var) ->
+        (ty, (fr, _), info) = binding;
+        new_binding = (ty, (fr, new_var), info);
+        new.remove(var).add(new_var, new_binding)
+      },
+    bindings,
+  )
+}
+
+fun pl_bind_var<Ta, Tb, Tc>(
+  next_id: (() -> Int),
+  names: SMap<String>,
+  binding: (Ta, (Tb, String), Tc),
+): (SMap<String>, (Ta, (Tb, String), Tc)) {
+  (ty, (pos, str), byref) = binding;
+  new_str = str + "!" + next_id();
+  names1 = names.set(str, new_str);
+  (names1, (ty, (pos, new_str), byref))
+}
+
+fun pl_bind_vars<Ta, Tb, Tc>(
+  next_id: (() -> Int),
+  names: SMap<String>,
+  vars: List<(Ta, (Tb, String), Tc)>,
+): (SMap<String>, List<(Ta, (Tb, String), Tc)>) {
+  vars.map_foldl((ns, b) -> pl_bind_var(next_id, ns, b), names)
+}
+
+fun pl_bind_parameters<Ta, Tb, Tc>(
+  next_id: (() -> Int),
+  names: SMap<String>,
+  params: Parameters<(Ta, (Tb, String), Tc)>,
+): (SMap<String>, Parameters<(Ta, (Tb, String), Tc)>) {
+  params.map_foldl((p1, p2) -> pl_bind_var(next_id, p1, p2), names)
+}
+
+private base class ExprState {
+  children =
+  | TExpr{expr: T.Expr}
+  | BindState{ty: T.Type_, pos: FileRange, bind: T.Binding, rval: T.Expr}
+  | SeqState{ty: T.Type_, pos: FileRange, left: T.Expr}
+  | CallState{ty: T.Type_, pos: FileRange, args: T.Call_args}
+}
+
+fun pl_expr(
+  env: mutable LocalsInfo,
+  next_id: () -> Int,
+  names: SMap<String>,
+  e: T.Expr,
+): T.Expr {
+  initial: ExprState = TExpr{expr => e};
+  stack = mutable Vector[initial];
+  res: ?T.Expr = None();
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | tx @ TExpr _ ->
+      tx.expr match {
+      | (ty, (pos, b @ T.Bind _)) ->
+        rval = pl_expr(env, next_id, names, b.expr);
+        (!names, bind) = pl_bind_var(next_id, names, b.binding);
+        stack.push(BindState{ty, pos, bind, rval});
+        stack.push(TExpr{expr => b.cont})
+      | (ty, (pos, s @ T.Seq _)) ->
+        left = pl_expr(env, next_id, names, s.left);
+        stack.push(SeqState{ty, pos, left});
+        stack.push(TExpr{expr => s.right})
+      | (ty, (pos, c @ T.Call _)) ->
+        stack.push(CallState{ty, pos, args => c.args});
+        stack.push(TExpr{expr => c.base})
+      | (ty, (pos, e__)) ->
+        !e__ = pl_expr_(env, next_id, names, e__);
+        !res = Some((ty, (pos, e__)))
+      }
+    | b @ BindState _ ->
+      cont = res.fromSome();
+      !res = Some((b.ty, (b.pos, T.Bind(b.bind, b.rval, cont))))
+    | s @ SeqState _ ->
+      right = res.fromSome();
+      !res = Some((s.ty, (s.pos, T.Seq(s.left, right))))
+    | c @ CallState _ ->
+      base = res.fromSome();
+      args = pl_call_args(env, next_id, names, c.args);
+      !res = Some((c.ty, (c.pos, T.Call(base, args))))
+    }
+  };
+  res.fromSome()
+}
+
+fun pl_expr_(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: SMap<String>,
+  x: T.Expr__,
+): T.Expr__ {
+  x match {
+  | T.DefaultArg()
+  | T.Literal _
+  | T.Const _
+  | T.Fun _
+  | T.Continue()
+  | T.Classname _
+  | T.YieldBreak() ->
+    x
+  | T.Local(name) ->
+    !name = pl_lookup_name(names, name);
+    env.reads.insert(name.i1);
+    T.Local(name)
+  | T.Object(n, targs, args) ->
+    T.Object(n, targs, pl_call_args(env, next_id, names, args))
+  | T.DynamicConstruction(e, n, targs, args) ->
+    T.DynamicConstruction(
+      pl_expr(env, next_id, names, e),
+      n,
+      targs,
+      pl_call_args(env, next_id, names, args),
+    )
+  | T.Annotated(e, ty) -> T.Annotated(pl_expr(env, next_id, names, e), ty)
+  | T.Call(e, args) ->
+    T.Call(
+      pl_expr(env, next_id, names, e),
+      pl_call_args(env, next_id, names, args),
+    )
+  | T.Barbar(e1, e2) ->
+    T.Barbar(pl_expr(env, next_id, names, e1), pl_expr(env, next_id, names, e2))
+  | T.Ampamp(e1, e2) ->
+    T.Ampamp(pl_expr(env, next_id, names, e1), pl_expr(env, next_id, names, e2))
+  | T.StaticDot(di) ->
+    T.StaticDot(di with {obj_expr => pl_expr(env, next_id, names, di.obj_expr)})
+  | T.Dot(di) ->
+    T.Dot(di with {obj_expr => pl_expr(env, next_id, names, di.obj_expr)})
+  | T.Lambda(params, fvs, e, yields) ->
+    (names1, params1) = pl_bind_parameters(next_id, names, params);
+    e1 = pl_expr(env, next_id, names1, e);
+    !fvs = pl_rekey_bindings(names, fvs);
+    env.captured.extend(fvs.keys().collect(Set));
+    T.Lambda(params1, fvs, e1, yields)
+  | T.Await(e) -> T.Await(pl_expr(env, next_id, names, e))
+  | T.Return(e) -> T.Return(pl_expr(env, next_id, names, e))
+  | T.Async(fvs, e) ->
+    !fvs = pl_rekey_bindings(names, fvs);
+    env.captured.extend(fvs.keys().collect(Set));
+    T.Async(fvs, pl_expr(env, next_id, names, e))
+  | T.Throw(e) -> T.Throw(pl_expr(env, next_id, names, e))
+  | T.Array(el) -> T.Array(el.map(cur1 -> pl_expr(env, next_id, names, cur1)))
+  | T.Freeze(e) -> T.Freeze(pl_expr(env, next_id, names, e))
+  | T.GetClass(e) -> T.GetClass(pl_expr(env, next_id, names, e))
+  | T.With(e, ups) ->
+    T.With(
+      pl_expr(env, next_id, names, e),
+      pl_with_updates(env, next_id, names, ups),
+    )
+  | T.AssignField(e1, source, n, e2) ->
+    T.AssignField(
+      pl_expr(env, next_id, names, e1),
+      source,
+      n,
+      pl_expr(env, next_id, names, e2),
+    )
+  | T.If(e1, e2, e3) ->
+    T.If(
+      pl_expr(env, next_id, names, e1),
+      pl_expr(env, next_id, names, e2),
+      pl_expr(env, next_id, names, e3),
+    )
+  | T.Match(e, mbl) ->
+    T.Match(
+      pl_expr(env, next_id, names, e),
+      mbl.map(cur1 -> pl_match_branch(env, next_id, names, cur1)),
+    )
+  | T.Try(e, mbl) ->
+    T.Try(
+      pl_expr(env, next_id, names, e),
+      mbl.map(cur1 -> pl_match_branch(env, next_id, names, cur1)),
+    )
+  | T.Bind _ -> invariant_violation("assert false")
+  | T.Assign((ty, name), rvalue) ->
+    !name = pl_lookup_name(names, name);
+    !rvalue = pl_expr(env, next_id, names, rvalue);
+    env.updates.insert(name.i1);
+    T.Assign((ty, name), rvalue)
+  | T.Seq _ -> invariant_violation("assert false")
+  | T.Concurrent _
+  | T.LazyLambda _ ->
+    invariant_violation("assert false")
+  | T.TemplateLiteral(args) ->
+    T.TemplateLiteral(pl_call_args(env, next_id, names, args))
+
+  | T.Break(eb) -> T.Break(pl_expr(env, next_id, names, eb))
+  | T.Loop(eb) -> T.Loop(pl_expr(env, next_id, names, eb))
+  | T.DoWhile(body, condition, withoutBreak) ->
+    T.DoWhile(
+      pl_expr(env, next_id, names, body),
+      pl_expr(env, next_id, names, condition),
+      pl_expr(env, next_id, names, withoutBreak),
+    )
+  | T.While(condition, body, withoutBreak) ->
+    T.While(
+      pl_expr(env, next_id, names, condition),
+      pl_expr(env, next_id, names, body),
+      pl_expr(env, next_id, names, withoutBreak),
+    )
+  | T.Yield(e) -> T.Yield(pl_expr(env, next_id, names, e))
+  }
+}
+
+fun pl_call_args(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  subst: SMap<String>,
+  ca: T.Call_args,
+): T.Call_args {
+  ca.map(oe -> pl_ordered_expr(env, next_id, subst, oe))
+}
+
+fun pl_ordered_expr(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  subst: SMap<String>,
+  oe: T.Ordered_expr,
+): T.Ordered_expr {
+  (i, e) = oe;
+  (i, pl_expr(env, next_id, subst, e))
+}
+
+fun pl_with_updates(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  subst: SMap<String>,
+  m: T.With_updates,
+): T.With_updates {
+  m.map((_, wu) -> {
+    (i, e, source, cast_opt) = wu;
+    (i, pl_expr(env, next_id, subst, e), source, cast_opt)
+  })
+}
+
+fun pl_match_branch(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: SMap<String>,
+  mb: T.Match_branch,
+): T.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (names1, pats1) = pl_patterns(env, next_id, names, pats);
+  (
+    pats1,
+    maybe_guard.map(p -> pl_expr(env, next_id, names1, p)),
+    pl_expr(env, next_id, names1, e),
+  )
+}
+
+fun pl_patterns(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: SMap<String>,
+  pats: List<T.Pattern>,
+): (SMap<String>, List<T.Pattern>) {
+  /* We need to make sure that our variables in or match patterns have
+   * the same names even after renaming so that we can count on this on
+   * the RHS of the match branch. We therefore pass in a seen set for
+   * these variables, so that we know that we need to reuse the name. */
+  ((names1, _), pats1) = pats.map_foldl(
+    (p1, p2) -> pl_pattern(env, next_id, p1, p2),
+    (names, SSet[]),
+  );
+  (names1, pats1)
+}
+
+fun pl_pattern(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: (SMap<String>, SSet),
+  pat: T.Pattern,
+): ((SMap<String>, SSet), T.Pattern) {
+  (ty, pat_) = pat;
+  (names1, pat_1) = pl_pattern_(env, next_id, names, pat_);
+  (names1, (ty, pat_1))
+}
+
+fun pl_pattern_(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: (SMap<String>, SSet),
+  pat: T.Pattern_,
+): ((SMap<String>, SSet), T.Pattern_) {
+  (pos, pat__) = pat;
+  (names1, pat__1) = pl_pattern__(env, next_id, names, pat__);
+  (names1, (pos, pat__1))
+}
+
+fun pl_pattern__(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  ns: (SMap<String>, SSet),
+  x: T.Pattern__,
+): ((SMap<String>, SSet), T.Pattern__) {
+  (names, seen) = ns;
+  convert_binding = binding -> {
+    (ty, name, cap) = binding;
+    starts_with_underscore = AU.string_of_name(name).startsWith("_");
+    if (!starts_with_underscore && seen.contains(AU.string_of_name(name))) {
+      !name = pl_lookup_name(names, name);
+      env.reads.insert(name.i1);
+      ((names, seen), (ty, name, cap))
+    } else {
+      !seen = seen.set(AU.string_of_name(name));
+      (!names, var) = pl_bind_var(next_id, names, binding);
+      (_, !name, _) = var;
+      env.reads.insert(name.i1);
+      ((names, seen), var)
+    }
+  };
+  x match {
+  | T.Pat_var(binding) ->
+    (names1, convertedBinding) = convert_binding(binding);
+    (names1, T.Pat_var(convertedBinding))
+  | T.Pat_literal _
+  | T.Pat_type(_, _castType, None()) ->
+    ((names, seen), x)
+  | T.Pat_type(tid, castType, Some(params)) ->
+    (names1, params1) = params.map_foldl(
+      (p1, p2) -> pl_param_pattern(env, next_id, p1, p2),
+      (names, seen),
+    );
+    (names1, T.Pat_type(tid, castType, Some(params1)))
+  | T.Pat_as(pat, binding) ->
+    (names1, convertedBinding) = convert_binding(binding);
+    (names2, pat1) = pl_pattern(env, next_id, names1, pat);
+    (names2, T.Pat_as(pat1, convertedBinding))
+  }
+}
+
+fun pl_param_pattern(
+  env: mutable LocalsInfo,
+  next_id: (() -> Int),
+  names: (SMap<String>, SSet),
+  param: T.ParamPattern,
+): ((SMap<String>, SSet), T.ParamPattern) {
+  (ty, pat) = param;
+  (names1, pat1) = pl_pattern(env, next_id, names, pat);
+  (names1, (ty, pat1))
+}
+
+/****************************************************************************/
+/* Set byref flags in binders. */
+/*****************************************************************************/
+fun sbr_binding(env: mutable LocalsInfo, binding: T.Binding): T.Binding {
+  (ty, (pos, n), _) = binding;
+  info = T.Binding_info{
+    captured => env.captured.contains(n),
+    updated => env.updates.contains(n),
+    read => env.reads.contains(n),
+  };
+  (ty, (pos, n), info)
+}
+
+fun sbr_frozen_params(
+  env: mutable LocalsInfo,
+  params: Parameters<T.Binding>,
+): Parameters<T.Binding> {
+  params.map(b -> sbr_binding(env, b))
+}
+
+fun sbr_expr(env: mutable LocalsInfo, e: T.Expr): T.Expr {
+  initial: ExprState = TExpr{expr => e};
+  stack = mutable Vector[initial];
+  res: ?T.Expr = None();
+  while (!stack.isEmpty()) {
+    stack.pop() match {
+    | tx @ TExpr _ ->
+      tx.expr match {
+      | (ty, (pos, b @ T.Bind _)) ->
+        bind = sbr_binding(env, b.binding);
+        rval = sbr_expr(env, b.expr);
+        stack.push(BindState{ty, pos, bind, rval});
+        stack.push(TExpr{expr => b.cont})
+      | (ty, (pos, s @ T.Seq _)) ->
+        left = sbr_expr(env, s.left);
+        stack.push(SeqState{ty, pos, left});
+        stack.push(TExpr{expr => s.right})
+      | (ty, (pos, c @ T.Call _)) ->
+        stack.push(CallState{ty, pos, args => c.args});
+        stack.push(TExpr{expr => c.base})
+      | x -> !res = Some(sbr_expr_(env, x))
+      }
+    | b @ BindState _ ->
+      cont = res.fromSome();
+      !res = Some((b.ty, (b.pos, T.Bind(b.bind, b.rval, cont))))
+    | s @ SeqState _ ->
+      right = res.fromSome();
+      !res = Some((s.ty, (s.pos, T.Seq(s.left, right))))
+    | c @ CallState _ ->
+      base = res.fromSome();
+      args = sbr_call_args(env, c.args);
+      !res = Some((c.ty, (c.pos, T.Call(base, args))))
+    }
+  };
+  res.fromSome()
+}
+
+fun sbr_expr_(env: mutable LocalsInfo, ex: T.Expr): T.Expr {
+  (ty, (pos, e)) = ex;
+  e1 = {
+    e match {
+    | T.DefaultArg()
+    | T.Literal _
+    | T.Const _
+    | T.Fun _
+    | T.Local _
+    | T.Continue()
+    | T.Classname _
+    | T.YieldBreak() ->
+      e
+    | T.Object(n, targs, args) -> T.Object(n, targs, sbr_call_args(env, args))
+    | T.DynamicConstruction(e1, n, targs, args) ->
+      T.DynamicConstruction(
+        sbr_expr(env, e1),
+        n,
+        targs,
+        sbr_call_args(env, args),
+      )
+    | T.Annotated(e1, ty1) -> T.Annotated(sbr_expr(env, e1), ty1)
+    | T.Call(e1, args) -> T.Call(sbr_expr(env, e1), sbr_call_args(env, args))
+    | T.Barbar(e1, e2) -> T.Barbar(sbr_expr(env, e1), sbr_expr(env, e2))
+    | T.Ampamp(e1, e2) -> T.Ampamp(sbr_expr(env, e1), sbr_expr(env, e2))
+    | T.StaticDot(di) ->
+      T.StaticDot(di with {obj_expr => sbr_expr(env, di.obj_expr)})
+    | T.Dot(di) -> T.Dot(di with {obj_expr => sbr_expr(env, di.obj_expr)})
+    | T.Lambda(params, fvs, e1, yields) ->
+      !fvs = fvs.map((_, b) -> sbr_binding(env, b));
+      SkipTypingUtils.is_mutable(SkipTypingUtils.empty_acc, ty, false) match {
+      | N.MnotFrozen _ -> void
+      | N.Echilled _ -> SkipError.error(pos, "ICE lambda shouldnt be chilled")
+      | N.Efrozen() -> check_captured_locals(fvs, "Pure lambda ")
+      };
+      T.Lambda(sbr_frozen_params(env, params), fvs, sbr_expr(env, e1), yields)
+    | T.Await(e1) -> T.Await(sbr_expr(env, e1))
+    | T.Return(e1) -> T.Return(sbr_expr(env, e1))
+    | T.Async(fvs, e1) ->
+      !fvs = fvs.map((_, b) -> sbr_binding(env, b));
+      check_captured_locals(fvs, "Async blocks ");
+      T.Async(fvs, sbr_expr(env, e1))
+    | T.Throw(e1) -> T.Throw(sbr_expr(env, e1))
+    | T.Array(el) -> T.Array(el.map(cur1 -> sbr_expr(env, cur1)))
+    | T.Freeze(e1) -> T.Freeze(sbr_expr(env, e1))
+    | T.GetClass(e1) -> T.GetClass(sbr_expr(env, e1))
+    | T.With(e1, ups) -> T.With(sbr_expr(env, e1), sbr_with_updates(env, ups))
+    | T.AssignField(e1, source, n, e2) ->
+      T.AssignField(sbr_expr(env, e1), source, n, sbr_expr(env, e2))
+    | T.If(e1, e2, e3) ->
+      T.If(sbr_expr(env, e1), sbr_expr(env, e2), sbr_expr(env, e3))
+    | T.Match(e1, mbl) ->
+      T.Match(sbr_expr(env, e1), mbl.map(cur1 -> sbr_match_branch(env, cur1)))
+    | T.Try(e1, mbl) ->
+      T.Try(sbr_expr(env, e1), mbl.map(cur1 -> sbr_match_branch(env, cur1)))
+    | T.Bind _ -> invariant_violation("assert false")
+    | T.Assign(var, rvalue) -> T.Assign(var, sbr_expr(env, rvalue))
+    | T.Seq _ -> invariant_violation("assert false")
+    | T.Concurrent _
+    | T.LazyLambda _ ->
+      invariant_violation("assert false")
+    | T.TemplateLiteral(args) -> T.TemplateLiteral(sbr_call_args(env, args))
+    | T.Break(eb) -> T.Break(sbr_expr(env, eb))
+    | T.Loop(eb) -> T.Loop(sbr_expr(env, eb))
+    | T.DoWhile(body, condition, withoutBreak) ->
+      T.DoWhile(
+        sbr_expr(env, body),
+        sbr_expr(env, condition),
+        sbr_expr(env, withoutBreak),
+      )
+    | T.While(condition, body, withoutBreak) ->
+      T.While(
+        sbr_expr(env, condition),
+        sbr_expr(env, body),
+        sbr_expr(env, withoutBreak),
+      )
+    | T.Yield(e1) -> T.Yield(sbr_expr(env, e1))
+    }
+  };
+  (ty, (pos, e1))
+}
+
+fun check_captured_locals(fvs: SMap<T.Binding>, case: String): void {
+  for (p in fvs) {
+    (_, (fr, _), info) = p;
+    if (TU.binding_needs_ref(info)) {
+      SkipError.error(fr, case + "cannot refer to an updated variable")
+    }
+  }
+}
+
+fun sbr_call_args(env: mutable LocalsInfo, ca: T.Call_args): T.Call_args {
+  ca.map(oe -> sbr_ordered_expr(env, oe))
+}
+
+fun sbr_ordered_expr(
+  env: mutable LocalsInfo,
+  oe: T.Ordered_expr,
+): T.Ordered_expr {
+  (i, e) = oe;
+  (i, sbr_expr(env, e))
+}
+
+fun sbr_with_updates(
+  env: mutable LocalsInfo,
+  m: T.With_updates,
+): T.With_updates {
+  m.map((_, wu) -> {
+    (i, e, source, cast_opt) = wu;
+    (i, sbr_expr(env, e), source, cast_opt)
+  })
+}
+
+fun sbr_match_branch(
+  env: mutable LocalsInfo,
+  mb: T.Match_branch,
+): T.Match_branch {
+  (pats, maybe_guard, e) = mb;
+  (
+    sbr_patterns(env, pats),
+    maybe_guard.map(p -> sbr_expr(env, p)),
+    sbr_expr(env, e),
+  )
+}
+
+fun sbr_patterns(
+  env: mutable LocalsInfo,
+  pats: List<T.Pattern>,
+): List<T.Pattern> {
+  pats.map(cur1 -> sbr_pattern(env, cur1))
+}
+
+fun sbr_pattern(env: mutable LocalsInfo, pat: T.Pattern): T.Pattern {
+  (ty, (pos, p)) = pat;
+  p1 = {
+    p match {
+    | T.Pat_var(var) -> T.Pat_var(sbr_binding(env, var))
+    | T.Pat_literal _
+    | T.Pat_type(_, _castType, None()) ->
+      p
+    | T.Pat_type(tid, castType, Some(params)) ->
+      T.Pat_type(
+        tid,
+        castType,
+        Some(params.map(p -> sbr_param_pattern(env, p))),
+      )
+    | T.Pat_as(pat1, var) ->
+      T.Pat_as(sbr_pattern(env, pat1), sbr_binding(env, var))
+    }
+  };
+  (ty, (pos, p1))
+}
+
+fun sbr_param_pattern(
+  env: mutable LocalsInfo,
+  param: T.ParamPattern,
+): T.ParamPattern {
+  (ty, pat) = param;
+  pat1 = sbr_pattern(env, pat);
+  (ty, pat1)
+}
+
+/****************************************************************************/
+/* Functions. */
+/*****************************************************************************/
+fun params(
+  next_id: () -> Int,
+  env: mutable LocalsInfo,
+  params: Parameters<T.Parameter>,
+): Parameters<T.Parameter> {
+  !params = params.map(p ->
+    p with {value => p.value.map(e -> fun_expr(next_id, env, e))}
+  );
+  params
+}
+
+fun body(
+  next_id: () -> Int,
+  env: mutable LocalsInfo,
+  x: T.Expr_body,
+): T.Expr_body {
+  x match {
+  | T.Implemented(e) -> T.Implemented(fun_expr(next_id, env, e))
+  | b -> b
+  }
+}
+
+fun fun_expr(next_id: () -> Int, env: mutable LocalsInfo, e: T.Expr): T.Expr {
+  !e = pl_expr(env, next_id, SortedMap[], e);
+  !e = sbr_expr(env, e);
+  e
+}
+
+fun info_of_name(env: mutable LocalsInfo, name: N.Name): T.Binding_info {
+  n = AU.string_of_name(name);
+  T.Binding_info{
+    captured => env.captured.contains(n),
+    updated => env.updates.contains(n),
+    read => env.reads.contains(n),
+  }
+}
+
+fun frozen_param(env: mutable LocalsInfo, param: T.Parameter): T.Parameter {
+  param with {frozen_ => info_of_name(env, param.name)}
+}
+
+fun fun_def(f: T.Fun_def): T.Fun_def {
+  next_id = sk_create_counter();
+  env = mutable LocalsInfo{};
+  params = params(next_id, env, f.params);
+  body = body(next_id, env, f.body);
+  !params = params.map(p -> frozen_param(env, p));
+  f with {params, body}
+}
+
+/****************************************************************************/
+/* Classes. */
+/*****************************************************************************/
+fun method_def(next_id: (() -> Int), m: T.Method_def): T.Method_def {
+  env = mutable LocalsInfo{};
+  params = params(next_id, env, m.params);
+  body = body(next_id, env, m.body);
+  !params = params.map(p -> frozen_param(env, p));
+  implicit_param = {
+    (ty, nm, _) = m.implicit_param;
+    (ty, nm, info_of_name(env, nm))
+  };
+  m with {params, body, implicit_param}
+}
+
+fun class_params(cpo: ?T.Class_params): ?T.Class_params {
+  next_id = sk_create_counter();
+  env = mutable LocalsInfo{};
+  cpo.map(cp -> cp with {params => params(next_id, env, cp.params)})
+}
+
+fun class_def(c: T.Class_def): T.Class_def {
+  params = class_params(c.params);
+  methods = c.methods.map((_, met) -> method_def(sk_create_counter(), met));
+  c with {params, methods}
+}
+
+module end;

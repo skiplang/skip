@@ -1,0 +1,7 @@
+File "./visibility/invalid/module_private_fun.sk", line 14, characters 7-9:
+Cannot access a private module element foo outside of module Foo
+12 |
+13 | fun main(): void {
+14 |   Foo.foo();
+   |       ^^^
+15 |   print_raw("Fail")

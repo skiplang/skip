@@ -1,0 +1,13 @@
+File "./typechecking/invalid/frozen_lambda_3.sk", line 2, characters 3-37:
+Cannot freeze a mutable lambda
+1 | fun no(): void {
+2 |   freeze(((() -> void) : () -> void))
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | }
+
+File "./typechecking/invalid/frozen_lambda_3.sk", line 2, characters 26-35:
+This is the lambda you are trying to freeze
+1 | fun no(): void {
+2 |   freeze(((() -> void) : () -> void))
+  |                          ^^^^^^^^^^
+3 | }

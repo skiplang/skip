@@ -1,0 +1,9 @@
+base class Foo<T1, T2: Some<T1>> {
+  // the error should be on the constraint for T2, not when accessing fromSome
+  fun foo(): T1 {
+    this.bar().fromSome()
+  }
+  fun bar(): T2;
+}
+
+base class Foo2 extends Foo<Int, Int>

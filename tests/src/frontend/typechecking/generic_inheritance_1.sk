@@ -1,0 +1,10 @@
+fun main(): void {
+  print_raw("OK")
+}
+trait Foo {
+  fun get<T1>(): T1;
+}
+
+base class Bar uses Foo {
+  fun get<T1>(): T1;
+}

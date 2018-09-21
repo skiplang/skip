@@ -1,0 +1,5 @@
+File "./typechecking/invalid/child_without_base.sk", line 1, characters 7-9:
+Only a base class can define children
+1 | class Foo() {
+  |       ^^^
+2 |   children =

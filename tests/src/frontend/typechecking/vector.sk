@@ -1,0 +1,14 @@
+fun test(): Array<Int> {
+  Array[1, 2, 3]
+}
+
+fun main(): void {
+  vec = test();
+  print_raw(
+    if (vec[0] == 1 && vec[1] == 2 && vec[2] == 3) {
+      "OK\n"
+    } else {
+      "FAILED"
+    },
+  )
+}

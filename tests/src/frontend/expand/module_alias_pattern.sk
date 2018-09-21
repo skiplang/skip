@@ -1,0 +1,36 @@
+module alias I = M;
+
+module M;
+
+class A()
+class B(A)
+
+module end;
+
+fun main(): void {
+  a = M.A();
+  b = M.B(a);
+
+  _ = a match {
+  | I.A() -> void
+  };
+
+  _ = a match {
+  | _x @ I.A() -> void
+  };
+
+  // This does not.
+  (a, a) match {
+  | (I.A(), M.A()) -> void
+  };
+
+  b match {
+  | I.B(M.A()) -> void
+  };
+
+  (b, b) match {
+  | (I.B(I.A()), M.B(M.A())) -> void
+  };
+
+  print_string("Pass")
+}

@@ -1,0 +1,11 @@
+class C(p: String) {}
+
+fun main(): void {
+  cond = false;
+  print_raw(
+    C("Pass\n") match {
+    | C _ if (cond) -> "Fail"
+    | C(p) -> p
+    },
+  )
+}

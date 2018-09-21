@@ -1,0 +1,7 @@
+File "./typechecking/invalid/bind_pattern5.sk", line 10, characters 3-7:
+Invalid LValue
+ 8 |
+ 9 | fun main(): String {
+10 |   Bar() = makeFoo();
+   |   ^^^^^
+11 |   _ = 42;

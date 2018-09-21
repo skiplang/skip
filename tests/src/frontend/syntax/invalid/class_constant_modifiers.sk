@@ -1,0 +1,7 @@
+class C() {
+  async const x : String = "Fail";
+}
+
+fun main(): String {
+  C::x
+}

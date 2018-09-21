@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/nested_consts.sk", line 3, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | (false, Bool _)
+1 | const MyConst: Bool = true;
+2 | fun test(): String {
+3 |   (true, true) match {
+  |   ^^^^^^^^^^^^^^^^^^^^
+4 |   | (MyConst, MyConst) -> "Fail\n"
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

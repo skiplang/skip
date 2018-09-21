@@ -1,0 +1,9 @@
+module X;
+class .X() {}
+module end;
+
+extension class X
+
+fun main(): void {
+  print_string("Pass")
+}

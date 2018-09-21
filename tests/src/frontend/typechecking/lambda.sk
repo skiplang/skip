@@ -1,0 +1,13 @@
+fun main(): void {
+  void
+}
+
+fun test(): Int {
+  f = (x ~> x + 1);
+  (f2, _f3) = (f, f);
+  f(0) + f2(1)
+}
+
+fun test2(): Int ~> Int {
+  if (true) (x ~> x + 1) else (x ~> x + 2)
+}

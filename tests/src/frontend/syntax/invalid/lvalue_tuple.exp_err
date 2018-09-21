@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_tuple.sk", line 2, characters 9-9:
+Invalid LValue
+1 | fun main(): String {
+2 |   (x, a + b) = 42;
+  |         ^
+3 |   "Fail"

@@ -1,0 +1,17 @@
+base class Expr<T>
+class IntExpr(Int) extends Expr<Int>
+class BoolExpr(Bool) extends Expr<Bool>
+
+fun add_one<T: Int>(x: T): Int {
+  x + 1
+}
+fun or_true<T: Bool>(x: T): Bool {
+  x || true
+}
+
+fun perform<T>(e: Expr<T>, v: T): T {
+  e match {
+  | IntExpr(_) -> add_one(v)
+  | BoolExpr(_) -> or_true(v)
+  }
+}

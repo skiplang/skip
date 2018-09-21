@@ -1,0 +1,15 @@
+class Foo<T> extends MyMyBase<T>
+class Bar extends MyMyBase<Int>
+base class MyMyBase<T> final {t: T}
+
+fun new_base<T>(c: Concrete<MyMyBase<T>>, t: T): MyMyBase<T> {
+  c{t}
+}
+
+fun main(): void {
+  _ = new_base(Bar, 42);
+  _ = new_base(Foo, "yes");
+  _ = new_base(Foo, 112);
+  _ = new_base(Foo, void);
+  print_string("Pass")
+}

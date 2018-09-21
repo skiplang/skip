@@ -1,0 +1,13 @@
+base class B {
+  macro fun m(): void {
+    (0 : #ThisClass.X)
+  }
+
+  static fun f(): void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("FAIL");
+}

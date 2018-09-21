@@ -1,0 +1,254 @@
+@test
+fun testIntPositiveBounds(): void {
+  result = QuickCheck.check(
+    Int::generator(),
+
+    i ~> {
+      i < 42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["42"]);
+}
+
+@test
+fun testIntNegativeBounds(): void {
+  result = QuickCheck.check(
+    Int::generator(),
+
+    i ~> {
+      i > -42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["-42"]);
+}
+
+@test
+fun testBoolTrue(): void {
+  result = QuickCheck.check(Bool::generator(), b ~> {
+    b
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["false"]);
+}
+
+@test
+fun testBoolFalse(): void {
+  result = QuickCheck.check(Bool::generator(), b ~> {
+    !b
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["true"]);
+}
+
+@test
+fun testCharBounds(): void {
+  result = QuickCheck.check(
+    Char::generator(),
+
+    c ~> {
+      c.code() < 42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector[42.chr().toString()]);
+}
+
+@test
+fun testStringCharStrictlyPositiveSum(): void {
+  result = QuickCheck.check(
+    String::generator(),
+
+    s ~> {
+      s.getIter().map(x ~> x.code()).collect(Vector).sumInt() > 0
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector[""]);
+}
+
+@test
+fun testStringCharBounds(): void {
+  result = QuickCheck.check(
+    String::generator(),
+
+    s ~> {
+      chars = s.getIter().collect(Vector);
+      chars.isEmpty() || chars[0].code() < 42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector[42.chr().toString()]);
+}
+
+@test
+fun testOrderLTBound(): void {
+  result = QuickCheck.check(Order::generator(), o ~> {
+    o.isLT()
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["equal to"]);
+}
+
+@test
+fun testOrderEQBound(): void {
+  result = QuickCheck.check(Order::generator(), o ~> {
+    o.isEQ()
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["less than"]);
+}
+
+@test
+fun testOrderGTBound(): void {
+  result = QuickCheck.check(Order::generator(), o ~> {
+    o.isGT()
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["less than"]);
+}
+
+@test
+fun testOptionNone(): void {
+  result = QuickCheck.check(Option::generator(Int::generator()), o ~> {
+    !o.isNone()
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["None()"]);
+}
+
+@test
+fun testOptionSomeBounds(): void {
+  result = QuickCheck.check(
+    Option::generator(Int::generator()),
+
+    o ~> {
+      o.isNone() || o.fromSome() < 42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["Some(42)"]);
+}
+
+@test
+fun testVectorStrictlyPositiveSum(): void {
+  result = QuickCheck.check(Vector::generator(Int::generator()), v ~> {
+    v.sumInt() > 0
+  });
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["Vector[]"]);
+}
+
+@test
+fun testVectorBoundedPositiveBounds(): void {
+  result = QuickCheck.check(
+    Vector::generator(Int::generator()),
+
+    v ~> {
+      v.isEmpty() || v[0] < 42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["Vector[42]"]);
+}
+
+@test
+fun testVectorBoundedNegativeBounds(): void {
+  result = QuickCheck.check(
+    Vector::generator(Int::generator()),
+
+    v ~> {
+      v.isEmpty() || v[0] > -42
+    },
+
+    QuickCheck.Config{maxSize => 1000},
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["Vector[-42]"]);
+}
+
+@test
+fun testFunOfBool(): void {
+  result = QuickCheck.check(
+    QuickCheck.Fun1::generator<Int, Bool>(Bool::generator()),
+    fn ~> {
+      // Some randomly generated function of Int ~> Bool should not
+      // always produce true.
+      Range(0, 10).all(i -> fn.f(i))
+    },
+  );
+  assertTrue(result is QuickCheck.TestFailure _);
+  assertEqual(result.fromFailure().counterExample, Vector["<<function>>"]);
+}
+
+@test
+fun testFunctionPartition(): void {
+  result = QuickCheck.check(
+    Tuple2::generator(
+      Vector::generator(Int::generator()),
+      QuickCheck.Fun1::generator<Int, Bool>(Bool::generator()),
+    ),
+    gen ~> {
+      (v, fn) = gen;
+      (pass, fail) = v.partition(fn.f);
+      expectedPass = mutable Vector[];
+      expectedFail = mutable Vector[];
+      for (x in v) {
+        if (fn.f(x)) {
+          expectedPass.push(x)
+        } else {
+          expectedFail.push(x)
+        }
+      };
+      pass.collect(Vector) == expectedPass &&
+        fail.collect(Vector) == expectedFail
+    },
+  );
+  assertTrue(result is QuickCheck.TestSuccess _);
+}
+
+@test
+fun testDebug(): void {
+  enableDebug = false; // set to true to fail the test and print samples
+  if (enableDebug) {
+    debug(QuickCheck.sample(Bool::generator()));
+    debug(QuickCheck.sample(Int::generator()));
+    debug(QuickCheck.sample(Float::generator()));
+    debug(QuickCheck.sample(Char::generator()));
+    debug(QuickCheck.sample(String::generator()));
+    debug(QuickCheck.sample(Vector::generator(Int::generator())));
+    debug(
+      QuickCheck.sample(Map::generator(Int::generator(), Int::generator())),
+    );
+    debug(QuickCheck.sample(Set::generator(Int::generator())));
+
+    debug(QuickCheck.sampleShrink(true).take(50).collect(Vector));
+    debug(QuickCheck.sampleShrink(42).take(50).collect(Vector));
+    debug(QuickCheck.sampleShrink(43.14).take(50).collect(Vector));
+    debug(QuickCheck.sampleShrink('z').take(50).collect(Vector));
+    debug(QuickCheck.sampleShrink("abc").take(50).collect(Vector));
+    debug(
+      QuickCheck.sampleShrink(Vector[1, 2, 3, 5, 8]).take(50).collect(Vector),
+    );
+    debug(
+      QuickCheck.sampleShrink(Map[1 => "a", 2 => "b"]).take(50).collect(Vector),
+    );
+    debug(QuickCheck.sampleShrink(Set[1, 2, 3, 5, 8]).take(50).collect(Vector));
+  };
+  assertFalse(enableDebug);
+}

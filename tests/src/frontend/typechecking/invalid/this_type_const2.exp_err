@@ -1,0 +1,65 @@
+File "./typechecking/invalid/this_type_const2.sk", line 13, characters 7-12:
+Invalid override for the field 'foo' on child 'Child1' for parent 'Parent'
+11 | }
+12 |
+13 | class Child1() extends Parent {
+   |       ^^^^^^
+14 |   type T = B;
+
+File "./typechecking/invalid/this_type_const2.sk", line 10, characters 11-11:
+The type: A
+ 8 |   type T: A;
+ 9 |
+10 |   fun foo(A): void;
+   |           ^
+11 | }
+
+File "./typechecking/invalid/this_type_const2.sk", line 16, characters 11-11:
+Is not a subtype of: B
+14 |   type T = B;
+15 |
+16 |   fun foo(B): void {
+   |           ^
+17 |     void
+
+File "./typechecking/invalid/this_type_const2.sk", line 16, characters 11-11:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A
+14 |   type T = B;
+15 |
+16 |   fun foo(B): void {
+   |           ^
+17 |     void
+
+File "./typechecking/invalid/this_type_const2.sk", line 21, characters 7-12:
+Invalid override for the field 'foo' on child 'Child2' for parent 'Parent'
+19 | }
+20 |
+21 | class Child2() extends Parent {
+   |       ^^^^^^
+22 |   type T = C;
+
+File "./typechecking/invalid/this_type_const2.sk", line 10, characters 11-11:
+The type: A
+ 8 |   type T: A;
+ 9 |
+10 |   fun foo(A): void;
+   |           ^
+11 | }
+
+File "./typechecking/invalid/this_type_const2.sk", line 24, characters 11-11:
+Is not a subtype of: C
+22 |   type T = C;
+23 |
+24 |   fun foo(C): void {
+   |           ^
+25 |     void
+
+File "./typechecking/invalid/this_type_const2.sk", line 24, characters 11-11:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A
+22 |   type T = C;
+23 |
+24 |   fun foo(C): void {
+   |           ^
+25 |     void

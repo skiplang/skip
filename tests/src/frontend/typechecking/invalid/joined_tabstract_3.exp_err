@@ -1,0 +1,79 @@
+File "./typechecking/invalid/joined_tabstract_3.sk", line 8, characters 9-26:
+Invalid deferred call
+ 6 |   deferred static fun eat(Inv<this::T>): this::T;
+ 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+ 8 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 12, characters 12-15:
+In 'IntC's version of the member 'test' inherited from 'AbsC'
+10 | }
+11 |
+12 | base class IntC extends AbsC {
+   |            ^^^^
+13 |   type T = Test.MixedInt;
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 8, characters 9-26:
+Invalid deferred call
+ 6 |   deferred static fun eat(Inv<this::T>): this::T;
+ 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+ 8 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 27, characters 12-18:
+In 'StringC's version of the member 'test' inherited from 'AbsC'
+25 | }
+26 |
+27 | base class StringC extends AbsC {
+   |            ^^^^^^^
+28 |   type T = Test.MixedString;
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 8, characters 9-26:
+Invalid deferred call
+ 6 |   deferred static fun eat(Inv<this::T>): this::T;
+ 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+ 8 |     _ = c1::eat(c2::get())
+   |         ^^^^^^^^^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
+'eat' was declared as 'deferred'. It can be used only from 'static', in instance methods or deferred static methods. Or from a Concrete<_> object in a 'deferred' method
+4 |   type T: Test.MixedScalar;
+5 |   deferred static fun get(): Inv<this::T>;
+6 |   deferred static fun eat(Inv<this::T>): this::T;
+  |   ^^^^^^^^
+7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 43, characters 3-26:
+The field add is undefined
+41 |
+42 | fun main(): void {
+43 |   AbsC::add(StringC, IntC);
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^
+44 |   print_raw("NO")
+
+File "./typechecking/invalid/joined_tabstract_3.sk", line 43, characters 3-6:
+For the expression of type Base<AbsC>
+41 |
+42 | fun main(): void {
+43 |   AbsC::add(StringC, IntC);
+   |   ^^^^
+44 |   print_raw("NO")

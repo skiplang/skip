@@ -1,0 +1,11 @@
+base class A{a: String}
+base class B{b: Int} extends A
+class C{c: Bool} extends B {
+  fun hello(): String {
+    this.a + " " + this.b + " " + (if (this.c) "true" else "false") + "\n"
+  }
+}
+
+fun main(): void {
+  print_raw(C{a => "Hello", b => 42, c => true}.hello())
+}

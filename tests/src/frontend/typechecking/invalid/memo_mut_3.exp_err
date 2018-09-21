@@ -1,0 +1,27 @@
+File "./typechecking/invalid/memo_mut_3.sk", line 2, characters 17-17:
+Invalid parameter. All parameters to a 'memoized' function must be frozen
+1 | mutable class X(mutable x: Int)
+2 | memoized fun no(mutable X): void {
+  |                 ^
+3 |   void
+
+File "./typechecking/invalid/memo_mut_3.sk", line 2, characters 1-8:
+The function was declared 'memoized' here
+1 | mutable class X(mutable x: Int)
+2 | memoized fun no(mutable X): void {
+  | ^^^^^^^^
+3 |   void
+
+File "./typechecking/invalid/memo_mut_3.sk", line 2, characters 17-25:
+The following type is not frozen: mutable X
+1 | mutable class X(mutable x: Int)
+2 | memoized fun no(mutable X): void {
+  |                 ^^^^^^^^^
+3 |   void
+
+File "./typechecking/invalid/memo_mut_3.sk", line 2, characters 17-25:
+Try calling 'freeze' on any expression of this type, or try removing the 'mutable' modifier
+1 | mutable class X(mutable x: Int)
+2 | memoized fun no(mutable X): void {
+  |                 ^^^^^^^^^
+3 |   void

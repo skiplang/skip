@@ -1,0 +1,7 @@
+fun foo(Int): void {
+  void
+}
+
+fun bar(): void {
+  "" |> foo
+}

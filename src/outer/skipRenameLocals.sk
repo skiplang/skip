@@ -1,0 +1,261 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+//*****************************************************************************
+// Rename locals to short, readable (when possible) names.
+//*****************************************************************************
+
+module alias O = OuterIst;
+module alias OU = SkipOuterIstUtils;
+module alias AU = SkipAstUtils;
+
+module SkipRenameLocals;
+// Maps local name, to the name it is mapped to.
+// Maps base name to the next index available with that base.
+type ParamMap = mutable Ref<SMap<(String, Int)>>;
+
+fun createEmptyMap(): SMap<(String, Int)> {
+  SortedMap[]
+}
+
+fun mapOfParameters(params: Parameters<O.Parameter>): SMap<(String, Int)> {
+  params.toList().map(param -> {
+    name = param.name.id;
+    (name, (name, 1))
+  }) |> SortedMap::createFromItems
+}
+
+fun addMethodToMap(map: SMap<(String, Int)>): SMap<(String, Int)> {
+  map.add("this", ("this", 1)).add("static", ("static", 1))
+}
+
+fun baseName(name: String): String {
+  names = name.split("!");
+  if (names[0] == "") {
+    "t$"
+  } else {
+    names[0]
+  }
+}
+
+fun addName(map: ParamMap, name: O.Name): O.Name {
+  n = name.id;
+  if (map.value.containsKey(n)) {
+    invariant_violation("Duplicate local definition: " + n)
+  };
+  base = baseName(n);
+  pos = name.pos;
+  mappedName = map.value.maybeGet(base) match {
+  | None() ->
+    map.!value = map.value.add(base, (base, 1));
+    if (base != n) {
+      map.!value = map.value.add(n, (base, 1))
+    };
+    base
+  | Some((_, index)) ->
+    while (map.value.containsKey(base + index.toString())) !index = index + 1;
+    result = base + index.toString();
+    map.!value = map.value.set(base, (base, index + 1));
+    map.!value = map.value.add(n, (result, index + 1));
+    result
+  };
+  O.Name(pos, mappedName)
+}
+
+fun addBinding(map: ParamMap, binding: O.Binding): O.Binding {
+  OU.make_value_binding(binding.ty, addName(map, binding.name), binding.info)
+}
+
+fun addParameters(
+  map: ParamMap,
+  params: Parameters<O.Binding>,
+): Parameters<O.Binding> {
+  params match {
+  | Positional(ps) -> Positional(ps.map(binding -> addBinding(map, binding)))
+  | Named(m) ->
+    Named(
+      UMap::createFromIterator(
+        m.values().map(binding -> {
+          mappedBinding = addBinding(map, binding);
+          name = mappedBinding.name;
+          ((name.pos, name.id), mappedBinding)
+        }),
+      ),
+    )
+  }
+}
+
+fun renameString(map: ParamMap, value: String): String {
+  map.value.get(value).i0
+}
+
+fun renameName(map: ParamMap, name: O.Name): O.Name {
+  try {
+    O.Name(name.pos, renameString(map, name.id))
+  } catch {
+  | _ -> name.pos.die(`Missing map for ${name.id}`)
+  }
+}
+
+fun renameBinding(map: ParamMap, binding: O.Binding): O.Binding {
+  OU.make_value_binding(binding.ty, renameName(map, binding.name), binding.info)
+}
+
+fun renameLocalVar(map: ParamMap, localVar: O.LocalVar): O.LocalVar {
+  O.LocalVar(localVar.ty, renameName(map, localVar.name))
+}
+
+fun renameCapturedBindings(
+  map: ParamMap,
+  capturedBindings: SMap<O.Binding>,
+): SMap<O.Binding> {
+  capturedBindings.items().map(b -> {
+    (_, binding) = b;
+    mappedBinding = renameBinding(map, binding);
+    (mappedBinding.name.id, mappedBinding)
+  }) |> SortedMap::createFromIterator
+}
+
+fun rename_expression_locals_rec(map: ParamMap): O.Expr -> O.Expr {
+  expr -> {
+    pos = expr.pos;
+    ty = expr.ty;
+    transformedExpr__ = expr.expr match {
+    | O.Local(name) -> O.Local(renameName(map, name))
+    | O.Lambda(params, lambdaTy, capturedBindings, body, yields) ->
+      mappedParameters = addParameters(map, params);
+      O.Lambda(
+        mappedParameters,
+        lambdaTy,
+        renameCapturedBindings(map, capturedBindings),
+        body,
+        yields,
+      )
+    | e -> e
+    };
+    OU.transform_expr_children(
+      rename_expression_locals_rec(map),
+      rename_statement_locals_rec(map),
+      O.Expr(ty, pos, transformedExpr__),
+    )
+  }
+}
+
+fun rename_statement_locals_rec(map: ParamMap): O.Stmt -> O.Stmt {
+  stmt -> {
+    transformedStatement = stmt match {
+    | O.Bind(binding, initOpt) -> O.Bind(addBinding(map, binding), initOpt)
+    | O.Assign(localVar, value) ->
+      O.Assign(renameLocalVar(map, localVar), value)
+    | O.AssignField(localVar, fieldFrom, field, value) ->
+      O.AssignField(renameLocalVar(map, localVar), fieldFrom, field, value)
+    | O.TryCatch(pos, body, exn, catchBody) ->
+      O.TryCatch(pos, body, addBinding(map, exn), catchBody)
+    | O.Match _
+    | O.Try _ ->
+      invariant_violation("Rename locals after lowering passes")
+    | _ -> stmt
+    };
+    OU.transform_stmt_children(
+      rename_expression_locals_rec(map),
+      rename_statement_locals_rec(map),
+      transformedStatement,
+    )
+  }
+}
+
+fun rename_statement_locals(map: ParamMap, stmt: O.Stmt): O.Stmt {
+  rename_statement_locals_rec(map)(stmt)
+}
+
+fun rename_statement_opt_locals(map: ParamMap, stmtOpt: ?O.Stmt): ?O.Stmt {
+  stmtOpt.map(s -> rename_statement_locals(map, s))
+}
+
+fun rename_body_opt_locals(map: ParamMap, body_opt: ?O.Body): ?O.Body {
+  body_opt.map(b -> b.mapOuter(s -> rename_statement_locals(map, s)))
+}
+
+fun rename_function_locals(func: O.FunDef): O.FunDef {
+  initialMap = mutable Ref(mapOfParameters(func.params));
+  func with {
+    body => rename_body_opt_locals(initialMap, func.body),
+    params => rename_parameters(func.params),
+  }
+}
+
+fun rename_method_locals(met: O.MethodDef): O.MethodDef {
+  initialMap = mutable Ref(addMethodToMap(mapOfParameters(met.params)));
+  met with {
+    body => rename_body_opt_locals(initialMap, met.body),
+    params => rename_method_parameters(met.params),
+  }
+}
+
+fun rename_class_params_locals(params: O.ClassParams): O.ClassParams {
+  params with {params => rename_parameters(params.params)}
+}
+
+fun rename_parameter(param: O.Parameter): O.Parameter {
+  param with {value => param.value.map(rename_initializer_locals)}
+}
+
+fun rename_parameters(
+  params: Parameters<O.Parameter>,
+): Parameters<O.Parameter> {
+  params.map(rename_parameter)
+}
+
+fun rename_method_parameter(param: O.Parameter): O.Parameter {
+  param with {value => param.value.map(rename_method_initializer_locals)}
+}
+
+fun rename_method_parameters(
+  params: Parameters<O.Parameter>,
+): Parameters<O.Parameter> {
+  params.map(rename_method_parameter)
+}
+
+fun rename_class_locals(cls: O.ClassDef): O.ClassDef {
+  cls with {
+    methods => cls.methods.map((_, x) -> rename_method_locals(x)),
+    consts => cls.consts.map((_, x) -> rename_const_locals(x)),
+    params => cls.params.map(rename_class_params_locals),
+  }
+}
+
+fun rename_method_initializer_locals(
+  initializer: O.Initializer,
+): O.Initializer {
+  (stmt, expr) = initializer.asOuter();
+  map = mutable Ref(addMethodToMap(createEmptyMap()));
+  mappedStatement = rename_statement_locals(map, stmt);
+  O.OuterInit((mappedStatement, rename_expression_locals_rec(map)(expr)))
+}
+
+fun rename_initializer_locals(initializer: O.Initializer): O.Initializer {
+  (stmt, expr) = initializer.asOuter();
+  map = mutable Ref(createEmptyMap());
+  mappedStatement = rename_statement_locals(map, stmt);
+  O.OuterInit((mappedStatement, rename_expression_locals_rec(map)(expr)))
+}
+
+fun rename_const_locals(con: O.ConstDef): O.ConstDef {
+  con with {value => con.value.map(rename_initializer_locals)}
+}
+
+fun rename_locals(prog: O.Program): O.Program {
+  OU.map_program(
+    rename_class_locals,
+    rename_const_locals,
+    rename_function_locals,
+    id,
+    prog,
+  )
+}
+
+module end;

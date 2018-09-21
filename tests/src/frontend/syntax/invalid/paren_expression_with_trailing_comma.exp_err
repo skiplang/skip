@@ -1,0 +1,6 @@
+File "./syntax/invalid/paren_expression_with_trailing_comma.sk", line 2, characters 10-10:
+Expected ')'. Found ','.
+1 | fun main(): String {
+2 |   ("FAIL",)
+  |          ^
+3 | }

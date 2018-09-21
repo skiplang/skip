@@ -1,0 +1,24 @@
+mutable class A(mutable n: Int)
+
+mutable base class B {
+  mutable fun die(): void;
+}
+
+mutable class X<T: mutable A>(mutable f: mutable A, s: () -> T) extends B {
+  mutable fun die(): void {
+    this.!f = this.s()
+  }
+}
+
+@no_inline
+fun call(b: mutable B): void {
+  b.die()
+}
+
+fun main(): void {
+  a = mutable A(37);
+  x = mutable X(a, () -> a);
+  _ = freeze(x);
+  call(x);
+  print_raw("FAIL")
+}

@@ -1,0 +1,17 @@
+base class Foo<-T> {
+  fun foo(x: T): String;
+}
+
+class Bar() extends Foo<Int> {
+  fun foo(_): String {
+    "Pass\n"
+  }
+}
+
+fun get_bar(): Foo<Int> {
+  Bar()
+}
+
+fun main(): void {
+  print_raw(get_bar().foo(3))
+}

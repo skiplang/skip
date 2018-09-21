@@ -1,0 +1,269 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* The lexer. */
+/*****************************************************************************/
+module Lexer;
+
+// Includes all non-Skip specific Lexing machinery.
+//
+// Lexing returns a single Token. The Token may include errors and comments.
+//
+// The errors and comments members are accumulated while parsing a single token
+// and are always empty when starting to lex a token.
+//
+// NOTE: Currently the only characters discarded in a successful lex is whitespace;
+// Newlines and column offsets can be determined from positions of tokens and
+// comments. If details of whitespace is needed(likely for tab character support
+// in formatting) then whitespace can be added to LexResults.
+mutable base class Lexer private final {
+  mutable position: mutable LexingPosition,
+  errors: mutable Vector<SyntaxError>,
+  comments: mutable Vector<Token.Comment>,
+} {
+  // Lexes a single token, starting at the current position.
+  // Updates position to immediately after the returned token.
+  // May add comments and errors.
+  // If an ErrorToken is returned, then at least 1 error must be added.
+  protected mutable fun lexTokenInternal(
+    includeTrailingTrivia: Bool,
+  ): Token.Token;
+
+  // Lexes comments on the same line as the current token
+  protected mutable fun lexTrailingTrivia(): void;
+
+  // Parsers should prepend this to their lexing input before parsing.
+  // This saves a little complexity so that lexers don't need to special case
+  // the start state.
+  mutable fun createStartResult(): mutable Lexer.TokenResult {
+    mutable Lexer.TokenResult{
+      startPosition => this.mark(),
+      token => this.createEmptyToken(TokenKind.BEGINNING_OF_FILE()),
+    };
+  }
+
+  // The public entrypoint
+  mutable fun lexToken(includeTrailingTrivia: Bool): mutable Lexer.TokenResult {
+    startPosition = this.mark();
+    token = this.lexTokenInternal(includeTrailingTrivia);
+    mutable Lexer.TokenResult{startPosition, token};
+  }
+
+  // Creates a Lexer positioned at the start of a String.
+  deferred static fun create(source: String): mutable this {
+    static::createFromPosition(LexingPosition::create(source));
+  }
+
+  deferred static fun createFromPosition(
+    position: mutable LexingPosition,
+  ): mutable this {
+    mutable static{
+      position,
+      errors => mutable Vector[],
+      comments => mutable Vector[],
+    }
+  }
+
+  readonly fun saveState(): Lexer.LexingPosition {
+    this.position.saveState()
+  }
+
+  mutable fun setPosition(position: mutable LexingPosition): void {
+    this.!position = position.clone();
+  }
+
+  // Call this after each Token is returned.
+  protected mutable fun finishToken(): void {
+    this.errors.clear();
+    this.comments.clear();
+  }
+
+  // Used to mark the start of the next token.
+  mutable fun mark(): mutable LexingPosition {
+    this.position.clone();
+  }
+
+  protected readonly fun atEnd(): Bool {
+    this.position.atEnd()
+  }
+
+  // Returns the next character.
+  protected readonly fun peek(): Char {
+    this.position.peek();
+  }
+
+  // Returns the char at offset beyond the current character.
+  protected readonly fun peekOffset(offset: Int): Char {
+    this.position.peekOffset(offset);
+  }
+
+  // Is the next char ch?
+  protected readonly fun peekChar(ch: Char): Bool {
+    this.position.peekChar(ch);
+  }
+
+  // Is the char at offset ch?
+  protected readonly fun peekCharOffset(ch: Char, offset: Int): Bool {
+    this.position.peekCharOffset(ch, offset);
+  }
+
+  // Consume a character.
+  protected mutable fun advance(): void {
+    this.position.advance();
+  }
+
+  // Consume a char and return the consumed char.
+  protected mutable fun next(): Char {
+    this.position.next();
+  }
+
+  // Consumes the next character if it matches ch.
+  // Returns true if a character was consumed.
+  protected mutable fun eatOpt(ch: Char): Bool {
+    if (this.peekChar(ch)) {
+      this.advance();
+      true;
+    } else {
+      false;
+    }
+  }
+
+  // Skip characters while predicate is true.
+  protected mutable fun skipChars(predicate: Char ~> Bool): void {
+    loop {
+      if (!predicate(this.peek())) break void;
+      this.advance();
+    }
+  }
+
+  protected readonly fun getRange(start: readonly LexingPosition): TextRange {
+    start.getRange(this.position);
+  }
+
+  protected readonly fun getTokenText(start: readonly LexingPosition): String {
+    start.getText(this.position);
+  }
+
+  // Create a token from start to the current location.
+  protected mutable fun createToken(
+    start: readonly LexingPosition,
+    kind: TokenKind.TokenKind,
+    includeTrailingTrivia: Bool,
+  ): Token.Token {
+    errors = this.errors.toArray();
+    leadingComments = this.comments.toArray();
+    value = this.getTokenText(start);
+    range = this.getRange(start);
+    this.finishToken();
+
+    trailingComments = Array[];
+    if (includeTrailingTrivia) {
+      this.lexTrailingTrivia();
+      !errors = errors.concat(this.errors.toArray());
+      !trailingComments = this.comments.toArray();
+      this.finishToken();
+    };
+
+    token = Token.Token{
+      kind,
+      range,
+      value,
+      errors,
+      leadingComments,
+      trailingComments,
+    };
+    token;
+  }
+
+  // Used for the BEGINNING_OF_FILE and END_OF_FILE tokens.
+  protected mutable fun createEmptyToken(
+    kind: TokenKind.TokenKind,
+  ): Token.Token {
+    this.createToken(this.position, kind, false);
+  }
+
+  protected readonly fun errorCount(): Int {
+    this.errors.size();
+  }
+
+  // Has there been an error since a previous call to errorCount()?
+  protected readonly fun hadError(initialErrorCount: Int): Bool {
+    this.errorCount() != initialErrorCount;
+  }
+
+  protected mutable fun createErrorToken(
+    start: readonly LexingPosition,
+  ): Token.Token {
+    invariant(
+      this.errorCount() > 0,
+      "Must not create an ErrorToken without adding an Error",
+    );
+    this.createToken(start, TokenKind.ERROR(), false);
+  }
+
+  // Add error to the results.
+  protected mutable fun addError(error: SyntaxError): void {
+    this.errors.push(error);
+  }
+
+  // Add an error from start to the current location to the results.
+  protected mutable fun addErrorAt(
+    start: readonly LexingPosition,
+    errorCode: Int,
+    message: String,
+  ): void {
+    this.addError(
+      SyntaxError.create(errorCode, TextRange.empty(start.position), message),
+    );
+  }
+
+  protected mutable fun addAndCreateError(
+    start: readonly LexingPosition,
+    errorCode: Int,
+    message: String,
+  ): Token.Token {
+    this.addError(SyntaxError.create(errorCode, this.getRange(start), message));
+    this.createErrorToken(start);
+  }
+
+  protected mutable fun addComment(comment: Token.Comment): void {
+    this.comments.push(comment);
+  }
+
+  protected mutable fun createComment(
+    start: readonly LexingPosition,
+    kind: Token.CommentKind,
+  ): Token.Comment {
+    value = this.getTokenText(start);
+    Token.Comment{kind, range => this.getRange(start), value};
+  }
+
+  protected mutable fun createAndAddComment(
+    start: readonly LexingPosition,
+    kind: Token.CommentKind,
+  ): void {
+    this.addComment(this.createComment(start, kind));
+  }
+}
+
+// The results of lexing a single token.
+mutable class TokenResult{
+  // The position where lexing began when lexing the returned token.
+  startPosition: mutable LexingPosition,
+  token: Token.Token,
+} uses Show {
+  readonly fun toString(): String {
+    this.token.toString();
+  }
+
+  readonly fun hasError(): Bool {
+    !this.token.errors.isEmpty();
+  }
+}
+
+module end;

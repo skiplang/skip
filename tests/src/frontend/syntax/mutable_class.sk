@@ -1,0 +1,22 @@
+fun main(): void {
+  foo = mutable Foo(1);
+  foo.addOne();
+  add_one_to_mutable_foo(foo);
+  print_raw(if (foo.get() == 3) "OK\n" else "FAILED")
+}
+
+fun add_one_to_mutable_foo(foo: mutable Foo): void {
+  foo.addOne();
+  void
+}
+
+mutable class Foo(mutable value: Int) {
+  mutable fun addOne(): void {
+    this.!value = this.value + 1;
+    void
+  }
+
+  readonly fun get(): Int {
+    this.value
+  }
+}

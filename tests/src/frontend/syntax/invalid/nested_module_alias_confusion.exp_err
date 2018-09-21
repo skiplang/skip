@@ -1,0 +1,7 @@
+File "./syntax/invalid/nested_module_alias_confusion.sk", line 5, characters 1-6:
+Module declarations may not be nested.
+3 | const i: Int = 112;
+4 |
+5 | module alias B = A;
+  | ^^^^^^
+6 |

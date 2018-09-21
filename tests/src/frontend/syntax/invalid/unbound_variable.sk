@@ -1,0 +1,13 @@
+const b: String = "b";
+fun c(): String {
+  "c"
+}
+fun d(): String {
+  "d"
+} // More than 3 suggestions
+
+fun main(): void {
+  _a = "a";
+  _aa = "aa"; // More than 1 distance
+  print_raw(y)
+}

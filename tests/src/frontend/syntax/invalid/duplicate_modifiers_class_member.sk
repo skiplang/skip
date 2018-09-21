@@ -1,0 +1,3 @@
+class C() {
+  private private static fun m(): String { "Fail" }
+}

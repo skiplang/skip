@@ -1,0 +1,15 @@
+base class Parent {
+  private fun hello(): void {
+    void
+  }
+
+  private fun world(): void {
+    this.hello()
+  }
+}
+
+class Child() extends Parent {
+  fun fail(): void {
+    this.world()
+  }
+}

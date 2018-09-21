@@ -1,0 +1,6 @@
+File "./syntax/invalid/overflow_literal.sk", line 2, characters 4-67:
+Int literal overflow
+1 | fun main(): String {
+2 |   (1000000000000000000000000000000000000000000000000000000000000000).toString()
+  |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | }

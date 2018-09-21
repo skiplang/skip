@@ -1,0 +1,8 @@
+File "./typechecking/exhaustiveness/invalid/multiple_children_overlapping.sk", line 10, characters 5-11:
+The following pattern is unused:
+ | C(true)
+ 8 |   | B(false) -> "0"
+ 9 |   | B(true) -> "1"
+10 |   | C(true) -> "f"
+   |     ^^^^^^^
+11 |   }

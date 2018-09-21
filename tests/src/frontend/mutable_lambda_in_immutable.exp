@@ -1,0 +1,13 @@
+File "./typechecking/invalid/mutable_lambda_in_immutable.sk", line 4, characters 10-24:
+Cannot freeze a mutable lambda
+2 |
+3 | fun test(): void {
+4 |   _foo = Foo(() -> void)
+  |          ^^^^^^^^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/mutable_lambda_in_immutable.sk", line 1, characters 11-20:
+This is the lambda you are trying to freeze
+1 | class Foo(() -> void)
+  |           ^^^^^^^^^^
+2 |

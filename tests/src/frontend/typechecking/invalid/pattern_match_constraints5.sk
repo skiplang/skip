@@ -1,0 +1,11 @@
+class C1()
+class C2()
+
+base class Bar<+T>
+class Foo() extends Bar<C2>
+
+fun test<T: C2 & C1>(x: Bar<T>): void {
+  x match {
+  | Foo() -> void
+  }
+}

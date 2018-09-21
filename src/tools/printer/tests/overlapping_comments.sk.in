@@ -1,0 +1,18 @@
+@hhvm_import
+native // Copyright 2004-present Facebook. All Rights Reserved.
+
+/**
+ * Requires a configuration file. These files are assumed to only contain
+ * constant definitions etc.
+ */
+fun f(
+  path: String,
+): String ;
+
+@hhvm_import
+native  // Copyright 2004-present Facebook. All Rights Reserved.
+/**
+ * Requires a configuration file. These files are assumed to only contain
+ * constant definitions etc.
+ */
+fun f(path: String): String ;

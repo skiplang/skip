@@ -1,0 +1,25 @@
+base class P() {
+  children =
+  | X
+  | Y
+}
+
+base class MyOption {
+  children =
+  | XSome(X)
+  | YSome(Y)
+  | MyNone()
+}
+
+fun main(): void {
+  o: MyOption = MyNone();
+  o match {
+  | XSome(x)
+  | YSome(x) ->
+    x match {
+    | Y() -> void
+    }
+  | MyNone() -> void
+  };
+  print_string("Pass")
+}

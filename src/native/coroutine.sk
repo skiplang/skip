@@ -1,0 +1,798 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Coroutine;
+
+/*
+
+A generator is a kind of coroutine that handles "yield" statements.
+
+Each generator is implemented via a custom, codegened subclass
+of Iterator, where the "next" method contains the user's code.
+
+The generator coroutine is implemented in the conventional way.  A
+generator is a state machine, with an explicit integer field
+(resumeState) indicating where in the "next" method it should
+resume. On entry it executes a "switch" to jump to the code for that
+state.
+
+The generator starts out in the "first time called" state
+(kCoroutineInitialStateNumber). Then, each time it executes a "yield",
+it records a state number that will resume execution right "after" that
+yield. Finally, when it's finished, it records a special state number
+that means "done" (kCoroutineDoneResumeStateNumber).
+
+To handle the case of an exception being thrown, each time the "next"
+method is re-entered it stores a default state number
+(kCoroutineDoneResumeStateNumber) that puts the generator in a "done"
+state, where it always returns None().  If that state number is not
+overwritten by reaching a "yield", due to either an exception or
+executing a "yield break", the generator stays in that default "done"
+state forever.
+
+Each "yield" stores into its fields the state number that resumes
+"after" that yield as well as any live SSA values needed when it
+resumes.  Then it physically returns the yielded value; specifically,
+"yield x" becomes "save state; return Some(x)". "yield break" becomes
+"return None()".
+
+The fields on the generator class form the union of all values needed
+to be saved by any resume state. As a minor optimization we do some
+quick graph coloring so we can reuse fields for saved values with
+non-overlapping lifetimes.
+
+The set of generator fields is determined much later than for normal
+classes, only after optimization and dataflow analysis determine what
+values are actually live at each resume point.
+
+The code generation lifecycle for generators is tricky.
+
+A generator starts out as a single user-written function, but the back
+end splits it into two different functions:
+
+1) A tiny "ramp up" function that allocates a generator object, and
+   initializes it based on its arguments. This function has the signature
+   that the user wrote for their generator, except we tweak the return
+   type to replace Iterator with the specific generator subclass created
+   by the back end.
+
+2) The "next" method for the generator. This will ultimately contain
+   the bulk of the user's generator code, but it starts out as an
+   empty placeholder.
+
+For example, suppose the user writes the following code:
+
+  class MyClass<A, B> {
+    fun gen<C, D>(): mutable Iterator<Int> {
+      ... yield x ...
+    }
+  }
+
+This will eventually become the "ramp up" function, once the code is split,
+but initially it contains all of the user's generator code. We sometimes
+call this the "ramp up" even at this early stage, just to distinguish it
+from the "next" method.
+
+The back end implicitly creates this class (in createGeneratorClass()),
+to be used as the actual return type from MyClass::gen:
+
+  mutable class MyClass::gen::Generator<A, B, C, D>( ?fields unknown yet? )
+      extends mutable Iterator<Int> {
+    mutable fun next(): readonly ?Int {
+      ...
+    }
+  }
+
+When we first create this class, we don't know what the fields are --
+they are going to hold any state needed when the coroutine suspends
+during a "yield", which we only figure out later.
+
+MyClass::gen initially contains all of the user's code, including
+yield statements etc. It's declared to return a generator but doesn't
+actually have any Return instrs in it, so the verifier is content.  We
+optimize this function normally, as far as we can.
+
+Once it's done being optimized, rather than setting it aside, we analyze
+the now-optimized code to figure out what values are live at each yield.
+That tells us what state to save and restore, and therefore what what
+fields to add to the generator class.
+
+The function body is modified to insert the "switch" state machine and
+replace "yield" and "yield break" as described above. This transformed
+function becomes the body of "next", replacing the empty placeholder
+that was there. The body of MyClass::gen gets replaced with a trivial
+function that just allocates an instance of MyClass::gen::Generator.
+
+At this point the partial MyClass::gen::Generator class is extended to
+list its final state fields.  Finally, both functions, now yield-less,
+are then thrown back to the optimizer to continue processing.
+
+This is the one case where optimizing a Function produces more than just
+an optimized version of that Function -- in this case it produces a second
+Function and a new version of the Generator SClass as well. See the
+OptimizeOneResult type.
+
+*/
+
+mutable class CoroutineBlock(
+  savedOnEntry: mutable Set<InstrID> = mutable Set[],
+) extends Safepoint.SafepointBlockBase
+
+// Given types t1 and t2 that want to exist in the same "union" field,
+// find a good type to use for that field.
+private fun quasiJoinTypes(
+  t1: Tclass,
+  t2: Tclass,
+  env: GlobalEnv,
+  pos: Pos,
+): Tclass {
+  if (isSubType(t2, t1, env, pos)) {
+    t1
+  } else if (isSubType(t1, t2, env, pos)) {
+    t2
+  } else {
+    st1 = t1.getScalarType(env);
+    st2 = t2.getScalarType(env);
+
+    pos.invariant(st1 == st2, "Scalar type mismatch");
+
+    st1.kind match {
+    | GCPointerScalarKind() ->
+      tGCPointer with {mutability => t1.mutability.join(t2.mutability)}
+    | HhvmHandleScalarKind() ->
+      tHhvmHandle with {mutability => t1.mutability.join(t2.mutability)}
+    | NonGCPointerScalarKind() -> tNonGCPointer
+    | FloatScalarKind()
+    | IntegerScalarKind() ->
+      t1
+    }
+  }
+}
+
+private const kCoroutineInitialStateNumber: Int = 0;
+
+// This is the successor index we use for the block that handles calling
+// next() after the coroutine has already run out of values -- it just
+// returns None() again.
+private const kCoroutineDoneResumeStateNumber: Int = 1;
+
+// Split coroutine f into its ramp up function, next method, and state class.
+private mutable class .LowerCoroutine{
+  // Result value: this is the type used to store all coroutine state.
+  // This pass updates this field with an augmented version containing
+  // the proper list of fields and layout.
+  mutable coroutineStateSClass: SClass,
+
+  // Result value: the fleshed out "next" method (which should be optimized
+  // normally, although there's probably not that much left to do).
+  mutable nextMethod: ?Function = None(),
+
+  // ID of the coroutine "next" method.
+  nextMethodID: SFunctionID,
+
+  // Which coroutine state field is used to save/restore each saved Instr.
+  saveField: mutable Map<InstrID, SField> = mutable Map[],
+
+  // Is this a generator, rather than an async/await function?
+  isGenerator: Bool,
+
+  // Maps resumeState -> Block that handles it.
+  resumeBlocks: mutable Vector<BlockID> = mutable Vector[],
+
+  // Maps a safepoint Instr to the resumeState we use to resume after it.
+  resumeStates: mutable UnorderedMap<InstrID, Int> = mutable UnorderedMap[],
+
+  // The "this" parameter for the coroutine.
+  mutable coroutineObj: InstrID = InstrID::none,
+
+  // Any "YieldBreak" in this function must by definition return None() to
+  // indicate the end of iteration.
+  mutable returnNoneValues: Array<Constant>,
+} extends Safepoint<mutable CoroutineBlock> {
+  static fun run(
+    f: Function,
+    env: GlobalEnv,
+    info: UnfinishedCoroutine,
+  ): (Function, Function, SClass) {
+    pos = f.pos;
+
+    // Although the user declared 'f' to return 'mutable Iterator<X>',
+    // we earlier changed it to return a concrete subclass specific
+    // to this generator.
+    //
+    // TODO: We don't support superpositions here yet, this needs to
+    // be a single type.
+    coroutineStateSClass = f.funType.returnType[0].asTclass(pos).sclass(env);
+
+    d = mutable LowerCoroutine{
+      optinfo => OptimizerInfo::make(f),
+      env,
+      pos,
+      nextMethodID => coroutineStateSClass.getMethod(
+        "next",
+        MethodSuperpositionID::empty,
+        pos,
+      ),
+      returnNoneValues => info.none,
+      isGenerator => info.isGenerator,
+      coroutineStateSClass,
+    };
+
+    // NOTE: We cannot verify the results yet, because the new generator
+    // class we just created is not yet installed in the Env, so it will
+    // look like we are accessing nonexistent fields.
+    rampUp = d.go("lower coroutine", false).i0;
+
+    (rampUp, d.nextMethod.fromSome(), d.coroutineStateSClass)
+  }
+
+  // Should we treat this instruction as a safepoint?
+  protected readonly fun isSafepoint(instr: Instr): Bool {
+    instr match {
+    | Suspend _
+    | Yield _ ->
+      true
+    | _ -> false
+    }
+  }
+
+  protected readonly fun createSafepointBlock(): mutable CoroutineBlock {
+    mutable CoroutineBlock()
+  }
+
+  protected readonly fun liveBefore(): Bool {
+    // For Yield, we want the savepoint to save/restore values live AFTER
+    // the Yield, not before. The difference is the value being yielded
+    // by the Yield instr; we should not save it into the coroutine state
+    // only because the Yield instr itself needed it. We care about what
+    // happens when we resume after the Yield.
+    false
+  }
+
+  // Is this a value that should be saved by a safepoint?
+  // If not, it will be ignored by this algorithm.
+  protected readonly fun isSaved(instr: Instr): Bool {
+    !instr.isConstant()
+  }
+
+  // Track which Instrs have definitely been saved in the coroutine
+  // on entry to each block. There's no need to save them again.
+  private mutable fun findSavedOnEntry(blocks: Array<Block>): void {
+    // The ramp up function will save all live parameters, so those can
+    // be assumed to be saved already.
+    entry = this.blocks[blocks[0].id.id];
+    entry.savedOnEntry.extend(entry.liveOnEntry);
+
+    // For each block, anything it saves is also saved on entry to any
+    // dominated block.
+    for (b in blocks) {
+      spb = this.blocks[b.id.id];
+      for (d in this.optinfo.getDominatorChildren(b.id)) {
+        dominatee = this.blocks[d.id];
+
+        // Only bother to record info about live Instrs.
+        pushToDominatee = v ->
+          if (dominatee.liveOnEntry.contains(v)) {
+            dominatee.savedOnEntry.insert(v)
+          };
+
+        spb.reassignedOnExit.each(pushToDominatee);
+        spb.savedOnEntry.each(pushToDominatee)
+      }
+    }
+  }
+
+  // Create a class that has enough fields to record the saved state for
+  // every possible suspend point. We do some basic graph coloring to
+  // reuse dead slots when lifetimes don't overlap.
+  protected mutable fun layoutCoroutineStateClass(blocks: Array<Block>): void {
+    env = this.env;
+    pos = this.optinfo.f.pos;
+
+    // Record for each instr all the resume states which load it.
+    instrToResumes = mutable Map[];
+
+    // The entry block is a special case that has a "resume" with no
+    // safepoint Instr.
+    entry = blocks[0].id.id;
+    for (instr in this.blocks[entry].liveOnEntry) {
+      instrToResumes.add(instr, mutable Vector[kCoroutineInitialStateNumber])
+    };
+
+    // Handle normal safepoints.
+    for (sp => live in this.livePerSafepoint) {
+      resumeState = this.resumeStates[sp];
+      for (x in live) {
+        instrToResumes.getOrAdd(x, () -> mutable Vector[]).push(resumeState)
+      }
+    };
+
+    // What Instrs ended up in each Field. Often it's just one, but if
+    // lifetimes don't overlap there could be more than one.
+    fieldToInstrs = mutable Map[];
+
+    // All of the fields already allocated for each resume state.
+    resumeFieldsTaken = Array::fillBy(this.resumeBlocks.size(), _ ->
+      mutable Set[]
+    );
+
+    // Sort to put the Instrs with the most safepoints first, as this
+    // will tend to yield more compact graph colorings.
+    ordered = Array::mcreateFromIterator(instrToResumes.items());
+    ordered.sortBy(x ~> -x.i1.size());
+
+    // Do a simple graph coloring to allocate a field for each saved Instr.
+    for (kv in ordered) {
+      (instr, resumes) = kv;
+
+      // We allocate fields based only on the ScalarType. Two saved values
+      // whose lifetimes don't overlap can share the same slot in the coroutine
+      // state, because as far as the GC cares they are interchangeable.
+      //
+      // We could go farther and, say, overlap an Int with five Bools if their
+      // lifetimes don't overlap. That would save some space but be a
+      // nonstandard special case for the rest of the compiler, which doesn't
+      // seem worth it given that coroutines are at least somewhat transient.
+      instrType = this.getInstr(instr).typ;
+      fieldKey = (instrType.getScalarType(env), 0);
+
+      // Search the relevant resumes to find an unused field.
+      changed = true;
+      while (changed) {
+        !changed = false;
+        for (r in resumes) {
+          fields = resumeFieldsTaken[r];
+          while (fields.contains(fieldKey)) {
+            // This field was already taken, try the next one.
+            // Set 'changed' to true so we retry from the beginning
+            // to make sure earlier resumes are also OK with this
+            // new field choice.
+            !changed = true;
+            !fieldKey = (fieldKey.i0, fieldKey.i1 + 1)
+          }
+        }
+      };
+      // Reserve this field at each resume point that needs it.
+      for (r in resumes) resumeFieldsTaken[r].add(fieldKey);
+
+      fieldToInstrs.getOrAdd(fieldKey, () -> mutable Vector[]).push(instr)
+    };
+
+    // Compute the fields of the coroutine state object, grouped by ScalarType.
+    fieldInfo = Array::mcreateFromIterator(fieldToInstrs.items());
+    fieldInfo.sortBy(x ~> x.i0.i0);
+
+    fields = fieldInfo.mapWithIndex((i, fieldKeyAndInstrs) -> {
+      (_, instrs) = fieldKeyAndInstrs;
+
+      fieldType = (None() : ?Tclass);
+
+      // Choose a field type compatible with every Instr stored in it.
+      for (instrID in instrs) {
+        _ = this.getInstr(instrID).typ.forEachTclass(tc -> {
+          !fieldType = Some(
+            fieldType match {
+            | Some(ft) -> quasiJoinTypes(ft, tc, env, pos)
+            | None() -> tc
+            },
+          );
+          true
+        })
+      };
+
+      field = SField{
+        name => "f" + i,
+        typ => fieldType.fromSome("impossible unoccupied field"),
+        isAssignable => true,
+        pos,
+        index => -1,
+      };
+
+      for (instrID in instrs) this.saveField.set(instrID, field);
+
+      field
+    });
+
+    newFields = if (this.resumeBlocks.size() == 1) {
+      // No need for a resumeState field with only one state.
+      fields
+    } else {
+      // Add an additional field to hold the current resume state number.
+      resumeStateField = SField{
+        name => "resumeState",
+        typ => Lower.bigEnoughIntType(this.resumeBlocks.size()),
+        isAssignable => true,
+        pos,
+        index => -1,
+      };
+
+      Array[resumeStateField].concat(fields);
+    };
+
+    this.!coroutineStateSClass = this.coroutineStateSClass with {
+      fields => this.coroutineStateSClass.fields.concat(newFields),
+      layout => Some(
+        OuterIstToIR.layoutOneStandaloneClass(
+          newFields,
+          env,
+          this.coroutineStateSClass.layout.fromSome("Expected existing layout"),
+        ),
+      ),
+    }
+  }
+
+  private mutable fun createResumeBlocks(blocks: Array<Block>): void {
+    resumeBlocks = this.resumeBlocks;
+
+    this.pos.invariant(
+      resumeBlocks.size() == kCoroutineInitialStateNumber,
+      "Wrong initial state index",
+    );
+    resumeBlocks.push(this.newBlockID());
+
+    if (this.isGenerator) {
+      this.pos.invariant(
+        resumeBlocks.size() == kCoroutineDoneResumeStateNumber,
+        "Wrong resume index",
+      );
+      resumeBlocks.push(this.newBlockID());
+    };
+
+    // Hand out states in the order in which the safepoints appear in
+    // the function. The order doesn't actually matter but it's "pretty".
+    for (b in blocks) {
+      for (instr in b.instrs) {
+        if (this.isSafepoint(instr)) {
+          this.resumeStates.set(instr.id, resumeBlocks.size());
+          resumeBlocks.push(this.newBlockID())
+        }
+      }
+    }
+  }
+
+  protected mutable fun analyzeBlocks(blocks: Array<Block>): void {
+    // All live parameters are going to get specially reloaded in the
+    // entry block, so those count as reassigned.
+    entry = this.blocks[blocks[0].id.id];
+    entry.reassignedOnExit.extend(entry.liveOnEntry);
+
+    this.findSavedOnEntry(blocks);
+    this.createResumeBlocks(blocks);
+    this.layoutCoroutineStateClass(blocks)
+  }
+
+  private readonly fun resumeStateType(): Tclass {
+    this.coroutineStateSClass.getField("resumeState", this.pos).typ
+  }
+
+  private mutable fun emitStoreResumeState(state: Int, pos: Pos): void {
+    this.emitSetField{
+      obj => this.coroutineObj,
+      field => "resumeState",
+      value => this.constantTypedInt(this.resumeStateType(), state).id,
+      pos,
+    }
+  }
+
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    this.defaultBeginOptimizeBlock(b);
+
+    if (b.id == this.optinfo.f.blocks[0].id) {
+      this.changeSignatureToNextMethod();
+      this.emitEntryBlockCoroutinePreamble(b)
+    }
+  }
+
+  // Return the placeholder Function for the "next" method we are generating.
+  private readonly fun findNextMethod(): Function {
+    this.env.getFunction(this.nextMethodID, this.pos)
+  }
+
+  // Change the parameters to be those of the "next" method.
+  //
+  // This looks a bit weird but we are splitting the function that
+  // originally took all of the coroutine parameters into "rampUp" and
+  // "next" functions. This function started out as "rampUp" but is
+  // turning into "next" during this transformation, so we need to change
+  // its parameters to match.
+  private mutable fun changeSignatureToNextMethod(): void {
+    nextSkeleton = this.findNextMethod();
+
+    this.!funType = nextSkeleton.funType;
+    this.!funTypeChanged = true;
+
+    this.!coroutineObj = this.optinfo.idToInstr.allocID();
+
+    thisParam = FunParam{
+      typ => this.funType.params[0],
+      pos => this.pos,
+      id => this.coroutineObj,
+      prettyName => "this",
+    };
+    this.optinfo.idToInstr.insert(thisParam);
+    this.!funParams = Array[thisParam];
+    this.!funParamsChanged = true;
+    // NOTE: We will preserve other fields from "nextSkeleton" later
+    // during postprocess().
+  }
+
+  // Reload a value that was "spilled" into the coroutine state.
+  private mutable fun restoreValue(instr: InstrID, pos: Pos): void {
+    field = this.saveField[instr];
+
+    // Load the raw saved value.
+    rawValue = this.emitGetField{
+      obj => this.coroutineObj,
+      field => field.name,
+      typ => field.typ,
+      pos,
+    };
+
+    // Due to field overlapping the field type may not be the actual type
+    // we want, so cast it.
+    castValue = this.emitCast{
+      value => rawValue.id,
+      typ => this.getInstr(instr).typ,
+      pos,
+    };
+    this.current.set(instr, castValue.id)
+  }
+
+  private mutable fun emitEntryBlockCoroutinePreamble(b: Block): void {
+    // At function entry, dispatch on the resumeState.
+    pos = b.pos;
+
+    if (this.resumeBlocks.size() > 1) {
+      // Load what resumeState we were at.
+      resumeState = this.emitZeroExtend{
+        typ => tInt,
+        pos,
+        value => this.emitGetField{
+          typ => this.resumeStateType(),
+          pos,
+          obj => this.coroutineObj,
+          field => "resumeState",
+        }.id,
+      };
+
+      if (this.isGenerator) {
+        // Default the resume state to end-of-iteration exit block in case there
+        // is a throw or (worse) the user tries to reentrantly enter the next()
+        // method. If the user reaches a yield this will be overwritten with
+        // that yield's resume state.
+        this.emitStoreResumeState(kCoroutineDoneResumeStateNumber, pos)
+      };
+
+      unreachableBlock = this.newBlockID();
+
+      switchBlocks = Array::fillBy(this.resumeBlocks.size() + 1, i -> {
+        BlockSuccessor(
+          if (i == 0) {
+            // The default case is unreachable (we never use bad resumeStates).
+            unreachableBlock
+          } else {
+            this.resumeBlocks[i - 1]
+          },
+        )
+      });
+
+      this.emitIntSwitch{
+        pos,
+        value => resumeState.id,
+        cases => Array::fillBy(this.resumeBlocks.size(), id),
+        successors => switchBlocks,
+      };
+
+      this.startNewBlock(unreachableBlock);
+      this.emitUnreachable{why => "Impossible coroutine resume state", pos};
+
+      if (this.isGenerator) {
+        this.startNewBlock(this.resumeBlocks[kCoroutineDoneResumeStateNumber]);
+
+        this.emitReturn{
+          values => this.returnNoneValues.map(v ->
+            this.getConstant(v with {id => this.iid()}).id
+          ),
+          pos,
+        }
+      };
+
+      this.startNewBlock(this.resumeBlocks[0]);
+    };
+
+    // Load initial state (the one case that does not correspond
+    // to a user safepoint).
+    for (live in this.blocks[b.id.id].liveOnEntry) {
+      this.restoreValue(live, b.pos)
+    }
+  }
+
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    cur = this.current;
+    cur.set(instr.id, instr.id);
+
+    // Get the possibly relocated value for an Instr.
+    remap = x -> cur.maybeGet(x).default(x);
+
+    instr match {
+    | AsyncReturn{pos} ->
+      _ = this.emitReturn{values => Array[], pos};
+      true
+
+    | GetCurrentAwaitable{id} ->
+      this.optinfo.idToInstr.set(id, this.getInstr(this.coroutineObj));
+      true
+
+    | Suspend{id, pos}
+    | Yield{id, pos} ->
+      // This does three steps:
+      // 1) Store values needed when we later resume.
+      // 2) Return the yielded value (already wrapped in "Some()" for us).
+      // 3) Create the "resume" block, that reloads the values stored in (1).
+
+      obj = this.coroutineObj;
+
+      resumeState = this.resumeStates[id];
+      this.emitStoreResumeState(resumeState, pos);
+
+      // TODO: Sort by field offset somehow to be prettier?
+      for (live in this.livePerSafepoint[id]) {
+        field = this.saveField[live];
+        value = this.emitCast{value => cur[live], typ => field.typ, pos}.id;
+        this.emitSetField{obj, field => field.name, value, pos};
+      };
+
+      instr match {
+      | Yield{values} ->
+        pos.invariant(this.isGenerator, "Unexpected Yield");
+        this.emitReturn{id, pos, values => values.map(remap)}
+      | Suspend{value} ->
+        pos.invariant(!this.isGenerator, "Unexpected Suspend");
+        _ = this.emitCallFunction{
+          name => this.env.runtimeFunctions["Awaitable.awaitableSuspend"],
+          typ => tVoid,
+          pos,
+          args => Array[this.coroutineObj, remap(value)],
+          smap => kNonParametricFunSmap,
+        };
+        this.emitReturn{id, pos, values => Array[]}
+      | _ -> pos.die("Impossible case")
+      };
+
+      this.startNewBlock(this.resumeBlocks[resumeState]);
+
+      cur.clear();
+      cur.set(obj, obj);
+
+      // Reload all of the saved values.
+      for (live in this.livePerSafepoint[instr.id]) {
+        this.restoreValue(live, instr.pos)
+      };
+
+      // TODO: Should we null out any "dead" pointer fields here, to help GC?
+      true
+
+    | YieldBreak{id, pos} ->
+      pos.invariant(this.isGenerator, "Unexpected YieldBreak");
+      this.emitJump{
+        id,
+        pos,
+        target => BlockSuccessor(
+          this.resumeBlocks[kCoroutineDoneResumeStateNumber],
+        ),
+      };
+      true
+
+    | Return{pos} -> pos.die("Unexpected Return in coroutine")
+
+    | _ ->
+      // Emit all other Instrs.
+      this.defaultOptimizeInstr(instr, remap)
+    }
+  }
+
+  protected mutable fun postprocess(f: Function): Function {
+    env = this.env;
+
+    // Plug the compiled state from 'f' into 'nextMethod'.
+    origNextMethod = this.findNextMethod();
+    origNextMethod.pos.invariant(
+      origNextMethod.coroutineInfo is Some(UnfinishedNext _),
+      "Expected an unfinished next method",
+    );
+
+    // Record this converted coroutine as the "next" method.
+    this.!nextMethod = Some(
+      origNextMethod with {
+        params => f.params,
+        constants => f.constants,
+        blocks => f.blocks,
+        status => OptPartial{donePasses => Optimize.Config::kOptPrerequisites},
+        coroutineInfo => None(),
+      },
+    );
+
+    // Create the ramp up function.
+    coroutineStateType = origNextMethod.funType.params[0];
+
+    orig = this.optinfo.f;
+    pos = orig.pos;
+    emitter = Emitter::make(
+      FunInfo{
+        id => orig.id,
+        name => orig.name,
+        pos,
+        isNative => orig.isNative,
+        isMemoized => orig.isMemoized,
+        isDisasm => orig.isDisasm,
+        isRuntimeExport => orig.isRuntimeExport,
+        exportStyle => orig.exportStyle,
+        annotations => orig.annotations,
+        gfunction => orig.gfunction,
+        // Use a more specific return type than mutable Iterator<X>, now that
+        // we know what it is, hoping that helps optimization someday.
+        funType => orig.funType with {returnType => Array[coroutineStateType]},
+      },
+      orig.params.map(p -> p.prettyName),
+      env,
+      orig.superpositions,
+    );
+
+    coroutineState = emitter.emitObject{
+      args => this.coroutineStateSClass.fields.map(field -> {
+        if (field.name == "resumeState") {
+          emitter.constantTypedInt(field.typ, kCoroutineInitialStateNumber).id
+        } else {
+          fieldValue = InstrID::none;
+
+          if ({
+            paramIndex = -1;
+
+            orig.params.any(arg -> {
+              !paramIndex = paramIndex + 1;
+
+              this.saveField.maybeGet(arg.id) match {
+              | Some(sf) if (sf.name == field.name) ->
+                // We are saving a parameter in this field, so record it,
+                // but using the InstrID from the newly-created function.
+                !fieldValue = emitter.funParams[paramIndex].id;
+                true
+              | _ -> false
+              }
+            })
+          }) {
+            emitter.emitCast{value => fieldValue, typ => field.typ, pos}.id
+          } else {
+            // We don't have any value for the field yet, so start with zero.
+            emitter.constantZero(field.typ).id
+          }
+        }
+      }),
+      typ => coroutineStateType,
+      pos,
+    };
+
+    if (!this.isGenerator) {
+      // Start async functions running right away by running "next".
+      _ = emitter.emitCallMethod{
+        args => Array[coroutineState.id],
+        method => "next",
+        smap => kNonParametricMethodSmap,
+        typ => tVoid,
+        pos,
+        prettyName => "startAsyncRunning",
+      }
+    };
+
+    emitter.emitReturn{values => Array[coroutineState.id], pos};
+
+    // NOTE: We cannot verify the results yet, because the new generator
+    // class we just created is not yet installed in the Env, so it will
+    // look like we are accessing nonexistent fields.
+    emitter.finish("Create coroutine rampup", false)
+  }
+}

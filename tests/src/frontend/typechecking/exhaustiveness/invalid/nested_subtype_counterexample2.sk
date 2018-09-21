@@ -1,0 +1,29 @@
+base class F {
+  children =
+  | A{x: Int, y: Bool}
+  | B{t: Int}
+  | C(Int)
+}
+
+base class G extends F {
+  children =
+  | D()
+  | H()
+  | Y()
+  | U()
+  | J()
+}
+
+base class R {
+  children =
+  | L{t: Int, f: F}
+  | T(Int, F)
+}
+
+fun test(x: R): void {
+  x match {
+  | L _
+  | T(1, A _) ->
+    void
+  }
+}

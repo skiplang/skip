@@ -1,0 +1,12 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+base class Bar<T>
+class Foo<T>(x: T) extends Bar<T>
+
+fun tester<T>(x: Bar<T>): T {
+  x match {
+  | Foo(v) -> v
+  }
+}

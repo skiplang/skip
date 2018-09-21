@@ -1,0 +1,10 @@
+fun f(): String {
+  if (true) {
+    return "OK"
+  };
+  "FAILED"
+}
+
+fun main(): void {
+  print_raw(f())
+}

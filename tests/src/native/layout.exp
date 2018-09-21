@@ -1,0 +1,6 @@
+PosLayout.Class 1: 40/40 bytes, a: 1, b: 2, c: '3', d: 4, e: 1
+PosLayout.Class 1: 40/40 bytes, a: 4, b: 3, c: '2', d: 1, e: 0
+PosLayout.Class 2: 16/16 bytes, a: 0, b: 1, c: 100
+PosLayout.Class 2: 16/16 bytes, a: 1, b: 0, c: 100
+NamedLayout.Class 1: 32/32 bytes, a: 1, b: 2, c: '3', d: 4, e: 1
+ValueDefeat.Class 1: 8/8 bytes, s: 'hello'

@@ -1,0 +1,1097 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Pretty printer used only for debugging. (That's why it looks so ugly ;-)) */
+/*****************************************************************************/
+module SkipAstPp;
+
+fun string(o: mutable BufferedPrinter.Out, x: String): void {
+  BufferedPrinter.string(o, x)
+}
+
+fun pos(o: mutable BufferedPrinter.Out, pos: FileRange): void {
+  string(o, pos.toString())
+}
+
+fun name(o: mutable BufferedPrinter.Out, x: (FileRange, String)): void {
+  BufferedPrinter.name(o, x)
+}
+
+fun list<T>(
+  f: ((mutable BufferedPrinter.Out, T) -> void),
+  o: mutable BufferedPrinter.Out,
+  l: List<T>,
+): void {
+  BufferedPrinter.list(f, o, l)
+}
+
+fun array<V>(
+  f: ((mutable BufferedPrinter.Out, V) -> void),
+  o: mutable BufferedPrinter.Out,
+  a: Array<V>,
+): void {
+  BufferedPrinter.array(f, o, a)
+}
+
+fun explicity(o: mutable BufferedPrinter.Out, x: SkipAst.Explicity): void {
+  x match {
+  | SkipAst.Implicit() -> o.out("implicitly")
+  | SkipAst.Explicit() -> o.out("explicitly")
+  | SkipAst.TempFrom(n) ->
+    o.out("temporarily (actually from ");
+    name(o, n);
+    o.out(")")
+  }
+}
+
+fun inherited(
+  o: mutable BufferedPrinter.Out,
+  kind: SkipAst.InheritedKind,
+  pval: ((mutable BufferedPrinter.Out, SkipAst.Expr_body) -> void),
+): void {
+  exp = kind.explicit;
+  n = kind.from_;
+  value = kind.value;
+  o.out(" inherited [");
+  explicity(o, exp);
+  o.out("]");
+  o.out(" from ");
+  name(o, n);
+  o.out(" ");
+  pval(o, value)
+}
+
+fun annotations(o: mutable BufferedPrinter.Out, ans: SSet): void {
+  for (annot in ans) {
+    o.out(annot);
+    o.newline()
+  }
+}
+
+fun type_def<T>(
+  o: mutable BufferedPrinter.Out,
+  body: ((mutable BufferedPrinter.Out, T) -> void),
+  tyd: SkipAst.Type_def<T>,
+): void {
+  annotations(o, tyd.annotations);
+  o.out("type ");
+  name(o, tyd.name);
+  body(o, tyd.body);
+  o.out(";");
+  o.newline()
+}
+
+fun files(
+  o: mutable BufferedPrinter.Out,
+  defl: List<List<SkipAst.Definition>>,
+): void {
+  for (ds in defl) file(o, ds)
+}
+
+fun program(o: mutable BufferedPrinter.Out, prog: SkipAst.Program): void {
+  class_defs = prog.class_defs;
+  fun_defs = prog.fun_defs;
+  const_defs = prog.const_defs;
+  type_defs = prog.type_defs;
+  for (x in class_defs) class_def(o, x);
+  for (x in fun_defs) fun_def(o, x);
+  for (x in const_defs) const_def(o, x);
+  for (x in type_defs) type_alias_def(o, x)
+}
+
+fun file(
+  o: mutable BufferedPrinter.Out,
+  fil_defs: List<SkipAst.Definition>,
+): void {
+  for (d in fil_defs) definition(o, d)
+}
+
+fun definition(o: mutable BufferedPrinter.Out, x: SkipAst.Definition): void {
+  x match {
+  | SkipAst.DMalias(a) -> module_alias(o, a)
+  | SkipAst.DClass(c) -> class_def(o, c)
+  | SkipAst.DModule(_, n) -> module_(o, n)
+  | SkipAst.DFun(f) -> fun_def(o, f)
+  | SkipAst.DConst(cst) -> const_def(o, cst)
+  | SkipAst.DType(tdef) -> type_alias_def(o, tdef)
+  | SkipAst.DModuleEnd _ ->
+    o.out("module end;");
+    o.newline()
+  }
+}
+
+fun module_(o: mutable BufferedPrinter.Out, mname: SkipAst.Name): void {
+  o.out("module ");
+  name(o, mname);
+  o.out(";");
+  o.newline()
+}
+
+fun const_def(o: mutable BufferedPrinter.Out, cst: SkipAst.Const_def): void {
+  o.out("const ");
+  name(o, cst.name);
+  o.out(": ");
+  type(o, cst.type);
+  o.out(" = ");
+  const_value(o, cst.value);
+  o.out(";");
+  o.newline()
+}
+
+fun const_value(
+  o: mutable BufferedPrinter.Out,
+  body: SkipAst.Inherited_body,
+): void {
+  (_, value) = body;
+  value match {
+  | SkipAst.Inherited(inh) -> inherited(o, inh, const_value_)
+  | SkipAst.Body(value1) -> const_value_(o, value1)
+  }
+}
+
+fun const_value_(o: mutable BufferedPrinter.Out, x: SkipAst.Expr_body): void {
+  x match {
+  | SkipAst.BNative _
+  | SkipAst.BNone() ->
+    void
+  | SkipAst.BExpr(v) -> expr(o, v())
+  | SkipAst.BFrom(tn) ->
+    o.out(" from ");
+    type_name(o, tn)
+  | SkipAst.BAlgebraic _ -> invariant_violation("bad const value")
+  }
+}
+
+fun alias_tyd(o: mutable BufferedPrinter.Out, sk_alias: SkipAst.Type_): void {
+  o.out(" = ");
+  type(o, sk_alias)
+}
+
+fun cla_tyd(o: mutable BufferedPrinter.Out, x: SkipAst.Cla_tyd): void {
+  x match {
+  | SkipAst.TydAbstract(ty, default) ->
+    maybe_type(o, ": ", ty);
+    maybe_type(o, " default ", default)
+  | SkipAst.TydDefined(value) ->
+    o.out(" = ");
+    type(o, value)
+  }
+}
+
+fun type_alias_def(
+  o: mutable BufferedPrinter.Out,
+  tyd: SkipAst.Type_alias_def,
+): void {
+  type_def(o, alias_tyd, tyd)
+}
+
+fun cla_type_def(
+  o: mutable BufferedPrinter.Out,
+  tyd: SkipAst.Cla_type_def,
+): void {
+  type_def(o, cla_tyd, tyd)
+}
+
+fun class_def(o: mutable BufferedPrinter.Out, cd: SkipAst.Class_def): void {
+  annotations(o, cd.annotations);
+  if (cd.value.isSome()) {
+    o.out("value ")
+  };
+  o.out(
+    cd.kind match {
+    | SkipAst.KBase() -> "base class "
+    | SkipAst.KClass() -> "class "
+    | SkipAst.KTrait() -> "interface "
+    },
+  );
+  o.out(cd.name.i1);
+  tparams(o, cd.tparams);
+  class_params(o, cd.params);
+  if (!cd.extends_.isEmpty()) {
+    o.out(" extends ");
+    named_type_list(o, cd.extends_)
+  };
+  if (!cd.use.isEmpty()) {
+    o.out(" use ");
+    named_type_list(o, cd.use)
+  };
+  o.out(" {");
+  o.newline();
+  o.margin(() -> {
+    o.out("depth = " + cd.depth);
+    o.newline();
+    sk_children(o, cd.children_);
+    if (cd.children_.isEmpty()) {
+      o.newline()
+    };
+    for (x in cd.types) cla_type_def(o, x);
+    for (cst in cd.consts) const_def(o, cst);
+    for (m in cd.methods) method_(o, m)
+  });
+  o.out("}");
+  o.newline();
+  o.newline()
+}
+
+fun fun_def(o: mutable BufferedPrinter.Out, fd: SkipAst.Fun_def): void {
+  annotations(o, fd.annotations);
+  o.out("fun ");
+  name(o, fd.name);
+  tparams(o, fd.tparams);
+  params(o, fd.params);
+  return_type(o, fd.return_);
+  fd.body match {
+  | None() ->
+    o.out(";");
+    o.newline()
+  | Some(body) ->
+    o.out("{");
+    o.newline();
+    o.margin(() -> expr(o, body()));
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.newline()
+  }
+}
+
+fun type(o: mutable BufferedPrinter.Out, ty: SkipAst.Type_): void {
+  (_, ty1) = ty;
+  ty1 match {
+  | SkipAst.Tany() -> o.out("any")
+  | SkipAst.Tunder() -> o.out("_")
+  | SkipAst.Tapply(n, tyl) ->
+    type_name(o, n);
+    type_args(o, tyl)
+  | SkipAst.Ttuple(tyl) ->
+    o.out("tuple(");
+    array(type, o, tyl);
+    o.out(")")
+  | SkipAst.Tfun(modifiers, fty_params, fty_return) ->
+    if (modifiers.is_untracked) {
+      o.out("untracked ")
+    };
+    type_params(o, fty_params);
+    if (modifiers.is_mutable) {
+      o.out(" -> ")
+    } else {
+      o.out(" ~> ")
+    };
+    type(o, fty_return)
+  | SkipAst.Tabstract(tn, tnl) ->
+    type_name(o, tn);
+    o.out("::");
+    BufferedPrinter.array_sep("::", name, o, tnl)
+  | SkipAst.Tinst() -> o.out("inst")
+  | SkipAst.Tthis() -> o.out("this")
+  | SkipAst.Tfrozen() -> o.out("frozen")
+  | SkipAst.TnonNullable() -> o.out("nonNullable")
+  | SkipAst.Tmutable(ty2) ->
+    o.out("mutable ");
+    type(o, ty2)
+  | SkipAst.Treadonly(ty2) ->
+    o.out("readonly ");
+    type(o, ty2)
+  | SkipAst.Tawaitable(ty2) ->
+    o.out("^");
+    type(o, ty2)
+  }
+}
+
+fun maybe_type(
+  o: mutable BufferedPrinter.Out,
+  delim: String,
+  x: ?SkipAst.Type_,
+): void {
+  x match {
+  | None() -> void
+  | Some(ty) ->
+    o.out(delim);
+    type(o, ty)
+  }
+}
+
+fun type_params(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<SkipAst.Type_>,
+): void {
+  x match {
+  | Positional(tyl) ->
+    o.out("(");
+    array(type, o, tyl);
+    o.out(")")
+  | Named(m) ->
+    o.out("{");
+    type_map(o, m);
+    o.out("}")
+  }
+}
+
+fun type_map(o: mutable BufferedPrinter.Out, m: UMap<SkipAst.Type_>): void {
+  m.each((name, ty) -> {
+    o.out(name.i1);
+    o.out(": ");
+    type(o, ty);
+    o.out(", ")
+  })
+}
+
+fun type_args(o: mutable BufferedPrinter.Out, x: Array<SkipAst.Type_>): void {
+  if (!x.isEmpty()) {
+    o.out("<");
+    type_list(o, x);
+    o.out(">")
+  }
+}
+
+fun type_list(o: mutable BufferedPrinter.Out, l: Array<SkipAst.Type_>): void {
+  array(type, o, l)
+}
+
+fun named_type_list(
+  o: mutable BufferedPrinter.Out,
+  l: Array<SkipAst.Parent>,
+): void {
+  array(parent, o, l)
+}
+
+fun parent(o: mutable BufferedPrinter.Out, pt: SkipAst.Parent): void {
+  (n, tyl) = pt.parent;
+  type_name(o, n);
+  type_args(o, tyl);
+  o.out(" FROM =");
+  name(o, pt.source)
+}
+
+fun type_name(o: mutable BufferedPrinter.Out, x: SkipAst.Type_name): void {
+  x match {
+  | SkipAst.Tclass(n) -> name(o, n)
+  | SkipAst.Tmacro(n) -> name(o, n)
+  | SkipAst.Tmodule_class(_, x1, y) ->
+    name(o, x1);
+    o.out(".");
+    name(o, y)
+  | SkipAst.Tparam(n, id) ->
+    name(o, n);
+    o.out("#");
+    o.out(id.toString())
+  }
+}
+
+fun class_params(
+  o: mutable BufferedPrinter.Out,
+  x: SkipAst.MaybeClassParams,
+): void {
+  x match {
+  | SkipAst.NoParams() -> void
+  | SkipAst.NativeConstruct _ -> o.out(" native ")
+  | SkipAst.HasParams(cp) -> class_params_(o, cp)
+  }
+}
+
+fun class_params_(
+  o: mutable BufferedPrinter.Out,
+  cp: SkipAst.Class_params,
+): void {
+  if (cp.final_.isSome()) {
+    o.out(" final ")
+  };
+  params(o, cp.params)
+}
+
+fun params(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<SkipAst.Parameter>,
+): void {
+  x match {
+  | Positional(paraml) ->
+    o.out("(");
+    array(fun_parameter, o, paraml);
+    o.out(")")
+  | Named(param_map) ->
+    o.out("{");
+    values = param_map.values().collect(Array);
+    array(fun_parameter, o, values);
+    o.out("}")
+  }
+}
+
+fun fun_parameter(o: mutable BufferedPrinter.Out, fp: SkipAst.Parameter): void {
+  annotations(o, fp.annotations);
+  name(o, fp.name);
+  o.out(": ");
+  type(o, fp.type);
+  fp.value match {
+  | None() -> void
+  | Some(e) ->
+    o.out(" = ");
+    expr(o, e)
+  }
+}
+
+fun return_type(o: mutable BufferedPrinter.Out, ty: SkipAst.Type_): void {
+  o.out(": ");
+  type(o, ty);
+  o.out(" ")
+}
+
+fun method_body(
+  o: mutable BufferedPrinter.Out,
+  mb: SkipAst.Inherited_body,
+): void {
+  (_, mb1) = mb;
+  method_body_(o, mb1)
+}
+
+fun method_body_(
+  o: mutable BufferedPrinter.Out,
+  x: SkipAst.Inherited_body_,
+): void {
+  x match {
+  | SkipAst.Inherited(inh) -> inherited(o, inh, method_body__)
+  | SkipAst.Body(mb) -> method_body__(o, mb)
+  }
+}
+
+fun method_body__(o: mutable BufferedPrinter.Out, x: SkipAst.Expr_body): void {
+  x match {
+  | SkipAst.BNative _
+  | SkipAst.BNone() ->
+    o.out(";");
+    o.newline()
+  | SkipAst.BExpr(e) ->
+    o.out("{");
+    o.newline();
+    o.margin(() -> expr(o, e()));
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.newline()
+  | SkipAst.BAlgebraic(l) ->
+    for (mb in l) match_branch(o, mb);
+    o.newline();
+    o.newline()
+  | SkipAst.BFrom(tn) ->
+    o.out(" from ");
+    type_name(o, tn);
+    o.newline()
+  }
+}
+
+fun module_alias(
+  o: mutable BufferedPrinter.Out,
+  a: SkipAst.Module_alias,
+): void {
+  o.out("module alias ");
+  name(o, a.mal_name);
+  o.out(" = ");
+  name(o, a.mal_rhs_name);
+  o.newline()
+}
+
+fun tparams(
+  o: mutable BufferedPrinter.Out,
+  x: Array<SkipAst.Type_parameter>,
+): void {
+  if (!x.isEmpty()) {
+    o.out("<");
+    array(type_parameter, o, x);
+    o.out(">")
+  }
+}
+
+fun type_parameter(
+  o: mutable BufferedPrinter.Out,
+  ty_param: SkipAst.Type_parameter,
+): void {
+  (variance, _, x, y) = ty_param;
+  variance match {
+  | SkipAst.Vnone() -> void
+  | SkipAst.Vplus() -> o.out("+")
+  | SkipAst.Vminus() -> o.out("-")
+  };
+  name(o, x);
+  y match {
+  | None() -> void
+  | Some(y1) ->
+    o.out(":");
+    o.space();
+    type_conj(o, y1)
+  }
+}
+
+fun type_conj(o: mutable BufferedPrinter.Out, x: Array<SkipAst.Type_>): void {
+  BufferedPrinter.array_sep("&", type, o, x)
+}
+
+fun sk_children(o: mutable BufferedPrinter.Out, x: SkipAst.Children): void {
+  x match {
+  | List.Nil() -> void
+  | sk_children ->
+    o.newline();
+    o.out("children =");
+    o.newline();
+    o.margin(() -> for (c in sk_children) child(o, c));
+    o.newline()
+  }
+}
+
+fun child(o: mutable BufferedPrinter.Out, chi: SkipAst.Child): void {
+  o.out("| ");
+  annotations(o, chi.chi_annotations);
+  o.out(chi.chi_name.i1);
+  chi.chi_params.each(cp -> class_params_(o, cp))
+}
+
+fun method_(o: mutable BufferedPrinter.Out, m: SkipAst.Method_def): void {
+  annotations(o, m.annotations);
+  m.mutable_ match {
+  | None() -> void
+  | Some _ -> o.out("mutable ")
+  };
+  m.frozen_ match {
+  | None() -> void
+  | Some _ -> o.out("frozen ")
+  };
+  m.static_ match {
+  | None() -> void
+  | Some _ -> o.out("static ")
+  };
+  m.overridable_ match {
+  | None() -> void
+  | Some _ -> o.out("overridable ")
+  };
+  name(o, m.name);
+  whenparams(o, m.whenparams);
+  tparams(o, m.tparams);
+  params(o, m.params);
+  return_type(o, m.return_);
+  method_body(o, m.body)
+}
+
+fun whenparams(
+  o: mutable BufferedPrinter.Out,
+  x: Array<SkipAst.When_type_clause>,
+): void {
+  if (!x.isEmpty()) {
+    o.out("[");
+    array(when_type_clause, o, x);
+    o.out("]")
+  }
+}
+
+fun when_type_clause(
+  o: mutable BufferedPrinter.Out,
+  x: SkipAst.When_type_clause,
+): void {
+  type(o, x.i0);
+  o.out(":");
+  o.space();
+  type_conj(o, x.i1)
+}
+
+fun expr(o: mutable BufferedPrinter.Out, e: SkipAst.Expr): void {
+  (_, e_) = e;
+  e_ match {
+  | SkipAst.Literal(l) -> literal(o, l)
+  | SkipAst.Cstr(x, tyl) ->
+    name(o, x);
+    type_args(o, tyl)
+  | SkipAst.MacroVar(x) -> name(o, x)
+  | SkipAst.Var(x) -> name(o, x)
+  | SkipAst.Seq(e1, e2) ->
+    expr(o, e1);
+    o.out(";");
+    o.newline();
+    expr(o, e2)
+  | SkipAst.If(e1, e2, e3) ->
+    o.out("if(");
+    expr(o, e1);
+    o.out(") {");
+    o.newline();
+    o.margin(() -> {
+      expr(o, e2);
+      o.newline()
+    });
+    o.out("}");
+    o.newline();
+    o.out("else {");
+    o.newline();
+    o.margin(() -> {
+      expr(o, e3);
+      o.newline()
+    });
+    o.out("}");
+    o.newline()
+  | SkipAst.Call(e2, tyl, el) ->
+    o.out("Call ");
+    expr(o, e2);
+    type_args(o, tyl);
+    expr_call_args(o, el)
+  | SkipAst.CallArray(e2, tyl, el) ->
+    o.out("CallArray ");
+    expr(o, e2);
+    type_args(o, tyl);
+    o.out("[");
+    expr_call_args(o, el);
+    o.out("]")
+  | SkipAst.CallMap(e2, tyl, el) ->
+    o.out("CallMap ");
+    expr(o, e2);
+    type_args(o, tyl);
+    o.out("[");
+    array(
+      (o2, item) -> {
+        (key, value) = item;
+        expr(o2, key);
+        o2.out(" => ");
+        expr(o2, value)
+      },
+      o,
+      el,
+    );
+    o.out("]")
+  | SkipAst.Annotated(e2, ty) ->
+    o.out("(");
+    expr(o, e2);
+    o.out(" : ");
+    type(o, ty);
+    o.out(")")
+  | SkipAst.MacroDot(e1, n)
+  | SkipAst.Dot(e1, n) ->
+    expr(o, e1);
+    o.out(".");
+    name(o, n)
+  | SkipAst.MacroStaticDot(e1, n)
+  | SkipAst.StaticDot(e1, n) ->
+    expr(o, e1);
+    o.out("::");
+    name(o, n)
+  | SkipAst.Pipe(e1, e2) ->
+    expr(o, e1);
+    o.out(" |> ");
+    expr(o, e2)
+  | SkipAst.Binop(bop, e1, e2) ->
+    o.out("(");
+    expr(o, e1);
+    o.space();
+    o.out(binop(bop));
+    o.space();
+    expr(o, e2);
+    o.out(")")
+  | SkipAst.Unop((_, uop), e2) ->
+    o.out("(");
+    o.out(unop(uop));
+    expr(o, e2);
+    o.out(")")
+  | SkipAst.Is(e1, pat) ->
+    expr(o, e1);
+    o.space();
+    o.out("is");
+    o.space();
+    pattern(o, pat)
+  | SkipAst.As(e1, pat) ->
+    expr(o, e1);
+    o.space();
+    o.out("as");
+    o.space();
+    pattern(o, pat)
+  | SkipAst.Match(e2, mbl) ->
+    expr(o, e2);
+    o.out(" match {");
+    for (mb in mbl) match_branch(o, mb);
+    o.newline();
+    o.out("}");
+    o.newline()
+  | SkipAst.Lambda(mods, lp, e2) ->
+    if (mods.is_mutable) {
+      o.out("mutable ")
+    };
+    lambda_params(o, lp);
+    o.out(" ->");
+    o.newline();
+    o.margin(() -> expr(o, e2));
+    o.newline()
+  | SkipAst.Tuple(el) ->
+    o.out("(");
+    array(expr, o, el);
+    o.out(")")
+  | SkipAst.Try(e2, mbl) ->
+    o.out("try {");
+    expr(o, e2);
+    o.newline();
+    o.out("}");
+    o.newline();
+    o.out("catch {");
+    for (mb in mbl) match_branch(o, mb);
+    o.newline();
+    o.out("}");
+    o.newline()
+  | SkipAst.Bind(lv, rvalue, e2) ->
+    lvalue(o, lv);
+    o.out(" = ");
+    expr(o, rvalue);
+    o.out(";");
+    o.newline();
+    expr(o, e2)
+  | SkipAst.Await(e2) ->
+    o.out("await ");
+    expr(o, e2)
+  | SkipAst.Return(e2) ->
+    o.out("return ");
+    expr(o, e2)
+  | SkipAst.Async(e2) ->
+    o.out("async {");
+    o.newline();
+    expr(o, e2);
+    o.out("}")
+  | SkipAst.Throw(e2) ->
+    o.out("throw ");
+    expr(o, e2)
+  | SkipAst.With(e2, updates) ->
+    expr(o, e2);
+    o.out(" with {");
+    field_list(o, updates);
+    o.out("}")
+  | SkipAst.Mutable(e2) ->
+    o.out("mutable ");
+    expr(o, e2)
+  | SkipAst.TemplateLiteral(el) ->
+    o.out("template_literal`");
+    expr_call_args(o, el);
+    o.out("`")
+  | SkipAst.Yield(value) ->
+    o.out("yield ");
+    expr(o, value)
+  | SkipAst.YieldBreak() -> o.out("yield break")
+  | SkipAst.Continue() -> o.out("continue")
+  | SkipAst.Break(eb) ->
+    o.out("break ");
+    expr(o, eb)
+  | SkipAst.Loop(eb) ->
+    o.out("loop ");
+    expr(o, eb)
+  | SkipAst.DoWhile(body, condition, withoutBreak) ->
+    o.out("do ");
+    expr(o, body);
+    o.out("while (");
+    expr(o, condition);
+    o.out(") else ");
+    expr(o, withoutBreak)
+  | SkipAst.While(condition, body, withoutBreak) ->
+    o.out("while (");
+    expr(o, condition);
+    o.out(")");
+    expr(o, body);
+    o.out(" else ");
+    expr(o, withoutBreak)
+  | SkipAst.ForEach(binding, collection, body, withoutBreak) ->
+    o.out("forEach (");
+    forEach_binding(o, binding);
+    o.out(" in ");
+    expr(o, collection);
+    o.out(") ");
+    expr(o, body);
+    o.out(" else ");
+    expr(o, withoutBreak)
+  | SkipAst.ForEachFieldMacro(field, fieldName, body) ->
+    o.out("#forEachField (");
+    name(o, field);
+    if (fieldName.isSome()) {
+      o.out(", ");
+      name(o, fieldName.fromSome());
+    };
+    o.out(") ");
+    expr(o, body)
+  }
+}
+
+fun forEach_binding(
+  o: mutable BufferedPrinter.Out,
+  binding: SkipAst.ForEachBinding,
+): void {
+  binding match {
+  | SkipAst.FEKeyed(k, v, _) ->
+    name(o, k);
+    o.out(" => ");
+    name(o, v)
+  | SkipAst.FEIdent(n, _) -> name(o, n)
+  | SkipAst.FETuple(l, _) ->
+    o.out("(");
+    array(name, o, l);
+    o.out(")")
+  }
+}
+
+fun literal(o: mutable BufferedPrinter.Out, l: SkipAst.LiteralValue): void {
+  o.out(literal_to_string(l))
+}
+
+fun lvalue(o: mutable BufferedPrinter.Out, lv: SkipAst.Lvalue): void {
+  (_, lv1) = lv;
+  lv1 match {
+  | SkipAst.Lvalue_bind_local(n) -> name(o, n)
+  | SkipAst.Lvalue_assign(la) -> lvalue_assign(o, la)
+  | SkipAst.Lvalue_tuple(lvl) ->
+    o.out("(");
+    array(lvalue, o, lvl);
+    o.out(")")
+  | SkipAst.Lvalue_array_set(arr, el) ->
+    expr(o, arr);
+    o.out("![");
+    expr_call_args(o, el);
+    o.out("]")
+  }
+}
+
+fun lvalue_assign(
+  o: mutable BufferedPrinter.Out,
+  la: SkipAst.Lvalue_assign_value,
+): void {
+  la match {
+  | SkipAst.Lvalue_assign_local(n) ->
+    o.out("!");
+    name(o, n)
+  | SkipAst.Lvalue_assign_field(obj, n) ->
+    expr(o, obj);
+    o.out(".!");
+    name(o, n)
+  | SkipAst.Lvalue_assign_with(la1, n) ->
+    lvalue_assign(o, la1);
+    o.out(".");
+    name(o, n)
+  | SkipAst.Lvalue_assign_array_set(la1, el) ->
+    lvalue_assign(o, la1);
+    o.out("[");
+    expr_call_args(o, el);
+    o.out("]")
+  }
+}
+
+fun expr_call_args(o: mutable BufferedPrinter.Out, l: SkipAst.Call_args): void {
+  object_args(o, l)
+}
+
+fun object_name(o: mutable BufferedPrinter.Out, x: SkipAst.Name): void {
+  name(o, x)
+}
+
+fun expr_list(o: mutable BufferedPrinter.Out, l: List<SkipAst.Expr>): void {
+  list(expr, o, l)
+}
+
+fun binop(bop: SkipAst.Binoperator): String {
+  (_, bop1) = bop;
+  binop_(bop1)
+}
+
+fun binop_(x: SkipAst.Binop_): String {
+  x match {
+  | SkipAst.Barbar() -> "||"
+  | SkipAst.Ampamp() -> "&&"
+  | SkipAst.Eqeq() -> "=="
+  | SkipAst.Diff() -> "!="
+  | SkipAst.Lt() -> "<"
+  | SkipAst.Lte() -> "<="
+  | SkipAst.Gt() -> ">"
+  | SkipAst.Gte() -> ">="
+  | SkipAst.Plus() -> "+"
+  | SkipAst.Minus() -> "+"
+  | SkipAst.Star() -> "*"
+  | SkipAst.Slash() -> "/"
+  | SkipAst.Percent() -> "%"
+  }
+}
+
+fun unop(x: SkipAst.Unop_): String {
+  x match {
+  | SkipAst.Not() -> "!"
+  | SkipAst.Uminus() -> "-"
+  }
+}
+
+fun lambda_params(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<SkipAst.Lam_parameter>,
+): void {
+  x match {
+  | Positional(l) -> lambda_param_array("(", ")", o, l)
+  | Named(m) ->
+    l = m.values().collect(Array);
+    lambda_param_array("{", "}", o, l)
+  }
+}
+
+fun lambda_param_array(
+  open_: String,
+  close: String,
+  o: mutable BufferedPrinter.Out,
+  params: Array<SkipAst.Lam_parameter>,
+): void {
+  o.out(open_);
+  array(lambda_param, o, params);
+  o.out(close)
+}
+
+fun lambda_param(
+  o: mutable BufferedPrinter.Out,
+  param: SkipAst.Lam_parameter,
+): void {
+  (n, ty_opt) = param;
+  name(o, n);
+  maybe_type(o, ": ", ty_opt)
+}
+
+fun bool(o: mutable BufferedPrinter.Out, x: Bool): void {
+  o.out(x.toString());
+  o.space()
+}
+
+fun let_obj_fields(
+  o: mutable BufferedPrinter.Out,
+  x: Parameters<SkipAst.Pattern>,
+): void {
+  x match {
+  | Positional(l) ->
+    o.out("(");
+    array(pattern, o, l);
+    o.out(")")
+  | Named(map) ->
+    o.out("{");
+    array(pattern_fields, o, map.items().collect(Array));
+    o.out("}")
+  }
+}
+
+fun pattern_fields(
+  o: mutable BufferedPrinter.Out,
+  kv: (SkipAst.Name, SkipAst.Pattern),
+): void {
+  ((_, k), v) = kv;
+  o.out(k);
+  o.out(" = ");
+  pattern(o, v)
+}
+
+fun match_branch(
+  o: mutable BufferedPrinter.Out,
+  pats_action: SkipAst.Match_branch,
+): void {
+  (pats, when_clause, action) = pats_action;
+  for (p in pats) bar_pattern(o, p);
+  if (when_clause.isSome()) {
+    o.out(" when {");
+    expr(o, when_clause.fromSome());
+    o.out("}")
+  };
+  o.out(" =>");
+  o.newline();
+  o.margin(() -> expr(o, action))
+}
+
+fun bar_pattern(o: mutable BufferedPrinter.Out, pat: SkipAst.Pattern): void {
+  o.out("| ");
+  pattern(o, pat)
+}
+
+fun pattern(o: mutable BufferedPrinter.Out, x: SkipAst.Pattern): void {
+  x match {
+  | (_, SkipAst.Pat_type(tid, obj_params, complete)) ->
+    o.newline();
+    o.out("|");
+    o.space();
+    tid match {
+    | SkipAst.Tid_static(x1, y) ->
+      name(o, x1);
+      o.out("::");
+      name(o, y)
+    | SkipAst.Tid_object(obj_name) -> type_name(o, obj_name)
+    };
+    obj_params match {
+    | None() -> o.out(" _")
+    | Some(pat_params) -> let_obj_fields(o, pat_params)
+    };
+    o.out(
+      complete match {
+      | SkipAst.Complete() -> "#complete"
+      | SkipAst.Incomplete() -> "#incomplete"
+      },
+    )
+  | (_, SkipAst.Pat_tuple(pats)) ->
+    o.out("(");
+    array(pattern, o, pats);
+    o.out(")")
+  | (_, SkipAst.Pat_const(value)) -> expr(o, value)
+  | (_, SkipAst.Pat_var(x1)) -> name(o, x1)
+  | (_, SkipAst.Pat_literal(x1)) -> literal(o, x1)
+  | (_, SkipAst.Pat_as(pat, y)) ->
+    name(o, y);
+    o.out(" @ ");
+    pattern(o, pat)
+  }
+}
+
+fun object_args(o: mutable BufferedPrinter.Out, x: SkipAst.Call_args): void {
+  x match {
+  | Positional(l) ->
+    o.out("(");
+    array(expr, o, l.map(p -> p.i1));
+    o.out(")")
+  | Named(l) ->
+    o.out("{");
+    field_list(o, l);
+    o.out("}")
+  }
+}
+
+fun field_list(
+  o: mutable BufferedPrinter.Out,
+  map: UMap<SkipAst.Ordered_expr>,
+): void {
+  key_values: List<(String, SkipAst.Ordered_expr)> =
+    map.items().map(noe -> (noe.i0.i1, noe.i1)) |> List::createFromIterator;
+  sorted_key_values = key_values.sortedBy(x ~> {
+    (_, (i, _)) = x;
+    i
+  });
+  sorted_key_values1 = sorted_key_values.map(kv -> {
+    (k, (_, v)) = kv;
+    (k, v)
+  });
+  list(field, o, sorted_key_values1)
+}
+
+fun field(o: mutable BufferedPrinter.Out, xe: (String, SkipAst.Expr)): void {
+  (x, e) = xe;
+  e match {
+  | (_, SkipAst.Var(y)) ->
+    if (x == y.i1) {
+      o.out(y.i1)
+    } else {
+      o.out(x)
+    };
+    o.out(" = ");
+    expr(o, e)
+  | _ ->
+    o.out(x);
+    o.out(" = ");
+    expr(o, e)
+  }
+}
+
+fun literal_to_string(x: SkipAst.LiteralValue): String {
+  x match {
+  | SkipAst.VoidLiteral() -> "void"
+  | SkipAst.BoolLiteral(b) -> b.toString()
+  | SkipAst.IntLiteral(n) -> n.toString()
+  | SkipAst.FloatLiteral(f) -> f.toString()
+  | SkipAst.CharLiteral(c) ->
+    "'" + Token.escapeCharLiteralValue(Char::fromCode(c)) + "'"
+  | SkipAst.StringLiteral(s) -> "\"" + Token.escapeStringLiteralValue(s) + "\""
+  }
+}

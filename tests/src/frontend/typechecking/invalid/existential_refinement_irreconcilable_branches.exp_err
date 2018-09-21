@@ -1,0 +1,22 @@
+File "./typechecking/invalid/existential_refinement_irreconcilable_branches.sk", line 14, characters 19-32:
+Invalid branch
+12 | fun perform(e: Expr): void {
+13 |   _ = e match {
+14 |   | IntExpr(i) -> int_perform(i)
+   |                   ^^^^^^^^^^^^^^
+15 |   | BoolExpr(b) -> bool_perform(b)
+
+File "./typechecking/invalid/existential_refinement_irreconcilable_branches.sk", line 2, characters 15-15:
+The type: frozen Unknown
+1 | base class Expr
+2 | class IntExpr<T: Int>(T) extends Expr
+  |               ^
+3 | class BoolExpr<T: Bool>(T) extends Expr
+
+File "./typechecking/invalid/existential_refinement_irreconcilable_branches.sk", line 3, characters 16-16:
+Does not share a common super type with: frozen Unknown
+1 | base class Expr
+2 | class IntExpr<T: Int>(T) extends Expr
+3 | class BoolExpr<T: Bool>(T) extends Expr
+  |                ^
+4 |

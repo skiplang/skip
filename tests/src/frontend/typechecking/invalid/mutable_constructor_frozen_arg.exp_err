@@ -1,0 +1,32 @@
+File "./typechecking/invalid/mutable_constructor_frozen_arg.sk", line 7, characters 18-21:
+Invalid argument to the construction of a mutable 'C2'
+5 | fun test(): void {
+6 |   myc1 = C1(99);
+7 |   _ = mutable C2(myc1);
+  |                  ^^^^
+8 | }
+
+File "./typechecking/invalid/mutable_constructor_frozen_arg.sk", line 6, characters 10-15:
+The type: C1
+4 |
+5 | fun test(): void {
+6 |   myc1 = C1(99);
+  |          ^^^^^^
+7 |   _ = mutable C2(myc1);
+
+File "./typechecking/invalid/mutable_constructor_frozen_arg.sk", line 3, characters 22-31:
+Is not a subtype of: mutable C1
+1 | mutable class C1(mutable value: Int)
+2 |
+3 | mutable class C2(c1: mutable C1)
+  |                      ^^^^^^^^^^
+4 |
+
+File "./typechecking/invalid/mutable_constructor_frozen_arg.sk", line 3, characters 22-31:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly C1
+1 | mutable class C1(mutable value: Int)
+2 |
+3 | mutable class C2(c1: mutable C1)
+  |                      ^^^^^^^^^^
+4 |

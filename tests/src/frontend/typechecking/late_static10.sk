@@ -1,0 +1,16 @@
+base class Foo {
+  static fun abs(): String;
+  fun valid(): String {
+    static::abs()
+  }
+}
+
+class Bar() extends Foo {
+  static fun abs(): String {
+    "Pass\n"
+  }
+}
+
+fun main(): void {
+  print_raw(Bar().valid())
+}

@@ -1,0 +1,10 @@
+fun main(): void {
+  print_string("Hello Skip!")
+}
+
+async fun foo(x: String): ^Bool {
+  if (x == "") {
+    return false;
+  };
+  true
+}

@@ -1,0 +1,6 @@
+File "./typechecking/invalid/tunder_generic_6.sk", line 2, characters 6-6:
+_ can only be used on function parameters and return types
+1 | fun main(): void {
+2 |   x: _ = "No";
+  |      ^
+3 |   print_raw(x)

@@ -1,0 +1,2 @@
+base class Foo(x: Int)
+class Bar private (y: Int) extends Foo

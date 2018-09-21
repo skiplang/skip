@@ -1,0 +1,6 @@
+fun shouldFail(v: void): String {
+  v match {
+  | void -> "I should fail"
+  | void -> "Nope"
+  }
+}

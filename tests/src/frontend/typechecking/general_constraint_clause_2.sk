@@ -1,0 +1,20 @@
+base class P<-A>() {
+  children =
+  | C
+}
+
+class Tester<T>() {
+  fun t1<U>[U: T](x: U): T {
+    x
+  }
+  fun t2<U>[C<T>: C<U>](x: U): T {
+    x
+  }
+  fun t3<U>[C<T>: P<U>](x: U): T {
+    x
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

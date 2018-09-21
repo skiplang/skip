@@ -1,0 +1,14 @@
+fun main(): void {
+  this.params.mapWithIndex((i, p) -> (p, i))
+    .sortedBy(a ~> a.i0.index)
+    .each(pi -> {
+      p = pi.i0;
+      if (p.index >= 0) {
+        args.push(emitter.getLocal(p.name, p.pos));
+      };
+    });
+
+  this.args.eachPos((key, value) ->
+    items.push((inspect(key.i1), inspect(value)))
+  );
+}

@@ -1,0 +1,5 @@
+File "./expand/invalid/bad_global_module_fun.sk", line 1, characters 5-8:
+You can only use '.' to access the global namespace while within a module
+1 | fun .foo(): void {
+  |     ^^^^
+2 |   void

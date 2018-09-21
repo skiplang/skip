@@ -1,0 +1,25 @@
+File "./typechecking/invalid/whenparam_inherit7.sk", line 2, characters 19-21:
+Invalid conditional type override for the field 'foo' on child 'Child' for parent 'Parent'.
+With additional constraints on the child's method,
+ these constraints must be satisfied when upcasting a child to the parent's type,
+ and then adding any additional constraints from the parent's version of the method
+1 | base class Parent<P> {
+2 |   overridable fun foo[P: Show](): void {
+  |                   ^^^
+3 |     void
+
+File "./typechecking/invalid/whenparam_inherit7.sk", line 8, characters 11-11:
+The type: X
+ 6 |
+ 7 | class Child<X, T>() extends Parent<T> {
+ 8 |   fun foo[X: Show, T: Show](): void {
+   |           ^
+ 9 |     void
+
+File "./typechecking/invalid/whenparam_inherit7.sk", line 8, characters 14-17:
+Is not a subtype of: Show
+ 6 |
+ 7 | class Child<X, T>() extends Parent<T> {
+ 8 |   fun foo[X: Show, T: Show](): void {
+   |              ^^^^
+ 9 |     void

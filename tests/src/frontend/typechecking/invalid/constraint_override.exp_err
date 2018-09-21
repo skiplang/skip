@@ -1,0 +1,31 @@
+File "./typechecking/invalid/constraint_override.sk", line 6, characters 17-17:
+Invalid override for the field 'brokenfun' on child 'Bar' for parent 'Foo'. Constraint not satisfied
+4 |
+5 | class Bar() extends Foo {
+6 |   fun brokenfun<T: Test.MixedString>(x: T): T {
+  |                 ^
+7 |     x match {
+
+File "./typechecking/invalid/constraint_override.sk", line 2, characters 41-41:
+The type: T
+1 | base class Foo {
+2 |   fun brokenfun<T: Test.MixedScalar>(x: T): T;
+  |                                         ^
+3 | }
+
+File "./typechecking/invalid/constraint_override.sk", line 6, characters 20-35:
+Is not a subtype of: Test.MixedString
+4 |
+5 | class Bar() extends Foo {
+6 |   fun brokenfun<T: Test.MixedString>(x: T): T {
+  |                    ^^^^^^^^^^^^^^^^
+7 |     x match {
+
+File "./typechecking/invalid/constraint_override.sk", line 6, characters 20-35:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Test.MixedScalar
+4 |
+5 | class Bar() extends Foo {
+6 |   fun brokenfun<T: Test.MixedString>(x: T): T {
+  |                    ^^^^^^^^^^^^^^^^
+7 |     x match {

@@ -1,0 +1,27 @@
+// covariant type params behave invariantly on mutable instances,
+// but covariantly on immutable (e.g., frozen) instances.
+
+base class A
+class B(s: String) extends A
+class C(s: String) extends A
+
+mutable class Cell<+K: Equality, +V>(mutable k: K, mutable v: V) {
+  fun get<K2: Equality>[K: K2](k: K2): ?V {
+    if (k == this.k) Some(this.v) else None()
+  }
+
+  mutable fun set(k: K, v: V): void {
+    this.!k = k;
+    this.!v = v;
+  }
+}
+
+fun main(): void {
+  mut_b_cell: mutable Cell<Int, B> = mutable Cell(0, B("OK\n"));
+  imm_b_cell = freeze(mut_b_cell);
+  imm_a_cell = imm_b_cell; // ok, frozen
+  print_raw(
+    // imm_a_cell.set(0, C("I'm a C")); // illagal
+    imm_a_cell.get(0).fromSome().s,
+  )
+}

@@ -1,0 +1,13 @@
+async fun asyncMain(): ^void {
+  r = mutable Ref<String>("No");
+  f = () ->
+    async {
+      r.!value = ""
+    };
+  await f();
+  print_raw(freeze(r).value)
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

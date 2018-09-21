@@ -1,0 +1,23 @@
+File "./syntax/invalid/explicit_targs2.sk", line 4, characters 11-11:
+Invalid argument to the construction of 'A'
+2 |
+3 | fun test(_: A<Int>): A<Int> {
+4 |   A<Bool>(0)
+  |           ^
+5 | }
+
+File "./syntax/invalid/explicit_targs2.sk", line 4, characters 11-11:
+The type: Int
+2 |
+3 | fun test(_: A<Int>): A<Int> {
+4 |   A<Bool>(0)
+  |           ^
+5 | }
+
+File "./syntax/invalid/explicit_targs2.sk", line 4, characters 5-8:
+Is not a subtype of: Bool
+2 |
+3 | fun test(_: A<Int>): A<Int> {
+4 |   A<Bool>(0)
+  |     ^^^^
+5 | }

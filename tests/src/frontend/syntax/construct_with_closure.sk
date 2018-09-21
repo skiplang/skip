@@ -1,0 +1,9 @@
+class Foo{closure: Int ~> Int}
+class Bar{f: Int ~> Int ~> Int}
+
+fun main(): void {
+  f = Foo{closure => x ~> x};
+  b = Bar{f => x ~> y ~> x + y};
+  invariant(b.f(5)(7) == f.closure(12), "");
+  print_string("Pass")
+}

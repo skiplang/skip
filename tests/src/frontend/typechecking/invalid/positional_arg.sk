@@ -1,0 +1,8 @@
+class Y(a: Int, b: Float)
+
+fun main(): void {
+  a = 10;
+  b = 1;
+  _ = Y(a, b);
+  print_string("Hello Skip!")
+}

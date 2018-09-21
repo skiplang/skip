@@ -1,0 +1,15 @@
+module alias B = A;
+
+module A;
+
+class Foo()
+
+module end;
+
+fun main(): void {
+  _ = A.Foo();
+  _ = Array<A.Foo>[];
+  _ = B.Foo();
+  _ = Array<B.Foo>[];
+  print_string("Pass")
+}

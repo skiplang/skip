@@ -1,0 +1,13 @@
+File "./syntax/invalid/lambda_parameter_modifiers.sk", line 2, characters 8-14:
+Expected ')'. Found 'private'.
+1 | fun main(): String {
+2 |   x = (private p) -> p;
+  |        ^^^^^^^
+3 |   x("Fail")
+
+File "./syntax/invalid/lambda_parameter_modifiers.sk", line 2, characters 7-7:
+ For opening '('
+1 | fun main(): String {
+2 |   x = (private p) -> p;
+  |       ^
+3 |   x("Fail")

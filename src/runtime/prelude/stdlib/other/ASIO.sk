@@ -1,0 +1,51 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module ASIO;
+
+async fun join2<T1, T2>(v1: ^T1, v2: ^T2): ^(T1, T2) {
+  // TODO should actually be in parallel via magic!
+  (await v1, await v2)
+}
+
+async fun join3<T1, T2, T3>(v1: ^T1, v2: ^T2, v3: ^T3): ^(T1, T2, T3) {
+  // TODO should actually be in parallel via magic!
+  (await v1, await v2, await v3)
+}
+
+async fun join4<T1, T2, T3, T4>(
+  v1: ^T1,
+  v2: ^T2,
+  v3: ^T3,
+  v4: ^T4,
+): ^(T1, T2, T3, T4) {
+  // TODO should actually be in parallel via magic!
+  (await v1, await v2, await v3, await v4)
+}
+
+async fun join5<T1, T2, T3, T4, T5>(
+  v1: ^T1,
+  v2: ^T2,
+  v3: ^T3,
+  v4: ^T4,
+  v5: ^T5,
+): ^(T1, T2, T3, T4, T5) {
+  // TODO should actually be in parallel via magic!
+  (await v1, await v2, await v3, await v4, await v5)
+}
+
+// Create an Array of the given size with each index set to the result of
+// calling the function with the index and awaiting the result.
+// TODO T24366119: Native NBE async support - make this a native function and
+// await in parallel.
+async fun genFillBy<T: frozen>(size: Int, f: Int ~> ^T): ^Array<T> {
+  invariant(size >= 0, "ASIO::genFillBy: Expected size to be nonnegative.");
+  handles: List<^T> = List::tabulate(size, f);
+  v = Array::mcreateFromItems(await handles.genReverse());
+  v.reverse();
+  unsafe_chill_trust_me(v)
+}

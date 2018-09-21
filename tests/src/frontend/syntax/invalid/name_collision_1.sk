@@ -1,0 +1,4 @@
+const foo: Int = 0;
+fun foo(): void {
+  void
+}

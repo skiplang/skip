@@ -1,0 +1,12 @@
+base class P {
+  deferred fun foo(): void {
+    this.getData()
+  }
+  deferred fun getData(): void;
+}
+
+class UntrackedC() extends P {
+  untracked fun getData(): void {
+    void
+  }
+}

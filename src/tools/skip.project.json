@@ -1,0 +1,87 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "grammar": {
+      "kind": "Program",
+      "sources": ["grammar.sk"],
+      "references": [ { "path": "../frontend" } ]
+    },
+    "skip_annotations": {
+      "kind": "Library",
+      "sources": ["SkipAnnotations.sk"],
+      "references": [ { "path": "../frontend" } ]
+    },
+    "skip_to_parsetree": {
+      "kind": "Program",
+      "sources": ["skipToParseTree.sk"],
+      "references": [ { "path": "../frontend" } ]
+    },
+    "skip_to_ast": {
+      "kind": "Program",
+      "sources": ["skipToAst.sk"],
+      "references": [ { "path": "../frontend" } ]
+    },
+    "skip_printer": {
+      "kind": "Program",
+      "sources": ["printerMain.sk"],
+      "references": [
+        { "path": "../frontend" },
+        { "path": "printer" }
+      ]
+    },
+    "codemod": {
+      "kind": "Library",
+      "sources": [
+        "CodeMod.sk",
+        "CodeModTemplate.sk"
+      ],
+      "references": [
+        { "path": "../frontend" },
+        { "path": "printer" }
+      ]
+    },
+    "skip_codemod": {
+      "kind": "Program",
+      "sources": [
+        "CodeModMain.sk",
+        "CodeModTransform.sk"
+      ],
+      "references": [
+        { "path": ".", "name": "codemod" }
+      ]
+    },
+    "skip_search": {
+      "kind": "Program",
+      "sources": [
+        "skipSearch.sk"
+      ],
+      "references": [
+        { "path": ".", "name": "codemod" }
+      ]
+    },
+    "skip_serialization_generator": {
+      "kind": "Program",
+      "sources": ["SerializationGenerator.sk"],
+      "references": [
+        { "path": "../frontend" },
+        { "path": "printer" }
+      ]
+    },
+    "skip_docgen": {
+      "kind": "Program",
+      "sources": ["skipDocgen.sk"],
+      "references": [
+        { "path": "../frontend" },
+        { "path": "../project", "name": "project" }
+       ]
+    },
+    "skip_collect_annotations": {
+      "kind": "Program",
+      "sources": ["SkipCollectAnnotations.sk"],
+      "references": [
+        { "path": ".", "name": "skip_annotations" },
+        { "path": "../project", "name": "project" }
+      ]
+    }
+  }
+}

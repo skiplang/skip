@@ -1,0 +1,9 @@
+const My_bool: Bool = true;
+
+fun shouldFail(x: Bool): String {
+  x match {
+  | My_bool -> "True"
+  | false -> "False"
+  | _ -> "Wut"
+  }
+}

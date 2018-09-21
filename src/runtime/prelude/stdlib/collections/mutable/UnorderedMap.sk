@@ -1,0 +1,869 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Map;
+
+// A mutable, growable collection of key => value associations with O(1) key
+// lookup/update and amortized O(1) insertion of new keys. Iteration order
+// is not well defined but is stable: in the absence of any mutations,
+// multiple iterations of an UnorderedMap will iterate in the same order.
+//
+// ## Notes
+//
+// This uses a "Robin Hood hashing" open-addressed linear-probed hash table.
+// Each slot knows its own hash, where its slot index comes from the high
+// bits, which makes Robin Hood distance comparisons trivial -- just subtract.
+// Empty slots use a hash value that looks like a "perfect" (distance 0)
+// fit from the Robin Hood perspective, which makes them look like good
+// candidates for "displacing" without an additional check in the inner loop.
+mutable class .UnorderedMap<+K: Hashable & Equality, +V>(
+  private mutable slots: mutable Array<UnorderedMapSlot<K, V>>,
+  // How many live values are in the hash table.
+  private mutable sz: Int,
+  // 64 minus log base two of the this.slots.size().
+  private mutable shift: Int,
+  // Increased whenever any iterator-invalidating operation is done.
+  mutable generation_PRIVATE: Int,
+)
+  extends MutableKeyedSequence<K, V>
+  uses
+    IntoIterator<(K, V)>,
+    FromIterator<(K, V)>,
+    Show[K: readonly Show, V: readonly Show],
+    Hashable[K: Hashable, V: Hashable],
+    Equality[K: Equality, V: Equality],
+   {
+  // # Creating a Map
+
+  // Creates a new hash table. If specified, "size" is how many values can
+  // be added to the hash table without rehashing.
+  static fun mcreate(capacity: Int = 0): mutable this {
+    log2NumSlots = getLogSlotSizeForCapacity(capacity);
+    shift = getShiftForLogTableSize(log2NumSlots);
+
+    slots = Array::mfillBy(1.shl(log2NumSlots), i ->
+      UnorderedMapSlot::emptyForIndex(i, shift)
+    );
+
+    mutable static(slots, 0, shift, 0)
+  }
+
+  @no_inline
+  static fun createFromItems<I: readonly Sequence<(K, V)>>(items: I): this {
+    unsafe_chill_trust_me(static::mcreateFromItems(items))
+  }
+
+  @no_inline
+  static fun mcreateFromItems<I: readonly Sequence<(K, V)>>(
+    items: I,
+  ): mutable this {
+    size = items.size();
+    if (size == 0) {
+      static::mcreate(-1)
+    } else {
+      map = static::mcreate(size);
+      for ((key, value) in items) {
+        map.set(key, value)
+      };
+      map
+    }
+  }
+
+  @no_inline
+  static fun createFromIterator<I: mutable Iterator<(K, V)>>(
+    iterator: I,
+  ): this {
+    unsafe_chill_trust_me(static::mcreateFromIterator(iterator))
+  }
+
+  @no_inline
+  static fun mcreateFromIterator<I: mutable Iterator<(K, V)>>(
+    iterator: I,
+  ): mutable this {
+    map = static::mcreate(iterator.sizeHint().default(0));
+    for ((key, value) in iterator) {
+      map.set(key, value)
+    };
+    map
+  }
+
+  // Creates a mutable, minimally-sized clone of this table. The optional
+  // 'reserveCapacity' parameter is the number of additional values that can be added
+  // after cloning without forcing a rehash.
+  readonly fun clone(reserveCapacity: Int = 0): mutable this {
+    capacity = this.sz + reserveCapacity;
+    if (capacity.ule(this.capacityImpl())) {
+      // Capacity is the same or less, so simply copy over the raw existing slots.
+      mutable UnorderedMap(this.slots.clone(), this.sz, this.shift, 0)
+    } else {
+      // Capacity increased, so we need to do a full reinsert.
+      r = UnorderedMap::mcreate(capacity);
+      this.unsafeEach(slot -> {
+        h = slot.hash;
+        _ = r.maybeAddLoop(h, slot.key(), slot.value(), false)
+      });
+      r
+    }
+  }
+
+  readonly fun chill(): this {
+    UnorderedMap(this.slots.chill(), this.sz, this.shift, 0)
+  }
+
+  // # Sizing
+
+  readonly fun size(): Int {
+    this.sz
+  }
+
+  // NOTE: Making capacity observable on frozen values prevents optimizations such
+  // as shrinking to fit on freeze. By making it mutable we preserve option value
+  // to add such optimizations in the future.
+  mutable fun capacity(): Int {
+    this.capacityImpl()
+  }
+
+  private readonly fun capacityImpl(): Int {
+    this.slots.size().ushr(1) - 1
+  }
+
+  readonly fun isEmpty(): Bool {
+    this.size() == 0
+  }
+
+  mutable fun ensureCapacity(capacity: Int): void {
+    invariant(
+      capacity >= 0,
+      "UnorderedMap.ensureCapacity(): Expected capacity to be nonnegative.",
+    );
+    if (capacity.ugt(this.capacityImpl())) {
+      log2NumSlots = getLogSlotSizeForCapacity(capacity);
+      this.growCapacity(log2NumSlots);
+    }
+  }
+
+  mutable fun clear(): void {
+    this.invalidateIterators();
+
+    shift = this.shift;
+    for (i in Range(0, this.slots.size())) {
+      Unsafe.array_set(this.slots, i, UnorderedMapSlot::emptyForIndex(i, shift))
+    };
+    this.!sz = 0
+  }
+
+  // # Accessing Items
+
+  readonly fun get<K2: Hashable & Equality>[K: K2](k: K2): V {
+    // TODO: Once this is tested and working we should create a specialized
+    // getLoop() for this case.
+    this.getItem(k).i1
+  }
+
+  readonly fun maybeGet<K2: Hashable & Equality>[K: K2](k: K2): ?V {
+    this.maybeGetItem(k) match {
+    | Some(p) -> Some(p.i1)
+    | None() -> None()
+    }
+  }
+
+  // Like get(), but returns both the key and the value.
+  readonly fun getItem<K2: Hashable & Equality>[K: K2](k: K2): (K, V) {
+    this.maybeGetItem(k) match {
+    | Some(p) -> p
+    | None() -> throwKeyNotFound()
+    }
+  }
+
+  // Like maybeGet(), but returns both the key and the value.
+  readonly fun maybeGetItem<K2: Hashable & Equality>[K: K2](k: K2): ?(K, V) {
+    h = finalizeHash(k.hash());
+    this.maybeGetItemLoop(h, k)
+  }
+
+  // If k exists in this map, returns its value. Else, runs f() to get
+  // a new value, inserts it, and returns that new value.
+  mutable fun getOrAdd(k: K, f: () -> V): V {
+    h = finalizeHash(k.hash());
+    this.maybeGetItemLoop(h, k) match {
+    | Some(x) -> x.i1
+    | None() ->
+      // Lazily create the value and record it for future lookups.
+      v = f();
+      this.rehashIfFull();
+      _ = this.maybeAddLoop(h, k, v, false);
+      v
+    }
+  }
+
+  // Returns true if the Map has a value associated with the given key, else false.
+  readonly fun containsKey<K2: Hashable & Equality>[K: K2](k: K2): Bool {
+    this.maybeGetItem(k).isSome()
+  }
+
+  // # Modifying Items
+
+  // Associate key with value in this Map:
+  // - If the key already exists in this Map, associates it to the new value.
+  // - Else add the key/value association.
+  mutable fun set(k: K, v: V): void {
+    this.rehashIfFull();
+    h = finalizeHash(k.hash());
+    this.setLoop(h, k, v)
+  }
+
+  // Like mset(), but throws a Duplicate() exception if the key already exists.
+  mutable fun add(k: K, v: V): void {
+    if (!this.maybeSet(k, v)) {
+      throw Duplicate()
+    }
+  }
+
+  // If the key does not already exist, inserts it and returns true. Else
+  // returns false.
+  mutable fun maybeSet(k: K, v: V): Bool {
+    this.rehashIfFull();
+    h = finalizeHash(k.hash());
+    this.maybeAddLoop(h, k, v, false)
+  }
+
+  // Remove the given key from this Map:
+  // - If the key is present remove it and return true.
+  // - Otherwise do nothing and return false.
+  mutable fun maybeRemove(k: K): Bool {
+    h = finalizeHash(k.hash());
+    this.maybeRemoveLoop(h, k)
+  }
+
+  // Remove the key from this Map if present, otherwise throw.
+  mutable fun remove(k: K): void {
+    if (!this.maybeRemove(k)) {
+      throwKeyNotFound()
+    }
+  }
+
+  // # Iteration
+
+  readonly fun each(f: (K, V) -> void): void {
+    this.eachWhileImpl(slot -> {
+      f(slot.key(), slot.value())
+    })
+  }
+
+  // # Aggregation
+
+  readonly fun find(p: (K, V) -> Bool): ?V {
+    for (k => v in this) {
+      if (p(k, v)) break Some(v);
+    } else {
+      None()
+    }
+  }
+
+  readonly fun findItem(p: (K, V) -> Bool): ?(K, V) {
+    for (k => v in this) {
+      if (p(k, v)) break Some((k, v));
+    } else {
+      None()
+    }
+  }
+
+  // # Composition
+
+  readonly fun map<V2>(s: (K, V) -> V2): UnorderedMap<K, V2> {
+    result = UnorderedMap::mcreate(this.sz);
+    this.eachWhileImpl(slot -> {
+      h = slot.hash;
+      k = slot.key();
+      v2 = s(k, slot.value());
+      result.setLoop(h, k, v2);
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  readonly fun mapItems<K2: Hashable & Equality, V2>(
+    s: (K, V) -> (K2, V2),
+  ): UnorderedMap<K2, V2> {
+    // It's possible that some/all items could map to duplicate keys such that
+    // the result is smaller than this map. However the expected usage is to
+    // map items to distinct keys such that the result size will be the same.
+    result = UnorderedMap::mcreate(this.sz);
+    this.eachWhileImpl(slot -> {
+      (k2, v2) = s(slot.key(), slot.value());
+      h = finalizeHash(k2.hash());
+      result.setLoop(h, k2, v2);
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  readonly fun filter(p: (K, V) -> Bool): UnorderedMap<K, V> {
+    result = static::mcreate(0);
+    this.eachWhileImpl(slot -> {
+      k = slot.key();
+      v = slot.value();
+      if (p(k, v)) {
+        result.rehashIfFull();
+        h = slot.hash;
+        result.setLoop(h, k, v);
+      };
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  readonly fun filterNone<U>[V: ?U](): UnorderedMap<K, U> {
+    result = UnorderedMap::mcreate(0);
+    this.eachWhileImpl(slot -> {
+      k = slot.key();
+      slot.value() match {
+      | Some(v) ->
+        result.rehashIfFull();
+        h = slot.hash;
+        result.setLoop(h, k, v)
+      | _ -> void
+      };
+    });
+    unsafe_chill_trust_me(result)
+  }
+
+  // # Async
+
+  // async frozen fun gen<V2>[K: Orderable, V: ^V2](): ^Map<K, V2> {
+  //   await this.genMap((_, v) ~> v)
+  // }
+
+  async frozen fun genMap<V2: frozen>[K: Orderable](
+    s: (K, V) ~> ^V2,
+  ): ^UnorderedMap<K, V2> {
+    slots = this.slots;
+    nextSlots = await ASIO.genFillBy(slots.size(), index ~>
+      async {
+        slot = Unsafe.array_get(slots, index);
+        if (slot.isEmpty()) {
+          UnorderedMapSlot<K, V2>::empty(slot.hash)
+        } else {
+          key = slot.key();
+          value = await s(key, slot.value());
+          UnorderedMapSlot::create(slot.hash, key, value)
+        }
+      }
+    );
+    UnorderedMap(nextSlots, this.sz, this.shift, 0)
+  }
+
+  async frozen fun genFilter<V2>[K: Orderable](
+    p: (K, V) ~> ^Bool,
+  ): ^UnorderedMap<K, V> {
+    slots = this.slots;
+    // Asynchronously map each item to whether it passes the predicate or not
+    predicates = await ASIO.genFillBy(slots.size(), index ~>
+      async {
+        slot = Unsafe.array_get(slots, index);
+        !slot.isEmpty() && await p(slot.key(), slot.value())
+      }
+    );
+    // Count the number of matching items to allocate a single exactly sized result
+    nextSz = predicates.reduce(
+      (sum, predicate) -> if (predicate) sum + 1 else sum,
+      0,
+    );
+    if (nextSz == this.sz) {
+      this
+    } else {
+      // Insert slots for which the predicate returned true
+      result = UnorderedMap::mcreate(nextSz);
+      toIndex = 0;
+      fromIndex = 0;
+      while (toIndex.ult(nextSz)) {
+        if (Unsafe.array_get(predicates, fromIndex)) {
+          // if predicate passed than the corresponding slot must be non-empty
+          slot = Unsafe.array_get(slots, fromIndex);
+          h = slot.hash;
+          result.setLoop(h, slot.key(), slot.value());
+          !toIndex = toIndex + 1
+        };
+        !fromIndex = fromIndex + 1;
+      };
+      unsafe_chill_trust_me(result)
+    }
+  }
+
+  // # Trait Implementations
+
+  readonly fun toString[K: readonly Show, V: readonly Show](): String {
+    if (this.isEmpty()) {
+      "UnorderedMap{}"
+    } else {
+      buf = Array::mfill(this.size(), "");
+      out = 0;
+
+      this.unsafeEach(slot -> {
+        buf.set(out, slot.key().toString() + " => " + slot.value());
+        !out = out + 1
+      });
+
+      // while we are looping, but that would be evil.
+      // Theoretically the user's toString() could modify this table
+      invariant(out == buf.size(), "Table size changed during iteration");
+
+      "UnorderedMap{" + buf.join(", ") + "}"
+    }
+  }
+
+  readonly fun inspect(): Inspect {
+    items = Vector::mcreate(this.size());
+    this.unsafeEach(slot -> {
+      items.push((inspect(slot.key()), inspect(slot.value())));
+    });
+    InspectMap("UnorderedMap", items.toArray())
+  }
+
+  readonly fun ==<K2: Hashable & Equality, V2: Equality>[K: K2, V: V2](
+    other: readonly UnorderedMap<K2, V2>,
+  ): Bool {
+    this.size() == other.size() &&
+      (this : readonly UnorderedMap<K2, V2>).slots.all(slot -> {
+        slot.isEmpty() ||
+          {
+            h = slot.hash;
+            other.maybeGetItemLoop(h, slot.key()) match {
+            | Some((_, v)) -> slot.value() == v
+            | None() -> false
+            }
+          }
+      })
+  }
+
+  readonly fun !=<K2: Hashable & Equality, V2: Equality>[K: K2, V: V2](
+    other: readonly UnorderedMap<K2, V2>,
+  ): Bool {
+    !(this == other)
+  }
+
+  readonly fun hash[V: Hashable](): Int {
+    acc = 0;
+    this.unsafeEach(slot -> {
+      // NOTE: We need to combine slot hashes in an order-independent
+      // way so that two == hash tables that happen to be differently
+      // ordered have the same hash.
+      kh = slot.hash;
+      vh = slot.value().hash();
+
+      // Rotate vh by kh to make it somewhat nonlinear and so same keys with
+      // permuted values does not yield the same hash. And this function
+      // is also chosen so it optimizes away to nothing for Set,
+      // where vh == 0.
+      lshift = kh.ushr(64 - 6);
+      rshift = (-lshift).and(63);
+      vh1 = vh.shl(lshift);
+      vh2 = vh.ushr(rshift);
+      vRotated = vh1.or(vh2);
+
+      !acc = acc + kh + vRotated;
+    });
+    acc
+  }
+
+  // # Iterators
+
+  readonly fun keys(): mutable UnorderedMapKeysIterator<K, V> {
+    mutable UnorderedMapKeysIterator(this, this.slots, -this.generation_PRIVATE)
+  }
+
+  readonly fun values(): mutable UnorderedMapValuesIterator<K, V> {
+    mutable UnorderedMapValuesIterator(
+      this,
+      this.slots,
+      -this.generation_PRIVATE,
+    )
+  }
+
+  readonly fun items(): mutable UnorderedMapItemsIterator<K, V> {
+    mutable UnorderedMapItemsIterator(
+      this,
+      this.slots,
+      -this.generation_PRIVATE,
+    )
+  }
+
+  // # Private Functions
+
+  // Indicate that all existing iterators are no longer valid, to help
+  // catch bugs in user code. All changes to the Map invalidate iterators
+  // except changing the value associated with an existing key.
+  //
+  // This hack works by inexpensively effectively moving each iterator's
+  // slot index past the end of the table's array, which moves the iterator
+  // next() method into the "slow" path where it can check for this case.
+  private mutable fun invalidateIterators(): void {
+    this.!generation_PRIVATE = this.generation_PRIVATE + generationSkip
+  }
+
+  private readonly fun maybeGetItemLoop<K2: Hashable & Equality>[K: K2](
+    h: Int,
+    k: K2,
+  ): ?(K, V) {
+    shift = this.shift;
+    index = h.ushr(shift);
+    loop {
+      slot = Unsafe.array_get(this.slots, index);
+      delta = h - slot.hash;
+      if (delta == 0 && k == slot.key()) {
+        break Some(((slot.key(), slot.value()) : (K, V)))
+      } else if (delta < 0) {
+        break None()
+      } else {
+        !index = (index + 1).and(this.slots.size() - 1);
+      }
+    }
+  }
+
+  // Helper loop to set this[k] to v.
+  //
+  // If 'replace' is true, any old value with the same key is unconditionally
+  // replaced. Note that in this case the old (equal) key is left in place,
+  // and the new key is discarded. Always returns true.
+  //
+  // If 'replace' is false, and the key does not already exist, inserts it
+  // and returns true. Otherwise, changes nothing and returns false.
+  mutable private fun maybeAddLoop(h: Int, k: K, v: V, replace: Bool): Bool {
+    slots = this.slots;
+    shift = this.shift;
+    index = h.ushr(shift);
+
+    loop {
+      slot = Unsafe.array_get(slots, index);
+
+      delta = h - slot.hash;
+      if (delta == 0 && k == slot.key()) {
+        // Replacing an existing value. Note that we leave the old key.
+        // This intentionally does not invalidate iterators.
+        if (!replace) {
+          break false
+        } else {
+          Unsafe.array_set(
+            slots,
+            index,
+            UnorderedMapSlot::create(slot.hash, slot.key(), v),
+          );
+          break true
+        }
+      } else if (delta < 0) {
+        // We are definitely storing into this slot. The only question is
+        // whether there is an existing live entry we need to displace.
+        Unsafe.array_set(slots, index, UnorderedMapSlot::create(h, k, v));
+
+        if (slot.isEmpty()) {
+          // We are done!
+          this.invalidateIterators();
+          this.!sz = this.sz + 1;
+          break true
+        } else {
+          // Displace the existing slot entry, since it was "closer" than we are.
+          // This will eventually return "true".
+          !index = (index + 1).and(slots.size() - 1);
+          !h = slot.hash;
+          !k = slot.key();
+          !v = slot.value();
+        }
+      } else {
+        // The new element's desired slot is "closer" to index than the
+        // current occupant of the slot, so we don't get to displace the
+        // current occupant. Note that empty slots always appear
+        // "infinitely close", so the fact that this is even closer
+        // than the current element means the slot cannot be empty.
+        !index = (index + 1).and(slots.size() - 1);
+      }
+    }
+  }
+
+  mutable private fun setLoop(h: Int, k: K, v: V): void {
+    slots = this.slots;
+    shift = this.shift;
+    index = h.ushr(shift);
+
+    loop {
+      slot = Unsafe.array_get(slots, index);
+
+      delta = h - slot.hash;
+      if (delta == 0 && k == slot.key()) {
+        // Replacing an existing value. Note that we leave the old key.
+        // This intentionally does not invalidate iterators.
+        Unsafe.array_set(
+          slots,
+          index,
+          UnorderedMapSlot::create(slot.hash, slot.key(), v),
+        );
+        break void;
+      } else if (delta < 0) {
+        // We are definitely storing into this slot. The only question is
+        // whether there is an existing live entry we need to displace.
+        Unsafe.array_set(slots, index, UnorderedMapSlot::create(h, k, v));
+
+        if (slot.isEmpty()) {
+          // We are done!
+          this.invalidateIterators();
+          this.!sz = this.sz + 1;
+          break void;
+        } else {
+          // Displace the existing slot entry, since it was "closer" than we are.
+          // This will eventually return "true".
+          !index = (index + 1).and(slots.size() - 1);
+          !h = slot.hash;
+          !k = slot.key();
+          !v = slot.value();
+        }
+      } else {
+        // The new element's desired slot is "closer" to index than the
+        // current occupant of the slot, so we don't get to displace the
+        // current occupant. Note that empty slots always appear
+        // "infinitely close", so the fact that this is even closer
+        // than the current element means the slot cannot be empty.
+        !index = (index + 1).and(slots.size() - 1);
+      }
+    }
+  }
+
+  mutable private fun maybeRemoveLoop(h: Int, k: K): Bool {
+    slots = this.slots;
+    shift = this.shift;
+    index = h.ushr(shift);
+    loop {
+      slot = Unsafe.array_get(slots, index);
+
+      delta = h - slot.hash;
+      if (delta == 0 && k == slot.key()) {
+        // We found it. Now we want to "slide over" values until we find one
+        // that's already in its correct slot.
+        this.!sz = this.sz - 1;
+        this.invalidateIterators();
+        this.slideOver(index);
+        break true
+      } else if (delta < 0) {
+        break false
+      } else {
+        // Advance to the next bucket and try again.
+        !index = (index + 1).and(slots.size() - 1);
+      }
+    }
+  }
+
+  mutable private fun slideOver(index: Int): void {
+    slots = this.slots;
+    shift = this.shift;
+    loop {
+      nextIndex = (index + 1).and(slots.size() - 1);
+      nextSlot = Unsafe.array_get(slots, nextIndex);
+
+      if (nextSlot.hash.ushr(shift) == nextIndex) {
+        // The next slot is exactly where it wants to be (including empty).
+        // So just mark the slot at 'index' as empty.
+        Unsafe.array_set(
+          slots,
+          index,
+          UnorderedMapSlot::emptyForIndex(index, shift),
+        );
+        break void;
+      } else {
+        Unsafe.array_set(slots, index, nextSlot);
+        !index = nextIndex;
+      }
+    }
+  }
+
+  // We cannot let ourselves get half full or a search for a missing
+  // key can "wrap around" in the Robin Hood distance and loop forever.
+  private mutable fun rehashIfFull(): void {
+    // This hack uses an efficient sign bit check to see if we are
+    // about to hit half full.
+    shift = this.shift;
+    aboutToBecomeHalfFull = ((this.sz + 1).shl(shift) < 0);
+    if (aboutToBecomeHalfFull) {
+      // Grow the table. We never shrink.
+      log2NumSlots = getLogSlotSizeForCapacity(this.slots.size() + 1);
+      this.growCapacity(log2NumSlots);
+    }
+  }
+
+  private mutable fun growCapacity(log2NumSlots: Int): void {
+    oldSlots = this.slots;
+    sz = this.sz;
+
+    // Start over with an empty array.
+    shift = getShiftForLogTableSize(log2NumSlots);
+    this.!shift = shift;
+    this.!sz = 0;
+    this.!slots = Array::mfillBy(1.shl(log2NumSlots), i ->
+      UnorderedMapSlot::emptyForIndex(i, shift)
+    );
+    // Insert our old values.
+    oldSlots.each(slot -> {
+      if (!slot.isEmpty()) {
+        h = slot.hash;
+        _ = this.maybeAddLoop(h, slot.key(), slot.value(), false)
+      }
+    });
+
+    // TODO T22587720: make the message argument lazy
+    if (this.sz != sz) {
+      invariant_violation(
+        "UnorderedMap size changed during rehashing (" +
+          sz +
+          " to " +
+          this.sz +
+          ") " +
+          "which probably indicates a mismatch between hash and " +
+          "equality methods, or an object's state changing after it " +
+          "was first inserted.",
+      )
+    };
+  }
+
+  // Iterates over all the slots of this map without guarding against
+  // concurrent modification. Only use when the callback cannot
+  // modify this map.
+  @always_inline
+  private readonly fun unsafeEach(f: UnorderedMapSlot<K, V> -> void): void {
+    this.slots.each(slot -> {
+      if (!slot.isEmpty()) {
+        f(slot)
+      }
+    })
+  }
+
+  // Internal helper for iteration guarding against concurrent modifiction.
+  @always_inline
+  readonly fun eachWhileImpl(f: UnorderedMapSlot<K, V> -> void): void {
+    slots = this.slots;
+    indexMinusGeneration = -this.generation_PRIVATE;
+    sz = slots.size();
+    while ({
+      index = indexMinusGeneration + this.generation_PRIVATE;
+      if (index.uge(sz)) {
+        // NOTE: If the map is changed while we are iterating,
+        // invalidateIterators() will effectively advance "index" by 2**32.
+        // That lets us locate the check for "map size changed" here,
+        // in the uncommon case where we've already hit the end, rather than
+        // inefficiently checking it separately on each iteration of the loop.
+        if (index >= generationSkip) {
+          throwContainerChanged()
+        };
+        false
+      } else {
+        slot = Unsafe.array_get(slots, index);
+        !indexMinusGeneration = indexMinusGeneration + 1;
+        if (!slot.isEmpty()) f(slot);
+        true
+      }
+    }) void;
+  }
+}
+
+// One entry in an open-coded hash table array.
+private value class UnorderedMapSlot<+K: Hashable & Equality, +V>(
+  hash: Int,
+  private k: Unsafe.RawStorage<K>,
+  private v: Unsafe.RawStorage<V>,
+) {
+  static fun create(h: Int, k: K, v: V): UnorderedMapSlot<K, V> {
+    UnorderedMapSlot(h, Unsafe.RawStorage::make(k), Unsafe.RawStorage::make(v))
+  }
+
+  // This leaves the index in the high (64 - shift), and all ones elsewhere.
+  static fun emptyForIndex(index: Int, shift: Int): UnorderedMapSlot<K, V> {
+    static::empty((index + 1).shl(shift) - 1)
+  }
+
+  static fun empty(h: Int): UnorderedMapSlot<K, V> {
+    UnorderedMapSlot(
+      h,
+      Unsafe.RawStorage::uninitialized(),
+      Unsafe.RawStorage::uninitialized(),
+    )
+  }
+
+  fun isEmpty(): Bool {
+    this.hash.and(1) != 0
+  }
+
+  fun key(): K {
+    Unsafe.RawStorage::unsafeGet(this.k)
+  }
+
+  fun value(): V {
+    Unsafe.RawStorage::unsafeGet(this.v)
+  }
+}
+
+// Common implementation for Map iterators.
+private mutable base class UnorderedMapIterator<
+  +T,
+  +K: Hashable & Equality,
+  +V,
+>(
+  protected table: readonly UnorderedMap<K, V>,
+  protected slots: readonly Array<UnorderedMapSlot<K, V>>,
+  protected mutable indexMinusGeneration: Int,
+) extends Iterator<T> {
+  mutable fun next(): ?T {
+    slots = this.slots;
+    table = this.table;
+    index = this.indexMinusGeneration + table.generation_PRIVATE;
+    sz = slots.size();
+
+    if (index.uge(sz)) {
+      // NOTE: If the hash table is changed while we are iterating,
+      // invalidateIterators() will effectively advance "index" by 2**32.
+      // That lets us locate the check for "table size changed" here,
+      // in the uncommon case where we've already hit the end, rather than
+      // inefficiently checking it separately on each next() call.
+      if (index >= generationSkip) {
+        throwContainerChanged()
+      };
+      None()
+    } else {
+      slot = Unsafe.array_get(slots, index);
+      this.!indexMinusGeneration = this.indexMinusGeneration + 1;
+
+      if (!slot.isEmpty()) {
+        Some(this.extractSlotValue(slot))
+      } else {
+        this.next()
+      }
+    }
+  }
+
+  protected mutable fun extractSlotValue(slot: UnorderedMapSlot<K, V>): T;
+}
+
+private mutable class UnorderedMapKeysIterator<
+  +K: Hashable & Equality,
+  +V,
+> extends UnorderedMapIterator<K, K, V> {
+  protected mutable fun extractSlotValue(slot: UnorderedMapSlot<K, V>): K {
+    slot.key()
+  }
+}
+
+private mutable class UnorderedMapValuesIterator<
+  +K: Hashable & Equality,
+  +V,
+> extends UnorderedMapIterator<V, K, V> {
+  protected mutable fun extractSlotValue(slot: UnorderedMapSlot<K, V>): V {
+    slot.value()
+  }
+}
+
+private mutable class UnorderedMapItemsIterator<
+  +K: Hashable & Equality,
+  +V,
+> extends UnorderedMapIterator<(K, V), K, V> {
+  protected mutable fun extractSlotValue(slot: UnorderedMapSlot<K, V>): (K, V) {
+    (slot.key(), slot.value())
+  }
+}
+
+module end;

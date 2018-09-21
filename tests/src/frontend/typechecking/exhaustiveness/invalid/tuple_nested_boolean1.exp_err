@@ -1,0 +1,9 @@
+File "./typechecking/exhaustiveness/invalid/tuple_nested_boolean1.sk", line 2, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | (true, false)
+1 | fun test(): String {
+2 |   (true, true) match {
+  |   ^^^^^^^^^^^^^^^^^^^^
+3 |   | (true, true) -> "Fail\n"
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^

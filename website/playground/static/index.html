@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+<script>if (!location.pathname.endsWith("/")) { location.pathname += "/"; }</script>
+<title>Playground &middot; skip</title>
+
+<link rel="shortcut icon" href="favicon.png">
+<link rel="stylesheet" href="third-party/codemirror.css">
+<link rel="stylesheet" href="third-party/neat.css">
+<link rel="stylesheet" href="third-party/lint.css">
+
+<link rel="stylesheet" href="playground.css">
+
+<script crossorigin src="third-party/react.production.min.js"></script>
+<script crossorigin src="third-party/react-dom.production.min.js"></script>
+<script src="third-party/codemirror.js"></script>
+<script src="third-party/rulers.js"></script>
+<script src="third-party/searchcursor.js"></script>
+<script src="third-party/matchbrackets.js"></script>
+<script src="third-party/closebrackets.js"></script>
+<script src="third-party/comment.js"></script>
+<script src="third-party/lint.js"></script>
+<script src="third-party/hardwrap.js"></script>
+<script src="third-party/sublime.js"></script>
+
+<script src="codemirror-skip.js"></script>
+<script src="playground.js"></script>
+<script src="skip.js"></script>
+
+<style>
+html {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  font-family: Merriweather,Book Antiqua,Georgia,Century Schoolbook,serif;
+  font-size: 12px;
+}
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  box-sizing: border-box;
+}
+.controls {
+  background-color: black;
+  height: 52px;
+  display: flex;
+  align-items: center;
+}
+.logo-title {
+  display: flex;
+  align-items: center;
+  margin-left: 20px;
+  margin-right: 20px;
+  text-decoration: none;
+}
+.title {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  color: white;
+  font-size: 26px;
+}
+.side-by-side {
+  display: flex;
+  flex: 1;
+}
+.side-by-side > * {
+  display: flex;
+  flex: 1;
+}
+.run {
+  margin-bottom: 5px;
+}
+.output {
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+.code-output {
+  display: none;
+}
+.CodeMirror {
+  height: 100%;
+}
+</style>
+</head>
+
+<body>
+<div class="controls">
+  <a href="/" class="logo-title">
+    <img src="../img/logo.png" class="logo" height="30" />
+  </a>
+  <button class="playground-button run" id="run" title="Press ctrl-enter to run"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> Run</button>
+  <button class="playground-button" id="printer"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> Prettify</button>
+  <div style="flex: 1;"></div>
+  <button class="playground-button" id="search"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> Search</button>
+  <button class="playground-button" id="js"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> JavaScript</button>
+  <button class="playground-button" id="native"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> Native</button>
+  <button class="playground-button" id="ast"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> AST</button>
+  <button class="playground-button" id="parsetree"><div class="playground-spin"></div><span class="playground-play">&#9654;</span> Parse Tree</button>
+</div>
+<div class="side-by-side">
+<textarea id="code">
+fun main(): void {
+  print_string("Hello Skip!")
+}
+</textarea>
+<div id="output" class="output"></div>
+<textarea id="code-output" class="code-output"></textarea>
+<div id="tree-output" class="tree-output"></div>
+</div>
+
+<script>
+var codeEditor = setupEditor({
+  textarea: document.getElementById('code'),
+  output: document.getElementById('output'),
+  codeOutput: document.getElementById('code-output'),
+  treeOutput: document.getElementById('tree-output'),
+
+  run: document.getElementById('run'),
+  printer: document.getElementById('printer'),
+  native: document.getElementById('native'),
+  js: document.getElementById('js'),
+  ast: document.getElementById('ast'),
+  parsetree: document.getElementById('parsetree'),
+  search: document.getElementById('search'),
+}, {lineNumbers: true});
+
+codeEditor.on('change', function() {
+  location.hash = btoa(codeEditor.getValue());
+});
+
+if (location.hash) {
+  codeEditor.setValue(atob(location.hash.slice(1)));
+}
+</script>
+</body>
+</html>

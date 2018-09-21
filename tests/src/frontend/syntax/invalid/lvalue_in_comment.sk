@@ -1,0 +1,4 @@
+fun main(): String {
+  // comment
+  x.!y
+}

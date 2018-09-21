@@ -1,0 +1,31 @@
+File "./typechecking/invalid/typeconst_5.sk", line 8, characters 7-13:
+Invalid override for the field 'T' on child 'MyChild' for parent 'MyParent'
+ 6 | }
+ 7 |
+ 8 | class MyChild extends MyParent {
+   |       ^^^^^^^
+ 9 |   type T = (Test.MixedString ~> String);
+
+File "./typechecking/invalid/typeconst_5.sk", line 2, characters 12-27:
+The type: Test.MixedScalar
+1 | base class MyParent final {x: this::T} {
+2 |   type T: (Test.MixedScalar ~> String);
+  |            ^^^^^^^^^^^^^^^^
+3 |   fun get(): this::T {
+
+File "./typechecking/invalid/typeconst_5.sk", line 9, characters 13-28:
+Is not a subtype of: Test.MixedString
+ 7 |
+ 8 | class MyChild extends MyParent {
+ 9 |   type T = (Test.MixedString ~> String);
+   |             ^^^^^^^^^^^^^^^^
+10 | }
+
+File "./typechecking/invalid/typeconst_5.sk", line 9, characters 13-28:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Test.MixedScalar
+ 7 |
+ 8 | class MyChild extends MyParent {
+ 9 |   type T = (Test.MixedString ~> String);
+   |             ^^^^^^^^^^^^^^^^
+10 | }

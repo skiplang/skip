@@ -1,0 +1,12 @@
+base class P {
+  children =
+  | A()
+  | B()
+  | C()
+}
+
+fun test(x: P): void {
+  x match {
+  | A() -> void
+  }
+}

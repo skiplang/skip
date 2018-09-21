@@ -1,0 +1,10 @@
+mutable base class Foo(mutable v: Int) {
+  type T;
+  deferred memoized frozen fun t1(x: this::T): this::T {
+    x
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

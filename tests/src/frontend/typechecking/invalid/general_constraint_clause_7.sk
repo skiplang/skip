@@ -1,0 +1,9 @@
+base class P<+T>
+base class L<+T> extends P<T>
+base class R<+T> extends P<T>
+
+class Tester<T>() {
+  fun no<U>[L<T>: R<U>](x: T): U {
+    x
+  }
+}

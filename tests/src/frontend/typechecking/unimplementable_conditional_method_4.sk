@@ -1,0 +1,22 @@
+class NeedShow<T: Show>() uses Show {
+  fun toString(): String {
+    "NeedShow"
+  }
+}
+class NoShow()
+
+base class P<T> {
+  fun abs[NeedShow<T>: Show](): void;
+}
+
+class C() extends P<NoShow>
+
+base class P2<T> {
+  fun abs<U>[U: NeedShow<T>](): void;
+}
+
+class C2() extends P2<NoShow>
+
+fun main(): void {
+  print_string("Pass")
+}

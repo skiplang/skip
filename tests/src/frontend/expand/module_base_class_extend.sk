@@ -1,0 +1,13 @@
+base class I1 extends M
+
+module M;
+
+base class .M
+
+module end;
+
+base class I2 extends M
+
+fun main(): void {
+  print_string("Pass")
+}

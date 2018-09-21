@@ -1,0 +1,23 @@
+File "./typechecking/invalid/tparam_super7.sk", line 6, characters 5-15:
+Constraint not satisfied
+4 |   }
+5 |   fun inty(x: Int): Foo<Int> {
+6 |     this.add(x)
+  |     ^^^^^^^^^^^
+7 |   }
+
+File "./typechecking/invalid/tparam_super7.sk", line 5, characters 15-17:
+The type: Int
+3 |     Foo(x)
+4 |   }
+5 |   fun inty(x: Int): Foo<Int> {
+  |               ^^^
+6 |     this.add(x)
+
+File "./typechecking/invalid/tparam_super7.sk", line 5, characters 15-17:
+Does not share a common super type with: Orderable
+3 |     Foo(x)
+4 |   }
+5 |   fun inty(x: Int): Foo<Int> {
+  |               ^^^
+6 |     this.add(x)

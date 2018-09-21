@@ -1,0 +1,14 @@
+class Cont<T>(x: T) {
+  fun get(): T {
+    this.x
+  }
+
+  fun compareit<V: Orderable, V2: Orderable>[T: V & V2](x: V, y: V2): Order {
+    _: Order = this.get().compare(y); // this call works
+    this.get().compare(x) // this one doesn't
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

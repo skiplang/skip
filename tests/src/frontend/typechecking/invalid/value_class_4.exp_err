@@ -1,0 +1,5 @@
+File "./typechecking/invalid/value_class_4.sk", line 1, characters 28-34:
+Value classes cannot have mutable parameters 'mutable x: ...' (but they can have parameters that are mutable 'x: mutable ...')
+1 | mutable value class Foo<T>(mutable x: T)
+  |                            ^^^^^^^
+2 | fun foo(): void {

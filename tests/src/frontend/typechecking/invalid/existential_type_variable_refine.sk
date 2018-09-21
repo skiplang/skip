@@ -1,0 +1,12 @@
+base class Hide
+class Bar<T: Orderable>(x: T) extends Hide
+
+fun showit<T: Show>(x: T): String {
+  x.toString()
+}
+
+fun doit(x: Hide): String {
+  x match {
+  | Bar(v) -> showit(v)
+  }
+}

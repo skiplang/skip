@@ -1,0 +1,20 @@
+trait TC1 {
+  fun foo(): inst;
+}
+
+trait TC2 extends TC1 {
+  fun foo2(): inst;
+}
+
+class X() uses TC2 {
+  fun foo<T: TC2>(): T {
+    invariant_violation("")
+  }
+  fun foo2(): X {
+    X()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

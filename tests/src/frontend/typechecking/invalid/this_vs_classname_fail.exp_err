@@ -1,0 +1,21 @@
+File "./typechecking/invalid/this_vs_classname_fail.sk", line 6, characters 5-20:
+The value returned from the function is incompatible with the return type 'Foo<T>'
+4 |   }
+5 |   static fun special<T: nonNullable>(): Foo<T> {
+6 |     static::create()
+  |     ^^^^^^^^^^^^^^^^
+7 |   }
+
+File "./typechecking/invalid/this_vs_classname_fail.sk", line 1, characters 11-11:
+The invariant type: T
+1 | class Foo<T: frozen>() {
+  |           ^
+2 |   static fun create(): Foo<T> {
+
+File "./typechecking/invalid/this_vs_classname_fail.sk", line 5, characters 45-45:
+Is incompatible with the invariant type: T
+3 |     Foo()
+4 |   }
+5 |   static fun special<T: nonNullable>(): Foo<T> {
+  |                                             ^
+6 |     static::create()

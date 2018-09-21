@@ -1,0 +1,26 @@
+base class P final () {
+  children =
+  | A
+  | B
+}
+
+class Inv<T>(x: T)
+
+base class X {
+  type TX: P;
+}
+
+base class Y {
+  type TY: X;
+  type TP: P;
+
+  fun inv_tx(): Inv<this::TY::TX>;
+  fun inv_tp(): Inv<this::TP>;
+  fun wat(): Array<Inv<this::TP>> {
+    Array[this.inv_tx(), this.inv_tp()]
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

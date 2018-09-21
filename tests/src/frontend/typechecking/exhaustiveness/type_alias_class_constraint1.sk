@@ -1,0 +1,20 @@
+// Type aliases and literal constraints
+base class F {
+  children =
+  | I(Int)
+  | B(Bool)
+}
+
+class Test() {
+  type Foo = F;
+
+  fun bar(x: F): void {
+    x match {
+    | I(Int _) -> void
+    | this::Foo _ -> void
+    }
+  }
+}
+fun main(): void {
+  print_string("Pass")
+}

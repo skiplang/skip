@@ -1,0 +1,4 @@
+File "./syntax/invalid/lowercase_type_unknown.sk", line 1, characters 10-14:
+Type specifier expected. Types start with an uppercase letter.
+1 | fun a(): kikoo {}
+  |          ^^^^^

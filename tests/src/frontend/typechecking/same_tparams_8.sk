@@ -1,0 +1,7 @@
+fun yes<T: mutable Ref<Int>>(x: T): Ref<Int> {
+  freeze(x)
+}
+
+fun main(): void {
+  print_string("Pass")
+}

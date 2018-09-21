@@ -1,0 +1,6 @@
+// mutable lambdas not allowed in constants (type via alias)
+// TODO  error position is alias def not usage site
+type MutLambda = () -> void;
+class Foo() {
+  const mutLambda: MutLambda = () -> void;
+}

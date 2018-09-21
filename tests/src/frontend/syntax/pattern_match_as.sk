@@ -1,0 +1,15 @@
+base class MyBase {
+  children =
+  | A()
+  | B()
+}
+
+fun main(): void {
+  x: MyBase = A();
+  print_raw(
+    x match {
+    | _z @ (_y @ A _) -> "Pass\n"
+    | _h @ (_g @ (_f @ _p)) -> "not this one"
+    },
+  )
+}

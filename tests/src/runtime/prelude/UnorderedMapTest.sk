@@ -1,0 +1,564 @@
+// Test class with an awful hash function.
+value class WeakHash(n: Int) uses Hashable, Equality, Show {
+  fun ==(other: WeakHash): Bool {
+    this.n == other.n
+  }
+
+  fun hash(): Int {
+    // Horrible hash function to force collisions.
+    this.n.shr(16)
+  }
+
+  fun toString(): String {
+    this.n.toString()
+  }
+}
+
+@test
+fun testSimple(): void {
+  m = mutable UnorderedMap[];
+  assertEqual(m.size(), 0);
+  assertTrue(m.isEmpty());
+
+  m.set(37, 99);
+
+  assertEqual(m.size(), 1);
+  assertTrue(!m.isEmpty());
+
+  assertEqual(m[37], 99)
+}
+
+@test
+fun testReassign(): void {
+  m = mutable UnorderedMap[];
+
+  m.set(12, 45);
+  assertEqual(m[12], 45);
+  assertEqual(m.size(), 1);
+
+  m.set(12, 66);
+  assertEqual(m[12], 66);
+  assertEqual(m.size(), 1)
+}
+
+@test
+fun testSetMany(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 200)) {
+    m.set(i - 50, i * i);
+    assertEqual(m.size(), i + 1)
+  };
+  for (i in Range(0, 200)) assertEqual(m[i - 50], i * i)
+}
+
+@test
+fun testContainsKey(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 200)) {
+    m.set(i - 50, i * i);
+    assertEqual(m.size(), i + 1)
+  };
+  for (i in Range(0, 300)) {
+    assertEqual(m.containsKey(i), (i >= -50 && i < 200 - 50))
+  }
+}
+
+@test
+fun testRemoveSimple(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 200)) {
+    m.set(i - 50, i * i);
+    assertEqual(m.size(), i + 1)
+  };
+  for (i in Range(0, 200)) {
+    m.remove(i - 50);
+    assertEqual(m.size(), 199 - i)
+  };
+
+  assertThrows(() -> m.remove(-9999999))
+}
+
+@test
+fun testRemoveAlternating(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 200)) {
+    m.set(i - 50, i * i);
+    assertEqual(m.size(), i + 1)
+  };
+  for (i in Range(0, 200)) {
+    if (i % 2 == 0) {
+      m.remove(i - 50)
+    }
+  };
+  for (i in Range(0, 200)) {
+    if (i % 2 == 0) {
+      assertFalse(m.containsKey(i))
+    } else {
+      assertEqual(m[i - 50], i * i)
+    }
+  }
+}
+
+@test
+fun testMaybeRemove(): void {
+  m = mutable UnorderedMap[(10, 0), (20, 1), (30, 2)];
+  assertFalse(m.maybeRemove(15));
+  assertTrue(m.maybeRemove(20));
+  assertEqual(m.size(), 2);
+  assertEqual(m[10], 0);
+  assertEqual(m[30], 2)
+}
+
+@test
+fun testHashConflicts(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 15)) m.set(WeakHash(i), i + 7);
+  for (i in Range(0, 15)) assertEqual(m[WeakHash(i)], i + 7)
+}
+
+@test
+fun testHashConflicts2(): void {
+  m = mutable UnorderedMap[];
+
+  m.set(WeakHash(0), 1);
+  assertEqual(m.size(), 1);
+
+  m.set(WeakHash(1), 2);
+  assertEqual(m.size(), 2);
+
+  // Change the first key again, should not change the size.
+  m.set(WeakHash(0), 3);
+  assertEqual(m.size(), 2)
+}
+
+@test
+fun testMissing(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 15)) {
+    m.set(WeakHash(i), i);
+    assertFalse(m.containsKey(WeakHash(1000)))
+  }
+}
+
+@test
+fun testReadWhileModify(): void {
+  m = mutable UnorderedMap[];
+  for (i in Range(0, 10)) m.set(i.toString(), i);
+
+  success = false;
+
+  count = 0;
+  try {
+    m.keys().each(_ -> {
+      !count = count + 1;
+      if (count == 5) {
+        // Modifying the container while iterating should throw an
+        // exception when we try to advance the iterator.
+        m.remove("7")
+      }
+    })
+  } catch {
+  | ContainerChanged _ -> !success = true
+  };
+
+  assertEqual(count, 5);
+  assertTrue(success)
+}
+
+@test
+fun testRandom(): void {
+  rng = Random::mcreate(123);
+
+  // Track what the table contents should be.
+  size = 100;
+
+  // Create a "verify" helper function that checks the contents of the table.
+  // It simulates an array of booleans by using a generation counter; a value
+  // has been "seen" in this pass if its array entry is equal to the
+  // generation. Incrementing the global generation effectively clears
+  // all the flags.
+  generation = 0;
+  ok = Array<Int>::mfillBy(size, _ -> generation);
+  verify = (
+    (m, expected) -> {
+      // Clear all the marks in "ok".
+      !generation = generation + 1;
+
+      count = 0;
+      m.items().each(kv -> {
+        (key, value) = kv;
+
+        // Check for a duplicate key.
+        assertNotEqual(ok[key], generation);
+        ok.set(key, generation);
+
+        assertEqual(expected[key].fromSome("mismatch"), value);
+
+        !count = count + 1
+      });
+
+      assertEqual(count, m.size())
+    }
+  );
+
+  for (outer in Range(0, 30)) {
+    expected = Array<?Int>::mfillBy(size, _ -> None());
+    m = mutable UnorderedMap<Int, Int>[];
+
+    // This doubly-nested loop helps avoid stack overflows in PHP since
+    // we don't optimize tail recursion yet.
+    for (_ in Range(0, outer)) {
+      for (_ in Range(0, 10)) {
+        // Do a full verify occasionally.
+        dontVerify = rng.random(0, size);
+        if (dontVerify == 0) {
+          verify(m, expected)
+        };
+
+        // Pick a random index.
+        i = rng.random(0, size);
+
+        expected[i] match {
+        | Some(n) ->
+          assertEqual(m[i], n);
+          m.remove(i);
+          expected.set(i, None())
+        | None() ->
+          assertFalse(m.containsKey(i));
+          x = rng.next();
+          m.set(i, x);
+          expected.set(i, Some(x))
+        }
+      }
+    };
+
+    verify(m, expected)
+  }
+}
+
+@test
+fun testSet(): void {
+  m = mutable UnorderedMap[];
+
+  m.set("hi", 37);
+  assertEqual(m["hi"], 37);
+
+  m.set("hi", 55);
+  assertEqual(m["hi"], 55)
+}
+
+@test
+fun testOptionSet(): void {
+  m = mutable UnorderedMap[];
+
+  assertTrue(m.maybeSet("hi", 37));
+  assertEqual(m["hi"], 37);
+
+  assertFalse(m.maybeSet("hi", 55));
+  assertEqual(m["hi"], 37)
+}
+
+@test
+fun testAdd(): void {
+  m = mutable UnorderedMap[];
+
+  m.set("hi", 37);
+  assertEqual(m["hi"], 37);
+
+  assertThrows(() -> m.add("hi", 55))
+}
+
+@test
+fun testReserve(): void {
+  numExactLimit = 0;
+
+  // Make sure we can insert the reserved # of values without reallocating.
+  for (reserve in Range(0, 35)) {
+    m = UnorderedMap::mcreate(reserve);
+
+    startCapacity = m.capacity();
+    for (i in Range(0, reserve)) m.set(i, 0);
+    endCapacity = m.capacity();
+
+    assertEqual(m.size(), reserve);
+    assertEqual(startCapacity, endCapacity);
+
+    m.set(-1, 0);
+    if (m.capacity() > endCapacity) {
+      !numExactLimit = numExactLimit + 1
+    }
+  };
+
+  // Make sure that our reserved size is not too conservative
+  // (at least, not always), by ensuring we hit at least some cases where
+  // adding one more entry forces a realloc.
+  assertTrue(numExactLimit > 3)
+}
+
+@test
+fun testClone(): void {
+  for (sz1 in Range(0, 7)) {
+    h = UnorderedMap::mcreate(sz1);
+    for (i in Range(0, sz1)) h.add(i, i);
+    assertEqual(h.size(), sz1);
+
+    for (szDelta in Range(0, 4)) {
+      h2 = h.clone(szDelta);
+      assertEqual(h2.size(), sz1);
+      for (i in Range(0, sz1)) assertEqual(h2[i], i);
+
+      // Make sure we reserved the extra space we asked for.
+      startCapacity = h2.capacity();
+      for (i in Range(0, szDelta)) h2.set(sz1 + i, sz1 + i);
+      endCapacity = h2.capacity();
+
+      assertEqual(startCapacity, endCapacity);
+
+      if (sz1 > 0) {
+        // Make sure modifying the original table does not affect the clone.
+        h.set(0, -99);
+        assertEqual(h[0], -99);
+        assertEqual(h2[0], 0);
+        h.set(0, 0)
+      }
+    }
+  }
+}
+
+@test
+fun testGetOrAdd(): void {
+  h = mutable UnorderedMap[];
+  for (i in Range(0, 10)) assertEqual(h.getOrAdd(i, () -> i + 3), i + 3);
+  assertEqual(h.size(), 10);
+  for (i in Range(0, 10)) assertEqual(h[i], i + 3);
+
+  n1 = h.getOrAdd(3, () -> 47);
+  assertEqual(n1, 3 + 3);
+
+  n2 = h.getOrAdd(-1, () -> 46);
+  assertEqual(n2, 46);
+  assertEqual(h[-1], 46);
+  assertEqual(h.size(), 11)
+}
+
+@test
+fun testMupdateByKey(): void {
+  m = mutable UnorderedMap[0 => "a", 1 => "b"];
+  m2 = mutable UnorderedMap[1 => "B", 2 => "C"];
+  m.extend(m2);
+  assertEqual(m.size(), 3);
+  assertEqual(m.get(0), "a"); // leaves existing keys
+  assertEqual(m.get(1), "B"); // overwrites keys that exist in both
+  assertEqual(m.get(2), "C"); // adds new keys
+}
+
+@test
+fun testMupdateByKeyWhenEmpty(): void {
+  m = mutable UnorderedMap[];
+  m2 = mutable UnorderedMap[1 => "B", 2 => "C"];
+  m.extend(m2);
+  assertEqual(m.size(), m2.size());
+  m2.each((k, v) -> assertEqual(m.get(k), v));
+}
+
+@test
+fun testFind(): void {
+  m = mutable UnorderedMap[0 => "a", 1 => "b", 2 => "c"];
+  f = m.find((k, v) -> k == 1 && v == "b");
+  assertTrue(f.isSome());
+  assertEqual(f.fromSome(), "b");
+
+  f2 = m.find((k, v) -> k == 3 && v == "d");
+  assertTrue(f2.isNone())
+}
+
+@test
+fun testFindItem(): void {
+  m = mutable UnorderedMap[0 => "a", 1 => "b", 2 => "c"];
+  f = m.findItem((k, v) -> k == 1 && v == "b");
+  assertTrue(f.isSome());
+  assertEqual(f.fromSome().i0, 1);
+  assertEqual(f.fromSome().i1, "b");
+
+  f2 = m.findItem((k, v) -> k == 3 && v == "d");
+  assertTrue(f2.isNone())
+}
+
+fun doEqualTest<T: Hashable & Equality & Show>(f: Int -> T): void {
+  // Make one Map.
+  m1 = mutable UnorderedMap[];
+  for (i in Range(0, 15)) m1.set(f(i), i + 7);
+
+  // Make an equal one with different capacity and insert in a
+  // different order.
+  m2 = UnorderedMap::mcreate(256);
+  for (j in Range(0, 15)) {
+    i = 14 - j;
+    m2.set(f(i), i + 7)
+  };
+
+  fm1 = freeze(m1);
+  fm2 = freeze(m2);
+
+  assertEqual(fm2, fm1);
+  assertEqual(fm1, fm2);
+  assertEqual(fm2, fm1);
+  assertEqual(fm1, fm2);
+
+  oldHash1 = m1.hash();
+  oldHash2 = m2.hash();
+  assertEqual(oldHash1, oldHash2);
+
+  key0 = f(0);
+
+  // Hash should (usually) change if keys change but values stay the same.
+  oldVal = m1[key0];
+  m1.remove(key0);
+  m1.set(f(999999), oldVal);
+  assertNotEqual(oldHash1, m1.hash());
+
+  gm1 = freeze(m1);
+  gm2 = freeze(m2);
+
+  assertNotEqual(gm2, gm1);
+  assertNotEqual(gm1, gm2);
+  assertNotEqual(gm2, gm1);
+  assertNotEqual(gm1, gm2);
+
+  // Hash should (usually) change if values change but keys stay the same.
+  m2.set(key0, -1);
+  assertNotEqual(oldHash2, m2.hash());
+}
+
+@test
+fun testEqual(): void {
+  doEqualTest(id);
+  doEqualTest(n -> WeakHash(n));
+}
+
+@test
+fun testFromItems(): void {
+  m = UnorderedMap[1 => 1, 2 => 2, 3 => 3];
+  assertEqual(m, m.items().map(p -> (p.i0, p.i1)).collect(UnorderedMap));
+  assertEqual(m, m.keys().map(x -> (x, x)).collect(UnorderedMap));
+  assertEqual(m, m.values().map(x -> (x, x)).collect(UnorderedMap));
+}
+
+@test
+fun testMutableFromItems(): void {
+  m = mutable UnorderedMap[1 => 1, 2 => 2, 3 => 3];
+  assertEqual(m, UnorderedMap::mcreateFromIterator(m.items()));
+  assertEqual(
+    m,
+
+    UnorderedMap::mcreateFromIterator(m.keys().map(x -> ((x, x) : (Int, Int)))),
+  );
+  assertEqual(
+    m,
+
+    UnorderedMap::mcreateFromIterator(
+      m.values().map(x -> ((x, x) : (Int, Int))),
+    ),
+  );
+}
+
+@test
+fun testMap(): void {
+  m = UnorderedMap[1 => "a", 2 => "b", 3 => "c"];
+  m2 = m.map((k, v) -> v + k);
+  assertEqual(m2, UnorderedMap[1 => "a1", 2 => "b2", 3 => "c3"]);
+}
+
+@test
+fun testMapItems(): void {
+  m = UnorderedMap[1 => "a", 2 => "b", 3 => "c"];
+  m2 = m.mapItems((k, v) -> (v, k));
+  assertEqual(m2, UnorderedMap["a" => 1, "b" => 2, "c" => 3]);
+}
+
+@test
+fun testFilter(): void {
+  m = UnorderedMap[1 => "a", 2 => "b", 3 => "c", 4 => "d", 5 => "e"];
+  m2 = m.filter((k, v) -> k >= 2 && v != "e");
+  assertEqual(m2, UnorderedMap[2 => "b", 3 => "c", 4 => "d"]);
+}
+
+@test
+fun testFilterNone(): void {
+  m = UnorderedMap[
+    1 => None(),
+    2 => Some("b"),
+    3 => None(),
+    4 => Some("d"),
+    5 => Some("e"),
+  ];
+  m2 = m.filterNone();
+  assertEqual(m2, UnorderedMap[2 => "b", 4 => "d", 5 => "e"]);
+}
+
+@test
+fun testToStringEmpty(): void {
+  m = UnorderedMap[];
+  assertEqual(m.toString(), "UnorderedMap{}")
+}
+
+@test
+fun testToStringNonEmpty(): void {
+  m = UnorderedMap[1 => "a", 2 => "b", 3 => "c", 4 => "d", 5 => "e"];
+  assertEqual(
+    m.toString(),
+    "UnorderedMap{4 => d, 3 => c, 2 => b, 1 => a, 5 => e}",
+  )
+}
+
+@test
+// async
+fun testGen(): void {
+  awaitSynchronously(
+    async {
+      m = Map[
+        1 => async {
+          "a"
+        },
+        2 => async {
+          "b"
+        },
+        3 => async {
+          "c"
+        },
+      ];
+      m2 = await m.gen();
+      assertTrue(m2 == Map[1 => "a", 2 => "b", 3 => "c"]);
+    },
+  )
+}
+
+@test
+fun testGenMap(): void {
+  awaitSynchronously(
+    async {
+      m = UnorderedMap[1 => "a", 2 => "b", 3 => "c"];
+      m2 = await m.genMap((k, v) ~>
+        async {
+          v + k
+        }
+      );
+      assertEqual(m2, UnorderedMap[1 => "a1", 2 => "b2", 3 => "c3"]);
+    },
+  )
+}
+
+@test
+fun testGenFilter(): void {
+  awaitSynchronously(
+    async {
+      m = UnorderedMap[1 => "a", 2 => "b", 3 => "c", 4 => "d", 5 => "e"];
+      m2 = await m.genFilter((k, v) ~>
+        async {
+          k >= 2 && v != "e"
+        }
+      );
+      assertEqual(m2, UnorderedMap[2 => "b", 3 => "c", 4 => "d"]);
+    },
+  )
+}

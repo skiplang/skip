@@ -1,0 +1,9 @@
+fun main(): void {
+  print_raw(
+    3.14 match {
+    | 42.0 -> "Fail"
+    | 3.14 -> "Pass\n"
+    | _ -> "some other number"
+    },
+  )
+}

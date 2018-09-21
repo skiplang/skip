@@ -1,0 +1,12 @@
+mutable class Node(value: Int, left: ?mutable Node, right: ?mutable Node) {}
+
+mutable class SplayTree(mutable root: ?mutable Node) {}
+
+fun test(): mutable SplayTree {
+  mutable SplayTree(None())
+}
+
+fun main(): void {
+  _ = test();
+  print_string("Pass")
+}

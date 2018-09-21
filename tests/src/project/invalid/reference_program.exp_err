@@ -1,0 +1,2 @@
+File "invalid/reference_program/skip.project.json"
+Program unit 'def' in project 'invalid/reference_program/ref/skip.project.json' referenced from 'lib' is not a library.

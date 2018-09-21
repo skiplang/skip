@@ -1,0 +1,5 @@
+mutable class Foo<T>(mutable v: T)
+mutable class Bar<T>(mutable v: mutable Foo<T>)
+fun test1(opt: readonly Bar<Int>): void {
+  opt.v.!v = 0
+}

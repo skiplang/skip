@@ -1,0 +1,69 @@
+File "./typechecking/invalid/mutable_lambda_1.sk", line 7, characters 11-11:
+You cannot capture this variable
+5 |   f = (
+6 |     () ~> {
+7 |       _ = x
+  |           ^
+8 |     }
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 4, characters 7-20:
+Mutable because of this position
+2 |
+3 | fun no(): () ~> void {
+4 |   x = mutable Foo(5);
+  |       ^^^^^^^^^^^^^^
+5 |   f = (
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 5, characters 7-7:
+Because this closure was declared as pure (~>)
+Try '->' instead
+3 | fun no(): () ~> void {
+4 |   x = mutable Foo(5);
+5 |   f = (
+  |       ^
+6 |     () ~> {
+  |     ^^^^^^^
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 17, characters 14-14:
+You cannot capture this variable
+15 |   f = (
+16 |     () ~> {
+17 |       x.!x = x.x + 1
+   |              ^
+18 |     }
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 14, characters 7-20:
+Mutable because of this position
+12 |
+13 | fun no2(): () ~> void {
+14 |   x = mutable Foo(5);
+   |       ^^^^^^^^^^^^^^
+15 |   f = (
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 15, characters 7-7:
+Because this closure was declared as pure (~>)
+Try '->' instead
+13 | fun no2(): () ~> void {
+14 |   x = mutable Foo(5);
+15 |   f = (
+   |       ^
+16 |     () ~> {
+   |     ^^^^^^^
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 27, characters 8-8:
+Cannot modify this local
+25 |   f = (
+26 |     () ~> {
+27 |       !x.x = x.x + 1
+   |        ^
+28 |     }
+
+File "./typechecking/invalid/mutable_lambda_1.sk", line 25, characters 7-7:
+Because this closure was declared as pure (~>)
+Try '->' instead
+23 | fun no3(): () ~> void {
+24 |   x = mutable Foo(5);
+25 |   f = (
+   |       ^
+26 |     () ~> {
+   |     ^^^^^^^

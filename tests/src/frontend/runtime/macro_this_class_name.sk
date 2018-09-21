@@ -1,0 +1,18 @@
+trait ClassName {
+  macro fun className(): String {
+    #thisClassName
+  }
+}
+
+module M;
+class C() uses ClassName {}
+class .G() uses ClassName {}
+module end;
+
+value class V() uses ClassName {}
+
+fun main(): void {
+  print_string(M.C().className());
+  print_string(.G().className());
+  print_string(V().className());
+}

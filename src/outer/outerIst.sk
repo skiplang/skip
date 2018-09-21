@@ -1,0 +1,551 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AU = SkipAstUtils;
+module alias T = SkipTypedAst;
+module alias TU = SkipTypedAstUtils;
+module alias OU = SkipOuterIstUtils;
+module alias SLO = SkipLowerOuterIst;
+
+module OuterIst;
+
+base class ClassKind uses Equality {
+  children =
+  | KTrait()
+  | KClass()
+  | KBase()
+}
+
+// note hashing and equality ignore file position
+value class Name(pos: FileRange, id: String) uses Hashable, Equality {
+  fun hash(): Int {
+    this.id.hash()
+  }
+  fun ==(other: Name): Bool {
+    this.id == other.id
+  }
+}
+
+// Temp conversions from old (pos, str) code into Name
+// can remove once upstream Names etc. are converted
+fun name(n: (FileRange, String)): Name {
+  Name(n.i0, n.i1)
+}
+
+base class Visibility uses Equality {
+  children =
+  | VPrivate()
+  | VPublic()
+  | VProtected()
+}
+
+class Program{
+  class_defs: UMap<ClassDef>,
+  fun_defs: UMap<FunDef>,
+  const_defs: UMap<ConstDef>,
+  tya_defs: UMap<TypeAliasDef>,
+}
+
+class TypeAliasDef{
+  annotations: SSet,
+  name: Name,
+  tparams: Array<TypeAliasTparam>,
+  body: Type,
+}
+
+value class TypeAliasTparam(id: String, name: Name)
+
+base class SymbolDef{name: Name} {
+  fun getName(): String {
+    this.name.id
+  }
+
+  fun getPos(): FileRange {
+    this.name.pos
+  }
+}
+
+class ConstDef{
+  annotations: SSet,
+  native_: ?FileRange,
+  visibility: (FileRange, Visibility),
+  type: Type,
+  value: ?Initializer,
+  from_: ?Name,
+  source: ?Name,
+} extends SymbolDef
+
+class TypeDef{
+  visibility: (FileRange, Visibility),
+  name: Name,
+  tparams: Array<TypeParameter>,
+  tyd_type: ?Type,
+  tyd_value: ?Type,
+  source: Name,
+}
+
+class ClassDef{
+  depth: Int,
+  native_: ?FileRange,
+  kind: ClassKind,
+  value: ?FileRange,
+  mutable_: ?FileRange,
+  name: Name,
+  tparams: Array<TypeParameter>,
+  params: ?ClassParams,
+  extends_: UMap<Parent>,
+  concrete_children: SSet,
+  use: UMap<Parent>,
+  methods: UMap<MethodDef>,
+  fields: UMap<SkipNamedAst.Field_type>,
+  types: UMap<TypeDef>,
+  annotations: SSet,
+  consts: UMap<ConstDef>,
+}
+
+class ClassParams{
+  pos: FileRange,
+  final_: ?FileRange,
+  params: Parameters<Parameter>,
+  source: Name,
+  visibility: (FileRange, Visibility),
+}
+
+class Parent{
+  effective_source: Name,
+  inherited_source: Name,
+  targs: Array<Type>,
+}
+
+// code bodies are compiled lazily, initially left as TypedAst Exprs
+// and later lowered into OuterIst Stmts
+base class Body {
+  children =
+  | TypedBody(expr: T.Expr)
+  | OuterBody(stmt: Stmt)
+
+  fun getPos(): FileRange
+  | TypedBody(expr) -> TU.expr_pos(expr)
+  | OuterBody(stmt) -> stmt.getPos()
+
+  fun asTyped(): T.Expr
+  | TypedBody(t) -> t
+  | OuterBody _ -> this.getPos().die(`asTyped() called on OuterBody`)
+
+  fun asOuter(): Stmt
+  | TypedBody _ -> this.getPos().die(`asOuter() called on TypedBody`)
+  | OuterBody(o) -> o
+
+  fun isOuter(): Bool
+  | TypedBody _ -> false
+  | OuterBody _ -> true
+
+  fun mapOuter(f: Stmt -> Stmt): OuterBody {
+    OuterBody(f(this.asOuter()))
+  }
+}
+
+// common super of FunDef and MethodDef
+base class CallableDef{
+  annotations: SSet,
+  async_: ?FileRange,
+  body: ?Body,
+  memoized_: ?FileRange,
+  native_: ?FileRange,
+  params: Parameters<Parameter>,
+  return_: Type,
+  tparams: Array<TypeParameter>,
+  untracked_: ?FileRange,
+  yields: ?FileRange,
+} extends SymbolDef {
+  fun getParams(): Parameters<Parameter> {
+    this.params
+  }
+  fun getBodyOpt(): ?Body {
+    this.body
+  }
+  fun getBody(): Body {
+    this.getBodyOpt() match {
+    | None() -> this.getPos().die(`no body`)
+    | Some(body) -> body
+    }
+  }
+  fun isLowered(): Bool {
+    this.getBodyOpt() match {
+    | Some(b) -> b.isOuter()
+    | _ -> true
+    }
+  }
+  fun lower(program: Program): this;
+}
+
+class MethodDef{
+  visibility: (FileRange, Visibility),
+  overridable_: ?FileRange,
+  kind: SkipNamedAst.FieldKind,
+  whenparams: Array<WhenClause>,
+  from_: Name,
+  source: Name,
+  met_class: Name,
+  implicit_param: Binding,
+  generic_mapping: SMap<SMap<Type>>,
+} extends CallableDef {
+  fun lower(program: Program): this {
+    this.body match {
+    | Some(TypedBody _) -> SLO.method_def(this, program)
+    | _ -> this.getPos().die(`already lowered`)
+    }
+  }
+}
+
+class FunDef{} extends CallableDef {
+  fun lower(program: Program): this {
+    this.body match {
+    | Some(TypedBody _) -> SLO.fun_def(this, program)
+    | _ -> this.getPos().die(`already lowered`)
+    }
+  }
+}
+
+base class Variance uses Hashable, Equality {
+  children =
+  | Vnone()
+  | Vplus()
+  | Vminus()
+}
+
+value class TypeParameter(
+  var: Variance,
+  id: String,
+  name: Name,
+  constraints: List<Type>,
+)
+
+value class WhenClause(ty: Type, constraints: Array<Type>)
+
+// initializers are compiled lazily, initially left as TypedAst Exprs
+// and later lowered into OuterIst (Stmt, Expr) pairs
+base class Initializer {
+  children =
+  | TypedInit(expr: T.Expr)
+  | OuterInit(stex: (Stmt, Expr))
+
+  fun getPos(): FileRange
+  | TypedInit(expr) -> TU.expr_pos(expr)
+  | OuterInit(stex) -> stex.i1.pos
+
+  fun asTyped(): T.Expr
+  | TypedInit(t) -> t
+  | OuterInit _ -> this.getPos().die(`asTyped() called on OuterInit`)
+
+  fun asOuter(): (Stmt, Expr)
+  | TypedInit _ -> this.getPos().die(`asOuter() called on TypedInit`)
+  | OuterInit(stex) -> stex
+
+  fun mapOuter(f: ((Stmt, Expr)) -> (Stmt, Expr)): OuterInit {
+    OuterInit(f(this.asOuter()))
+  }
+}
+
+class Parameter{
+  visibility: (FileRange, Visibility),
+  name: Name,
+  type: Type,
+  value: ?Initializer,
+  frozen_: BindingInfo,
+  index: Int,
+  // this is only needed for class parameters, but this module is currently
+  // transpiled to ocaml, where
+  // a) we can't use inheritance, so no "Class_parameter extends Parameter"
+  // b) we can't use the same field name in multiple classes, so no copy+paste.
+  // for non-class params this can be ignored.
+  annotations: SSet,
+  mutable_: ?FileRange,
+}
+
+// note: hash and equality omit file position
+value class Type(pos: FileRange, ty: Type_) uses Hashable, Equality {
+  fun hash(): Int {
+    this.ty.hash()
+  }
+
+  fun ==(other: Type): Bool {
+    this.ty == other.ty
+  }
+}
+
+base class Type_ uses Hashable, Equality {
+  children =
+  | Tany()
+  | Tapply(name: Name, args: Array<Type>)
+  | TsetElt(set: SMap<String>, name: Name, args: Array<Type>)
+  | Tfun(modifiers: TfunModifiers, params: Parameters<Type>, returnType: Type)
+  | Tparam(var: Variance, id: String, name: Name, constraint: ?Type)
+  | Tmutable(ty: Type)
+  | Treadonly(ty: Type)
+  | Tnamed(name: Array<Name>, ty: Type)
+  | Tdefault(ty: Type)
+}
+
+value class TfunModifiers(
+  purity: PurityModifier,
+  tracking: TrackingModifier,
+) uses Hashable, Equality
+
+base class PurityModifier uses Hashable, Equality {
+  children =
+  | Fpure()
+  | Fmutable()
+}
+
+base class TrackingModifier uses Hashable, Equality {
+  children =
+  | Ftracked()
+  | Funtracked()
+}
+
+base class Stmt uses Hashable, Equality {
+  children =
+  | JumpTo(name: Name)
+  | SingleExpr(expr: Expr)
+  | Bind(binding: Binding, expr_opt: ?Expr)
+  | Assign(localVar: LocalVar, expr: Expr)
+  | AssignField(localVar: LocalVar, source: Name, name: Name, expr: Expr)
+  | Seq(stmts: List<Stmt>)
+  | If(expr: Expr, t: Stmt, f: Stmt)
+  | Match(expr: Expr, branches: List<MatchBranch>)
+  | Switch(expr: Expr, branches: List<SwitchBranch>, default_opt: ?Stmt)
+  | TypeSwitch(expr: Expr, branches: List<TypeSwitchBranch>, default_opt: ?Stmt)
+  // Control entering a JumpBlock goes to the first LabeledStmt.
+  // Control which falls off the end of a LabeledStmt transfers to the
+  // end of the JumpBlock.
+  //
+  // We have the following constraints around JumpBlock and JumpTo:
+  // (1) All jumps must be contained within a JumpBlock, and can only
+  //     jump to other labels defined within the enclosing JumpBlocks
+  //     (so any JumpTo <label>s must be contained within a jumpblock
+  //     that defines <label>, and jumping to an outer block if nested is ok);
+  // (2) We can only jump forwards -- we can only jump to labels below
+  //     us, and we can _never_ jump "up" to labels appearing before us.
+  | JumpBlock(stmts: List<LabeledStmt>, loopBlock: Bool)
+  | Try(pos: FileRange, stmt: Stmt, branches: List<MatchBranch>)
+  | TryCatch(pos: FileRange, stmt: Stmt, binding: Binding, catch_stmt: Stmt)
+  | Throw(expr: Expr)
+  | Return(expr: Expr)
+  | LoopForever(pos: FileRange, stmt: Stmt)
+  | Yield(expr: Expr)
+  | YieldBreak(pos: FileRange)
+
+  // TODO see note at top of file about code that will improve
+  // once tuples are codemodded to classes
+  fun getPos(): FileRange
+  | JumpTo(name) -> name.pos
+  | SingleExpr(expr) -> expr.pos
+  | Bind(binding, _) -> binding.name.pos
+  | Assign(localVar, _)
+  | AssignField(localVar, _, _, _) ->
+    localVar.name.pos
+  | Seq(stmts) ->
+    stmts match {
+    | List.Nil() -> FileRange.none
+    | List.Cons(s, _) -> s.getPos()
+    }
+  | If(expr, _, _)
+  | Match(expr, _)
+  | Switch(expr, _, _)
+  | TypeSwitch(expr, _, _)
+  | Yield(expr) ->
+    expr.pos
+  | JumpBlock(lstmts, _) ->
+    lstmts match {
+    | List.Nil() -> FileRange.none
+    | List.Cons(LabeledStmt(name, _), _) -> name.pos
+    }
+  | Try(pos, _, _)
+  | TryCatch(pos, _, _, _) ->
+    pos
+  | Throw(expr)
+  | Return(expr) ->
+    expr.pos
+  | LoopForever(pos, _)
+  | YieldBreak(pos) ->
+    pos
+}
+
+// note: hash and equality omit file position
+value class Expr(
+  ty: Type,
+  pos: FileRange,
+  expr: Expr_,
+) uses Hashable, Equality {
+  fun hash(): Int {
+    (this.ty, this.expr).hash()
+  }
+
+  fun ==(other: Expr): Bool {
+    this.expr == other.expr && this.ty == other.ty
+  }
+}
+
+base class Expr_ uses Hashable, Equality {
+  children =
+  | Unreachable()
+  | DefaultArg()
+  | ELiteral(lit: Literal)
+  | Const(name: Name)
+  | Local(name: Name)
+  // Name and Array<Type> are really a Tapply for a base class of the
+  // type being dynamically constructed with the same layout.
+  | DynamicConstruction(
+    expr: Expr,
+    name: Name,
+    types: Array<Type>,
+    args: Parameters<Expr>,
+  )
+  | Object(name: Name, types: Array<Type>, args: Parameters<Expr>)
+  | Call(expr: Expr, args: Parameters<Expr>)
+  | FunCall(name: Name, types: Array<Type>, args: Parameters<Expr>)
+  | MethodCall(di: DotInfo, args: Parameters<Expr>)
+  | StaticCall(di: DotInfo, args: Parameters<Expr>)
+  | Dot(di: DotInfo)
+  | StaticDot(di: DotInfo)
+  | Lambda(
+    params: Parameters<Binding>,
+    type_: Type,
+    bindings: SMap<Binding>,
+    stmt: Stmt,
+    yields: ?FileRange,
+  )
+  | EArray(exprs: Array<Expr>)
+  | Await(expr: Expr)
+  | Async(stmt: Stmt, expr: Expr)
+  | Freeze(expr: Expr)
+  | GetClass(expr: Expr)
+  | Classname(name: Name)
+  | With(expr: Expr, updates: WithUpdates)
+  | Cast(type_: Type, expr: Expr)
+}
+
+type WithUpdates = UMap<WithUpdate>;
+
+value class WithUpdate(
+  expr: Expr,
+  source: Name,
+  cast_opt: ?Type,
+) uses Hashable, Equality
+
+class DotInfo{
+  obj_expr: Expr,
+  field: Name,
+  field_targs: Array<Type>,
+  source: Name,
+  elt_kind: EltKind,
+  field_type: Type,
+} uses Hashable, Equality
+
+base class EltKind uses Hashable, Equality {
+  children =
+  // | EType () TODO
+  | EProperty()
+  | EMethod()
+  | EConst()
+}
+
+value class LocalVar(ty: Type, name: Name) uses Hashable, Equality
+
+// 'read' is not set until the OuterIst optimization pass.
+value class BindingInfo{
+  captured: Bool,
+  updated: Bool,
+  read: Bool,
+} uses Hashable, Equality
+
+value class Binding(
+  ty: Type,
+  name: Name,
+  info: BindingInfo,
+) uses Hashable, Equality
+
+value class MatchBranch(
+  pats: List<Pattern>,
+  guard: ?Stmt,
+  action: Stmt,
+) uses Hashable, Equality
+
+value class Pattern(
+  ty: Type,
+  pos: FileRange,
+  pat: Pattern_,
+) uses Hashable, Equality
+
+base class Pattern_ uses Hashable, Equality {
+  children =
+  // Only used during lowering
+  | Pat_all()
+  | Pat_var(Binding)
+  | Pat_literal(Literal)
+  | Pat_type(
+    // The class name being tested against. Note that for generic classes
+    // it does NOT include type arguments.
+    matchClass: TypeIdentifier,
+    // The type to cast to if the testType passes.
+    // Note this is not the same as the type of the containing Pattern.
+    // The type of the containing Pattern is the type when the entire nested
+    // pattern matches.
+    castType: Type,
+    params: ?Parameters<ParamPattern>,
+  )
+  | Pat_as(Pattern, Binding)
+}
+
+/* for subpatterns of Pat_type, lowering needs access to
+   the host slot/field type, as well as the type of the subpattern itself.
+   (The former might be more general than the latter.)
+ */
+value class ParamPattern(ty: Type, pat: Pattern) uses Hashable, Equality
+
+base class TypeIdentifier(name: Name) uses Hashable, Equality {
+  children =
+  | TidObject()
+  | TidStatic(scope: Name, var: Name)
+}
+
+value class SwitchBranch(
+  cases: List<(FileRange, Literal)>,
+  action: Stmt,
+) uses Hashable, Equality
+
+value class TypeSwitchBranch(
+  cases: List<(FileRange, TypeIdentifier)>,
+  action: Stmt,
+) uses Hashable, Equality
+
+value class LabeledStmt(label: Name, stmt: Stmt) uses Hashable, Equality
+
+base class Literal uses Hashable, Equality {
+  children =
+  | LVoid()
+  | LBool(b: Bool)
+  | LInt(i: Int)
+
+  /* Unicode code point */
+  | LChar(c: Int)
+
+  /* UTF-8 encoded Unicode string */
+  | LString(s: String)
+}
+
+class LFloat(f: Float) extends Literal {
+  fun ==(other: Literal): Bool {
+    other match {
+    | LFloat(f) -> this.f.isEqual(f)
+    | _ -> false
+    }
+  }
+}
+
+module end;

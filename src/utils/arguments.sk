@@ -1,0 +1,125 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Command line arguments parsing.
+// TODO: Move to prelude once the conversion to Sk is finished.
+
+module Arguments;
+
+// TODO: Add more specs.
+base class Spec<T: frozen> {
+  children =
+  // Calls the function
+  | Help(String)
+  | SetBool(f: (T, Bool) ~> T)
+  // Sets the ref to true
+  | SetTrue(f: T ~> T)
+  // Sets the ref to the next option
+  | SetString(f: (T, String) ~> T)
+}
+
+fun usage(usageMessage: String): void {
+  print_raw(usageMessage)
+}
+
+fun error<T>(errorMessage: String, usageMessage: String): T {
+  print_raw(errorMessage);
+  usage(usageMessage);
+  SkipError.fail()
+}
+
+fun expectedArgument<T>(optionName: String, usageMessage: String): T {
+  error("Error: option '" + optionName + "' needs an argument.\n", usageMessage)
+}
+
+fun expectedBoolArgument<T>(optionName: String, usageMessage: String): T {
+  error(
+    "Error: option '" +
+      optionName +
+      "' needs an argument of either 'true' or 'false'.\n",
+    usageMessage,
+  )
+}
+
+fun help<T>(usageMessage: String): T {
+  usage(usageMessage);
+  SkipError.fail()
+}
+
+fun parseArgs<T: frozen>(
+  acc: T,
+  files: List<String>,
+  args: List<String>,
+  specs: SMap<Spec<T>>,
+  usageMessage: String,
+): (T, List<String>, List<String>) {
+  doRemainingArgs = (acc, files, remainingArgs) ~> {
+    parseArgs(acc, files, remainingArgs, specs, usageMessage);
+  };
+  args match {
+  | List.Nil() -> (acc, files, List[])
+  | List.Cons(arg, afterArg) ->
+    if (arg == "--") {
+      (acc, files, afterArg)
+    } else if (specs.containsKey(arg)) {
+      specs.get(arg) match {
+      | SetString(f) ->
+        afterArg match {
+        | List.Nil() ->
+          expectedArgument(arg, usageMessage);
+          (acc, files, List[])
+        | List.Cons(value, afterValue) ->
+          acc2 = f(acc, value);
+          doRemainingArgs(acc2, files, afterValue)
+        }
+      | SetBool(f) ->
+        afterArg match {
+        | List.Nil() ->
+          expectedArgument(arg, usageMessage);
+          (acc, files, List[])
+        | List.Cons("true", afterValue) ->
+          acc2 = f(acc, true);
+          doRemainingArgs(acc2, files, afterValue)
+        | List.Cons("false", afterValue) ->
+          acc2 = f(acc, false);
+          doRemainingArgs(acc2, files, afterValue)
+        | _ ->
+          expectedBoolArgument(arg, usageMessage);
+          (acc, files, List[])
+        }
+      | SetTrue(f) ->
+        acc2 = f(acc);
+        doRemainingArgs(acc2, files, afterArg)
+      | Help(usage_message) ->
+        help(usage_message);
+        (acc, files, List[])
+      }
+    } else {
+      doRemainingArgs(acc, List.Cons(arg, files), afterArg)
+    }
+  }
+}
+
+fun parse<T: frozen>(
+  acc: T,
+  specs: List<(String, Spec<T>)>,
+  usageMessage: String,
+): (T, List<String>, List<String>) {
+  args = List::createFromItems(arguments());
+  help_message = Help(usageMessage);
+  specMap = SortedMap::createFromItems(
+    List[
+      ("-help", help_message),
+      ("--help", help_message),
+      ("-h", help_message),
+    ].concat(specs),
+  );
+  (acc2, files, extras) = parseArgs(acc, List[], args, specMap, usageMessage);
+  (acc2, files.reversed(), extras)
+}
+
+module end;

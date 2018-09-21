@@ -1,0 +1,13 @@
+fun squares(x: Int): mutable Iterator<Int> {
+  i = 0;
+  while (i < x) {
+    yield (i * i);
+    !i = i + 1
+  }
+}
+
+fun main(): void {
+  for (x in squares(10)) {
+    print_string(x.toString())
+  }
+}

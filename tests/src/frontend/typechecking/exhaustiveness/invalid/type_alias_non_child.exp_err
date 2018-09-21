@@ -1,0 +1,20 @@
+File "./typechecking/exhaustiveness/invalid/type_alias_non_child.sk", line 12, characters 7-14:
+The following pattern is unused:
+ | Value(i)
+10 |   fun test(x: this::T): Int {
+11 |     x match {
+12 |     | Value(i) -> i
+   |       ^^^^^^^^
+13 |     | this::T(_, _) -> 2
+
+File "./typechecking/exhaustiveness/invalid/type_alias_non_child.sk", line 12, characters 7-14:
+In particular, we encountered this sub-pattern
+ | Value(i)
+But expected one of
+ | Plus(_, _)
+In that position.
+10 |   fun test(x: this::T): Int {
+11 |     x match {
+12 |     | Value(i) -> i
+   |       ^^^^^^^^
+13 |     | this::T(_, _) -> 2

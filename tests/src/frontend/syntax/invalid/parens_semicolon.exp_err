@@ -1,0 +1,13 @@
+File "./syntax/invalid/parens_semicolon.sk", line 2, characters 6-6:
+Expected ')'. Found '='.
+1 | fun main(): String {
+2 |   (x = 100; "No")
+  |      ^
+3 | }
+
+File "./syntax/invalid/parens_semicolon.sk", line 2, characters 3-3:
+ For opening '('
+1 | fun main(): String {
+2 |   (x = 100; "No")
+  |   ^
+3 | }

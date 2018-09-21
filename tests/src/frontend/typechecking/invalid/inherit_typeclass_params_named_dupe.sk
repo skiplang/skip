@@ -1,0 +1,4 @@
+// named constructor TC inheritance, field already bound
+trait Foo{s: String}
+
+class Bar{s: String} uses Foo

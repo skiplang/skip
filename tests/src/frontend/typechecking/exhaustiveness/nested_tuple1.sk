@@ -1,0 +1,8 @@
+fun main(): void {
+  print_raw(
+    ("foo", 42) match {
+    | (String _, 2) -> "Fail\n"
+    | (String _, Int _) -> "Pass\n"
+    },
+  )
+}

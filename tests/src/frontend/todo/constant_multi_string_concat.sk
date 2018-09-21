@@ -1,0 +1,11 @@
+const MyFoo: String = "foo" + "barbaz" + "";
+
+fun main(): void {
+  print_raw(
+    if (MyFoo == MyFoo) {
+      "Pass\n"
+    } else {
+      "Fail\n"
+    },
+  )
+}

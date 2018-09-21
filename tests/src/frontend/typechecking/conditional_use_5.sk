@@ -1,0 +1,24 @@
+trait X {
+  fun getVal(): String;
+}
+trait Y extends X
+
+class C<T>(x: T) uses Y[T: Y] {
+  fun getVal[T: X](): String {
+    this.x.getVal()
+  }
+}
+
+class HasX() uses Y {
+  fun getVal(): String {
+    "Pass"
+  }
+}
+
+fun print_x<T: X>(t: T): void {
+  print_string(t.getVal())
+}
+
+fun main(): void {
+  print_x(C(HasX()));
+}

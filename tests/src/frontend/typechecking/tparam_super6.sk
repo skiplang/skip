@@ -1,0 +1,23 @@
+base class A final ()
+base class B extends A
+class C extends B
+
+class Foo<T>(x: T) {
+  fun add<U>[T: U](y: U): Foo<U> {
+    Foo(y)
+  }
+}
+
+fun asA(): A {
+  C()
+}
+fun asB(): B {
+  C()
+}
+
+fun main(): void {
+  f = Foo(C());
+  f2 = f.add(asA());
+  _ = f2.add(asB());
+  print_string("Pass")
+}

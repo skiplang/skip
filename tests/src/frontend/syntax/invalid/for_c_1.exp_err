@@ -1,0 +1,6 @@
+File "./syntax/invalid/for_c_1.sk", line 2, characters 8-8:
+Unexpected ';'. 'for (;;)' loops are not supported, you can use 'while (true)' instead
+1 | fun main(): void {
+2 |   for (;;) {
+  |        ^
+3 |     void

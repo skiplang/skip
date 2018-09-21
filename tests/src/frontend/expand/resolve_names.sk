@@ -1,0 +1,33 @@
+module A;
+
+fun foo(): Quux {
+  bar + baz() + Foo().bar() + Foo.baz()
+}
+
+const bar: String = "P";
+
+fun baz(): String {
+  "a"
+}
+
+class Foo() {
+  fun bar(): String {
+    "s"
+  }
+}
+
+type Quux = String;
+
+module end;
+
+module Foo;
+
+fun baz(): String {
+  "s"
+}
+
+module end;
+
+fun main(): void {
+  print_raw(A.foo() + "\n")
+}

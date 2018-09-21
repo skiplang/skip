@@ -1,0 +1,12 @@
+base class A(f: Bool)
+class C(b: Int, c: Bool) extends A
+class B(l: String) extends A
+
+fun myMatch(b: A): String {
+  b match {
+  | A(false) -> "P"
+  | C(1, false, true) -> "a"
+  | A(true) -> "s"
+  | B(_, true) -> "a"
+  }
+}

@@ -1,0 +1,7 @@
+fun main(): void {
+  try {
+    return void
+  } catch {
+  | Exception _ -> void
+  }
+}

@@ -1,0 +1,15 @@
+File "./typechecking/invalid/overridable_algebraic_4.sk", line 3, characters 3-15:
+foo has two algebraic declarations
+1 | base class L {
+2 |   fun foo(): void
+3 |   | X _ -> void
+  |   ^^^^^^^^^^^^^
+4 | }
+
+File "./typechecking/invalid/overridable_algebraic_4.sk", line 7, characters 3-38:
+Additional declaration defined here
+5 | base class R {
+6 |   fun foo(): void
+7 |   | C _ -> invariant_violation("dead")
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 | }

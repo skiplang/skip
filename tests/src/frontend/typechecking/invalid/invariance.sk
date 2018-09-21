@@ -1,0 +1,18 @@
+// covariant type params behave invariantly on mutable instances
+//
+mutable class MyRef<+T>(mutable value: T)
+
+fun store(ref: mutable MyRef<?String>): void {
+  ref.!value = None()
+}
+
+fun main(): void {
+  ref = mutable MyRef(Some("hello"));
+  store(ref);
+  print_raw(
+    ref.value match {
+    | Some(x) -> x
+    // boom, ref contains a None
+    },
+  )
+}

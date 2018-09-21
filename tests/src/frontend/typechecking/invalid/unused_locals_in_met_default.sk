@@ -1,0 +1,10 @@
+class Tester() {
+  fun f1(
+    f: Int = {
+      x = 1;
+      42
+    },
+  ): void {
+    void
+  }
+}

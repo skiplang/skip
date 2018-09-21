@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import StringIO
+import argparse
+import imp
+import os
+import shutil
+import sys
+import xml.etree.cElementTree as ET
+
+
+common = imp.load_source(
+    'common',
+    os.path.join(os.path.dirname(sys.argv[0]), '../tests/runtime/tools/common.py'))
+
+from common import RED, GREEN, NORMAL
+
+
+def removeDir(dirname, dirs, path):
+    path = os.path.split(path)
+    if path[0] == dirname and path[1] in dirs:
+        dirs.remove(path[1])
+
+
+def readFileToXml(name, filename):
+    if not os.path.isfile(filename):
+        return ''
+
+    with open(filename, 'r') as f:
+        data = f.read()
+
+    return '%s:\n' % (name,) + '\n'.join(x.encode('string_escape') for x in data.split('\n'))
+
+
+# filename is one of test.testok or test.testfail
+def printTestOutput(filename):
+    assert filename.startswith('./')
+    filename = filename[2:]
+
+    path_backend, test_result = os.path.splitext(filename)
+    path, backend = os.path.splitext(path_backend)
+
+    # backend is like '.js'
+    backend = backend[1:]
+
+    test = os.path.join(common.source_dir, path)
+
+    result = common.RunCommand.fromArtifacts(test, backend)
+
+    if not result.checkReturnCode():
+        return result, False
+
+    if result.report_diff():
+        return result, False
+
+    return result, True
+
+# filename is one of filename.testok or filename.testfail
+def processTest(testsuites, filename):
+
+    oldStdout = sys.stdout
+    output = StringIO.StringIO()
+    try:
+        sys.stdout = output
+        result, passed = printTestOutput(filename)
+    finally:
+        sys.stdout = oldStdout
+
+    testsuite = ET.SubElement(
+        testsuites,
+        'testsuite',
+        name=result.targetName,
+    )
+
+    testcase = ET.SubElement(testsuite, 'testcase', name=result.targetName+':')
+    if result.timeTaken is not None:
+        testcase.set('time', str(result.timeTaken))
+    if passed:
+        return True
+
+    failure = ET.SubElement(testcase, 'failure')
+    failure.text = output.getvalue()
+
+    # Copy failing test artifacts
+    for f in (result.res_name, result.stdout_name, result.stderr_name):
+        if os.path.isfile(f):
+            dst = os.path.join(os.environ['CIRCLE_TEST_REPORTS'], os.path.relpath(f, common.binary_dir))
+            try:
+                os.makedirs(os.path.dirname(dst))
+            except OSError:
+                pass
+            shutil.copyfile(f, dst)
+
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Run skip compiler tests',
+        parents = [common.commonArguments(needsBackend=False)])
+    args = common.parse_args(parser)
+
+    if 'CIRCLE_TEST_REPORTS' not in os.environ:
+        assert False, 'CIRCLE_TEST_REPORTS not set'
+
+    testsuites = ET.Element('testsuites')
+
+    passed = True
+    os.chdir(common.binary_dir)
+    for dirname, dirs, files in os.walk('.'):
+        removeDir(dirname, dirs, './third-party')
+        removeDir(dirname, dirs, './setup')
+        removeDir(dirname, dirs, './bin')
+        removeDir(dirname, dirs, './CMakeFiles')
+        removeDir(dirname, dirs, './native/runtime')
+        removeDir(dirname, dirs, './nuclide')
+
+        for name in sorted(
+                set(os.path.splitext(f)[0]
+                    for f in files
+                    if f.endswith(('.testok', '.testfail')))):
+            if name + '.testok' in files:
+                ext = '.testok'
+                if name + '.testfail' in files:
+                    print('WARNING: %s has both .testok and .testfail' % (
+                        os.path.join(dirname, name),),
+                          file=sys.stderr)
+            else:
+                ext = '.testfail'
+            f = os.path.join(dirname, name + ext)
+            if not processTest(testsuites, f):
+                passed = False
+
+    def indent(elem, level=0):
+        i = '\n' + level * '  '
+        j = '\n' + (level-1) * '  '
+        if len(elem):
+            if not elem.text or not elem.text.strip():
+                elem.text = i + '  '
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = i
+            for subelem in elem:
+                indent(subelem, level + 1)
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = j
+        else:
+            if level and (not elem.tail or not elem.tail.strip()):
+                elem.tail = j
+        return elem
+
+    indent(testsuites)
+    tree = ET.ElementTree(testsuites)
+
+    outfile = os.path.join(os.environ['CIRCLE_TEST_REPORTS'], 'skip', 'test-results.xml')
+    try:
+        os.makedirs(os.path.dirname(outfile))
+    except OSError:
+        pass
+
+    tree.write(outfile)
+    return 0 if passed else 1
+
+
+if __name__ == '__main__':
+    rc = main()
+    sys.exit(rc)

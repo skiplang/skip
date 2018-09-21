@@ -1,0 +1,24 @@
+fun merge(): void {
+  addL = l.fold(
+    (key, value, result) ->
+      f(key, Some(value), r.maybeGet(key)) match {
+      | None() -> result
+      | Some(resultValue) -> result.add(key, resultValue)
+      }
+    ,
+    SortedMap[],
+  );
+  r.fold(
+    (key, value, result) ->
+      if (l.containsKey(key)) {
+        result
+      } else {
+        f(key, None(), Some(value)) match {
+        | None() -> result
+        | Some(resultValue) -> result.add(key, resultValue)
+        }
+      }
+    ,
+    addL,
+  )
+}

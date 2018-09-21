@@ -1,0 +1,11 @@
+base class L
+base class R
+class C() extends L, R
+class D() extends L
+
+fun shouldError(l: L): String {
+  l match {
+  | R _ -> "Fail\n"
+  | _ -> "Fail\n"
+  }
+}

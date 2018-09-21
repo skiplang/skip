@@ -1,0 +1,7 @@
+fun foo(): void {
+  { _ = 42; () }
+}
+
+fun main(): String {
+  "fail"
+}

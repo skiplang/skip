@@ -1,0 +1,18 @@
+class X()
+
+fun test(): Nullable<X> {
+  try {
+    Box(X())
+  } catch {
+  | Exception _ -> Null()
+  }
+}
+
+fun main(): void {
+  print_raw(
+    test() match {
+    | Box(_) -> "OK\n"
+    | _ -> "FAILED"
+    },
+  )
+}

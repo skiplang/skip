@@ -1,0 +1,7 @@
+async fun asyncMain(): ^void {
+  print_raw("Pass\n")
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}

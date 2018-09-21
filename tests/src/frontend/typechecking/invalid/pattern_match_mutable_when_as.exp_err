@@ -1,0 +1,14 @@
+File "./typechecking/invalid/pattern_match_mutable_when_as.sk", line 12, characters 19-29:
+Cannot access a mutable method on a readonly object
+10 |   c = mutable C("Fail");
+11 |   c match {
+12 |   | c2 @ C(_) if (c2.checkX() == "Fail") -> c2.!x = "Booooom\n"
+   |                   ^^^^^^^^^^^
+13 |   };
+
+File "./typechecking/invalid/pattern_match_mutable_when_as.sk", line 2, characters 3-9:
+This is where this method was declared as mutable
+1 | mutable class C(mutable x: String) {
+2 |   mutable fun checkX(): String {
+  |   ^^^^^^^
+3 |     val = this.x;

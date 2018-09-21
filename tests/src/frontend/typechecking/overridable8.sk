@@ -1,0 +1,19 @@
+base class B1 {
+  overridable fun m1(): void {
+    void
+  }
+}
+
+base class B2 {
+  overridable fun m1(): void {
+    void
+  }
+}
+
+class D1() extends B1, B2 {
+  fun m1 from B1;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

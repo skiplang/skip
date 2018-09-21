@@ -1,0 +1,765 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Parser;
+
+type ParseTree = ParseTree.ParseTree;
+
+// The location and lexing context for a Parser.
+//
+// tokens contains both consumed tokens, as well as the token lookahead.
+// Tokens are lexed from the lexer on demand, as they are peek()ed for.
+//
+// index tracks the boundary between consumed tokens and lookahead tokens.
+//
+// Consuming a token advances index past that token. Lex errors in the consumed
+// token will become part of the parse results. Tokens must never be 'unconsumed'.
+//
+// Peeking for a token may produce lex errors, however the lex errors for a peeked
+// token are not committed to until the token is consumed.
+//
+// The current lexer is replaceable during parsing. Replacing a lexer enables
+// support for contextual lexing. When replacing the current lexer, the lookahead
+// tokens are discarded; as they were produced with the old lexer. Typically
+// the lookahead is small (often empty) when switching lexers so this should
+// not be prohibitively expensive.
+//
+// position tracks where a lexer should start lexing from for the token at index.
+// It is used to reposition the new lexer when changing lexers.
+//
+// The current lexer.position tracks the position the lexer should start at to
+// produce the next lookahead token.
+mutable class ParsePosition{
+  mutable index: Int,
+  tokens: mutable Vector<mutable Lexer.TokenResult>,
+  mutable lexer: mutable Lexer.Lexer,
+  mutable position: mutable Lexer.LexingPosition,
+} {
+  static fun create(lexer: mutable Lexer.Lexer): mutable ParsePosition {
+    startPosition = lexer.mark();
+    mutable ParsePosition{
+      index => 0,
+      tokens => mutable Vector[lexer.createStartResult()],
+      lexer,
+      position => startPosition,
+    }
+  }
+
+  readonly fun getTokens(): Array<Token.Token> {
+    this.tokens.map(result ~> result.token).toArray().slice(0, this.index);
+  }
+
+  readonly fun getComments(): Array<Token.Comment> {
+    this.tokens.values()
+      .flatMap(result ~> result.token.comments())
+      .collect(Array);
+  }
+
+  readonly fun getLexErrors(): Array<SyntaxError> {
+    this.tokens.values()
+      .flatMap(result ~> result.token.errors.values())
+      .collect(Array);
+  }
+
+  mutable fun clone(): mutable ParsePosition {
+    mutable ParsePosition{
+      index => this.index,
+      tokens => this.tokens,
+      lexer => this.lexer,
+      position => this.position.clone(),
+    };
+  }
+
+  mutable fun setLexer(lexer: mutable Lexer.Lexer): void {
+    // The tokens that we have in our lookahead are from the old lexer,
+    // and are no longer valid.
+    // Discard any tokens which haven't been consumed.
+    this.tokens.resize(this.index, this.tokens[0]);
+
+    // Start the new lexer at our current position.
+    lexer.setPosition(this.position);
+    this.!lexer = lexer;
+  }
+
+  mutable fun atEnd(): Bool {
+    this.peekKind(TokenKind.END_OF_FILE());
+  }
+
+  mutable private fun getToken(
+    index: Int,
+    includeTrailingTrivia: Bool = true,
+  ): Token.Token {
+    // Tokens are lexed on demand.
+    while (index >= this.tokens.size()) {
+      newTokenResult = this.lexer.lexToken(includeTrailingTrivia);
+      if (!this.tokens.isEmpty()) {
+        lastToken = this.tokens.last().token;
+        newToken = newTokenResult.token;
+        // TODO: Validate that their trivia do not overlap either.
+        if (lastToken.range.end > newToken.range.start) {
+          invariant_violation(
+            `Lexer returned overlapping tokens: ${lastToken} and ${newToken}`,
+          );
+        };
+      };
+      this.tokens.push(newTokenResult);
+    };
+    this.tokens[index].token
+  }
+
+  // Return the Token at the offset from current.
+  mutable fun peekTokenOffset(offset: Int): Token.Token {
+    this.getToken(this.index + offset);
+  }
+
+  // Returns the current Token.
+  mutable fun peekToken(): Token.Token {
+    this.peekTokenOffset(0)
+  }
+
+  mutable fun peekOffset(offset: Int): TokenKind.TokenKind {
+    this.peekTokenOffset(offset).kind
+  }
+
+  // Return the Kind of the current Token.
+  mutable fun peek(): TokenKind.TokenKind {
+    this.peekOffset(0)
+  }
+
+  mutable fun peekKindOffset(kind: TokenKind.TokenKind, offset: Int): Bool {
+    this.peekOffset(offset) == kind
+  }
+
+  // Is the current Token match kind?
+  mutable fun peekKind(kind: TokenKind.TokenKind): Bool {
+    this.peekKindOffset(kind, 0)
+  }
+
+  // Is the current Token an identifier which matches the given name?
+  mutable fun peekPredefinedName(name: String): Bool {
+    this.peekToken().value == name
+  }
+
+  mutable fun peekPredefinedNameOffset(name: String, offset: Int): Bool {
+    this.peekTokenOffset(offset).value == name
+  }
+
+  // Consume a Token.
+  mutable fun advance(includeTrailingTrivia: Bool = true): Token.Token {
+    if (this.index > this.tokens.size()) {
+      invariant_violation(
+        `Attempt to advance past the last token at: ${this.position.position}`,
+      );
+    };
+    token = this.peekToken();
+    if (!includeTrailingTrivia && !token.trailingComments.isEmpty()) {
+      this.setLexer(this.lexer);
+      // force the new token without trailing trivia
+      !token = this.getToken(this.index, false);
+    };
+    this.!index = this.index + 1;
+    this.!position = if (this.index == this.tokens.size()) {
+      this.lexer.mark();
+    } else {
+      this.tokens[this.index].startPosition;
+    };
+    token
+  }
+
+  // Range factories
+  mutable fun createRange(start: mutable ParsePosition): TextRange {
+    if (start.atEnd() && this.atEnd()) {
+      start.createRangeAfter()
+    } else {
+      TextRange.create(start.positionAfter(), this.positionBefore())
+    }
+  }
+
+  // Typically, the Position before the trivia in front of the next token.
+  // Though it sometimes drifts to this.positionAfter().
+  mutable fun positionBefore(): Position {
+    this.getToken(max(0, this.index - 1)).range.end;
+  }
+
+  // Position after the trivia in front of the next token.
+  // AKA The start of the next token.
+  mutable fun positionAfter(): Position {
+    this.getToken(this.index).range.start
+  }
+
+  // An empty TextRange at positionAfter()
+  mutable fun createRangeAfter(): TextRange {
+    createRangeAfterToken(this.peekToken())
+  }
+
+  // An empty TextRange at positionBefore()
+  mutable fun createRangeBefore(): TextRange {
+    TextRange.empty(this.positionBefore())
+  }
+
+  mutable fun createEmptyTreeBefore(): ParseTree {
+    ParseTree.EmptyTree{range => this.createRangeBefore()}
+  }
+
+  mutable fun createEmptyTreeAfter(): ParseTree {
+    ParseTree.EmptyTree{range => this.createRangeAfter()}
+  }
+}
+
+// Includes all non-Skip specific parsing machinery.
+//
+// Enables derived classes to build recursive descent parsing.
+//
+// The peek*() methods allow unbounded lookahead into the token stream.
+// Tokens are consumed with advance(though more often with the eat*() methods).
+//
+// Includes combinators for parsing lists with/without:
+// - delimiters between elements
+// - optional trailing delimiter
+// - separators before and after the list (parens, curlies, ...)
+// - optional or required elements
+//
+// An error free parse must result in a ParseTree which -
+//  - includes every Token in the input exactly once, and in source order.
+//  - does not include any ErrorTree's
+//
+// Supports contextual lexing. Call setLexer() to switch the lexical grammar.
+// setLexer() discards any token lookahead.
+//
+// Supports peekParse()ing - using existing production parsing methods to
+// disambiguate the grammar. Peek parsing should be used with care; recursive
+// peek parsing is exponential in complexity.
+mutable base class Parser{
+  mutable position: mutable ParsePosition,
+  errors: mutable Vector<SyntaxError> = mutable Vector[],
+} {
+  mutable fun setLexer(lexer: mutable Lexer.Lexer): void {
+    this.position.setLexer(lexer);
+  }
+
+  readonly fun getTokens(): Array<Token.Token> {
+    this.position.getTokens();
+  }
+
+  readonly fun getComments(): Array<Token.Comment> {
+    this.position.getComments();
+  }
+
+  readonly fun getLexErrors(): Array<SyntaxError> {
+    this.position.getLexErrors();
+  }
+
+  readonly fun getErrors(): Array<SyntaxError> {
+    this.getLexErrors().concat(this.errors.toArray());
+  }
+
+  mutable fun mark(): mutable ParsePosition {
+    this.position.clone();
+  }
+
+  mutable fun atEnd(): Bool {
+    this.position.atEnd();
+  }
+
+  mutable fun peekTokenOffset(offset: Int): Token.Token {
+    this.position.peekTokenOffset(offset);
+  }
+
+  mutable fun peekToken(): Token.Token {
+    this.position.peekToken();
+  }
+
+  mutable fun peekOffset(offset: Int): TokenKind.TokenKind {
+    this.position.peekOffset(offset);
+  }
+
+  mutable fun peek(): TokenKind.TokenKind {
+    this.position.peek();
+  }
+
+  mutable fun peekKindOffset(kind: TokenKind.TokenKind, offset: Int): Bool {
+    this.position.peekKindOffset(kind, offset);
+  }
+
+  mutable fun peekKind(kind: TokenKind.TokenKind): Bool {
+    this.position.peekKind(kind);
+  }
+
+  mutable fun peekPredefinedName(name: String): Bool {
+    this.position.peekPredefinedName(name);
+  }
+
+  mutable fun peekPredefinedNameOffset(name: String, offset: Int): Bool {
+    this.position.peekPredefinedNameOffset(name, offset);
+  }
+
+  // Report an error if the next token is not the expected kind.
+  // Does not change position.
+  mutable fun expect(
+    kind: TokenKind.TokenKind,
+    openDelimiterOpt: ?ParseTree = None(),
+  ): void {
+    token = this.peekToken();
+    if (token.kind != kind) {
+      this.reportUnexpectedToken(token, kind, openDelimiterOpt);
+    }
+  }
+
+  mutable fun reportUnexpectedToken(
+    token: Token.Token,
+    expected: TokenKind.TokenKind,
+    openDelimiterOpt: ?ParseTree = None(),
+  ): void;
+
+  // Consumes a single token.
+  mutable fun advance(includeTrailingTrivia: Bool = true): Token.Token {
+    this.position.advance(includeTrailingTrivia)
+  }
+
+  // Report an error if the next token is not the expected kind.
+  // Consumes and returns the next token.
+  mutable fun eatToken(
+    kind: TokenKind.TokenKind,
+    openDelimiterOpt: ?ParseTree = None(),
+    includeTrailingTrivia: Bool = true,
+  ): Token.Token {
+    this.expect(kind, openDelimiterOpt);
+    this.advance(includeTrailingTrivia)
+  }
+
+  // Consumes and returns a ParseTree for the next Token.
+  // Does not report an Error.
+  mutable fun tokenResult(): ParseTree.TokenTree {
+    createTokenTree(this.advance())
+  }
+
+  // Consumes a single Token. Adds a SyntaxError if it does not match kind.
+  mutable fun eatTree(
+    kind: TokenKind.TokenKind,
+    openDelimiterOpt: ?ParseTree = None(),
+    includeTrailingTrivia: Bool = true,
+  ): ParseTree.TokenTree {
+    token = this.eatToken(kind, openDelimiterOpt, includeTrailingTrivia);
+    createTokenTree(token);
+  }
+
+  // If the next Token matches kind then consume and return it;
+  // otherwise return an EmptyTree.
+  mutable fun eatTreeOpt(kind: TokenKind.TokenKind): ParseTree {
+    if (this.peekKind(kind)) {
+      this.eatTree(kind);
+    } else {
+      this.createEmptyTreeBefore();
+    };
+  }
+
+  // NOTE: Ignores lex errors.
+  private readonly fun hasErrors(): Bool {
+    !this.errors.isEmpty();
+  }
+
+  // Range factories
+  mutable fun createRange(start: mutable ParsePosition): TextRange {
+    this.position.createRange(start);
+  }
+
+  mutable fun positionBefore(): Position {
+    this.position.positionBefore();
+  }
+
+  mutable fun positionAfter(): Position {
+    this.position.positionAfter();
+  }
+
+  mutable fun createRangeAfter(): TextRange {
+    this.position.createRangeAfter();
+  }
+
+  mutable fun createRangeBefore(): TextRange {
+    this.position.createRangeBefore();
+  }
+
+  // Tree Factories
+  mutable fun createEmptyTreeAfter(): ParseTree {
+    this.position.createEmptyTreeAfter();
+  }
+
+  mutable fun createEmptyTreeBefore(): ParseTree {
+    this.position.createEmptyTreeBefore();
+  }
+
+  mutable fun createEmptyList(): ParseTree.ParseTreeList {
+    createEmptyParseTreeList(this.createRangeAfter());
+  }
+
+  mutable fun createError(): ParseTree {
+    createErrorTree(this.peekToken());
+  }
+
+  mutable fun addError(error: SyntaxError): void {
+    this.errors.push(error);
+  }
+
+  mutable fun addErrorAtRange(
+    range: TextRange,
+    errorCode: Int,
+    message: String,
+    relatedMessages: List<(TextRange, String)> = List[],
+    fix: ?SkipError.Fix = None(),
+  ): void {
+    this.addError(
+      SyntaxError.create(errorCode, range, message, relatedMessages, fix),
+    );
+  }
+
+  mutable fun addErrorAtTree(
+    tree: ParseTree,
+    errorCode: Int,
+    message: String,
+  ): void {
+    this.addErrorAtRange(tree.range, errorCode, message);
+  }
+
+  mutable fun addErrorAtCurrent(
+    errorCode: Int,
+    message: String,
+    relatedMessages: List<(TextRange, String)> = List[],
+    fix: ?SkipError.Fix = None(),
+  ): void {
+    this.addErrorAtRange(
+      this.peekToken().range,
+      errorCode,
+      message,
+      relatedMessages,
+      fix,
+    );
+  }
+
+  // Create an error tree at the current location.
+  mutable fun errorResult(
+    errorCode: Int,
+    message: String,
+    relatedMessages: List<(TextRange, String)> = List[],
+    fix: ?SkipError.Fix = None(),
+  ): ParseTree {
+    result = this.createError();
+    this.addErrorAtCurrent(errorCode, message, relatedMessages, fix);
+    result;
+  }
+
+  // Create an error tree at the current location.
+  // Consume 1 token.
+  mutable fun errorResultAdvance(errorCode: Int, message: String): ParseTree {
+    result = this.errorResult(errorCode, message);
+    _ = this.advance();
+    result;
+  }
+
+  // Parsing combinators
+  mutable fun parseListElements(
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): Array<ParseTree> {
+    elements = mutable Vector[];
+    while (peekElement(this)) {
+      elements.push(parseElement(this));
+    };
+    elements.collect(Array)
+  }
+
+  // Parse an unseparated, possibly empty list of elements.
+  // The returned tree range includes trivia after the last Token consumed.
+  mutable fun parseList(
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    elements = this.parseListElements(peekElement, parseElement);
+    returnParseTreeList(this.createRangeAfter(), elements);
+  }
+
+  // Parse an unseparated, possibly empty list of elements.
+  // The returned tree range ends at the end of the last Token consumed.
+  mutable fun parseListBefore(
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    elements = this.parseListElements(peekElement, parseElement);
+    returnParseTreeList(this.createRangeBefore(), elements);
+  }
+
+  // Returns the list of elements, and the list of seprators.
+  // There will be one less separator than element.
+  mutable fun parseSeparatedListElements(
+    separatorKind: TokenKind.TokenKind,
+    parseElement: mutable this -> ParseTree,
+  ): (Array<ParseTree>, Array<ParseTree>) {
+    elements = mutable Vector[parseElement(this)];
+    separators = mutable Vector[];
+    while ({
+      separator = this.eatTreeOpt(separatorKind);
+      if (!separator.isEmpty()) {
+        separators.push(separator);
+        elements.push(parseElement(this));
+        true;
+      } else {
+        false;
+      }
+    }) void;
+    invariant((separators.size() + 1) == elements.size());
+    (elements.collect(Array), separators.collect(Array));
+  }
+
+  // Parse a non-empty separated list. No trailing separator.
+  mutable fun parseSeparatedList(
+    separatorKind: TokenKind.TokenKind,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    (elements, separators) = this.parseSeparatedListElements(
+      separatorKind,
+      parseElement,
+    );
+    ParseTree.ParseTreeList::makeSeparatedList{
+      range => createRangeOfList(elements),
+      elements,
+      separators,
+      separatorKind,
+    }
+  }
+
+  // Non-empty, may include trailing separator.
+  mutable fun parseSeparatedOptList(
+    separatorKind: TokenKind.TokenKind,
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    head = parseElement(this);
+    elements = mutable Vector[head];
+    separators = mutable Vector[];
+    last = head;
+    while ({
+      separator = this.eatTreeOpt(separatorKind);
+      if (!separator.isEmpty()) {
+        !last = separator;
+        separators.push(separator);
+        if (peekElement(this)) {
+          next = parseElement(this);
+          !last = next;
+          elements.push(next);
+          true;
+        } else {
+          false;
+        }
+      } else {
+        false;
+      }
+    }) void;
+    ParseTree.ParseTreeList::makeSeparatedList{
+      range => createRangeOfTrees(head, last),
+      elements => elements.collect(Array),
+      separators => separators.collect(Array),
+      separatorKind,
+    };
+  }
+
+  // Possibly empty, may include trailing separator.
+  mutable fun parseSeparatedOptListOpt(
+    separatorKind: TokenKind.TokenKind,
+    peekElement: mutable this -> Bool,
+    parseElement: mutable this -> ParseTree,
+  ): ParseTree.ParseTreeList {
+    if (peekElement(this)) {
+      this.parseSeparatedOptList(separatorKind, peekElement, parseElement);
+    } else {
+      this.createEmptyList();
+    }
+  }
+
+  mutable fun parseDelimited<T: ParseTree>(
+    startKind: TokenKind.TokenKind,
+    parseElement: mutable this -> T,
+    endKind: TokenKind.TokenKind,
+  ): (ParseTree, T, ParseTree) {
+    startDelimiter = this.eatTree(startKind);
+    element = parseElement(this);
+    endDelimiter = this.eatTree(endKind, Some(startDelimiter));
+    (startDelimiter, element, endDelimiter);
+  }
+
+  mutable fun parseDelimitedList(
+    startKind: TokenKind.TokenKind,
+    parseList: mutable this -> ParseTree.ParseTreeList,
+    endKind: TokenKind.TokenKind,
+  ): ParseTree.ParseTreeList {
+    (startDelimiter, list, endDelimiter) = this.parseDelimited(
+      startKind,
+      parseList,
+      endKind,
+    );
+    list.addDelimiters(startDelimiter, endDelimiter);
+  }
+
+  mutable fun createPeekParser(): mutable this;
+
+  // Returns true if parse results no errors at the current location
+  //
+  // NOTE: Use a very restricted parse function here, specifically one which does not
+  // call peekParse. Recursive calls to peekParse result in exponential
+  // performance!
+  mutable fun peekParse(parse: mutable this -> ParseTree): Bool {
+    peekParser = this.createPeekParser();
+    _result = parse(peekParser);
+    !peekParser.hasErrors();
+  }
+}
+
+fun positionAfterToken(token: Token.Token): Position {
+  token.range.start
+}
+
+fun createRangeAfterToken(token: Token.Token): TextRange {
+  TextRange.empty(positionAfterToken(token))
+}
+
+fun createRangeBeforeTree(tree: ParseTree): TextRange {
+  TextRange.empty(tree.range.start)
+}
+
+fun createRangeOfTrees(start: ParseTree, end: ParseTree): TextRange {
+  TextRange.create(start.range.start, end.range.end)
+}
+
+fun createRangeOfTreeAndCurrent(
+  start: ParseTree,
+  end: mutable Parser.Parser,
+): TextRange {
+  TextRange.create(start.range.start, end.positionBefore())
+}
+
+// Tree Factories
+fun createEmptyTreeBeforeTree(tree: ParseTree): ParseTree {
+  ParseTree.EmptyTree{range => createRangeBeforeTree(tree)}
+}
+
+fun createTokenTree(token: Token.Token): ParseTree.TokenTree {
+  ParseTree.TokenTree{range => token.range, token}
+}
+
+fun createErrorTree(token: Token.Token): ParseTree {
+  ParseTree.ErrorTree{range => token.range}
+}
+
+fun createEmptyParseTreeList(range: TextRange): ParseTree.ParseTreeList {
+  ParseTree.ParseTreeList::makeList{range, elements => Array[]}
+}
+
+fun createRangeOfList(elements: Array<ParseTree>): TextRange {
+  createRangeOfTrees(elements.first(), elements.last())
+}
+
+fun returnParseTreeList(
+  emptyPosition: TextRange,
+  elements: Array<ParseTree>,
+): ParseTree.ParseTreeList {
+  if (elements.isEmpty()) {
+    createEmptyParseTreeList(emptyPosition)
+  } else {
+    ParseTree.ParseTreeList::makeList{
+      range => createRangeOfList(elements),
+      elements,
+    }
+  }
+}
+
+class ParseResults{
+  tokens: Array<Token.Token>,
+  comments: Array<Token.Comment>,
+  tree: ParseTree,
+  errors: Array<SyntaxError>,
+} {
+  fun hasError(): Bool {
+    !this.errors.isEmpty();
+  }
+
+  fun throwOnError(filename: String): void {
+    if (this.hasError()) {
+      SkipError.throwErrors(this.convertErrors(filename));
+    }
+  }
+
+  fun convertErrors(filename: String): Vector<SkipError.Error> {
+    this.errors.map(error ->
+      SkipError.errorFromSyntaxError(error, filename)
+    ).collect(Vector);
+  }
+}
+
+fun validateTreeTokens(
+  tokens: Array<Token.Token>,
+  tokenIndex: Int,
+  tree: ParseTree,
+  filename: String,
+): Int {
+  if (tokenIndex >= tokens.size()) {
+    invariant_violation(
+      `${filename}: Ran out of tokens: ${tree.toDebugString()}`,
+    );
+  };
+  if (tree.isToken()) {
+    token = tree.asToken().token;
+    if (token != tokens[tokenIndex]) {
+      invariant_violation(
+        `${filename}: Expected token: ${tokens[tokenIndex]} but found ${token}`,
+      );
+    };
+    tokenIndex + 1;
+  } else {
+    for (child in tree.getChildren()) {
+      !tokenIndex = validateTreeTokens(tokens, tokenIndex, child, filename);
+    };
+    tokenIndex;
+  }
+}
+
+fun validateTreeRanges(tree: ParseTree, filename: String): void {
+  childs = tree.getChildren();
+  start = tree.range.start;
+  for (child in childs) {
+    if (!tree.range.containsRange(child.range)) {
+      invariant_violation(
+        `${filename}: Parent tree ${tree.toDebugString()} does not contain child ${child.toDebugString()}`,
+      );
+    };
+    if (child.range.start < start) {
+      invariant_violation(
+        `${filename}: Child tree ${child.toDebugString()} overlaps with its predeccessor in parent ${tree.toDebugString()}`,
+      );
+    };
+    !start = child.range.end;
+    validateTreeRanges(child, filename);
+  };
+}
+
+fun validateParse(
+  tokens: Array<Token.Token>,
+  tree: ParseTree,
+  filename: String,
+): void {
+  // The parse tree must contain every token consumed.
+  lastTreeToken = validateTreeTokens(tokens, 0, tree, filename);
+  if (lastTreeToken != tokens.size()) {
+    invariant_violation(
+      `${filename}: Did not consume all tokens in tree: ${tokens[
+        lastTreeToken,
+      ]}`,
+    );
+  };
+
+  // Child trees must not over lap, and must be contained within their parent
+  validateTreeRanges(tree, filename);
+}
+
+module end;

@@ -1,0 +1,18 @@
+trait X {
+  fun getVal(): Int;
+}
+trait Y extends X
+
+class C<T>(x: T) uses Y[T: Y] {
+  fun getVal[T: X](): Int {
+    this.x.getVal()
+  }
+}
+
+fun use_x<T: X>(t: T): Int {
+  t.getVal()
+}
+
+fun no<T>(c: C<T>): Int {
+  use_x(c)
+}

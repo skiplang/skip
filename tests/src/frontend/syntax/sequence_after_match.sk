@@ -1,0 +1,20 @@
+base class Bar final () {
+  children =
+  | Foo
+  | Baz
+}
+
+fun main(): void {
+  x: Bar = Foo();
+  print_raw(
+    x match {
+    | Foo _ ->
+      void;
+      "Pass\n"
+    | Bar _ ->
+      y = "No";
+      z = "Never";
+      y + z
+    },
+  )
+}

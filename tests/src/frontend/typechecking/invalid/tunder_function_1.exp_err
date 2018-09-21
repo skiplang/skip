@@ -1,0 +1,21 @@
+File "./typechecking/invalid/tunder_function_1.sk", line 6, characters 3-3:
+The value returned from the function is incompatible with the return type '(() ~> _[0])'
+4 |
+5 | fun test(): () ~> _ {
+6 |   f
+  |   ^
+7 | }
+
+File "./typechecking/invalid/tunder_function_1.sk", line 1, characters 10-12:
+The type: Int
+1 | fun f(): Int {
+  |          ^^^
+2 |   42
+
+File "./typechecking/invalid/tunder_function_1.sk", line 5, characters 19-19:
+Is not a subtype of: _[0]
+3 | }
+4 |
+5 | fun test(): () ~> _ {
+  |                   ^
+6 |   f

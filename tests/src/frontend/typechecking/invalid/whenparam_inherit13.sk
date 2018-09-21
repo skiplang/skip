@@ -1,0 +1,8 @@
+trait P<+T> {
+  fun foo(f: (T, T) -> void): readonly this;
+}
+class C<+T>() uses P<T> {
+  fun foo[T: frozen](_f: (T, T) -> void): this {
+    C()
+  }
+}

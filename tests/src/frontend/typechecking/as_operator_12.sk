@@ -1,0 +1,13 @@
+const EMPTY: String = "";
+
+fun main(): void {
+  x = "";
+  _x = x as EMPTY;
+  try {
+    y = "0";
+    _y = y as EMPTY;
+    print_string("Fail")
+  } catch {
+  | InvalidCast _ -> print_string("Pass")
+  }
+}

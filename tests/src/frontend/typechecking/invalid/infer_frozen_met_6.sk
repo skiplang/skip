@@ -1,0 +1,10 @@
+mutable class Tester<V>(mutable x: V) {
+  readonly fun foo<T: frozen>[V: T](T): Array<T> {
+    Array[]
+  }
+}
+
+fun test(): void {
+  x: readonly Tester<mutable Array<Int>> = mutable Tester(mutable Array[]);
+  x.foo(Array[])
+}

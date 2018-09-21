@@ -1,0 +1,52 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+fun crc32_step(a: Int, b: Int): Int {
+  a.shr(1).xor(a.xor(b).and(1) * 0x82f63b78)
+}
+
+fun crc32_u8(a: Int, b: Int): Int {
+  for (_ in Range(0, 8)) {
+    !a = crc32_step(a, b);
+    !b = b.shr(1)
+  };
+  a
+}
+
+// v8 has an optimization for storing 31-bit signed numbers.
+// Values which have either 00 or 11 as the high order bits qualify.
+// This function drops the highest order bit in a signed Int32, maintaining
+// the sign bit.
+fun toInt31(i32: Int): Int {
+  i32.shl(33).shr(1).ushr(32)
+}
+
+fun computeWasmStringHash(utf8: Array<Int>): Int {
+  toInt31(utf8.foldl((acc, ch) -> acc * 31 + ch, 0))
+}
+
+fun computeNativeStringHash(utf8: Array<Int>): Int {
+  acc = 0xFFFFFFFF;
+  rem = utf8.size() % 8;
+  split = utf8.size() - rem;
+  for (idx in Range(0, split)) !acc = crc32_u8(acc, utf8[idx].and(0xdf));
+  if (rem != 0) {
+    for (_ in Range(0, 8 - rem)) !acc = crc32_u8(acc, 0);
+    for (idx in Range(0, rem)) {
+      !acc = crc32_u8(acc, utf8[split + idx].and(0xdf))
+    };
+  };
+  acc.shr(1).or(0x80000000)
+}
+
+fun computeStringHash(utf8: Array<Int>): Int {
+  if (targetIsWasm()) {
+    computeWasmStringHash(utf8)
+  } else {
+    computeNativeStringHash(utf8)
+  }
+}

@@ -1,0 +1,15 @@
+base class B{} {
+  static macro fun f(): String {
+    #thisClassName
+  }
+}
+
+base class D{} extends B {}
+
+class C{} extends D {}
+
+fun main(): void {
+  print_string(B::f());
+  print_string(D::f());
+  print_string(C::f());
+}

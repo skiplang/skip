@@ -1,0 +1,63 @@
+File "./typechecking/invalid/this_base_trait.sk", line 6, characters 7-10:
+Invalid override for the field 'bad' on child 'Inty' for parent 'Arry'
+4 |
+5 | base class Arry uses Addish
+6 | class Inty(x: Int) extends Arry {
+  |       ^^^^
+7 |   fun bad(x: this): this {
+
+File "./typechecking/invalid/this_base_trait.sk", line 2, characters 11-14:
+The type: Arry
+1 | trait Addish {
+2 |   fun bad(this): this;
+  |           ^^^^
+3 | }
+
+File "./typechecking/invalid/this_base_trait.sk", line 7, characters 14-17:
+Is not a subtype of: Inty
+5 | base class Arry uses Addish
+6 | class Inty(x: Int) extends Arry {
+7 |   fun bad(x: this): this {
+  |              ^^^^
+8 |     Inty(x.x + this.x)
+
+File "./typechecking/invalid/this_base_trait.sk", line 7, characters 14-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Arry
+5 | base class Arry uses Addish
+6 | class Inty(x: Int) extends Arry {
+7 |   fun bad(x: this): this {
+  |              ^^^^
+8 |     Inty(x.x + this.x)
+
+File "./typechecking/invalid/this_base_trait.sk", line 12, characters 7-13:
+Invalid override for the field 'bad' on child 'Stringy' for parent 'Arry'
+10 | }
+11 |
+12 | class Stringy(x: String) extends Arry {
+   |       ^^^^^^^
+13 |   fun bad(x: this): this {
+
+File "./typechecking/invalid/this_base_trait.sk", line 2, characters 11-14:
+The type: Arry
+1 | trait Addish {
+2 |   fun bad(this): this;
+  |           ^^^^
+3 | }
+
+File "./typechecking/invalid/this_base_trait.sk", line 13, characters 14-17:
+Is not a subtype of: Stringy
+11 |
+12 | class Stringy(x: String) extends Arry {
+13 |   fun bad(x: this): this {
+   |              ^^^^
+14 |     Stringy(x.x + this.x)
+
+File "./typechecking/invalid/this_base_trait.sk", line 13, characters 14-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Arry
+11 |
+12 | class Stringy(x: String) extends Arry {
+13 |   fun bad(x: this): this {
+   |              ^^^^
+14 |     Stringy(x.x + this.x)

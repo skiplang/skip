@@ -1,0 +1,13 @@
+{
+  "skipVersion": "1.0",
+  "programUnits": {
+    "skip_to_llvm": {
+      "kind": "Program",
+      "sources": [".", "hhvm"],
+      "references": [
+        { "path": "../outer" },
+        { "path": "../project" }
+      ]
+    }
+  }
+}

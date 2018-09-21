@@ -1,0 +1,7 @@
+const MyConst: Bool = true;
+fun test(): String {
+  (true, true) match {
+  | (MyConst, MyConst) -> "Fail\n"
+  | (MyConst, false) -> "Fail\n"
+  }
+}

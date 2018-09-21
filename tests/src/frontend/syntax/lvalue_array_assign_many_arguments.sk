@@ -1,0 +1,11 @@
+class C(v: String = "Fail") {
+  fun set(_x: Int, _y: Int, _value: Int): C {
+    C("Pass");
+  }
+}
+
+fun main(): void {
+  x = C();
+  !x[1, 2] = 42;
+  print_string(x.v);
+}

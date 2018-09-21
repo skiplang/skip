@@ -1,0 +1,69 @@
+@test
+fun testToString(): void {
+  assertEqual(0.0.toString(), "0.0");
+  assertEqual((-1.0).toString(), "-1.0");
+  assertEqual((1.125).toString(), "1.125");
+  assertEqual((1000).toString(), "1000");
+  assertEqual(1e+100.toString(), "1e+100");
+  assertEqual((-1.2345).toString(), "-1.2344999999999999");
+  assertEqual(5.42e-5.toString(), "5.4200000000000003e-05");
+  assertEqual(Float::inf.toString(), "inf");
+  assertEqual((-Float::inf).toString(), "-inf");
+  void
+}
+
+@test
+fun testFloatToInt(): void {
+  assertEqual("0.0".toFloat(), 0.0);
+  assertEqual("-0.0".toFloat(), -0.0);
+  assertEqual("1.0".toFloat(), 1.0);
+  assertEqual("0.123456789".toFloat(), 0.123456789);
+  assertEqual("5e100".toFloat(), 5e100);
+  assertEqual("5E100".toFloat(), 5E100);
+  assertEqual("5e-100".toFloat(), 5e-100);
+  assertEqual("5E-100".toFloat(), 5E-100);
+  assertEqual("5e+100".toFloat(), 5e+100);
+  assertEqual("5E+100".toFloat(), 5E+100);
+  assertEqual("42.42".toFloat(), 42.42);
+  assertEqual("42.42e-5".toFloat(), 42.42e-5);
+  assertEqual("42.42e-05".toFloat(), 42.42e-05);
+  assertEqual("inf".toFloat(), Float::inf);
+  assertEqual("-inf".toFloat(), -Float::inf);
+  assertThrows(() -> "".toFloat());
+  assertThrows(() -> "42".toFloat());
+  assertThrows(() -> "042.0".toFloat());
+  assertThrows(() -> "42.".toFloat());
+  assertThrows(() -> "42..0".toFloat());
+  assertThrows(() -> ".42".toFloat());
+  assertThrows(() -> "x42.0".toFloat());
+  assertThrows(() -> "42.0x".toFloat());
+  assertThrows(() -> "--5.0".toFloat());
+  assertThrows(() -> "E5".toFloat());
+  assertThrows(() -> "5.0E".toFloat());
+  assertThrows(() -> "5.0E5.0".toFloat());
+  assertThrows(() -> "5.0E-".toFloat());
+  assertThrows(() -> "INF".toFloat());
+  void
+}
+
+@test
+// TODO: Create a test matrix with value * value * op
+// Where value in { 0, -0, inf, +inf, nan, 1, -1, 2^32, 2^53, Float.max, Float.min)
+// And op in { relops, arith-ops }
+//
+// And also unary tests of value * op for:
+// op in {toString, Math.*, toBits, toInt)
+
+fun testFloatBits(): void {
+  assertEqual((0.0).toBits(), 0);
+  assertEqual((-0.0).toBits(), 0x8000000000000000);
+  assertEqual((1.0).toBits(), 0x3ff0000000000000);
+  assertEqual((-1.125).toBits(), 0xbff2000000000000);
+  assertEqual((-1240210.25).toBits(), 0xc132ec9240000000)
+}
+
+@test
+fun testFloatHash(): void {
+  assertNotEqual((1.0).hash(), (-1.0).hash());
+  assertEqual((0.0).hash(), (-0.0).hash())
+}

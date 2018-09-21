@@ -1,0 +1,4 @@
+File "./syntax/invalid/type_alias_modifiers.sk", line 1, characters 1-5:
+Invalid modifier 'async' on type alias
+1 | async type T = String;
+  | ^^^^^

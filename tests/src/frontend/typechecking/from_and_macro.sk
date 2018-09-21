@@ -1,0 +1,19 @@
+base class A() {
+  overridable macro fun x(): String {
+    #thisClassName + "A"
+  }
+}
+
+base class B() {
+  overridable macro fun x(): String {
+    #thisClassName + "B"
+  }
+}
+
+class C() extends A, B {
+  fun x from A;
+}
+
+fun main(): void {
+  print_string("PASS! " + C().x())
+}

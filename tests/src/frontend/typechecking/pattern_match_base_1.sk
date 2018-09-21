@@ -1,0 +1,12 @@
+base class Foo{f1: Int}
+class FooC extends Foo
+
+fun matcher(x: Foo): void {
+  x match {
+  | Foo{f1 => _} -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

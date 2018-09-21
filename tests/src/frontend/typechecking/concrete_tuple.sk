@@ -1,0 +1,7 @@
+fun nullable_void(): Nullable<(Int, String)> {
+  Box((42, "42"))
+}
+
+fun main(): void {
+  print_string("Pass")
+}

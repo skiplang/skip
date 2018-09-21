@@ -1,0 +1,660 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module String;
+
+native class .String uses Hashable, Show, Orderable {
+  @cpp_runtime
+  @may_alloc
+  native static fun fromChars(chars: readonly Array<Char>): String;
+  @cpp_runtime
+  @may_alloc
+  native static fun fromUtf8(bytes: readonly Array<UInt8>): String;
+  @cpp_runtime
+  native private fun unsafe_get(x: Int): Char;
+
+  @cpp_runtime
+  native fun length(): Int;
+  @intrinsic
+  private native fun concat(String): String;
+  @cpp_runtime
+  native private fun toFloat_raw(): Float;
+  @cpp_runtime
+  native private fun compare_raw(other: String): Int;
+
+  fun sub(start: Int, len: Int): String {
+    this_len = this.length();
+    if (start == 0 && len == this_len) {
+      this
+    } else {
+      if (start < 0 || len < 0 || (start + len).ugt(this_len)) {
+        throwOutOfBounds()
+      };
+
+      v = Array::fillBy(len, i -> this.unsafe_get(start + i));
+      static::fromChars(v)
+    }
+  }
+
+  fun inspect(): Inspect {
+    InspectString(this)
+  }
+
+  fun substring(start: Int): String {
+    this.sub(start, this.length() - start)
+  }
+
+  private static fun isPrefix(
+    it1: mutable StringIterator,
+    it2: mutable StringIterator,
+  ): Bool {
+    it1.next() match {
+    | None() -> true
+    | Some(c1) ->
+      it2.next() match {
+      | Some(c2) if (c1 == c2) -> static::isPrefix(it1, it2)
+      | _ -> false
+      }
+    }
+  }
+
+  frozen fun startsWith(prefix: String): Bool {
+    mySize = this.length();
+    prefixSize = prefix.length();
+
+    mySize >= prefixSize && static::isPrefix(prefix.getIter(), this.getIter())
+  }
+
+  frozen fun endsWith(suffix: String): Bool {
+    mySize = this.length();
+    suffixSize = suffix.length();
+
+    mySize >= suffixSize &&
+      static::isPrefix(
+        suffix.getIter(),
+        this.getIter().drop(mySize - suffixSize),
+      )
+  }
+
+  fun stripPrefix(prefix: String): String {
+    if (this.startsWith(prefix)) {
+      this.substring(prefix.length())
+    } else {
+      this
+    }
+  }
+
+  fun stripSuffix(suffix: String): String {
+    if (this.endsWith(suffix)) {
+      this.sub(0, this.length() - suffix.length())
+    } else {
+      this
+    }
+  }
+
+  fun get(x: Int): Char {
+    if (x.uge(this.length())) {
+      throwOutOfBounds()
+    };
+    this.unsafe_get(x)
+  }
+
+  fun +<T: readonly Show>(s: T): String {
+    this.concat(s.toString())
+  }
+
+  static fun tabulate(size: Int, f: Int -> Char): String {
+    static::fromChars(Array::fillBy(size, f))
+  }
+
+  fun repeat(count: Int): String {
+    if (count <= 0) {
+      ""
+    } else {
+      String::tabulate(count * this.length(), i -> {
+        this[i % this.length()]
+      })
+    }
+  }
+
+  @cpp_runtime
+  fun isEmpty(): Bool {
+    this == ""
+  }
+
+  fun each(f: Char -> void): void {
+    this.foldl((_, c) -> f(c), void)
+  }
+
+  fun foldl<Taccum>(f: (Taccum, Char) -> Taccum, accum: Taccum): Taccum {
+    result = accum;
+    this.getIter().each(ch -> {
+      !result = f(result, ch)
+    });
+    result;
+  }
+
+  private fun foldlImpl<Taccum>(
+    f: (Taccum, Char) -> Taccum,
+    accum: Taccum,
+    offset: Int,
+  ): Taccum {
+    if (offset >= this.length()) {
+      accum
+    } else {
+      this.foldlImpl(f, f(accum, this[offset]), offset + 1)
+    }
+  }
+
+  fun toIntOption(): ?Int {
+    (valid, value) = toIntOptionHelper(this);
+    if (valid != 0) Some(value) else None()
+  }
+
+  fun toInt(): Int {
+    this.toIntOption() match {
+    | None() ->
+      invariant_violation("String.toInt: parse error on '" + this + "'")
+    | Some(i) -> i
+    }
+  }
+
+  fun isIntish(): Bool {
+    this.toIntOption().isSome()
+  }
+
+  fun toFloatOption(): ?Float {
+    if (this == "inf") {
+      Some(Float::inf)
+    } else if (this == "-inf") {
+      Some(-Float::inf)
+    } else if (this == "nan") {
+      Some(Float::nan)
+    } else {
+      hasNegative = false;
+      hasMantissaDigit = false;
+      hasZeroMantissa = false;
+      hasDot = false;
+      hasFractionalDigit = false;
+      hasExponent = false;
+      hasExponentSign = false;
+      hasExponentDigit = false;
+      error = false;
+      check = c -> {
+        if (c == '-' && !hasNegative && !hasMantissaDigit) {
+          !hasNegative = true
+        } else if (c == '0' && !hasMantissaDigit) {
+          !hasZeroMantissa = true;
+          !hasMantissaDigit = true
+        } else if (
+          c >= '0' &&
+          c <= '9' &&
+          !hasDot &&
+          !hasExponent &&
+          !hasZeroMantissa
+        ) {
+          !hasMantissaDigit = true
+        } else if (c >= '0' && c <= '9' && hasDot && !hasExponent) {
+          !hasFractionalDigit = true
+        } else if ((c >= '0' && c <= '9') && hasExponent) {
+          !hasExponentDigit = true
+        } else if (c == '.' && !hasDot && hasMantissaDigit && !hasExponent) {
+          !hasDot = true
+        } else if ((c == 'e' || c == 'E') && hasMantissaDigit && !hasExponent) {
+          !hasExponent = true
+        } else if (
+          (c == '-' || c == '+') &&
+          hasExponent &&
+          !hasExponentSign &&
+          !hasExponentDigit
+        ) {
+          !hasExponentSign = true
+        } else {
+          !error = true
+        }
+      };
+      this.each(check);
+      if (
+        error ||
+        !hasMantissaDigit ||
+        !(hasDot || hasExponent) ||
+        (hasDot && !hasFractionalDigit) ||
+        (hasExponent && !hasExponentDigit)
+      ) {
+        None()
+      } else {
+        Some(this.toFloat_raw())
+      }
+    }
+  }
+
+  fun toFloat(): Float {
+    this.toFloatOption() match {
+    | None() ->
+      invariant_violation("String.toFloat: parse error on '" + this + "'")
+    | Some(f) -> f
+    }
+  }
+
+  fun trimLeft(): String {
+    offset = this.search(0, ch ~> !isWhitespace(ch));
+    if (offset.isSome()) {
+      this.substring(offset.fromSome())
+    } else {
+      ""
+    }
+  }
+
+  fun trimRight(): String {
+    offset = this.rsearch(this.length() - 1, ch ~> !isWhitespace(ch));
+    if (offset.isSome()) {
+      this.sub(0, offset.fromSome() + 1)
+    } else {
+      ""
+    }
+  }
+
+  fun trim(): String {
+    this.trimLeft().trimRight()
+  }
+
+  fun search(offset: Int, f: Char -> Bool): ?Int {
+    if (offset.uge(this.length())) {
+      None()
+    } else if (f(this.unsafe_get(offset))) {
+      Some(offset)
+    } else {
+      this.search(offset + 1, f)
+    }
+  }
+
+  fun searchIndex(offset: Int, f: Char -> Bool): Int {
+    if (offset.uge(this.length())) {
+      -1
+    } else if (f(this.unsafe_get(offset))) {
+      offset
+    } else {
+      this.searchIndex(offset + 1, f)
+    }
+  }
+
+  fun rsearch(offset: Int, f: Char -> Bool): ?Int {
+    if (offset.uge(this.length())) {
+      None()
+    } else if (f(this.unsafe_get(offset))) {
+      Some(offset)
+    } else {
+      this.rsearch(offset - 1, f)
+    }
+  }
+
+  fun chars(): Vector<Char> {
+    this.getIter().collect(Vector)
+  }
+
+  private static fun iterStartsWith(
+    value: readonly StringIterator,
+    prefix: readonly StringIterator,
+  ): Bool {
+    testValue = value.clone();
+    testPrefix = prefix.clone();
+    matched = false;
+    while ({
+      (testPrefix.next(), testValue.next()) match {
+      | (None(), _) ->
+        !matched = true;
+        false
+      | (Some(chPrefix), Some(chCurrent)) if (chPrefix == chCurrent) -> true
+      | _ -> false
+      };
+    }) void;
+    matched;
+  }
+
+  private static fun find(
+    value: readonly StringIterator,
+    substring: readonly StringIterator,
+  ): mutable StringIterator {
+    testValue = value.clone();
+    while (
+      !testValue.atEnd() &&
+      !static::iterStartsWith(testValue, substring)
+    ) _ = testValue.next();
+    testValue
+  }
+
+  private fun index(substring: String, offset: Int): ?Int {
+    if (offset > this.length() - substring.length()) {
+      None()
+    } else if (this.sub(offset, substring.length()) == substring) {
+      Some(offset)
+    } else {
+      this.index(substring, offset + 1)
+    }
+  }
+
+  fun splitLast(substring: String): (String, String) {
+    a = this.length();
+    b = substring.length();
+    (a, b) match {
+    | (0, _) -> ("", "")
+    | (_, 0) -> (this, "")
+    | (_, 1) -> this.splitLastCharHelper(substring[0], a - 1)
+    | _ if (a < b) -> ("", this)
+    | _ -> this.splitLastHelper(substring, a - b)
+    }
+  }
+
+  private fun splitLastCharHelper(ch: Char, offset: Int): (String, String) {
+    if (this.unsafe_get(offset) == ch) {
+      (this.sub(0, offset), this.substring(offset + 1))
+    } else if (offset > 0) {
+      this.splitLastCharHelper(ch, offset - 1)
+    } else {
+      ("", this)
+    }
+  }
+
+  private fun splitLastHelper(
+    substring: String,
+    offset: Int,
+  ): (String, String) {
+    if (this.sub(offset, substring.length()) == substring) {
+      (this.sub(0, offset), this.substring(offset + substring.length()))
+    } else if (offset == 0) {
+      ("", this)
+    } else {
+      this.splitLastHelper(substring, offset - 1)
+    }
+  }
+
+  @cpp_runtime
+  native fun contains(search: String): Bool;
+
+  fun replace(search: String, replacement: String): String {
+    if (search.length() == 0) {
+      this
+    } else {
+      res = this;
+      start = 0;
+      while ({
+        index_opt = res.index(search, start);
+        index_opt match {
+        | Some(index) ->
+          !start = index + replacement.length();
+          !res = String::tabulate(
+            res.length() - search.length() + replacement.length(),
+            i -> {
+              if (i < index) {
+                res[i]
+              } else if (i < index + replacement.length()) {
+                replacement[i - index]
+              } else {
+                res[i - replacement.length() + search.length()]
+              }
+            },
+          );
+          true
+        | None() -> false
+        }
+      }) void;
+      res
+    }
+  }
+
+  fun split(delimiter: String): Vector<String> {
+    delimiterLength = delimiter.length();
+    if (delimiterLength == 0) {
+      invariant_violation("String.split: cannot split with empty delimiter")
+    } else if (this.isEmpty()) {
+      Vector[""]
+    } else {
+      vector = mutable Vector[];
+      current = this.getIter();
+      delimiterIter = delimiter.getIter();
+
+      while ({
+        end = static::find(current, delimiterIter);
+        vector.push(current.substring(end));
+        !current = end;
+        if (!current.atEnd()) {
+          _ = current.drop(delimiterLength);
+          true;
+        } else {
+          false;
+        };
+      }) void;
+      freeze(vector)
+    }
+  }
+
+  fun join<TS: readonly Show, T: readonly Sequence<TS>>(pieces: T): String {
+    pieces.collect(Array).join(this);
+  }
+
+  fun padLeft(width: Int, chr: Char = ' '): String {
+    len = this.length();
+    if (len >= width) {
+      this
+    } else {
+      padCount = width - len;
+      String::tabulate(width, n -> {
+        if (n < padCount) {
+          chr
+        } else {
+          this[n - padCount]
+        }
+      })
+    }
+  }
+
+  fun padRight(width: Int, chr: Char = ' '): String {
+    len = this.length();
+    if (len >= width) {
+      this
+    } else {
+      String::tabulate(width, n -> {
+        if (n < len) {
+          this[n]
+        } else {
+          chr
+        }
+      })
+    }
+  }
+
+  fun ==(other: String): Bool {
+    this.compare_raw(other) == 0
+  }
+
+  fun !=(other: String): Bool {
+    this.compare_raw(other) != 0
+  }
+
+  fun <(other: String): Bool {
+    this.compare_raw(other) < 0
+  }
+
+  fun >(other: String): Bool {
+    this.compare_raw(other) > 0
+  }
+
+  fun <=(other: String): Bool {
+    this.compare_raw(other) <= 0
+  }
+
+  fun >=(other: String): Bool {
+    this.compare_raw(other) >= 0
+  }
+
+  fun compare(other: String): Order {
+    compare(this.compare_raw(other), 0)
+  }
+
+  fun toString(): String {
+    this
+  }
+
+  @cpp_runtime
+  fun hash(): Int {
+    this.foldl((acc, c) -> Hashable.combine(acc, c.hash()), 37)
+  }
+
+  fun getIter(): mutable StringIterator {
+    StringIterator::make(this)
+  }
+
+  fun values(): mutable StringIterator {
+    StringIterator::make(this)
+  }
+
+  @synonym("toUpperCase")
+  @synonym("toUpper")
+  @synonym("upper")
+  @synonym("uppercased")
+  @synonym("upcase")
+  @synonym("uc")
+  fun uppercase(): String {
+    chars = Array::fillBy(this.length(), index ->
+      this.unsafe_get(index).capitalize()
+    );
+    String::fromChars(chars)
+  }
+
+  @synonym("toLowerCase")
+  @synonym("toLower")
+  @synonym("lower")
+  @synonym("lowercased")
+  @synonym("downcase")
+  @synonym("lc")
+  fun lowercase(): String {
+    chars = Array::fillBy(this.length(), index ->
+      this.unsafe_get(index).uncapitalize()
+    );
+    String::fromChars(chars)
+  }
+
+  fun uppercaseFirst(): String {
+    if (this.isEmpty()) {
+      this
+    } else {
+      first = this.unsafe_get(0);
+      first_capitalize = first.capitalize();
+      if (first == first_capitalize) {
+        this
+      } else {
+        `${first_capitalize}${this.substring(1)}`
+      }
+    }
+  }
+
+  fun lowercaseFirst(): String {
+    if (this.isEmpty()) {
+      this
+    } else {
+      first = this.unsafe_get(0);
+      first_uncapitalize = first.uncapitalize();
+      if (first == first_uncapitalize) {
+        this
+      } else {
+        `${first_uncapitalize}${this.substring(1)}`
+      }
+    }
+  }
+}
+
+private fun toIntHelperRest(i: mutable StringIterator, value: Int): Int {
+  if (value < 0) {
+    if (value == Int::min) {
+      if (i.next().isNone()) value else -1
+    } else {
+      -1
+    }
+  } else {
+    i.next() match {
+    | None() -> value
+    | Some(ch) if (ch >= '0' && ch <= '9') ->
+      if (value > 922337203685477580) {
+        -1
+      } else {
+        v = ch.code() - 48;
+        toIntHelperRest(i, value * 10 + v)
+      }
+    | _ -> -1
+    }
+  }
+}
+
+@no_inline
+@no_throw
+@cpp_runtime
+private fun toIntOptionHelper(s: String): (Int, Int) {
+  i = s.getIter();
+  i.next() match {
+  | None() -> (0, 0)
+  | Some('-') ->
+    i.next() match {
+    | Some(ch) if (ch >= '1' && ch <= '9') ->
+      v = ch.code() - 48;
+      n = toIntHelperRest(i, v);
+      (n + 1, -n)
+    | _ -> (0, 0)
+    }
+  | Some(ch) if (ch >= '1' && ch <= '9') ->
+    v = ch.code() - 48;
+    n = toIntHelperRest(i, v);
+    (if (n >= 0) 1 else 0, n)
+  | Some('0') ->
+    i.next() match {
+    | Some(_) -> (0, 0)
+    | None() -> (1, 0)
+    }
+  | _ -> (0, 0)
+  }
+}
+
+// A character set containing characters in Unicode General Category Z*,
+// U+0009, U+000A ~ U+000D, and U+0085.
+private fun isWhitespace(c: Char): Bool {
+  c match {
+  // CHARACTER TABULATION
+  | '\u0009' | '\u000A' | '\u000B' | '\u000C' | '\u000D' | '\u0085' // LINE FEED // LINE TABULATION // FORM FEED // CARRIAGE RETURN // NEXT LINE // http://www.fileformat.info/info/unicode/category/Zl/list.htm
+  // LINE SEPARATOR
+  | '\u2028'  // http://www.fileformat.info/info/unicode/category/Zp/list.htm
+  // PARAGRAPH SEPARATOR
+  | '\u2029'  // http://www.fileformat.info/info/unicode/category/Zs/list.htm
+  // SPACE
+  | '\u0020' | '\u00A0' | '\u1680' | '\u2000' | '\u2001' | '\u2002' | '\u2003' // NO-BREAK SPACE // OGHAM SPACE MARK // EN QUAD // EM QUAD // EN SPACE // EM SPACE // THREE-PER-EM SPACE
+  | '\u2004' | '\u2005' | '\u2006' | '\u2007' | '\u2008' | '\u2009' | '\u200A' // FOUR-PER-EM SPACE // SIX-PER-EM SPACE // FIGURE SPACE // PUNCTUATION SPACE // THIN SPACE // HAIR SPACE // NARROW NO-BREAK SPACE
+  | '\u202F' | '\u205F' | '\u3000' -> // MEDIUM MATHEMATICAL SPACE // IDEOGRAPHIC SPACE
+    true
+
+  | _ -> false
+  }
+}
+
+// --- Support for String::convert()
+
+base class Encoding {
+  children =
+  | Utf8()
+  | Ascii()
+  | Cp437()
+  | Utf16LE()
+  | Utf16BE()
+  | Iso8859_1()
+  | CustomEncoding(name: String)
+
+  fun code(): String
+  | Utf8() -> "utf8"
+  | Ascii() -> "ascii"
+  | Cp437() -> "cp437"
+  | Utf16LE() -> "utf16le"
+  | Utf16BE() -> "utf16be"
+  | Iso8859_1() -> "iso8859-1"
+  | CustomEncoding(name) -> name
+}

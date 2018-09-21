@@ -1,0 +1,5 @@
+class Foo() {
+  async fun no(() -> void): ^void {
+    void
+  }
+}

@@ -1,0 +1,55 @@
+// Define a schema for command-line arguments
+const schema: Array<ArgumentParser.Param> = Array[
+  ArgumentParser.StringParam{
+    name => "root",
+    help => "Root directory containing .js files to bundle",
+    required => true,
+    validate => ArgumentParser.nonEmpty,
+  },
+];
+
+// main() is called automatically by Skip when an application is run
+untracked fun main(): void {
+  // Get command-line arguments
+  args = arguments();
+  // Parse the arguments, printing a help message if values are invalid
+  root = ArgumentParser.parse(schema, args) match {
+  | Success(results) ->
+    relativeRoot = results.getString("root");
+    Path.join(getcwd(), relativeRoot)
+  | Failure(error) ->
+    print_error_ln(error.getMessage());
+    print_error_ln(ArgumentParser.help(schema));
+    exit(1)
+  };
+  // Run a REPL, allowing the user to enter a source file and see its
+  // output bundle.
+  print_string("Initializing ...");
+  Reactive.server(
+    root,
+    // Init function (called once on startup):
+    // Compute all bundles once in order to initialize Skip's reactive
+    // memoization tracking and populate the memoization cache.
+    files -> _ = Bundler.buildBundleMap(files),
+
+    // Update function (called on user input):
+    // Recompute all bundles - reusing memoized results for bundles
+    // whose files/dependencies have not changed. Then lookup the
+    // input path (from stdin) and print its bundle.
+    (files, input) -> {
+      if (input != "") {
+        filename = Path.join(root, input);
+        bundleMap = Bundler.buildBundleMap(files);
+        if (bundleMap.containsKey(filename)) {
+          print_string("*************************");
+          print_string(bundleMap[filename]);
+          print_string("*************************");
+        } else {
+          print_string(`Error, file '${input}' not found.`)
+        }
+      } else {
+        exit(0)
+      }
+    },
+  )
+}

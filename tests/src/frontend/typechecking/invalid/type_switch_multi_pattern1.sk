@@ -1,0 +1,14 @@
+base class B {
+  children =
+  | X()
+  | Y()
+  | Z()
+}
+
+fun shouldFail(): String {
+  Y() match {
+  | X() -> "One\n"
+  | Y() -> "Two\n"
+  | Z() -> "Three\n"
+  }
+}

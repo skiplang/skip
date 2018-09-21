@@ -1,0 +1,14 @@
+File "./typechecking/invalid/contravariance_intersection_3.sk", line 18, characters 17-23:
+The field foo is undefined
+16 |   print_raw(
+17 |     f2 match {
+18 |     | Foo(x) -> x.foo()
+   |                 ^^^^^^^
+19 |     // Boom, x is not an A
+
+File "./typechecking/invalid/contravariance_intersection_3.sk", line 2, characters 11-11:
+For the expression of type MismatchedVariance[T]
+1 | base class Cont<-T>
+2 | class Foo<T>(x: T) extends Cont<T>
+  |           ^
+3 |

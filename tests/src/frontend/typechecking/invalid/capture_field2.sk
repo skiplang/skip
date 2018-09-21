@@ -1,0 +1,11 @@
+class X()
+mutable class B(x: mutable X) {
+  frozen fun foo(): X {
+    this.x
+  }
+}
+mutable class A(x: mutable B) {
+  readonly fun foo(): X {
+    this.x.foo()
+  }
+}

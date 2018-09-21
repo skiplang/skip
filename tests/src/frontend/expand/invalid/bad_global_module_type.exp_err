@@ -1,0 +1,4 @@
+File "./expand/invalid/bad_global_module_type.sk", line 1, characters 6-10:
+You can only use '.' to access the global namespace while within a module
+1 | type .TFoo = Int;
+  |      ^^^^^

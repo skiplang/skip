@@ -1,0 +1,32 @@
+File "./typechecking/invalid/invariant_mutable_readonly.sk", line 9, characters 7-26:
+Incompatible branches
+ 7 |   mc = mutable Cont(mf);
+ 8 |   rc = mutable Cont(rf);
+ 9 |   _ = if (true) mc else rc;
+   |       ^^^^^^^^^^^^^^^^^^^^
+10 |   print_raw("FAIL")
+
+File "./typechecking/invalid/invariant_mutable_readonly.sk", line 5, characters 8-22:
+The invariant type: mutable Foo
+3 |
+4 | fun main(): void {
+5 |   mf = mutable Foo(42);
+  |        ^^^^^^^^^^^^^^^
+6 |   rf: readonly Foo = Foo(0);
+
+File "./typechecking/invalid/invariant_mutable_readonly.sk", line 6, characters 7-18:
+Is incompatible with the invariant type: readonly Foo
+4 | fun main(): void {
+5 |   mf = mutable Foo(42);
+6 |   rf: readonly Foo = Foo(0);
+  |       ^^^^^^^^^^^^
+7 |   mc = mutable Cont(mf);
+
+File "./typechecking/invalid/invariant_mutable_readonly.sk", line 5, characters 8-22:
+These types were found to be fixed upper bounds and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Foo
+3 |
+4 | fun main(): void {
+5 |   mf = mutable Foo(42);
+  |        ^^^^^^^^^^^^^^^
+6 |   rf: readonly Foo = Foo(0);

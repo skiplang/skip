@@ -1,0 +1,6 @@
+mutable class A(mutable x: Int)
+
+fun main(): void {
+  UnorderedMap::mcreate(0).set("", mutable A(0));
+  print_string("OK")
+}

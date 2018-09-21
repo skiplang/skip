@@ -1,0 +1,4 @@
+fun main(): void {
+  _t: (Int, mutable Int) = (0, 1);
+  print_raw("fail")
+}

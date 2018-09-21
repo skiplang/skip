@@ -1,0 +1,8 @@
+File "./syntax/invalid/const_pattern2.sk", line 7, characters 5-11:
+The following pattern is unused:
+ | true
+5 |   x match {
+6 |   | My_bool -> "True\n"
+7 |   | My_bool -> "False\n"
+  |     ^^^^^^^
+8 |   | false -> "Really false\n"

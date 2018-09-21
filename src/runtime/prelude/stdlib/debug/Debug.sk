@@ -1,0 +1,455 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module Debug;
+
+@debug
+fun .debug<T>(x: T): void {
+  debugImpl(x, print_error)
+}
+
+@debug
+fun .debug_json<T>(x: T): void {
+  writer = mutable BufferedWriter(print_error);
+  inspect(x).printJSON(writer);
+  writer.write("\n");
+  writer.flush();
+}
+
+untracked fun untracked_debug_FOR_TESTING_DO_NOT_USE<T>(
+  x: T,
+  print: String -> void,
+): void {
+  debugImpl(x, print)
+}
+
+/**
+ * This native function takes any value and returns an Inspect value describing
+ * the value. If the type defines an `inspect(): Inspect` method, this function
+ * delegates to that method. Otherwise it invokes a generated inspect method.
+ *
+ * For example:
+ *   inspect(void) -> InspectLiteral("void")
+ *   inspect(true) -> InspectLiteral("true")
+ *   inspect(10) -> InspectLiteral("10")
+ */
+@intrinsic
+native fun .inspect<T>(x: T): Inspect;
+
+private fun debugImpl<T>(x: T, print: String -> void): void {
+  writer = mutable BufferedWriter(print);
+  inspect(x).print(writer);
+  writer.write("\n");
+  writer.flush();
+}
+
+/**
+ * A simple data model for describing how a Skip value should be printed by debug().
+ * To customize the debug() output for a class, implement
+ *
+ *     fun inspect(): Inspect
+ *
+ * For your class and return one of the values here, as appropriate.
+ */
+base class .Inspect {
+  children =
+  // <<value>>
+  | .InspectSpecial(protected value: String)
+  // "value"
+  | .InspectString(protected value: String)
+  // value
+  | .InspectLiteral(protected value: String)
+  // Array[elem1, elem2, ...]
+  | .InspectVector(protected name: String, protected value: Array<Inspect>)
+  // Map[key1 => elem1, key2 => elem2]
+  | .InspectMap(
+    protected name: String,
+    protected value: Array<(Inspect, Inspect)>,
+  )
+  // Call(elem1, elem2, ...)
+  | .InspectCall(protected name: String, protected value: Array<Inspect>)
+  // Object{key1 => elem1, key2 => elem2}
+  | .InspectObject(
+    protected name: String,
+    protected value: Array<(String, Inspect)>,
+  )
+
+  // NOTE: This method has to be public so that debug() can call it,
+  // but it should not be possible for a user to access the result.
+  // Therefore the function accepts an instance of a module-private
+  // class so that callers cannot construct a valid argument.
+  fun print(writer: mutable BufferedWriter): void {
+    // Printing using a 80-column-aware algorithm is slow for very big inputs.
+    // Most of the time debug is going to be used for small ones so we should use
+    // the better version but fall back to the fast one for big inputs.
+    if (this.isInspectSizeGreaterThan(1000)) {
+      this.printNon80Column(writer.write);
+    } else {
+      this.print80Column(writer.write);
+    };
+  }
+
+  protected fun isInspectSizeGreaterThan(n: Int): Bool {
+    stack = mutable Vector<Inspect>[this];
+    while (n >= 0 && stack.size() != 0) {
+      !n = stack.pop().isInspectSizeGreaterThanIter(n, stack);
+    };
+    n < 0
+  }
+
+  // NOTE: this is split from isInspectSizeGreaterThan to work around
+  // an issue with accessing protected fields in a protected method -
+  // inlining this in the above while loop should work.
+  protected fun isInspectSizeGreaterThanIter(
+    n: Int,
+    stack: mutable Vector<Inspect>,
+  ): Int
+  | InspectSpecial _
+  | InspectString _
+  | InspectLiteral _ ->
+    n - 1
+  | InspectVector(_, value)
+  | InspectCall(_, value) ->
+    value.each(elem -> stack.push(elem));
+    n - value.size()
+  | InspectMap(_, value) ->
+    value.each(elem -> stack.push(elem.i0));
+    value.each(elem -> stack.push(elem.i1));
+    n - value.size()
+  | InspectObject(_, value) ->
+    value.each(elem -> stack.push(elem.i1));
+    n - value.size()
+
+  protected fun print80Column(print: String -> void): void {
+    Doc.printDoc(this.toDoc(), print)
+  }
+
+  protected fun printNon80Column(
+    print: String -> void,
+    indent: String = "",
+  ): void
+  | InspectSpecial(value) -> print("<<" + value + ">>")
+  | InspectString(value) -> print(JSON.String(value).encode())
+  | InspectLiteral(value) -> print(value)
+  | InspectVector(name, value) ->
+    this.printCommaGroupNon80Column(
+      print,
+      name + "[",
+      "]",
+      value.map(e -> ind -> e.printNon80Column(print, ind)),
+      indent,
+    )
+  | InspectCall(name, value) ->
+    this.printCommaGroupNon80Column(
+      print,
+      name + "(",
+      ")",
+      value.map(e -> ind -> e.printNon80Column(print, ind)),
+      indent,
+    )
+  | InspectMap(name, value) ->
+    this.printCommaGroupNon80Column(
+      print,
+      name + "[",
+      "]",
+      value.map(e ->
+        ind -> {
+          e.i0.printNon80Column(print, ind);
+          print(" => ");
+          e.i1.printNon80Column(print, ind);
+        }
+      ),
+      indent,
+    )
+  | InspectObject(name, value) ->
+    this.printCommaGroupNon80Column(
+      print,
+      name + "{",
+      "}",
+      value.map(e ->
+        ind -> {
+          print(e.i0);
+          print(" => ");
+          e.i1.printNon80Column(print, ind);
+        }
+      ),
+      indent,
+    )
+
+  // NOTE: This method has to be public so that debug_json() can call it,
+  // but it should not be possible for a user to access the result.
+  // Therefore the function accepts an instance of a module-private
+  // class so that callers cannot construct a valid argument.
+  fun printJSON(writer: mutable BufferedWriter, indent: String = ""): void {
+    this.printJSONImpl(writer.write, indent)
+  }
+
+  protected fun printJSONImpl(print: String -> void, indent: String): void
+  | InspectSpecial(value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"special\""),
+        _ind ->
+          print("\"value\": " + JSON.String("<<" + value + ">>").encode()),
+      ],
+      indent,
+    )
+  | InspectString(value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"string\""),
+        _ind -> print("\"value\": " + JSON.String(value).encode()),
+      ],
+      indent,
+    )
+  | InspectLiteral(value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"literal\""),
+        _ind -> print("\"value\": " + JSON.String(value).encode()),
+      ],
+      indent,
+    )
+  | InspectVector(name, value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"vector\""),
+        _ind -> print("\"name\": " + JSON.String(name).encode()),
+        ind -> {
+          print("\"value\": ");
+          printCommaGroupJSON(
+            print,
+            "[",
+            "]",
+            value.map(e ->
+              ind2 -> {
+                e.printJSONImpl(print, ind2);
+              }
+            ),
+            ind,
+          )
+        },
+      ],
+      indent,
+    )
+  | InspectCall(name, value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"call\""),
+        _ind -> print("\"name\": " + JSON.String(name).encode()),
+        ind -> {
+          print("\"value\": ");
+          printCommaGroupJSON(
+            print,
+            "[",
+            "]",
+            value.map(e ->
+              ind2 -> {
+                e.printJSONImpl(print, ind2);
+              }
+            ),
+            ind,
+          )
+        },
+      ],
+      indent,
+    )
+  | InspectMap(name, value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"map\""),
+        _ind -> print("\"name\": " + JSON.String(name).encode()),
+        ind -> {
+          print("\"value\": ");
+          printCommaGroupJSON(
+            print,
+            "[",
+            "]",
+            value.map(e ->
+              ind2 -> {
+                e.i0.printJSONImpl(print, ind2);
+                print(", ");
+                e.i1.printJSONImpl(print, ind2);
+              }
+            ),
+            ind,
+          )
+        },
+      ],
+      indent,
+    )
+  | InspectObject(name, value) ->
+    printCommaGroupJSON(
+      print,
+      "{",
+      "}",
+      Array[
+        _ind -> print("\"type\": \"object\""),
+        _ind -> print("\"name\": " + JSON.String(name).encode()),
+        ind -> {
+          print("\"value\": ");
+          printCommaGroupJSON(
+            print,
+            "{",
+            "}",
+            value.map(e ->
+              ind2 -> {
+                print(JSON.String(e.i0).encode());
+                print(": ");
+                e.i1.printJSONImpl(print, ind2);
+              }
+            ),
+            ind,
+          )
+        },
+      ],
+      indent,
+    )
+
+  protected fun toDoc(): Doc
+  | InspectSpecial(value) -> Doc.Str("<<" + value + ">>")
+  | InspectString(value) -> Doc.Str(JSON.String(value).encode())
+  | InspectLiteral(value) -> Doc.Str(value)
+  | InspectVector(name, value) ->
+    this.printCommaGroup(
+      Doc.Str(name + "["),
+      Doc.Str("]"),
+      value.map(x ~> x.toDoc()),
+    )
+  | InspectCall(name, value) ->
+    this.printCommaGroup(
+      Doc.Str(name + "("),
+      Doc.Str(")"),
+      value.map(x ~> x.toDoc()),
+    )
+  | InspectMap(name, value) ->
+    this.printCommaGroup(
+      Doc.Str(name + "["),
+      Doc.Str("]"),
+      value.map(x -> Doc.Concat[x.i0.toDoc(), Doc.Str(" => "), x.i1.toDoc()]),
+    )
+  | InspectObject(name, value) ->
+    this.printCommaGroup(
+      Doc.Str(name + "{"),
+      Doc.Str("}"),
+      value.map(x -> Doc.Concat[Doc.Str(x.i0), Doc.Str(" => "), x.i1.toDoc()]),
+    )
+
+  protected fun printCommaGroup(start: Doc, end: Doc, elems: Array<Doc>): Doc {
+    if (elems.size() == 0) {
+      Doc.Concat[start, end]
+    } else {
+      Doc.Group[
+        start,
+        Doc.Indent[
+          Doc.SoftLine(),
+          Doc.Concat(
+            elems
+              .mapWithIndex((i, elem) -> {
+                Doc.Concat[
+                  elem,
+                  if (i == elems.size() - 1) {
+                    Doc.IfBreak(Doc.Str(","))
+                  } else {
+                    Doc.Concat[Doc.Str(","), Doc.Line()]
+                  },
+                ]
+              })
+              .collect(Vector),
+          ),
+        ],
+        Doc.SoftLine(),
+        end,
+      ]
+    }
+  }
+
+  protected fun printCommaGroupNon80Column(
+    print: String -> void,
+    left: String,
+    right: String,
+    elemFns: Array<String -> void>,
+    indent: String,
+  ): void {
+    if (elemFns.size() == 0) {
+      print(left + right)
+    } else {
+      newIndent = indent + "  ";
+      print(left);
+      print("\n");
+      elemFns.each(elemFn -> {
+        print(newIndent);
+        elemFn(newIndent);
+        print(",\n");
+      });
+      print(indent + right);
+    }
+  }
+}
+
+private fun printCommaGroupJSON(
+  print: String -> void,
+  left: String,
+  right: String,
+  elemFns: Array<String -> void>,
+  indent: String,
+): void {
+  if (elemFns.size() == 0) {
+    print(left + right)
+  } else {
+    newIndent = indent + "  ";
+    print(left);
+    print("\n");
+    elemFns.eachWithIndex((i, elemFn) -> {
+      print(newIndent);
+      elemFn(newIndent);
+      if (i != elemFns.size() - 1) {
+        print(",");
+      };
+      print("\n");
+    });
+    print(indent + right);
+  }
+}
+
+private mutable class BufferedWriter(
+  private print: (String) -> void,
+  private capacity: Int = 25,
+  private buffer: mutable Vector<String> = mutable Vector[],
+) {
+  mutable fun write(str: String): void {
+    this.buffer.push(str);
+    if (this.buffer.size() > this.capacity) {
+      this.flush();
+    }
+  }
+
+  mutable fun flush(): void {
+    this.print(this.buffer.join(""));
+    this.buffer.clear();
+  }
+}
+
+module end;

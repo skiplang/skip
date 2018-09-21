@@ -1,0 +1,12 @@
+fun test(): Nullable<Int> {
+  Box(42)
+}
+
+fun main(): void {
+  print_raw(
+    test() match {
+    | Box(x) -> if (x == 42) "OK\n" else "FAILED"
+    | _ -> "FAILED"
+    },
+  )
+}

@@ -1,0 +1,14 @@
+class Foo(x: Int, y: String)
+
+fun makeFoo(): Foo {
+  Foo(42, "Pass\n")
+}
+
+fun main(): String {
+  x = 0;
+  y = "Fail";
+  if (true) {
+    Foo(x, y) = makeFoo()
+  };
+  x.toString() + " " + y
+}

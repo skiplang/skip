@@ -1,0 +1,12 @@
+class Foo<T>(x: SortedMap<Int, T>) {
+  fun bigAdd<U>[T: U](y: U): Foo<U> {
+    Foo(this.x.set(1, y))
+  }
+}
+
+fun main(): void {
+  f = Foo(SortedMap[].set(0, 100));
+  f2 = f.bigAdd("Fail");
+  debug(f2);
+  print_raw("No?")
+}

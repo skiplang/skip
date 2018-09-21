@@ -1,0 +1,7 @@
+File "./syntax/invalid/nested_module_confusion.sk", line 5, characters 1-6:
+Module declarations may not be nested.
+3 | const i : Int = 112;
+4 |
+5 | module B;
+  | ^^^^^^
+6 |

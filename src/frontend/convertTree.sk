@@ -1,0 +1,2548 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module ConvertTree;
+
+type ParseTree = ParseTree.ParseTree;
+
+class Converter{filename: String} {
+  fun treeToString(tree: ParseTree): String {
+    this.filename + tree.toDebugString();
+  }
+
+  // Generic functions go here so tehy aren't in the let rec
+  fun convertOpt<T>(tree: ParseTree, converter: ParseTree -> T): ?T {
+    tree match {
+    | ParseTree.EmptyTree _ -> None()
+    | _ -> Some(converter(tree))
+    }
+  }
+
+  fun convertList<T>(
+    tree: ParseTree,
+    convertElement: ParseTree -> T,
+  ): Array<T> {
+    tree match {
+    | ParseTree.ParseTreeList{elements} -> elements.map(convertElement)
+    | _ ->
+      invariant_violation("Expectd parse tree list: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertListOfLists<T>(
+    trees: Array<ParseTree>,
+    convertElement: ParseTree -> Array<T>,
+  ): Array<T> {
+    trees.map(convertElement).flatten()
+  }
+
+  fun convertOptList<T>(
+    tree: ParseTree,
+    convertElement: ParseTree -> T,
+  ): Array<T> {
+    tree match {
+    | ParseTree.ParseTreeList _ -> this.convertList(tree, convertElement)
+    | ParseTree.EmptyTree _ -> Array[]
+    | _ -> invariant_violation("expected list opt: " + this.treeToString(tree))
+    }
+  }
+
+  // TODO: Comments
+
+  fun nullName(): SkipAst.Name {
+    (FileRange.none, "")
+  }
+
+  fun convertPosition(position: Position): FilePosition {
+    FilePosition.create(this.filename, position);
+  }
+
+  fun convertPositions(start: Position, end: Position): FileRange {
+    FileRange.fromStartEnd(
+      this.convertPosition(start),
+      this.convertPosition(end),
+    )
+  }
+
+  fun convertRange(range: TextRange): FileRange {
+    this.convertPositions(range.start, range.end);
+  }
+
+  fun convertPos(tree: ParseTree): FileRange {
+    this.convertRange(tree.range)
+  }
+
+  fun convertPosOfTrees(start: ParseTree, end: ParseTree): FileRange {
+    startRange: TextRange = start.range;
+    this.convertPositions(startRange.start, end.range.end)
+  }
+
+  fun createName(tree: ParseTree, value: String): SkipAst.Name {
+    (this.convertPos(tree), value)
+  }
+
+  fun convertName(tree: ParseTree): SkipAst.Name {
+    this.createName(tree, tree.getId())
+  }
+
+  fun convertModule(
+    range: FileRange,
+    name: ParseTree,
+    declarations: ParseTree,
+    end: ParseTree,
+  ): Array<SkipAst.Definition> {
+    head = Array[SkipAst.DModule(range, this.convertName(name))];
+    body = this.convertDeclarations(declarations);
+    tail = if (end.isEmpty()) {
+      Array[]
+    } else {
+      Array<SkipAst.Definition>[SkipAst.DModuleEnd(this.convertPos(end))]
+    };
+    Array[head, body, tail].flatten()
+  }
+
+  fun convertNamedParameterType(
+    tree: ParseTree,
+  ): (SkipAst.Name, SkipAst.Type_) {
+    tree match {
+    | ParseTree.NamedParameterTree{name, typeSpecifier} ->
+      (this.convertName(name), this.convertType_(typeSpecifier))
+    | _ ->
+      invariant_violation(
+        "Unexpected named parameter: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertNamedParameterTypes(tree: ParseTree): UMap<SkipAst.Type_> {
+    UMap::createFromItems(tree.getList().map(this.convertNamedParameterType))
+  }
+
+  fun convertTypeList(tree: ParseTree): Array<SkipAst.Type_> {
+    this.convertOptList(tree, this.convertType_)
+  }
+
+  fun convertLambdaParameterTypes(tree: ParseTree): Parameters<SkipAst.Type_> {
+    tree match {
+    | ParseTree.NamedParametersTree{parameters} ->
+      Named(this.convertNamedParameterTypes(parameters))
+    | ParseTree.TupleTypeSpecifierTree{elements} ->
+      Positional(this.convertTypeList(elements))
+    | _ -> Positional(Array[this.convertType_(tree)])
+    }
+  }
+
+  fun nameOfTypeName(tree: ParseTree): SkipAst.Name {
+    tree match {
+    | ParseTree.TypeNameTree{name} -> this.convertName(name)
+    | _ -> invariant_violation("Expected type name: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertTypeName(tree: ParseTree): SkipAst.Type_name {
+    tree match {
+    | ParseTree.ThisTypeTree _ -> SkipAst.Tclass(this.createName(tree, "this"))
+    | ParseTree.TypeNameTree{name} ->
+      if (name.matchTreeKind(TokenKind.MACRO_TYPE_IDENTIFIER())) {
+        SkipAst.Tmacro(this.convertName(name))
+      } else {
+        SkipAst.Tclass(this.convertName(name))
+      }
+    | ParseTree.DottedQualifiedTypeNameTree{left, right} ->
+      SkipAst.Tmodule_class(
+        this.convertPos(tree),
+        this.nameOfTypeName(left),
+        this.convertName(right),
+      )
+    | ParseTree.GlobalQualifiedTypeNameTree{name} ->
+      SkipAst.Tmodule_class(
+        this.convertPos(tree),
+        (this.convertPos(tree), ""),
+        this.nameOfTypeName(name),
+      )
+    | _ -> invariant_violation("Expected type name: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertNamedType(tree: ParseTree): SkipAst.Named_type {
+    tree match {
+    | ParseTree.TypeNameTree _ -> (this.convertTypeName(tree), Array[])
+    | ParseTree.DottedQualifiedTypeNameTree _ ->
+      (this.convertTypeName(tree), Array[])
+    | ParseTree.GenericTypeNameTree{name, arguments} ->
+      (this.convertTypeName(name), this.convertTypeList(arguments))
+    | ParseTree.GlobalQualifiedTypeNameTree _ ->
+      (this.convertTypeName(tree), Array[])
+    | _ ->
+      invariant_violation("Expected named type: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertLambdaModifier(
+    arrow: ParseTree,
+    modifierOpt: ParseTree,
+  ): SkipAst.Lam_modifier {
+    SkipAst.Lam_modifier{
+      is_mutable => arrow.matchTreeKind(TokenKind.ARROW()),
+      is_untracked => modifierOpt.matchTreeKind(TokenKind.UNTRACKED()),
+    }
+  }
+
+  fun convertTabstract(
+    tree: ParseTree,
+    names: Array<SkipAst.Name>,
+  ): SkipAst.Type__ {
+    tree match {
+    | ParseTree.ColonColonQualifiedTypeNameTree{left, right} ->
+      this.convertTabstract(
+        left,
+        Array[Array[this.convertName(right)], names].flatten(),
+      )
+    | _ -> SkipAst.Tabstract(this.convertTypeName(tree), names)
+    }
+  }
+
+  fun convertType__(tree: ParseTree): SkipAst.Type__ {
+    tree match {
+    | ParseTree.VoidTypeTree _ ->
+      SkipAst.Tapply(SkipAst.Tclass((this.convertPos(tree), "Void")), Array[])
+    | ParseTree.UnderscoreTypeTree _ -> SkipAst.Tunder()
+    | ParseTree.InstTypeTree _ -> SkipAst.Tinst()
+    | ParseTree.NonNullableTypeTree _ -> SkipAst.TnonNullable()
+    | ParseTree.FrozenTypeTree _ -> SkipAst.Tfrozen()
+    | ParseTree.ThisTypeTree _ -> SkipAst.Tthis()
+    | ParseTree.TupleTypeSpecifierTree{elements} ->
+      SkipAst.Ttuple(this.convertTypeList(elements))
+    | ParseTree.ParenTypeSpecifierTree{element} -> this.convertType__(element)
+    | ParseTree.LambdaTypeSpecifierTree{
+      arguments,
+      arrow,
+      returnType,
+      modifierOpt,
+    } ->
+      SkipAst.Tfun(
+        this.convertLambdaModifier(arrow, modifierOpt),
+        this.convertLambdaParameterTypes(arguments),
+        this.convertType_(returnType),
+      )
+    | ParseTree.MutableTypeSpecifierTree{elementType} ->
+      SkipAst.Tmutable(this.convertType_(elementType))
+    | ParseTree.ReadonlyTypeSpecifierTree{elementType} ->
+      SkipAst.Treadonly(this.convertType_(elementType))
+    | ParseTree.OptionTypeSpecifierTree{elementType} ->
+      // TODO: This breaks when you define a type named Option inside a module
+      SkipAst.Tapply(
+        SkipAst.Tclass((this.convertPos(tree), PredefinedName.option)),
+        Array[this.convertType_(elementType)],
+      )
+    | ParseTree.AwaitableTypeSpecifierTree{elementType} ->
+      SkipAst.Tawaitable(this.convertType_(elementType))
+    | ParseTree.TypeNameTree _ ->
+      SkipAst.Tapply(this.convertTypeName(tree), Array[])
+    | ParseTree.GenericTypeNameTree{name, arguments} ->
+      SkipAst.Tapply(
+        this.convertTypeName(name),
+        this.convertTypeList(arguments),
+      )
+    | ParseTree.DottedQualifiedTypeNameTree _ ->
+      SkipAst.Tapply(this.convertTypeName(tree), Array[])
+    // For parameters in lambda types
+    | ParseTree.LambdaParameterTypeTree{typeSpecifier} ->
+      this.convertType__(typeSpecifier)
+    | ParseTree.GlobalQualifiedTypeNameTree _ ->
+      SkipAst.Tapply(this.convertTypeName(tree), Array[])
+    | ParseTree.ColonColonQualifiedTypeNameTree _ ->
+      this.convertTabstract(tree, Array[])
+    | _ -> invariant_violation("Unexpected Type__: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertType_(tree: ParseTree): SkipAst.Type_ {
+    // TODO: Delete this to improve range
+    range = tree match {
+    | ParseTree.GenericTypeNameTree{name /* arguments */} ->
+      this.convertPos(name)
+    | _ -> this.convertPos(tree)
+    };
+    (range, this.convertType__(tree))
+  }
+
+  fun convertVariance(tree: ParseTree): SkipAst.Variance {
+    tree match {
+    | ParseTree.TokenTree{token} ->
+      token.kind match {
+      | TokenKind.PLUS() -> SkipAst.Vplus()
+      | TokenKind.MINUS() -> SkipAst.Vminus()
+      | _ ->
+        invariant_violation(
+          "Unexpected variance annotation: " + this.treeToString(tree),
+        )
+      }
+    | ParseTree.EmptyTree _ -> SkipAst.Vnone()
+    | _ ->
+      invariant_violation(
+        "Unexpected variance annotation: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertConstraint(tree: ParseTree): SkipAst.Type_ {
+    this.convertType_(tree)
+  }
+
+  fun convertConstraints(tree: ParseTree): Array<SkipAst.Type_> {
+    (tree as ParseTree.ColonTypeParameterConstraintsTree _).constraints match {
+    | ParseTree.ParseTreeList{elements} -> elements.map(this.convertConstraint)
+    | _ ->
+      invariant_violation("Unexpected constraints: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertConstraintsOpt(tree: ParseTree): ?Array<SkipAst.Type_> {
+    this.convertOpt(tree, this.convertConstraints)
+  }
+
+  fun convertTypeParameter(tree: ParseTree): SkipAst.Type_parameter {
+    tree match {
+    | ParseTree.TypeParameterTree{variance, name, constraints} ->
+      (
+        this.convertVariance(variance),
+        "",
+        this.convertName(name),
+        this.convertConstraintsOpt(constraints),
+      )
+    | _ ->
+      invariant_violation(
+        "Expected type parameters: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun covnertWhenTypeClause(tree: ParseTree): SkipAst.When_type_clause {
+    tree match {
+    | ParseTree.WhenTypeClauseTree{subtype, supertypes} ->
+      (this.convertType_(subtype), this.convertConstraints(supertypes))
+    | _ ->
+      invariant_violation(
+        "Expected type parameters: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertTypeParameters(tree: ParseTree): Array<SkipAst.Type_parameter> {
+    tree match {
+    | ParseTree.TypeParametersTree{elements} ->
+      elements.getList().map(this.convertTypeParameter)
+    | ParseTree.EmptyTree _ -> Array[]
+    | _ ->
+      invariant_violation(
+        "Unexpected type parameters tree: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertWhenParameters(tree: ParseTree): Array<SkipAst.When_type_clause> {
+    tree match {
+    | ParseTree.WhenParametersTree{elements} ->
+      elements.getList().map(this.covnertWhenTypeClause)
+    | ParseTree.EmptyTree _ -> Array[]
+    | _ ->
+      invariant_violation(
+        "Unexpected type parameters tree: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertTypeAlias(
+    _range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    initializer: ParseTree,
+  ): SkipAst.Definition {
+    typeSpecifier = (initializer as ParseTree.TypeInitializerTree _).typeSpecifier;
+    SkipAst.DType(
+      SkipAst.Type_def{
+        annotations => this.convertAnnotations(modifiers),
+        visibility => this.convertVisibility(modifiers),
+        name => this.convertGlobalName(name),
+        tparams => this.convertTypeParameters(typeParameters),
+        body => this.convertType_(typeSpecifier),
+        source => None(),
+      },
+    )
+  }
+
+  fun convertNamedArgumentPattern(
+    tree: ParseTree,
+  ): (SkipAst.Name, SkipAst.Pattern) {
+    tree match {
+    | ParseTree.NamedArgumentPatternTree{name, pattern} ->
+      left = this.convertName(name);
+      pattern match {
+      | ParseTree.EmptyTree _ -> (left, (left.i0, SkipAst.Pat_var(left)))
+      | _ ->
+        (
+          left,
+          this.convertPattern(
+            (pattern as ParseTree.NamedArgumentValuePatternTree _).pattern,
+          ),
+        )
+      }
+    | _ ->
+      invariant_violation(
+        "Unexpected named argument pattern: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertNamePattern(tree: ParseTree): SkipAst.Name {
+    tree match {
+    | ParseTree.NamePatternTree{name} -> this.convertName(name)
+    | _ ->
+      invariant_violation("Unexpected name pattern: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertPatternArguments(tree: ParseTree): ?Parameters<SkipAst.Pattern> {
+    tree match {
+    // type-name _
+    | ParseTree.TokenTree _ -> None()
+    // type-name { args }
+    | ParseTree.NamedPatternArgumentsTree{arguments} ->
+      namedArguments = UMap::createFromItems(
+        arguments.getList().map(this.convertNamedArgumentPattern),
+      );
+      Some(Named(namedArguments))
+    | ParseTree.PositionalPatternArgumentsTree{arguments} ->
+      converted = arguments.getList().map(this.convertPattern);
+      Some(Positional(converted))
+    | _ -> invariant_violation("unexpected class pattern arguments")
+    }
+  }
+
+  fun convertPatternName(tree: ParseTree): SkipAst.Name {
+    tree match {
+    | ParseTree.ThisTypeTree _ -> this.createName(tree, "this")
+    | _ -> this.convertName(tree)
+    }
+  }
+
+  fun convertPattern_(tree: ParseTree): SkipAst.Pattern_ {
+    tree match {
+    | ParseTree.TokenTree{token} ->
+      SkipAst.Pat_literal(this.convertLiteral(token))
+    | ParseTree.NegativeLiteralPatternTree{
+      value => ParseTree.TokenTree{token},
+    } ->
+      negativeLiteral = this.convertLiteral(token) match {
+      | SkipAst.IntLiteral(i) -> SkipAst.IntLiteral(-i)
+      | SkipAst.FloatLiteral(f) -> SkipAst.FloatLiteral(-f)
+      | _ -> invariant_violation("unexpected negative literal pattern")
+      };
+      SkipAst.Pat_literal(negativeLiteral)
+    | ParseTree.VoidPatternTree _ -> SkipAst.Pat_literal(SkipAst.VoidLiteral())
+    | ParseTree.AtPatternTree{pattern, identifier} ->
+      SkipAst.Pat_as(this.convertPattern(pattern), this.convertName(identifier))
+    | ParseTree.NamePatternTree{name} -> SkipAst.Pat_var(this.convertName(name))
+    | ParseTree.TuplePatternTree{elements} ->
+      SkipAst.Pat_tuple(elements.getList().map(this.convertPattern))
+    | ParseTree.ParenPatternTree{pattern} -> this.convertPattern_(pattern)
+    | ParseTree.ConstPatternTree{value} ->
+      SkipAst.Pat_const(this.convertExpression(value))
+    | ParseTree.ClassPatternTree{typeName, arguments} ->
+      // TODO: Complete-ness is not used
+      tid = typeName match {
+      | ParseTree.ColonColonQualifiedTypeNameTree{left, right} ->
+        SkipAst.Tid_static(
+          this.convertPatternName(left),
+          this.convertName(right),
+        )
+      | _ -> SkipAst.Tid_object(this.convertTypeName(typeName))
+      };
+      SkipAst.Pat_type(
+        tid,
+        this.convertPatternArguments(arguments),
+        SkipAst.Complete(),
+      )
+    | _ -> invariant_violation("Unexpected pattern: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertPattern(tree: ParseTree): SkipAst.Pattern {
+    (this.convertPos(tree), this.convertPattern_(tree))
+  }
+
+  fun convertIfClause(tree: ParseTree): ?SkipAst.Expr {
+    tree match {
+    | ParseTree.EmptyTree _ -> None()
+    | _ ->
+      Some(
+        this.convertExpression((tree as ParseTree.IfClauseTree _).expression),
+      )
+    }
+  }
+
+  fun convertPatternBranch(tree: ParseTree): SkipAst.Match_branch {
+    tree match {
+    | ParseTree.PatternBranchTree{patterns, ifClause, value} ->
+      (
+        List::createFromItems(this.convertList(patterns, this.convertPattern)),
+        this.convertIfClause(ifClause),
+        this.convertExpressionSequence(value),
+      )
+    | _ -> invariant_violation("unexpected pattern: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertPatternBranchBlock(tree: ParseTree): List<SkipAst.Match_branch> {
+    this.convertPatternBranchList(
+      (tree as ParseTree.PatternBranchBlockTree _).branches,
+    );
+  }
+
+  fun convertPatternBranchList(tree: ParseTree): List<SkipAst.Match_branch> {
+    List::createFromItems(
+      (tree as ParseTree.PatternBranchListTree _).branches
+        .asList()
+        .elements.map(this.convertPatternBranch),
+    )
+  }
+
+  fun convertExpression(tree: ParseTree): SkipAst.Expr {
+    tree match {
+    // TODO: Consider moving this to error reporting
+    | ParseTree.BlockTree{expressions} ->
+      this.convertExpressionSequence(expressions)
+    | ParseTree.SimpleBindingExpressionTree{
+      range,
+      left,
+      colonTypeSpecifier,
+      right,
+    } ->
+      (
+        this.convertPos(right),
+        this.convertSimpleBinding(
+          this.convertRange(range),
+          left,
+          colonTypeSpecifier,
+          right,
+          (this.convertPos(tree), SkipAst.evoid_),
+        ),
+      )
+    | ParseTree.TemplateLiteralExpressionElementTree{expression} ->
+      // Don't include the leading $...
+      this.convertExpression(expression)
+    | _ -> (this.convertPos(tree), this.convertExpr_(tree))
+    }
+  }
+
+  fun convertExpr_(tree: ParseTree): SkipAst.Expr_ {
+    tree match {
+    | ParseTree.BlockTree{expressions} -> this.convertBlock(expressions)
+    | ParseTree.IfExpressionTree{range, ifControl, trueBranch, falseBranch} ->
+      this.convertIfExpression(
+        this.convertRange(range),
+        ifControl,
+        trueBranch,
+        falseBranch,
+      )
+    | ParseTree.ThrowExpressionTree{range, value} ->
+      this.convertThrowExpression(this.convertRange(range), value)
+    | ParseTree.TryExpressionTree{range, body, catchClause} ->
+      this.convertTryExpression(this.convertRange(range), body, catchClause)
+    | ParseTree.TokenTree{token} -> this.convertTokenExpression(tree, token)
+    | ParseTree.GenericTypeNameTree{range, name, arguments} ->
+      this.convertTypeNameExpression(this.convertRange(range), name, arguments)
+    | ParseTree.ParenExpressionTree{range, value} ->
+      this.convertParenExpression(this.convertRange(range), value)
+    | ParseTree.BinaryExpressionTree{range, left, operator, right} ->
+      this.convertBinaryExpression(
+        this.convertRange(range),
+        left,
+        operator,
+        right,
+      )
+    | ParseTree.CompoundBindingExpressionTree{range, left, operator, right} ->
+      this.convertCompoundBindingExpression(
+        this.convertRange(range),
+        left,
+        operator,
+        right,
+      )
+    | ParseTree.MemberSelectionExpressionTree{
+      range,
+      object,
+      operator,
+      member,
+    } ->
+      this.convertMemberSelectionExpression(
+        this.convertRange(range),
+        object,
+        operator,
+        member,
+      )
+    | ParseTree.UnaryExpressionTree{range, operator, operand} ->
+      this.convertUnaryExpression(this.convertRange(range), operator, operand)
+    | ParseTree.WithExpressionTree{range, value, arguments} ->
+      this.convertWithExpression(this.convertRange(range), value, arguments)
+    | ParseTree.MatchExpressionTree{range, value, branches} ->
+      this.convertMatchExpression(this.convertRange(range), value, branches)
+    | ParseTree.IsExpressionTree{range, value, pattern} ->
+      this.convertIsExpression(this.convertRange(range), value, pattern)
+    | ParseTree.AsExpressionTree{range, value, pattern} ->
+      this.convertAsExpression(this.convertRange(range), value, pattern)
+    | ParseTree.CallExpressionTree{range, func, typeArguments, arguments} ->
+      this.convertCall(this.convertRange(range), func, typeArguments, arguments)
+    | ParseTree.CallArrayExpressionTree{
+      range,
+      func,
+      typeArguments,
+      bang,
+      arguments,
+    } ->
+      this.convertCallArray(
+        this.convertRange(range),
+        func,
+        typeArguments,
+        bang,
+        arguments,
+      )
+    | ParseTree.CallMapExpressionTree{
+      range,
+      func,
+      typeArguments,
+      bang,
+      arguments,
+    } ->
+      this.convertCallMap(
+        this.convertRange(range),
+        func,
+        typeArguments,
+        bang,
+        arguments,
+      )
+    | ParseTree.TypeAnnotatedExpressionTree{range, value, typeSpecifier} ->
+      this.convertAnnotatedExpression(
+        this.convertRange(range),
+        value,
+        typeSpecifier,
+      )
+    | ParseTree.GlobalExpressionTree{range} ->
+      this.convertGlobalExpression(range)
+    | ParseTree.LambdaExpressionTree{
+      range,
+      modifierOpt,
+      parameters,
+      arrow,
+      body,
+    } ->
+      this.convertLambda(
+        this.convertRange(range),
+        modifierOpt,
+        parameters,
+        arrow,
+        body,
+      )
+    | ParseTree.TupleExpressionTree{range, values} ->
+      this.convertTuple(this.convertRange(range), values)
+    | ParseTree.TemplateLiteralExpressionTree{range, elements} ->
+      this.convertTemplateLiteralExpression(this.convertRange(range), elements)
+    | ParseTree.TemplateLiteralExpressionElementTree _ ->
+      invariant_violation(
+        "TemplateLiteralExpressionElementTree should be handled in convertExpr",
+      )
+    | ParseTree.ReturnExpressionTree{range, returnKeyword, value} ->
+      this.convertReturnExpression(
+        this.convertRange(range),
+        returnKeyword,
+        value,
+      )
+    | ParseTree.YieldExpressionTree{range, yieldKeyword, value} ->
+      this.convertYieldExpression(this.convertRange(range), yieldKeyword, value)
+    | ParseTree.YieldBreakExpressionTree _ -> SkipAst.YieldBreak()
+    | ParseTree.BreakExpressionTree{range, breakKeyword, value} ->
+      this.convertBreakExpression(this.convertRange(range), breakKeyword, value)
+    | ParseTree.InfiniteLoopExpressionTree{range, body} ->
+      this.convertLoopExpression(this.convertRange(range), body)
+    | ParseTree.DoLoopExpressionTree{range, body, condition, elseOpt} ->
+      this.convertDoWhileExpression(
+        this.convertRange(range),
+        body,
+        condition,
+        elseOpt,
+      )
+    | ParseTree.WhileLoopExpressionTree{range, condition, body, elseOpt} ->
+      this.convertWhileExpression(
+        this.convertRange(range),
+        condition,
+        body,
+        elseOpt,
+      )
+    | ParseTree.ForEachLoopExpressionTree{
+      range,
+      value,
+      collection,
+      body,
+      elseOpt,
+    } ->
+      this.convertForEachExpression(
+        this.convertRange(range),
+        value,
+        collection,
+        body,
+        elseOpt,
+      )
+    | ParseTree.ForEachFieldMacroTree{range, params, body} ->
+      this.convertForEachFieldMacro(this.convertRange(range), params, body)
+    | _ ->
+      invariant_violation("Unexpected expression: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertYieldExpression(
+    _range: FileRange,
+    _yieldKeyword: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Yield(this.convertExpression(value))
+  }
+
+  fun convertReturnExpression(
+    _range: FileRange,
+    _returnKeyword: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Return(this.convertExpression(value))
+  }
+
+  fun convertBreakExpression(
+    _range: FileRange,
+    _breakKeyword: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Break(this.convertExpression(value))
+  }
+
+  fun convertLoopExpression(_range: FileRange, body: ParseTree): SkipAst.Expr_ {
+    SkipAst.Loop(this.convertExpression(body))
+  }
+
+  fun convertDoWhileExpression(
+    range: FileRange,
+    body: ParseTree,
+    condition: ParseTree,
+    elseOpt: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.DoWhile(
+      this.convertExpression(body),
+      this.convertExpression(condition),
+      if (elseOpt.isEmpty()) {
+        (range, SkipAst.evoid_)
+      } else {
+        this.convertExpression((elseOpt as ParseTree.ElseBranchTree _).value)
+      },
+    )
+  }
+
+  fun convertWhileExpression(
+    range: FileRange,
+    condition: ParseTree,
+    body: ParseTree,
+    elseOpt: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.While(
+      this.convertExpression(condition),
+      this.convertExpression(body),
+      if (elseOpt.isEmpty()) {
+        (range, SkipAst.evoid_)
+      } else {
+        this.convertExpression((elseOpt as ParseTree.ElseBranchTree _).value)
+      },
+    )
+  }
+
+  fun convertForEachExpression(
+    range: FileRange,
+    value: ParseTree,
+    collection: ParseTree,
+    body: ParseTree,
+    elseOpt: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.ForEach(
+      this.convertForEachBinding(value),
+      this.convertExpression(collection),
+      this.convertExpression(body),
+      if (elseOpt.isEmpty()) {
+        (range, SkipAst.evoid_)
+      } else {
+        this.convertExpression((elseOpt as ParseTree.ElseBranchTree _).value)
+      },
+    )
+  }
+
+  fun convertForEachFieldMacro(
+    _range: FileRange,
+    params: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Expr_ {
+    args = (params as ParseTree.PositionalArgumentsTree _).arguments.getList();
+    SkipAst.ForEachFieldMacro(
+      this.convertName(args.first()),
+      if (args.size() == 1) {
+        None()
+      } else {
+        Some(this.convertName(args[1]))
+      },
+      this.convertExpression(body),
+    );
+  }
+
+  fun convertForEachBinding(binding: ParseTree): SkipAst.ForEachBinding {
+    binding match {
+    | ParseTree.ForEachKeyValueTree{range, key, value} ->
+      SkipAst.FEKeyed(
+        this.convertName(key),
+        this.convertName(value),
+        this.convertRange(range),
+      )
+    | ParseTree.ParseTreeList _ ->
+      SkipAst.FETuple(
+        this.convertList(binding, this.convertName),
+        this.convertRange(binding.range),
+      )
+    | _ ->
+      SkipAst.FEIdent(
+        this.convertName(binding),
+        this.convertRange(binding.range),
+      )
+    }
+  }
+
+  fun convertTemplateLiteralExpression(
+    _range: FileRange,
+    expressions: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.TemplateLiteral(this.convertPositionalArguments(expressions))
+  }
+
+  fun convertTemplateLiteralExpressionElement(
+    _range: FileRange,
+    expression: ParseTree,
+  ): SkipAst.Expr_ {
+    this.convertExpr_(expression);
+  }
+
+  fun convertTypeNameExpression(
+    _range: FileRange,
+    name: ParseTree,
+    typeArguments: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Cstr(this.convertName(name), this.convertTypeList(typeArguments))
+  }
+
+  fun convertBlock(expressions: ParseTree): SkipAst.Expr_ {
+    this.convertExpressionSequence_(expressions)
+  }
+
+  // expressions is in reverse order
+  fun convertExpressionSequenceTailRev(
+    expressions: List<ParseTree>,
+    acc: ?SkipAst.Expr,
+  ): SkipAst.Expr {
+    if (expressions.isEmpty()) {
+      acc.fromSome()
+    } else {
+      head = expressions.getHead();
+      tail = expressions.getTail();
+      head match {
+      | ParseTree.SimpleBindingExpressionTree{
+        range,
+        left,
+        colonTypeSpecifier,
+        right,
+      } ->
+        scope = if (acc.isNone()) {
+          (this.convertPos(head), SkipAst.evoid_)
+        } else {
+          acc.fromSome()
+        };
+        this.convertExpressionSequenceTailRev(
+          tail,
+          Some(
+            (
+              scope.i0,
+              this.convertSimpleBinding(
+                this.convertRange(range),
+                left,
+                colonTypeSpecifier,
+                right,
+                scope,
+              ),
+            ),
+          ),
+        )
+      | _ ->
+        convertedHead = this.convertExpression(head);
+        if (acc.isNone()) {
+          this.convertExpressionSequenceTailRev(tail, Some(convertedHead))
+        } else {
+          seqTail = acc.fromSome();
+          this.convertExpressionSequenceTailRev(
+            tail,
+            Some((seqTail.i0, SkipAst.Seq(convertedHead, seqTail))),
+          )
+        }
+      }
+    }
+  }
+
+  fun convertExpressionSequence_(tree: ParseTree): SkipAst.Expr_ {
+    this.convertExpressionSequence(tree).i1
+  }
+
+  fun convertExpressionSequence(tree: ParseTree): SkipAst.Expr {
+    expressions = tree.getList().reversed();
+    this.convertExpressionSequenceTailRev(
+      List::createFromItems(expressions),
+      None(),
+    )
+  }
+
+  fun convertIfExpression(
+    range: FileRange,
+    ifControl: ParseTree,
+    trueBranch: ParseTree,
+    falseBranch: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.If(
+      this.convertExpression(ifControl),
+      this.convertExpression(trueBranch),
+      if (falseBranch.isEmpty()) {
+        (range, SkipAst.evoid_)
+      } else {
+        this.convertExpression(
+          (falseBranch as ParseTree.ElseBranchTree _).value,
+        )
+      },
+    )
+  }
+
+  fun convertThrowExpression(
+    _range: FileRange,
+    value: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Throw(this.convertExpression(value))
+  }
+
+  fun convertCatchClause(tree: ParseTree): List<SkipAst.Match_branch> {
+    tree match {
+    | ParseTree.CatchClauseTree{branches} ->
+      this.convertPatternBranchBlock(branches)
+    | _ -> invariant_violation("Unexpected catch clause")
+    }
+  }
+
+  fun convertTryExpression(
+    _range: FileRange,
+    body: ParseTree,
+    catchClause: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Try(
+      this.convertExpression(body),
+      this.convertCatchClause(catchClause),
+    )
+  }
+
+  fun convertLiteral(token: Token.Token): SkipAst.LiteralValue {
+    token.kind match {
+    | TokenKind.TRUE() -> SkipAst.BoolLiteral(true)
+    | TokenKind.FALSE() -> SkipAst.BoolLiteral(false)
+    | TokenKind.STRING_LITERAL() ->
+      SkipAst.StringLiteral(token.stringLiteralValue())
+    | TokenKind.CHAR_LITERAL() ->
+      SkipAst.CharLiteral(token.charLiteralValue().code())
+    | TokenKind.INTEGER_LITERAL() -> SkipAst.IntLiteral(token.intLiteralValue())
+    | TokenKind.FLOAT_LITERAL() -> SkipAst.FloatLiteral(token.value.toFloat())
+    | TokenKind.TEMPLATE_LITERAL_STRING() ->
+      SkipAst.StringLiteral(token.templateStringLiteralValue())
+    | _ -> invariant_violation("Unexpected literal: " + token)
+    }
+  }
+
+  fun convertTokenExpression(
+    tree: ParseTree,
+    token: Token.Token,
+  ): SkipAst.Expr_ {
+    token.kind match {
+    | TokenKind.VOID() -> SkipAst.evoid_
+    | TokenKind.NONTYPE_IDENTIFIER() -> SkipAst.Var(this.convertName(tree))
+    | TokenKind.MACRO_NONTYPE_IDENTIFIER() ->
+      SkipAst.MacroVar(this.convertName(tree))
+    | TokenKind.MACRO_TYPE_IDENTIFIER()
+    | TokenKind.TYPE_IDENTIFIER() ->
+      SkipAst.Cstr(this.convertName(tree), Array[])
+    | TokenKind.TRUE() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.FALSE() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.STRING_LITERAL() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.CHAR_LITERAL() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.INTEGER_LITERAL() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.FLOAT_LITERAL() -> SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.THIS() -> SkipAst.Var(this.createName(tree, "this"))
+    | TokenKind.STATIC() -> SkipAst.Var(this.createName(tree, "static"))
+    | TokenKind.CLASS() -> SkipAst.Var(this.createName(tree, "class"))
+    | TokenKind.TEMPLATE_LITERAL_STRING() ->
+      SkipAst.Literal(this.convertLiteral(token))
+    | TokenKind.CONTINUE() -> SkipAst.Continue()
+    | _ -> invariant_violation("Unexpected token expression: " + token)
+    }
+  }
+
+  fun convertParenExpression(
+    _range: FileRange,
+    value: ParseTree,
+  ): SkipAst.Expr_ {
+    (_, expr_) = this.convertExpression(value);
+    expr_
+  }
+
+  fun convertBinop(tree: ParseTree): SkipAst.Binoperator {
+    (
+      this.convertPos(tree),
+      tree.getTokenKind() match {
+      | TokenKind.STAR() -> SkipAst.Star()
+      | TokenKind.SLASH() -> SkipAst.Slash()
+      | TokenKind.PERCENT() -> SkipAst.Percent()
+      | TokenKind.PLUS() -> SkipAst.Plus()
+      | TokenKind.MINUS() -> SkipAst.Minus()
+      | TokenKind.OPEN_ANGLE() -> SkipAst.Lt()
+      | TokenKind.CLOSE_ANGLE() -> SkipAst.Gt()
+      | TokenKind.LESS_EQUAL() -> SkipAst.Lte()
+      | TokenKind.GREATER_EQUAL() -> SkipAst.Gte()
+      | TokenKind.EQUAL_EQUAL() -> SkipAst.Eqeq()
+      | TokenKind.BANG_EQUAL() -> SkipAst.Diff()
+      | TokenKind.AMPERSAND_AMPERSAND() -> SkipAst.Ampamp()
+      | TokenKind.BAR_BAR() -> SkipAst.Barbar()
+      | _ ->
+        invariant_violation(
+          "Unexpected binary operator: " + this.treeToString(tree),
+        )
+      },
+    )
+  }
+
+  // some syntactic de-sugaring ...
+  // Adds 'lhs.' to the leftmost identifier in 'rhs'
+  // TODO: This introduces a double execution bug if the LHS has side effects ...
+  fun eqdot(lhs: ParseTree, rhs: ParseTree): ParseTree {
+    rhs match {
+    | ParseTree.BinaryExpressionTree{range, left, operator, right} ->
+      ParseTree.BinaryExpressionTree{
+        range,
+        left => this.eqdot(lhs, left),
+        operator,
+        right,
+      }
+    | ParseTree.TokenTree{range, token} ->
+      invariant(
+        token.kind == TokenKind.NONTYPE_IDENTIFIER(),
+        "Expected identifier on rhs of =.",
+      );
+      ParseTree.MemberSelectionExpressionTree{
+        range,
+        object => lhs,
+        operator => ParseTree.TokenTree{
+          range,
+          token => Token.Token{
+            range => rhs.range,
+            kind => TokenKind.PERIOD(),
+            value => ".",
+            errors => Array[],
+            leadingComments => Array[],
+            trailingComments => Array[],
+          },
+        },
+        member => rhs,
+      }
+    | ParseTree.CallExpressionTree{range, func, typeArguments, arguments} ->
+      ParseTree.CallExpressionTree{
+        range,
+        func => this.eqdot(lhs, func),
+        typeArguments,
+        arguments,
+      }
+    | _ ->
+      invariant_violation(
+        "TODO: Handle more expressions on RHS of =. in convertTree: " +
+          this.treeToString(rhs),
+      )
+    }
+  }
+
+  // Return the leading identifier in tree
+  fun remove_bang(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.MemberSelectionExpressionTree{
+      range,
+      object,
+      operator,
+      member,
+    } ->
+      ParseTree.MemberSelectionExpressionTree{
+        range,
+        object => this.remove_bang(object),
+        operator,
+        member => this.remove_bang(member),
+      }
+    | ParseTree.BinaryExpressionTree{range, left, operator, right} ->
+      ParseTree.BinaryExpressionTree{
+        range,
+        left => this.remove_bang(left),
+        operator,
+        right => this.remove_bang(right),
+      }
+    | ParseTree.UnaryExpressionTree{operator, operand} ->
+      invariant(
+        operator.matchTreeKind(TokenKind.BANG()),
+        "Unexpected UnaryExpression in LValue",
+      );
+      operand
+    // this or identifier
+    | ParseTree.TokenTree _ -> tree
+    | _ ->
+      invariant_violation(
+        "TODO: Better error message for invalid expr on LHS of =." +
+          this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertMemberSelectionExpression(
+    _range: FileRange,
+    object: ParseTree,
+    operator: ParseTree,
+    member: ParseTree,
+  ): SkipAst.Expr_ {
+    isMacro = member.getTokenKind() match {
+    | TokenKind.MACRO_TYPE_IDENTIFIER() ->
+      invariant_violation("RHS of member selection should not be a Macro Type")
+    | TokenKind.MACRO_NONTYPE_IDENTIFIER() -> true
+    | _ -> false
+    };
+    objectExpression = this.convertExpression(object);
+    name = this.convertName(member);
+    operator.getTokenKind() match {
+    | TokenKind.PERIOD() ->
+      if (isMacro) {
+        SkipAst.MacroDot(objectExpression, name)
+      } else {
+        SkipAst.Dot(objectExpression, name)
+      }
+    | TokenKind.COLON_COLON() ->
+      if (isMacro) {
+        SkipAst.MacroStaticDot(objectExpression, name)
+      } else {
+        SkipAst.StaticDot(objectExpression, name)
+      }
+    | _ -> invariant_violation("Unexpected MemberSelectionExpression operator")
+    }
+  }
+
+  fun convertCompoundBindingExpression(
+    range: FileRange,
+    left: ParseTree,
+    operator: ParseTree,
+    right: ParseTree,
+  ): SkipAst.Expr_ {
+    invariant(operator.matchTreeKind(TokenKind.EQUAL_DOT()), "Expected =.");
+    SkipAst.Bind(
+      this.convertLValue(left),
+      this.convertExpression(this.eqdot(this.remove_bang(left), right)),
+      (range, SkipAst.evoid_),
+    )
+  }
+
+  fun convertBinaryExpression(
+    range: FileRange,
+    left: ParseTree,
+    operator: ParseTree,
+    right: ParseTree,
+  ): SkipAst.Expr_ {
+    operator.getTokenKind() match {
+    | TokenKind.EQUAL_DOT() ->
+      SkipAst.Bind(
+        this.convertLValue(left),
+        this.convertExpression(this.eqdot(this.remove_bang(left), right)),
+        (range, SkipAst.evoid_),
+      )
+    | TokenKind.PIPE() ->
+      SkipAst.Pipe(this.convertExpression(left), this.convertExpression(right))
+    | _ ->
+      SkipAst.Binop(
+        this.convertBinop(operator),
+        this.convertExpression(left),
+        this.convertExpression(right),
+      )
+    }
+  }
+
+  fun operandOfBang(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.UnaryExpressionTree{operand} -> operand
+    | _ -> invariant_violation("Expected '!'")
+    }
+  }
+
+  fun convertLValueAssign(
+    tree: ParseTree,
+    leadingBang: Bool,
+  ): SkipAst.Lvalue_assign_value {
+    tree match {
+    | ParseTree.UnaryExpressionTree{operator, operand} ->
+      invariant(operator.matchTreeKind(TokenKind.BANG()), "Expected '!'");
+      invariant(!leadingBang, "Duplicate !");
+      this.convertLValueAssign(operand, true)
+    | ParseTree.TokenTree _ ->
+      invariant(leadingBang, "Missing !");
+      SkipAst.Lvalue_assign_local(this.convertName(tree))
+    | ParseTree.MemberSelectionExpressionTree{object, operator, member} ->
+      invariant(operator.matchTreeKind(TokenKind.PERIOD()), "Expected '.'");
+      if (member.isBang()) {
+        invariant(!leadingBang, "Duplicate bang");
+        SkipAst.Lvalue_assign_field(
+          this.convertExpression(object),
+          this.convertName(this.operandOfBang(member)),
+        )
+      } else {
+        SkipAst.Lvalue_assign_with(
+          this.convertLValueAssign(object, leadingBang),
+          this.convertName(member),
+        )
+      }
+    | ParseTree.CallArrayExpressionTree{func, typeArguments, bang, arguments} ->
+      invariant(
+        typeArguments.isEmpty(),
+        "CallArray in lvalue may not have type args",
+      );
+      isBang = !bang.isEmpty();
+      invariant(!isBang, "Unexpected '!'");
+      SkipAst.Lvalue_assign_array_set(
+        this.convertLValueAssign(func, leadingBang),
+        this.convertPositionalArguments(arguments),
+      )
+    | _ -> invariant_violation("Unexpected lvalue assign")
+    }
+  }
+
+  fun convertLValue_(tree: ParseTree): SkipAst.Lvalue_ {
+    tree match {
+    | ParseTree.TokenTree _ -> SkipAst.Lvalue_bind_local(this.convertName(tree))
+    | ParseTree.TupleExpressionTree{values} ->
+      SkipAst.Lvalue_tuple(values.getList().map(this.convertLValue))
+    | ParseTree.CallArrayExpressionTree{func, typeArguments, bang, arguments} ->
+      invariant(
+        typeArguments.isEmpty(),
+        "CallArray in lvalue may not have type args",
+      );
+      isBang = !bang.isEmpty();
+      if (isBang) {
+        SkipAst.Lvalue_array_set(
+          this.convertExpression(func),
+          this.convertPositionalArguments(arguments),
+        )
+      } else {
+        SkipAst.Lvalue_assign(this.convertLValueAssign(tree, false))
+      }
+    | _ -> SkipAst.Lvalue_assign(this.convertLValueAssign(tree, false))
+    }
+  }
+
+  fun convertLValue(tree: ParseTree): SkipAst.Lvalue {
+    (this.convertPos(tree), this.convertLValue_(tree))
+  }
+
+  fun convertUnaryOperator(tree: ParseTree): SkipAst.Unoperator {
+    (
+      this.convertPos(tree),
+      tree.getTokenKind() match {
+      | TokenKind.BANG() -> SkipAst.Not()
+      | TokenKind.MINUS() -> SkipAst.Uminus()
+      | _ ->
+        invariant_violation(
+          "Unexpected unary operator: " + this.treeToString(tree),
+        )
+      },
+    )
+  }
+
+  fun convertUnaryExpression(
+    _range: FileRange,
+    operator: ParseTree,
+    operand: ParseTree,
+  ): SkipAst.Expr_ {
+    operator.getTokenKind() match {
+    | TokenKind.BANG() ->
+      SkipAst.Unop(
+        this.convertUnaryOperator(operator),
+        this.convertExpression(operand),
+      )
+    | TokenKind.MINUS() ->
+      if (operand.matchTreeKind(TokenKind.INTEGER_LITERAL())) {
+        token = operand.getToken();
+        if (token.isIntMinToken()) {
+          SkipAst.Literal(SkipAst.IntLiteral(Int::min))
+        } else {
+          SkipAst.Literal(SkipAst.IntLiteral(-token.intLiteralValue()))
+        }
+      } else if (operand.matchTreeKind(TokenKind.FLOAT_LITERAL())) {
+        SkipAst.Literal(
+          SkipAst.FloatLiteral(-operand.getToken().value.toFloat()),
+        )
+      } else {
+        SkipAst.Unop(
+          this.convertUnaryOperator(operator),
+          this.convertExpression(operand),
+        )
+      }
+    | TokenKind.MUTABLE() -> SkipAst.Mutable(this.convertExpression(operand))
+    | TokenKind.AWAIT() -> SkipAst.Await(this.convertExpression(operand))
+    | TokenKind.ASYNC() -> SkipAst.Async(this.convertExpression(operand))
+    | _ ->
+      invariant_violation(
+        "Unexpected unary expression: " + this.treeToString(operand),
+      )
+    }
+  }
+
+  fun convertWithExpression(
+    _range: FileRange,
+    value: ParseTree,
+    arguments: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.With(
+      this.convertExpression(value),
+      this.convertNamedArguments(arguments),
+    )
+  }
+
+  fun convertIsExpression(
+    _range: FileRange,
+    value: ParseTree,
+    pattern: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Is(this.convertExpression(value), this.convertPattern(pattern))
+  }
+
+  fun convertAsExpression(
+    _range: FileRange,
+    value: ParseTree,
+    pattern: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.As(this.convertExpression(value), this.convertPattern(pattern))
+  }
+
+  fun convertMatchExpression(
+    _range: FileRange,
+    value: ParseTree,
+    branches: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Match(
+      this.convertExpression(value),
+      this.convertPatternBranchBlock(branches),
+    )
+  }
+
+  fun convertNamedArguments(tree: ParseTree): UMap<SkipAst.Ordered_expr> {
+    tree match {
+    | ParseTree.NamedArgumentsTree{arguments} ->
+      UMap::createFromItems(
+        arguments.getList().mapWithIndex((index, argument) ->
+          argument match {
+          | ParseTree.NamedArgumentTree{name, value} ->
+            (
+              this.convertName(name),
+              (
+                index,
+                this.convertExpressionWithDefault(
+                  value,
+                  this.convertExpression(name),
+                ),
+              ),
+            )
+          | _ ->
+            invariant_violation(
+              "expected named argument: " + this.treeToString(argument),
+            )
+          }
+        ),
+      )
+    | _ -> invariant_violation("Unexpected named/with arguments")
+    }
+  }
+
+  fun convertPositionalArguments(tree: ParseTree): SkipAst.Call_args {
+    Positional(
+      tree.getList().mapWithIndex((index, argument) ->
+        (index, this.convertExpression(argument))
+      ),
+    )
+  }
+
+  fun convertArguments(tree: ParseTree): SkipAst.Call_args {
+    tree match {
+    | ParseTree.NamedArgumentsTree _ -> Named(this.convertNamedArguments(tree))
+    | ParseTree.PositionalArgumentsTree{arguments} ->
+      this.convertPositionalArguments(arguments)
+    | _ ->
+      invariant_violation("Unexpected arguments: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertCallArray(
+    _range: FileRange,
+    func: ParseTree,
+    typeArguments: ParseTree,
+    _bang: ParseTree,
+    arguments: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.CallArray(
+      this.convertExpression(func),
+      this.convertTypeList(typeArguments),
+      this.convertPositionalArguments(arguments),
+    )
+  }
+
+  fun convertCallMap(
+    _range: FileRange,
+    func: ParseTree,
+    typeArguments: ParseTree,
+    _bang: ParseTree,
+    arguments: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.CallMap(
+      this.convertExpression(func),
+      this.convertTypeList(typeArguments),
+      arguments.getList().map((argument) -> this.convertMapElement(argument)),
+    )
+  }
+
+  // Desugar key => value to (key, value) tuples
+  fun convertMapElement(tree: ParseTree): (SkipAst.Expr, SkipAst.Expr) {
+    tree match {
+    | ParseTree.MapElementTree{key, value} ->
+      (this.convertExpression(key), this.convertExpression(value))
+    | _ ->
+      invariant_violation(
+        "Expected a map element, got: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertCall(
+    range: FileRange,
+    func: ParseTree,
+    typeArguments: ParseTree,
+    arguments: ParseTree,
+  ): SkipAst.Expr_ {
+    funcExpr = this.convertExpression(func);
+    typeArgumentsExpr = this.convertTypeList(typeArguments);
+    SkipAst.Call(
+      (range, funcExpr.i1),
+      typeArgumentsExpr,
+      this.convertArguments(arguments),
+    )
+  }
+
+  fun convertAnnotatedExpression(
+    _range: FileRange,
+    value: ParseTree,
+    typeSpecifier: ParseTree,
+  ): SkipAst.Expr_ {
+    SkipAst.Annotated(
+      this.convertExpression(value),
+      this.convertType_(typeSpecifier),
+    )
+  }
+
+  fun convertSimpleBinding(
+    _range: FileRange,
+    left: ParseTree,
+    colonTypeSpecifier: ParseTree,
+    right: ParseTree,
+    scope: SkipAst.Expr,
+  ): SkipAst.Expr_ {
+    expr = if (colonTypeSpecifier.isEmpty()) {
+      this.convertExpression(right)
+    } else {
+      (
+        this.convertPos(right),
+        SkipAst.Annotated(
+          this.convertExpression(right),
+          this.convertColonTypeSpecifierOpt(colonTypeSpecifier),
+        ),
+      )
+    };
+    SkipAst.Bind(this.convertLValue(left), expr, scope)
+  }
+
+  fun convertGlobalExpression(range: TextRange): SkipAst.Expr_ {
+    SkipAst.Cstr((this.convertRange(range), ""), Array[])
+  }
+
+  fun convertTuple(_range: FileRange, values: ParseTree): SkipAst.Expr_ {
+    SkipAst.Tuple(this.convertList(values, this.convertExpression))
+  }
+
+  fun convertTypeOrNone(colonTypeSpecifier: ParseTree): ?SkipAst.Type_ {
+    if (colonTypeSpecifier.isEmpty()) {
+      None()
+    } else {
+      Some(this.convertColonTypeSpecifierOpt(colonTypeSpecifier))
+    }
+  }
+
+  fun convertLambdaParameter(tree: ParseTree): SkipAst.Lam_parameter {
+    tree match {
+    | ParseTree.TokenTree _ -> (this.convertName(tree), None())
+    | ParseTree.LambdaParameterTree{name, colonTypeSpecifier} ->
+      (this.convertName(name), this.convertTypeOrNone(colonTypeSpecifier))
+    | _ -> invariant_violation("Expected lambda parameter")
+    }
+  }
+
+  fun checkPositionalParamNames(params: Sequence<SkipAst.Name>): void {
+    // Inserting the names of the params into a umap will report duplicate errors
+    // in the same way as Named parameters.
+    _ = UMap::createFromIterator(
+      params
+        .values()
+        .filter(param ~> param.i1 != PredefinedName.underscore)
+        .map(param ~> (param, param)),
+    );
+  }
+
+  fun convertLambdaParameters(
+    tree: ParseTree,
+  ): Parameters<SkipAst.Lam_parameter> {
+    tree match {
+    | ParseTree.NamedParametersTree{parameters} ->
+      Named(
+        UMap::createFromItems(
+          parameters.getList().map(parameter ~> {
+            param = this.convertLambdaParameter(parameter);
+            (param.i0, param)
+          }),
+        ),
+      )
+    | ParseTree.ParseTreeList{elements} ->
+      positionalParams = elements.map(this.convertLambdaParameter);
+      this.checkPositionalParamNames(positionalParams.map(p -> p.i0));
+      Positional(positionalParams)
+    | _ -> Positional(Array[this.convertLambdaParameter(tree)])
+    }
+  }
+
+  fun convertLambda(
+    _range: FileRange,
+    modifiersOpt: ParseTree,
+    parameters: ParseTree,
+    arrow: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Expr_ {
+    isUntracked = modifiersOpt match {
+    | ParseTree.EmptyTree _ -> false
+    | ParseTree.TokenTree{token} ->
+      token.kind match {
+      | TokenKind.UNTRACKED() -> true
+      | _ -> invariant_violation("unexpected lambda modifier: " + token)
+      }
+    | _ ->
+      invariant_violation(
+        "unexpected lambda modifier tree: " + this.treeToString(modifiersOpt),
+      )
+    };
+    SkipAst.Lambda(
+      SkipAst.Lam_modifier{
+        is_mutable => arrow.matchTreeKind(TokenKind.ARROW()),
+        is_untracked => isUntracked,
+      },
+      this.convertLambdaParameters(parameters),
+      this.convertExpression(body),
+    )
+  }
+
+  fun convertInitializer(tree: ParseTree): SkipAst.Expr {
+    this.convertExpression((tree as ParseTree.InitializerTree _).value);
+  }
+
+  fun convertInitializerOpt(tree: ParseTree): ?SkipAst.Expr {
+    this.convertOpt(tree, this.convertInitializer)
+  }
+
+  fun convertNamedArgumentValue(tree: ParseTree): SkipAst.Expr {
+    this.convertExpression((tree as ParseTree.NamedArgumentValueTree _).value);
+  }
+
+  fun convertExpressionWithDefault(
+    tree: ParseTree,
+    default: SkipAst.Expr,
+  ): SkipAst.Expr {
+    this.convertOpt(tree, this.convertNamedArgumentValue) match {
+    | None() -> default
+    | Some(x) -> x
+    }
+  }
+
+  fun convertModifier(
+    modifiers: ParseTree,
+    kind: TokenKind.TokenKind,
+  ): ?FileRange {
+    found = modifiers.getModifier(kind);
+    if (!found.isEmpty()) {
+      Some(this.convertPos(found.first()))
+    } else {
+      None()
+    }
+  }
+
+  fun convertModifierName(modifiers: ParseTree, name: String): ?FileRange {
+    found = modifiers.getModifierName(name);
+    if (!found.isEmpty()) {
+      Some(this.convertPos(found.first()))
+    } else {
+      None()
+    }
+  }
+
+  fun isAccessModifier(tree: ParseTree): Bool {
+    if (!tree.isToken()) {
+      false
+    } else {
+      tree.getTokenKind() match {
+      | TokenKind.PRIVATE()
+      | TokenKind.PROTECTED() ->
+        true
+      | _ -> false
+      }
+    }
+  }
+
+  fun accessOfModifier(tree: ParseTree): SkipAst.Visibility {
+    tree.getTokenKind() match {
+    | TokenKind.PRIVATE() -> SkipAst.VPrivate()
+    | TokenKind.PROTECTED() -> SkipAst.VProtected()
+    | _ -> invariant_violation("Unexpected access modifier")
+    }
+  }
+
+  fun convertVisibility(modifiers: ParseTree): (FileRange, SkipAst.Visibility) {
+    visibilities = modifiers.getList().filter(this.isAccessModifier);
+    if (visibilities.isEmpty()) {
+      (this.convertPos(modifiers), SkipAst.VPublic())
+    } else {
+      visibility = visibilities.first();
+      (this.convertPos(visibility), this.accessOfModifier(visibility))
+    }
+  }
+
+  fun convertNamedParameter(
+    index: Int,
+    tree: ParseTree,
+  ): (SkipAst.Name, SkipAst.Parameter) {
+    tree match {
+    | ParseTree.NamedParameterTree{
+      modifiers,
+      name,
+      typeSpecifier,
+      defaultValue,
+    } ->
+      par_name = this.convertName(name);
+      (
+        par_name,
+        SkipAst.Parameter{
+          annotations => this.convertAnnotations(modifiers),
+          visibility => this.convertVisibility(modifiers),
+          anonymous => false,
+          name => par_name,
+          type => this.convertType_(typeSpecifier),
+          value => this.convertInitializerOpt(defaultValue),
+          source => None(),
+          deferred_ => this.convertModifier(modifiers, TokenKind.DEFERRED()),
+          mutable_ => this.convertModifier(modifiers, TokenKind.MUTABLE()),
+          index => index,
+        },
+      )
+    | _ ->
+      invariant_violation(
+        "Unexpected named parameter: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertNamedParameters(tree: ParseTree): UMap<SkipAst.Parameter> {
+    UMap::createFromItems(
+      tree.getList().mapWithIndex(this.convertNamedParameter),
+    )
+  }
+
+  fun convertParameterNameColonOpt(tree: ParseTree): ParseTree {
+    tree match {
+    | ParseTree.EmptyTree _ -> tree
+    | ParseTree.ParameterNameColonTree{name} -> name
+    | _ -> invariant_violation("Unexpected parameter name colon")
+    }
+  }
+
+  fun convertParameter(index: Int, tree: ParseTree): SkipAst.Parameter {
+    tree match {
+    | ParseTree.PositionalParameterTree{
+      modifiers,
+      nameColon,
+      typeSpecifier,
+      defaultValue,
+    } ->
+      name = this.convertParameterNameColonOpt(nameColon);
+      (anonymous, par_name) = name match {
+      | ParseTree.EmptyTree _ ->
+        (true, (this.convertPos(name), "@param" + index))
+      | _ -> (false, this.convertName(name))
+      };
+      SkipAst.Parameter{
+        annotations => this.convertAnnotations(modifiers),
+        visibility => this.convertVisibility(modifiers),
+        anonymous,
+        name => par_name,
+        type => this.convertType_(typeSpecifier),
+        value => this.convertInitializerOpt(defaultValue),
+        source => None(),
+        deferred_ => this.convertModifier(modifiers, TokenKind.DEFERRED()),
+        mutable_ => this.convertModifier(modifiers, TokenKind.MUTABLE()),
+        index => index,
+      }
+    | _ ->
+      invariant_violation(
+        "Unexpected positional parameter: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertPositionalParameters(
+    params: Sequence<ParseTree>,
+  ): Parameters<SkipAst.Parameter> {
+    positionalParams = params.mapWithIndex(this.convertParameter);
+    this.checkPositionalParamNames(positionalParams.map(param ~> param.name));
+    Positional(positionalParams.collect(Array))
+  }
+
+  fun convertParameters(tree: ParseTree): Parameters<SkipAst.Parameter> {
+    tree match {
+    | ParseTree.EmptyTree _ -> Positional(Array[])
+    | ParseTree.NamedParametersTree{parameters} ->
+      Named(this.convertNamedParameters(parameters))
+    | ParseTree.PositionalParametersTree{parameters} ->
+      this.convertPositionalParameters(parameters.getList())
+    | _ ->
+      invariant_violation("Unexpected parameters: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertFunctionBody(tree: ParseTree): ?() ~> SkipAst.Expr {
+    tree match {
+    | ParseTree.TokenTree _ ->
+      None() // token == semi-colon
+    | ParseTree.BlockTree _ -> Some(() ~> this.convertExpression(tree))
+    | ParseTree.LazyTree{builder} ->
+      Some(() ~> this.convertExpression(builder()))
+    | _ ->
+      invariant_violation(
+        "Unexpected function body: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertFunction(
+    _range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    parameters: ParseTree,
+    returnType: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Definition {
+    SkipAst.DFun(
+      SkipAst.Fun_def{
+        annotations => this.convertAnnotations(modifiers),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        memoized_ => this.convertModifier(modifiers, TokenKind.MEMOIZED()),
+        async_ => this.convertModifier(modifiers, TokenKind.ASYNC()),
+        untracked_ => this.convertModifier(modifiers, TokenKind.UNTRACKED()),
+        fun_private => this.convertModifier(modifiers, TokenKind.PRIVATE()),
+        name => this.convertGlobalName(name),
+        tparams => this.convertTypeParameters(typeParameters),
+        params => this.convertParameters(parameters),
+        return_ => this.convertType_(returnType),
+        body => this.convertFunctionBody(body),
+      },
+    )
+  }
+
+  fun convertGlobalConstant(
+    _range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeSpecifier: ParseTree,
+    initializer: ParseTree,
+  ): SkipAst.Definition {
+    SkipAst.DConst(
+      SkipAst.Const_def{
+        annotations => this.convertAnnotations(modifiers),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        overridable_ => None(),
+        deferred_ => this.convertModifier(modifiers, TokenKind.DEFERRED()),
+        visibility => this.convertVisibility(modifiers),
+        name => this.convertGlobalName(name),
+        type => this.convertType_(typeSpecifier),
+        value => this.convertConstantValue(initializer, name),
+      },
+    )
+  }
+
+  fun convertClassKind(modifiers: ParseTree): SkipAst.Class_kind {
+    kinds = modifiers
+      .getList()
+      .map(tree ->
+        if (
+          tree.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()) &&
+          tree.getToken().value == PredefinedName.base
+        ) {
+          Some(SkipAst.KBase())
+        } else {
+          None()
+        }
+      )
+      .filterNone();
+    if (kinds.isEmpty()) {
+      (SkipAst.KClass() : SkipAst.Class_kind)
+    } else {
+      kinds.first()
+    }
+  }
+
+  fun convertGlobalName(tree: ParseTree): SkipAst.Name {
+    tree match {
+    | ParseTree.GlobalQualifiedTypeNameTree{name} ->
+      (_, nonDottedName) = this.nameOfTypeName(name);
+      (this.convertPos(tree), "." + nonDottedName)
+    | _ -> this.convertName(tree)
+    }
+  }
+
+  fun convertParent(tree: ParseTree): SkipAst.Parent {
+    // TODO: Why nullName here?
+    SkipAst.Parent{
+      source => this.nullName(),
+      parent => this.convertNamedType(tree),
+      conditions => Array[],
+    }
+  }
+
+  fun convertConditionalUse(tree: ParseTree): SkipAst.Parent {
+    tree match {
+    | ParseTree.ConditionalUseTree{typeName, conditions} ->
+      parent = this.convertNamedType(typeName);
+      convertedConditions = this.convertWhenParameters(conditions);
+      SkipAst.Parent{
+        source => this.nullName(),
+        parent,
+        conditions => convertedConditions,
+      }
+    | _ ->
+      invariant_violation(
+        "Expected conditional use: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertExtends(tree: ParseTree): Array<SkipAst.Parent> {
+    exts: Sequence<ParseTree> = tree
+      .getList()
+      .map(tree ->
+        tree match {
+        | ParseTree.ExtendsTree _ -> Some(tree)
+        | _ -> None()
+        }
+      )
+      .filterNone();
+    if (exts.isEmpty()) {
+      Array[]
+    } else {
+      ext = exts.first();
+      ext match {
+      | ParseTree.ExtendsTree{baseTypes} ->
+        this.convertList(baseTypes, this.convertParent)
+      | _ -> invariant_violation("Unexpected extends")
+      }
+    }
+  }
+
+  fun convertUses(tree: ParseTree): Array<SkipAst.Parent> {
+    impls: Sequence<ParseTree> = tree
+      .getList()
+      .map(tree ->
+        tree match {
+        | ParseTree.UsesTree _ -> Some(tree)
+        | _ -> None()
+        }
+      )
+      .filterNone();
+    if (impls.isEmpty()) {
+      Array[]
+    } else {
+      impl = impls.first();
+      impl match {
+      | ParseTree.UsesTree{typeClasses} ->
+        this.convertList(typeClasses, this.convertConditionalUse)
+      | _ -> invariant_violation("Unexpected use")
+      }
+    }
+  }
+
+  fun convertClassParams(
+    source: SkipAst.Name,
+    tree: ParseTree,
+  ): SkipAst.Class_params {
+    tree match {
+    | ParseTree.ClassConstructorDeclarationTree{modifiers, parameters} ->
+      SkipAst.Class_params{
+        pos => this.convertPos(tree),
+        final_ => this.convertModifier(modifiers, TokenKind.FINAL()),
+        visibility => this.convertVisibility(modifiers),
+        params => this.convertParameters(parameters),
+        source => source, // TODO: This should be removed
+      }
+    | _ ->
+      invariant_violation(
+        "expected constructor decl: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertClassParamsOpt(
+    source: SkipAst.Name,
+    tree: ParseTree,
+  ): ?SkipAst.Class_params {
+    this.convertOpt(tree, params -> this.convertClassParams(source, params))
+  }
+
+  fun convertMaybeClassParams(
+    source: SkipAst.Name,
+    tree: ParseTree,
+  ): SkipAst.MaybeClassParams {
+    this.convertClassParamsOpt(source, tree) match {
+    | Some(cp) -> SkipAst.HasParams(cp)
+    | None() -> SkipAst.NoParams()
+    }
+  }
+
+  fun convertChild(tree: ParseTree): SkipAst.Child {
+    tree match {
+    | ParseTree.ChildClassTree{range, annotations, name, constructor} ->
+      className = this.convertGlobalName(name);
+      SkipAst.Child{
+        chi_range => this.convertRange(range),
+        chi_name => className,
+        chi_params => this.convertClassParamsOpt(className, constructor),
+        chi_annotations => this.convertAnnotations(annotations),
+      }
+    | _ -> invariant_violation("expected child: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertChildren(body: ParseTree): SkipAst.Children {
+    childrenMembers: Array<ParseTree> = body
+      .getOptList()
+      .map(tree ->
+        tree match {
+        | ParseTree.ChildrenTree _ -> Some(tree)
+        | _ -> None()
+        }
+      )
+      .filterNone();
+    List::createFromItems(
+      childrenMembers
+        .map(childrenList ->
+          childrenList match {
+          | ParseTree.ChildrenTree{childClasses} ->
+            this.convertList(childClasses, this.convertChild)
+          | _ -> invariant_violation("Unexpected children")
+          }
+        )
+        .flatten(),
+    )
+  }
+
+  fun convertAnnotations(modifiers: ParseTree): SSet {
+    SSet::createFromItems(
+      modifiers
+        .getList()
+        .map(tree ->
+          tree match {
+          | ParseTree.AnnotationTree{name, arguments} ->
+            invariant(
+              name.matchTreeKind(TokenKind.NONTYPE_IDENTIFIER()),
+              "Unexpected annotation name",
+            );
+            nameString = "@" + name.getToken().value;
+            argString = arguments match {
+            | ParseTree.EmptyTree _ -> ""
+            | ParseTree.PositionalArgumentsTree{arguments => args} ->
+              argList = args.getList();
+              invariant(
+                argList.size() == 1,
+                "Expected single argument to annotation",
+              );
+              arg = argList.first();
+              invariant(
+                arg.matchTreeKind(TokenKind.STRING_LITERAL()),
+                "Expected string literal argument to annotation",
+              );
+              token = arg.getToken();
+              "(\"" + token.stringLiteralValue() + "\")"
+            | _ -> invariant_violation("Unexpected annotation arguments tree")
+            };
+            Some(nameString + argString)
+          | _ -> None()
+          }
+        )
+        .filterNone(),
+    )
+  }
+
+  fun convertTypeConstraint(constraint: ParseTree): ?SkipAst.Type_ {
+    this.convertOpt(constraint, this.convertType_)
+  }
+
+  fun convertTypeConstraintValue(
+    colonConstraint: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Cla_tyd {
+    constraint = colonConstraint match {
+    | ParseTree.EmptyTree _ -> colonConstraint
+    | ParseTree.ColonTypeConstraintTree{constraint => c} -> c
+    | _ -> invariant_violation("Unexpected colonConstraint")
+    };
+    value match {
+    | ParseTree.EmptyTree _ ->
+      SkipAst.TydAbstract(this.convertTypeConstraint(constraint), None())
+    | ParseTree.DefaultTypeConstantValueTree{typeSpecifier} ->
+      SkipAst.TydAbstract(
+        this.convertTypeConstraint(constraint),
+        Some(this.convertType_(typeSpecifier)),
+      )
+    | ParseTree.TypeInitializerTree{typeSpecifier} ->
+      invariant(
+        constraint.isEmpty(),
+        "Cannot have contraints on non-abstract type constant",
+      );
+      SkipAst.TydDefined(this.convertType_(typeSpecifier))
+    | _ ->
+      invariant_violation(
+        "unexpected TypeConstraintValue " + this.treeToString(value),
+      )
+    }
+  }
+
+  fun allocateTypeDefIdentifier(constraints: ParseTree): ?String {
+    constraints match {
+    | ParseTree.EmptyTree _ -> Some("")
+    | ParseTree.DefaultTypeConstantValueTree _ -> Some("")
+    | ParseTree.TypeInitializerTree{typeSpecifier} ->
+      this.allocateTypeDefIdentifier(typeSpecifier)
+    | _ -> None()
+    }
+  }
+
+  fun convertTypeConstant(
+    _range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    colonConstraint: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Class_field {
+    typeDef: SkipAst.Type_def<SkipAst.Cla_tyd> = SkipAst.Type_def{
+      annotations => SSet[],
+      visibility => this.convertVisibility(modifiers),
+      name => this.convertName(name),
+      tparams => this.convertTypeParameters(typeParameters),
+      body => this.convertTypeConstraintValue(colonConstraint, value),
+      source => None(), // TODO: Remove this
+    };
+    SkipAst.Class_type(typeDef)
+  }
+
+  fun convertConstantValue(
+    tree: ParseTree,
+    defaultLocation: ParseTree,
+  ): SkipAst.Inherited_body {
+    tree match {
+    | ParseTree.FromTree{name} ->
+      (
+        this.convertPos(tree),
+        SkipAst.Body(SkipAst.BFrom(this.convertTypeName(name))),
+      )
+    | ParseTree.EmptyTree _ ->
+      (this.convertPos(defaultLocation), SkipAst.Body(SkipAst.BNone()))
+    | _ ->
+      (
+        this.convertPos(tree),
+        SkipAst.Body(SkipAst.BExpr(() ~> this.convertInitializer(tree))),
+      )
+    }
+  }
+
+  fun convertConstant(
+    _range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    colonTypeSpecifier: ParseTree,
+    value: ParseTree,
+  ): SkipAst.Class_field {
+    SkipAst.Class_const(
+      SkipAst.Const_def{
+        annotations => this.convertAnnotations(modifiers),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        overridable_ => this.convertModifier(
+          modifiers,
+          TokenKind.OVERRIDABLE(),
+        ),
+        deferred_ => this.convertModifier(modifiers, TokenKind.DEFERRED()),
+        visibility => this.convertVisibility(modifiers),
+        name => this.convertName(name),
+        type => this.convertColonTypeSpecifierOpt(colonTypeSpecifier),
+        value => this.convertConstantValue(value, name),
+      },
+    )
+  }
+
+  fun convertMethodBody(tree: ParseTree): SkipAst.Inherited_body {
+    (
+      this.convertPos(tree),
+      SkipAst.Body(
+        tree match {
+        | ParseTree.TokenTree _ -> SkipAst.BNone()
+        | ParseTree.FromTree{name} -> SkipAst.BFrom(this.convertTypeName(name))
+        | ParseTree.PatternBranchListTree _ ->
+          SkipAst.BAlgebraic(this.convertPatternBranchList(tree))
+        | ParseTree.BlockTree _ ->
+          SkipAst.BExpr(() ~> this.convertExpression(tree))
+        | ParseTree.LazyTree{builder} ->
+          SkipAst.BExpr(() ~> this.convertExpression(builder()))
+        | _ ->
+          invariant_violation(
+            "Unexpected method body: " + this.treeToString(tree),
+          )
+        },
+      ),
+    )
+  }
+
+  fun convertColonTypeSpecifierOpt(tree: ParseTree): SkipAst.Type_ {
+    tree match {
+    | ParseTree.EmptyTree _ -> (this.convertPos(tree), SkipAst.Tany())
+    | ParseTree.ColonTypeSpecifierTree{typeSpecifier} ->
+      this.convertType_(typeSpecifier)
+    | _ ->
+      invariant_violation(
+        "unexpected ColonTypeSpecifier " +
+          this.filename +
+          this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertTypeOpt(tree: ParseTree): SkipAst.Type_ {
+    tree match {
+    // TODO: More desugaring
+    | ParseTree.EmptyTree _ -> (this.convertPos(tree), SkipAst.Tany())
+    | _ -> this.convertType_(tree)
+    }
+  }
+
+  fun convertMethod(
+    range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    whenParameters: ParseTree,
+    parameters: ParseTree,
+    returnType: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Class_field {
+    SkipAst.Class_method(
+      SkipAst.Method_def{
+        range => range,
+        visibility => this.convertVisibility(modifiers),
+        annotations => this.convertAnnotations(modifiers),
+        macro_ => this.convertModifier(modifiers, TokenKind.MACRO()),
+        memoized_ => this.convertModifier(modifiers, TokenKind.MEMOIZED()),
+        async_ => this.convertModifier(modifiers, TokenKind.ASYNC()),
+        static_ => this.convertModifier(modifiers, TokenKind.STATIC()),
+        mutable_ => this.convertModifier(modifiers, TokenKind.MUTABLE()),
+        readonly_ => this.convertModifier(modifiers, TokenKind.READONLY()),
+        frozen_ => this.convertModifier(modifiers, TokenKind.FROZEN()),
+        overridable_ => this.convertModifier(
+          modifiers,
+          TokenKind.OVERRIDABLE(),
+        ),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        deferred_ => this.convertModifier(modifiers, TokenKind.DEFERRED()),
+        untracked_ => this.convertModifier(modifiers, TokenKind.UNTRACKED()),
+        name => this.convertName(name),
+        whenparams => this.convertWhenParameters(whenParameters),
+        tparams => this.convertTypeParameters(typeParameters),
+        params => this.convertParameters(parameters),
+        return_ => this.convertTypeOpt(returnType),
+        body => this.convertMethodBody(body),
+      },
+    )
+  }
+
+  fun convertClassMember(tree: ParseTree): List<SkipAst.Class_field> {
+    tree match {
+    | ParseTree.ChildrenTree _ -> List[]
+    | ParseTree.TypeConstantTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      colonConstraint,
+      value,
+    } ->
+      List[
+        this.convertTypeConstant(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          colonConstraint,
+          value,
+        ),
+      ]
+    | ParseTree.ConstantTree{
+      range,
+      modifiers,
+      name,
+      colonTypeSpecifier,
+      value,
+    } ->
+      List[
+        this.convertConstant(
+          this.convertRange(range),
+          modifiers,
+          name,
+          colonTypeSpecifier,
+          value,
+        ),
+      ]
+    | ParseTree.MethodDeclarationTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      whenParameters,
+      parameters,
+      returnType,
+      body,
+    } ->
+      List[
+        this.convertMethod(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          whenParameters,
+          parameters,
+          returnType,
+          body,
+        ),
+      ]
+    | _ ->
+      invariant_violation("Unexpected class member: " + this.treeToString(tree))
+    }
+  }
+
+  fun convertClassMembers(tree: ParseTree): Array<SkipAst.Class_field> {
+    this.convertOptList(tree, this.convertClassMember).flatten()
+  }
+
+  fun convertClass(
+    range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    constructor: ParseTree,
+    extendsUses: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Definition {
+    members: Array<SkipAst.Class_field> = this.convertClassMembers(body);
+    className = this.convertGlobalName(name);
+    SkipAst.DClass(
+      SkipAst.Class_def{
+        range => range,
+        depth => -2, // TODO: Magic
+        extension => this.convertModifierName(
+          modifiers,
+          PredefinedName.extension,
+        ),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        kind => this.convertClassKind(modifiers),
+        value => this.convertModifierName(modifiers, PredefinedName.value),
+        mutable_ => this.convertModifier(modifiers, TokenKind.MUTABLE()),
+        data => None(), // TODO: Remove
+        name => className,
+        tparams => this.convertTypeParameters(typeParameters),
+        params => this.convertMaybeClassParams(className, constructor),
+        extends_ => this.convertExtends(extendsUses),
+        use => this.convertUses(extendsUses),
+        children_ => this.convertChildren(body),
+        children__set => SSet[], // Will be filled during the expansion phase (cf SkipExpand)
+        concrete_children => SSet[], // Will be filled during the expansion phase (cf SkipExpand)
+        consts => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_const(constant) -> Some((constant.name, constant))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        types => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_type(typedef) -> Some((typedef.name, typedef))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        methods => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_method(method) -> Some((method.name, method))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        private_ => this.convertModifier(modifiers, TokenKind.PRIVATE()),
+        annotations => this.convertAnnotations(modifiers),
+        // all members
+        fields => members,
+      },
+    )
+  }
+
+  fun convertTrait(
+    range: FileRange,
+    modifiers: ParseTree,
+    name: ParseTree,
+    typeParameters: ParseTree,
+    constructor: ParseTree,
+    extendsUses: ParseTree,
+    body: ParseTree,
+  ): SkipAst.Definition {
+    members: Array<SkipAst.Class_field> = this.convertClassMembers(body);
+    className = this.convertGlobalName(name);
+    SkipAst.DClass(
+      SkipAst.Class_def{
+        range => range,
+        depth => -2, // TODO: Magic
+        extension => this.convertModifierName(
+          modifiers,
+          PredefinedName.extension,
+        ),
+        native_ => this.convertModifier(modifiers, TokenKind.NATIVE()),
+        kind => SkipAst.KTrait(),
+        value => this.convertModifierName(modifiers, PredefinedName.value),
+        mutable_ => this.convertModifier(modifiers, TokenKind.MUTABLE()),
+        data => None(), // TODO: Remove
+        name => className,
+        tparams => this.convertTypeParameters(typeParameters),
+        params => this.convertMaybeClassParams(className, constructor),
+        extends_ => this.convertExtends(extendsUses),
+        use => this.convertUses(extendsUses),
+        children_ => this.convertChildren(body),
+        children__set => SSet[], // Will be filled during the expansion phase (cf SkipExpand)
+        concrete_children => SSet[], // Will be filled during the expansion phase (cf SkipExpand)
+        consts => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_const(constant) -> Some((constant.name, constant))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        types => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_type(typedef) -> Some((typedef.name, typedef))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        methods => UMap::createFromItems(
+          members
+            .map(member ->
+              member match {
+              | SkipAst.Class_method(method) -> Some((method.name, method))
+              | _ -> None()
+              }
+            )
+            .filterNone(),
+        ),
+        private_ => this.convertModifier(modifiers, TokenKind.PRIVATE()),
+        annotations => this.convertAnnotations(modifiers),
+        // all members
+        fields => members,
+      },
+    )
+  }
+
+  fun convertDefinition(tree: ParseTree): Array<SkipAst.Definition> {
+    tree match {
+    | ParseTree.ModuleAliasTree{name, value} ->
+      Array[
+        SkipAst.DMalias(
+          SkipAst.Module_alias{
+            pos => this.convertPos(tree),
+            mal_name => this.convertName(name),
+            mal_rhs_name => this.convertName(value),
+          },
+        ),
+      ]
+    | ParseTree.ModuleTree{range, name, declarations, end} ->
+      this.convertModule(this.convertRange(range), name, declarations, end)
+    | ParseTree.TypeAliasDeclarationTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      initializer,
+    } ->
+      Array[
+        this.convertTypeAlias(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          initializer,
+        ),
+      ]
+    | ParseTree.FunctionDeclarationTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      parameters,
+      returnType,
+      body,
+    } ->
+      Array[
+        this.convertFunction(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          parameters,
+          returnType,
+          body,
+        ),
+      ]
+    | ParseTree.GlobalConstantTree{
+      range,
+      modifiers,
+      name,
+      typeSpecifier,
+      initializer,
+    } ->
+      Array[
+        this.convertGlobalConstant(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeSpecifier,
+          initializer,
+        ),
+      ]
+    | ParseTree.ClassDeclarationTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      constructor,
+      extendsUses,
+      body,
+    } ->
+      Array[
+        this.convertClass(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          constructor,
+          extendsUses,
+          body,
+        ),
+      ]
+    | ParseTree.TraitDeclarationTree{
+      range,
+      modifiers,
+      name,
+      typeParameters,
+      constructor,
+      extendsUses,
+      body,
+    } ->
+      Array[
+        this.convertTrait(
+          this.convertRange(range),
+          modifiers,
+          name,
+          typeParameters,
+          constructor,
+          extendsUses,
+          body,
+        ),
+      ]
+    | _ ->
+      invariant_violation(
+        "Unexpected definition tree: " + this.treeToString(tree),
+      )
+    }
+  }
+
+  fun convertDeclarations(tree: ParseTree): Array<SkipAst.Definition> {
+    this.convertListOfLists(tree.getList(), this.convertDefinition)
+  }
+
+  fun convertTree(tree: ParseTree): Array<SkipAst.Definition> {
+    this.convertListOfLists(
+      tree.declarationListOfSourceUnitTree(),
+      this.convertDefinition,
+    )
+  }
+}
+
+module end;

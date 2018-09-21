@@ -1,0 +1,2 @@
+File "invalid/json_format/skip.project.json"
+Is not a valid project config because 'Invalid field 'not_a_project-file'. Expected one of 'default', 'programUnits', 'skipVersion', 'variables'.'

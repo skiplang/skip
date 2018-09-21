@@ -1,0 +1,13 @@
+class A<T>()
+
+trait Foo(x: A<inst>) {
+  fun foo(): inst {
+    _: A<inst> = A<inst>();
+    this
+  }
+}
+class Bar uses Foo
+
+fun main(): void {
+  print_string("Pass")
+}

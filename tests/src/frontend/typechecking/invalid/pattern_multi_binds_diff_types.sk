@@ -1,0 +1,18 @@
+base class Foo {
+  children =
+  | Bar(Int)
+  | Baz(Bool)
+}
+
+fun main(): void {
+  b: Foo = Bar(1);
+
+  print_raw(
+    b match {
+    | Bar(x)
+    | Baz(x) ->
+      _ = x;
+      "Fail\n"
+    },
+  )
+}

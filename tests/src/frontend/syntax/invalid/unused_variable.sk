@@ -1,0 +1,4 @@
+fun main(): void {
+  unused = 10;
+  print_string("Hello Skip!")
+}

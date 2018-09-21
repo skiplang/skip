@@ -1,0 +1,200 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+base class Parameters<+T> uses Hashable[T: Hashable], Equality[T: Equality] {
+  fun map<T2>(f: T -> T2): Parameters<T2>;
+  fun foldl<R>(f: (R, T) -> R, init: R): R;
+  fun map_foldl<T2, R>(f: (R, T) -> (R, T2), init: R): (R, Parameters<T2>);
+  fun filter(p: T -> Bool): this;
+  fun size(): Int;
+  fun isEmpty(): Bool;
+  fun all(f: T -> Bool): Bool;
+  fun any(f: T -> Bool): Bool;
+  fun each(f: T -> void): void;
+  fun combine<T2>(p2: Parameters<T2>): Parameters<(T, T2)>;
+  fun toList(): List<T>;
+  fun toArray(): Array<T>;
+  fun find(p: T -> Bool): ?T;
+  fun eqBy<U>[T: U](other: Parameters<U>, eq: (U, U) -> Bool): Bool;
+
+  fun ==<U: Equality>[T: U](other: Parameters<U>): Bool {
+    (this, other) match {
+    | (Positional(x), Positional(y)) -> x == y
+    | (Named(x), Named(y)) -> x == y
+    | _ -> false
+    }
+  }
+
+  fun !=<U: Equality>[T: U](other: Parameters<U>): Bool {
+    !(this == other)
+  }
+}
+
+class Positional<+T>(args: Array<T>) extends Parameters<T> {
+  static fun create(): Positional<T> {
+    Positional(Array[])
+  }
+
+  fun map<T2>(f: T -> T2): Positional<T2> {
+    Positional(this.args.map(f))
+  }
+
+  fun foldl<R>(f: (R, T) -> R, init: R): R {
+    this.args.foldl(f, init)
+  }
+
+  fun map_foldl<T2, R>(f: (R, T) -> (R, T2), init: R): (R, Positional<T2>) {
+    (r, l) = this.args.mapAcc(f, init);
+    (r, Positional(l))
+  }
+
+  fun size(): Int {
+    this.args.size()
+  }
+
+  fun isEmpty(): Bool {
+    this.args.isEmpty()
+  }
+
+  fun all(f: T -> Bool): Bool {
+    this.args.all(f)
+  }
+
+  fun any(f: T -> Bool): Bool {
+    this.args.any(f)
+  }
+
+  fun each(f: T -> void): void {
+    this.args.each(f)
+  }
+
+  fun inspect(): Inspect {
+    InspectVector(
+      "Positional",
+      {
+        items = mutable Vector[];
+        for (value in this.args) {
+          items.push(inspect(value))
+        };
+        items.toArray();
+      },
+    );
+  }
+
+  fun combine<T2>(p2: Parameters<T2>): Positional<(T, T2)> {
+    p2 match {
+    | Positional(y) ->
+      invariant(
+        this.args.size() == y.size(),
+        "combine different length positional",
+      );
+      Positional(this.args.zip(y))
+    | _ -> invariant_violation("combine named into positional")
+    }
+  }
+
+  fun toList(): List<T> {
+    List::createFromItems(this.args)
+  }
+
+  fun toArray(): Array<T> {
+    this.args
+  }
+
+  fun filter(p: T -> Bool): this {
+    Positional(this.args.filter(p))
+  }
+
+  fun find(p: T -> Bool): ?T {
+    this.args.find(p)
+  }
+
+  fun eqBy<U>[T: U](other: Parameters<U>, eq: (U, U) -> Bool): Bool {
+    other match {
+    | Positional(args) -> this.args.eqBy(args, eq)
+    | _ -> false
+    }
+  }
+}
+
+class Named<+T>(args: UMap<T>) extends Parameters<T> {
+  fun map<T2>(f: T -> T2): Named<T2> {
+    Named(this.args.map((_, v) -> f(v)))
+  }
+
+  fun foldl<R>(f: (R, T) -> R, init: R): R {
+    this.args.reduce((r, _, v) -> f(r, v), init)
+  }
+
+  fun map_foldl<T2, R>(f: (R, T) -> (R, T2), init: R): (R, Named<T2>) {
+    (r, l) = this.args.mapAcc((r, _, v) -> f(r, v), init);
+    (r, Named(l))
+  }
+
+  fun size(): Int {
+    this.args.size()
+  }
+
+  fun isEmpty(): Bool {
+    this.args.isEmpty()
+  }
+
+  fun all(f: T -> Bool): Bool {
+    this.args.all((_key, value) -> f(value))
+  }
+
+  fun any(f: T -> Bool): Bool {
+    this.args.any((_, v) -> f(v))
+  }
+
+  fun each(f: T -> void): void {
+    for (_key => value in this.args) f(value)
+  }
+
+  fun inspect(): Inspect {
+    InspectMap(
+      "Named",
+      {
+        items = Vector::mcreate(this.size());
+        this.args.each((key, value) ->
+          items.push((inspect(key.i1), inspect(value)))
+        );
+        items.toArray();
+      },
+    );
+  }
+
+  fun combine<T2>(p2: Parameters<T2>): Named<(T, T2)> {
+    p2 match {
+    | Named(m2) -> Named(this.args.map((k, v1) -> (v1, m2[k])))
+    | _ -> invariant_violation("combine positional into named")
+    }
+  }
+
+  fun toList(): List<T> {
+    List::createFromIterator(this.args.values())
+  }
+
+  fun toArray(): Array<T> {
+    this.args.values().collect(Array)
+  }
+
+  fun filter(p: T -> Bool): this {
+    Named(this.args.filter((_, x) -> p(x)))
+  }
+
+  fun find(p: T -> Bool): ?T {
+    this.args.find((_, v) -> p(v))
+  }
+
+  fun eqBy<U>[T: U](other: Parameters<U>, eq: (U, U) -> Bool): Bool {
+    other match {
+    | Named(args) -> this.args.eqBy(args, eq)
+    | _ -> false
+    }
+  }
+}

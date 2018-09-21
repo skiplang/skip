@@ -1,0 +1,12 @@
+base class T {
+  children =
+  | A()
+  | B()
+}
+
+fun foo(x: T): String {
+  x match {
+  | A() if (true) -> "A"
+  | B() if (true) -> "B"
+  }
+}

@@ -1,0 +1,20 @@
+base class CBase
+class C1() extends CBase
+class C2() extends CBase {
+  fun bar(): void {
+    void
+  }
+}
+base class Bar<+T>
+class Foo() extends Bar<C2>
+
+fun matchF<T>(x: Bar<T>): void {
+  x match {
+  | Foo() -> void
+  }
+}
+
+fun main(): void {
+  matchF(Foo());
+  print_string("Pass")
+}

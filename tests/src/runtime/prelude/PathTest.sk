@@ -1,0 +1,199 @@
+class PathToTest(
+  path: String,
+  isAbsolute: Bool,
+  dirname: String,
+  basename: String,
+  extname: String,
+  normalize: String,
+)
+
+fun doAccessorTest<T: Equality & Show>(
+  apiName: String,
+  pathApi: String -> T,
+  baseLine: PathToTest -> T,
+): void {
+  tests.each(test -> {
+    // debug(`PathTest ${apiName} for '${test.path}'`);
+    actual = pathApi(test.path);
+    expected = baseLine(test);
+    if (actual != expected) {
+      assertFailure{
+        message => `PathTest ${apiName} for '${test.path}'`,
+        actual => actual.toString(),
+        expected => expected.toString(),
+      };
+    };
+  });
+}
+
+const tests: Vector<PathToTest> = Vector[
+  // Special paths
+  PathToTest("", false, ".", "", "", "."),
+  PathToTest("/", true, "/", "", "", "/"),
+  PathToTest(".", false, ".", "", "", "."),
+  PathToTest("..", false, "..", "", "", ".."),
+
+  // Absolute paths
+  PathToTest("/a", true, "/", "a", "", "/a"),
+  PathToTest("/a/b", true, "/a", "b", "", "/a/b"),
+  PathToTest("/a/b/c", true, "/a/b", "c", "", "/a/b/c"),
+
+  // relative paths
+  PathToTest("a", false, ".", "a", "", "a"),
+  PathToTest("a/b", false, "a", "b", "", "a/b"),
+  PathToTest("a/b/c", false, "a/b", "c", "", "a/b/c"),
+  PathToTest("../a", false, "..", "a", "", "../a"),
+  PathToTest("../../a", false, "../..", "a", "", "../../a"),
+
+  // unnormalized paths
+  PathToTest("/.", true, "/", ".", "", "/"),
+  PathToTest("./..", false, ".", "..", "", ".."),
+  PathToTest("../.", false, "..", ".", "", ".."),
+  PathToTest("./.", false, ".", ".", "", "."),
+  PathToTest("./a", false, ".", "a", "", "a"),
+  PathToTest("a/.", false, "a", ".", "", "a"),
+  PathToTest("./a/b", false, "./a", "b", "", "a/b"),
+  PathToTest("a/./b", false, "a/.", "b", "", "a/b"),
+  PathToTest("a/b/.", false, "a/b", ".", "", "a/b"),
+  PathToTest("./a/./b/.", false, "./a/./b", ".", "", "a/b"),
+  PathToTest("a/b/../c", false, "a/b/..", "c", "", "a/c"),
+  PathToTest("a/..", false, "a", "..", "", "."),
+  PathToTest("/a/..", true, "/a", "..", "", "/"),
+  PathToTest("a/../b", false, "a/..", "b", "", "b"),
+  PathToTest("/a/../b", true, "/a/..", "b", "", "/b"),
+  PathToTest("a/../b/..", false, "a/../b", "..", "", "."),
+  PathToTest("/a/../b/..", true, "/a/../b", "..", "", "/"),
+  PathToTest("a/b/../..", false, "a/b/..", "..", "", "."),
+  PathToTest("/a/b/../..", true, "/a/b/..", "..", "", "/"),
+
+  // degnerate paths
+  PathToTest("/..", true, "/", "..", "", "/.."),
+  PathToTest("/../a", true, "/..", "a", "", "/../a"),
+  PathToTest("/../..", true, "/..", "..", "", "/../.."),
+  PathToTest("//..", true, "/", "..", "", "/.."),
+  PathToTest("/..//a", true, "/..", "a", "", "/../a"),
+  PathToTest("/..//..", true, "/..", "..", "", "/../.."),
+
+  // extname tests
+  PathToTest("/a.", true, "/", "a.", ".", "/a."),
+  PathToTest("/.a", true, "/", ".a", ".a", "/.a"),
+  PathToTest("/a.ext", true, "/", "a.ext", ".ext", "/a.ext"),
+  PathToTest("/a.b.c", true, "/", "a.b.c", ".c", "/a.b.c"),
+  PathToTest("/a.b.c.", true, "/", "a.b.c.", ".", "/a.b.c."),
+  PathToTest("/.a.b", true, "/", ".a.b", ".b", "/.a.b"),
+  PathToTest("/a/b", true, "/a", "b", "", "/a/b"),
+  PathToTest("/a/b.", true, "/a", "b.", ".", "/a/b."),
+  PathToTest("/a/.b", true, "/a", ".b", ".b", "/a/.b"),
+  PathToTest("/a/b.ext", true, "/a", "b.ext", ".ext", "/a/b.ext"),
+  PathToTest("/a.exta/b", true, "/a.exta", "b", "", "/a.exta/b"),
+  PathToTest(
+    "/a.exta/b.extb",
+    true,
+    "/a.exta",
+    "b.extb",
+    ".extb",
+    "/a.exta/b.extb",
+  ),
+  PathToTest("/a/b/c.ext", true, "/a/b", "c.ext", ".ext", "/a/b/c.ext"),
+
+  // Extra /'s
+  PathToTest("//", true, "/", "", "", "/"),
+  PathToTest("//a//", true, "/", "a", "", "/a"),
+  PathToTest("//a//b//", true, "//a", "b", "", "/a/b"),
+  PathToTest("//a//b//c//", true, "//a//b", "c", "", "/a/b/c"),
+  PathToTest("a//", false, ".", "a", "", "a"),
+  PathToTest("a//b//", false, "a", "b", "", "a/b"),
+  PathToTest("a//b//c//", false, "a//b", "c", "", "a/b/c"),
+];
+
+const testPaths: Vector<String> = tests.map(test ~> test.path);
+
+@test
+fun testIsAbsolute(): void {
+  doAccessorTest("isAbsolute", Path.isAbsolute, test ~> test.isAbsolute);
+}
+
+@test
+fun testDirname(): void {
+  doAccessorTest("dirname", Path.dirname, test ~> test.dirname);
+}
+
+@test
+fun testBasename(): void {
+  doAccessorTest("basename", Path.basename, test ~> test.basename);
+}
+
+@test
+fun testExtname(): void {
+  doAccessorTest("extname", Path.extname, test ~> test.extname);
+}
+
+@test
+fun testNormalize(): void {
+  doAccessorTest("normalize", Path.normalize, test ~> test.normalize);
+}
+
+@test
+fun testSplit(): void {
+  tests.each(test ~> {
+    (actualDirname, actualBasename) = Path.split(test.path);
+    assertEqual(actualDirname, test.dirname);
+    assertEqual(actualBasename, test.basename);
+  });
+}
+
+@test
+fun testJoin(): void {
+  tests.each(test ~> {
+    assertEqual(Path.join(test.dirname, test.basename), test.normalize);
+    testPaths.each(path2 -> {
+      path = Path.join(test.path, path2);
+      assertEqual(
+        Path.normalize(path),
+        Path.join(Path.dirname(path), Path.basename(path)),
+      );
+    });
+  });
+
+  assertEqual(Path.join("a/b/c", "d"), "a/b/c/d");
+  assertEqual(Path.join("a/b/c", "../d"), "a/b/d");
+  assertEqual(Path.join("a/b/c", ".."), "a/b");
+  assertEqual(Path.join("a", ".."), ".");
+  assertEqual(Path.join("/a/b/c", "d"), "/a/b/c/d");
+  assertEqual(Path.join("/a/b/c", "../d"), "/a/b/d");
+  assertEqual(Path.join("/a/b/c", ".."), "/a/b");
+  assertEqual(Path.join("/a", ".."), "/");
+  assertEqual(Path.join("a", "../.."), "..");
+  assertEqual(Path.join("a", "../../b"), "../b");
+}
+
+@test
+fun testIsRoot(): void {
+  assertEqual(Path.isRoot("/"), true);
+  assertEqual(Path.isRoot("///"), true);
+  assertEqual(Path.isRoot("/."), true);
+  assertEqual(Path.isRoot("///.///.////.///"), true);
+  assertEqual(Path.isRoot("a"), false);
+  assertEqual(Path.isRoot("/a"), false);
+}
+
+@test
+fun testResolve(): void {
+  cwd = getcwd();
+  tests.each(test ~> {
+    if (test.isAbsolute) {
+      assertEqual(Path.resolve(test.path), Path.normalize(test.path));
+      assertEqual(Path.resolve("a/b/c/", test.path), Path.normalize(test.path));
+      assertEqual(
+        Path.resolve("a/b/c/", "d/e/f", test.path),
+        Path.normalize(test.path),
+      );
+    } else {
+      assertEqual(
+        Path.resolve(test.path),
+        Path.normalize(Path.join(cwd, test.path)),
+      );
+      // TODO: Need to mock getcwd() to meaningfully exercise this API.
+    };
+  });
+}

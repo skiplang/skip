@@ -1,0 +1,65 @@
+mutable class Foo(
+  f: () -> Int = {
+    a = 0;
+    () -> {
+      !a = a + 1;
+      a
+    }
+  },
+)
+
+fun f1(
+  f: () -> Int = {
+    xf1 = -1;
+    () -> {
+      !xf1 = xf1 + 1;
+      xf1
+    }
+  },
+): Int {
+  f() + f()
+}
+fun f2(): () -> Int {
+  xf2 = 0;
+  () -> {
+    !xf2 = xf2 + 1;
+    xf2
+  }
+}
+
+const cf: () ~> Int = {
+  c = 0;
+  () ~> c + 1
+};
+class Tester() {
+  const cf: () ~> Int = {
+    c = 0;
+    () ~> c + 1
+  };
+  static fun mkcf(): () ~> Int {
+    d = 0;
+    () ~> d + 1
+  }
+  fun f1(
+    f: () -> Int = {
+      e = -1;
+      () -> {
+        !e = e + 1;
+        e
+      }
+    },
+  ): Int {
+    f() + f()
+  }
+}
+
+fun main(): void {
+  print_string("" + (mutable Foo()).f());
+  print_string("" + f1());
+  print_string("" + f2()());
+  print_string("" + cf());
+  print_string("" + Tester::cf());
+  print_string("" + Tester::mkcf()());
+  print_string("" + Tester().f1());
+  void
+}

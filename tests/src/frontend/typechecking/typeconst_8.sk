@@ -1,0 +1,17 @@
+base class Foo final () {
+  type T: Test.MixedScalar;
+  deferred static fun foo(x: this::T): this::T {
+    _ = x.toString();
+    x
+  }
+}
+
+base class Bar extends Foo
+
+class Baz extends Bar {
+  type T = Test.MixedString;
+}
+
+fun main(): void {
+  print_raw(Baz::foo(Test.MixedString("Pass\n")).toString())
+}

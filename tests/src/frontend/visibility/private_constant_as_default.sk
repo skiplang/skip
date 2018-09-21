@@ -1,0 +1,7 @@
+class Foo(x: Int = Foo::default) {
+  private const default: Int = 0;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

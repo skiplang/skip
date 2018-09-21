@@ -1,0 +1,28 @@
+File "./syntax/invalid/mutable_tuple.sk", line 2, characters 28-33:
+Invalid annotation
+1 | fun main(): void {
+2 |   _t: (Int, mutable Int) = (0, 1);
+  |                            ^^^^^^
+3 |   print_raw("fail")
+
+File "./syntax/invalid/mutable_tuple.sk", line 2, characters 32-32:
+The type: Int
+1 | fun main(): void {
+2 |   _t: (Int, mutable Int) = (0, 1);
+  |                                ^
+3 |   print_raw("fail")
+
+File "./syntax/invalid/mutable_tuple.sk", line 2, characters 13-23:
+Is not a subtype of: mutable Int
+1 | fun main(): void {
+2 |   _t: (Int, mutable Int) = (0, 1);
+  |             ^^^^^^^^^^^
+3 |   print_raw("fail")
+
+File "./syntax/invalid/mutable_tuple.sk", line 2, characters 13-23:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly Int
+1 | fun main(): void {
+2 |   _t: (Int, mutable Int) = (0, 1);
+  |             ^^^^^^^^^^^
+3 |   print_raw("fail")

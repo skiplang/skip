@@ -1,0 +1,6 @@
+class Foo(x: Int, y: String)
+
+fun main(): String {
+  Foo(x, y) = mutable Foo(42, "Pass\n");
+  y
+}

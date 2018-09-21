@@ -1,0 +1,12 @@
+module M;
+
+const C: Int = 42;
+
+module end;
+
+fun main(): void {
+  42 match {
+  | M.C -> print_string("Pass")
+  | _ -> void
+  };
+}

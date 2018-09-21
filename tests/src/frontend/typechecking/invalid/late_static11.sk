@@ -1,0 +1,6 @@
+base class Foo {
+  static fun abs(): void;
+  fun invalid(): void {
+    Foo::abs()
+  }
+}

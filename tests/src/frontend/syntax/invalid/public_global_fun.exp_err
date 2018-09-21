@@ -1,0 +1,4 @@
+File "./syntax/invalid/public_global_fun.sk", line 1, characters 1-6:
+Unexpected 'public'. Everything is public by default. If you want to make it private, wrap it inside of a module ('module Name; ...') and use the 'private' keyword.
+1 | public fun f(): void { void }
+  | ^^^^^^

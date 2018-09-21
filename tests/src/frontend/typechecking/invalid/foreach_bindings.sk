@@ -1,0 +1,23 @@
+class MyClass() {
+  fun items(): this {
+    this
+  }
+  fun values(): this {
+    this
+  }
+  fun next(): Int {
+    0
+  }
+}
+
+fun no1(): void {
+  for (_ in MyClass()) void
+}
+
+fun no2(): void {
+  for (_ => _ in MyClass()) void
+}
+
+fun no3(): void {
+  for ((_, _, _) in MyClass()) void
+}

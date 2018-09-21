@@ -1,0 +1,4 @@
+fun foo<T>(): void {
+  _ = T;
+  void
+}

@@ -1,0 +1,4 @@
+fun main(): void {
+  (_, _) = (1, 2, 3);
+  print_raw("FAIL")
+}

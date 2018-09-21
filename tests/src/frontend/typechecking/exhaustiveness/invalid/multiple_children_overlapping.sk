@@ -1,0 +1,12 @@
+base class A final (f: Bool)
+base class B extends A
+class C extends B
+class L extends B
+
+fun myMatch(b: B): String {
+  b match {
+  | B(false) -> "0"
+  | B(true) -> "1"
+  | C(true) -> "f"
+  }
+}

@@ -1,0 +1,18 @@
+mutable class Foo<T: () ~> Int>(mutable f: T)
+mutable class Bar(mutable f: () ~> Int)
+mutable class Baz<T>(mutable f: T)
+
+fun main(): void {
+  f = () ~> 0;
+  foo: readonly Foo<() ~> Int> = mutable Foo(f);
+  _ = foo.f;
+  _ = foo.f();
+  bar: readonly Bar = mutable Bar(f);
+  _ = bar.f;
+  _ = bar.f();
+  baz1 = mutable Baz(f);
+  baz: readonly Baz<() ~> Int> = baz1;
+  _ = baz.f;
+  _ = baz.f();
+  print_string("Pass")
+}

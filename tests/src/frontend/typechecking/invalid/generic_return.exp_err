@@ -1,0 +1,32 @@
+File "./typechecking/invalid/generic_return.sk", line 4, characters 3-9:
+The value returned from the function is incompatible with the return type 'T'
+2 |
+3 | fun foo<T: Foo>(): T {
+4 |   Foo(42)
+  |   ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/generic_return.sk", line 4, characters 3-9:
+The type: Foo
+2 |
+3 | fun foo<T: Foo>(): T {
+4 |   Foo(42)
+  |   ^^^^^^^
+5 | }
+
+File "./typechecking/invalid/generic_return.sk", line 3, characters 20-20:
+Is not a subtype of: T
+1 | class Foo(x: Int)
+2 |
+3 | fun foo<T: Foo>(): T {
+  |                    ^
+4 |   Foo(42)
+
+File "./typechecking/invalid/generic_return.sk", line 3, characters 20-20:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: Foo
+1 | class Foo(x: Int)
+2 |
+3 | fun foo<T: Foo>(): T {
+  |                    ^
+4 |   Foo(42)

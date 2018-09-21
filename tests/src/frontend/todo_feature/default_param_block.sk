@@ -1,0 +1,12 @@
+fun bar{
+  x: String = {
+    y = "Pass\n";
+    y
+  },
+}: String {
+  x
+}
+
+fun main(): void {
+  print_raw(bar{})
+}

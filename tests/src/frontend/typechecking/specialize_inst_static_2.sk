@@ -1,0 +1,64 @@
+trait Zero {
+  const zero: inst;
+  static fun getZero(): inst;
+}
+
+fun empty<T: Zero>(c: Concrete<T>): void {
+  _ = c::zero;
+  _ = c::getZero();
+  void
+}
+
+fun empty_base<T: P>(c: Base<T>): void {
+  _ = c::zero;
+  _ = c::getZero();
+  void
+}
+
+fun empty_class<T: P>(c: Class<T>): void {
+  _ = c::zero;
+  _ = c::getZero();
+  void
+}
+
+class MyC() uses Zero {
+  const zero: MyC = MyC();
+  static fun getZero(): MyC {
+    MyC()
+  }
+}
+
+base class P uses Zero {
+  children =
+  | PChild()
+  const zero: P = PChild();
+  static fun getZero(): P {
+    PChild()
+  }
+}
+
+fun main(): void {
+  empty(MyC);
+  empty(Int);
+  empty(Float);
+
+  empty_base(P);
+
+  empty_class(PChild);
+  empty_class(P);
+  print_string("Pass")
+}
+
+extension class Int uses Zero {
+  const zero: Int = 0;
+  static fun getZero(): Int {
+    0
+  }
+}
+
+extension class Float uses Zero {
+  const zero: Float = 0.0;
+  static fun getZero(): Float {
+    0.0
+  }
+}

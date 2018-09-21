@@ -1,0 +1,16 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+base class Bar<T>
+class Foo() extends Bar<(Int, Int)>
+
+// would want Bar<(Int, Int)> but currently cant support promoted of tuples
+fun tester<T>(Bar<T>): void {
+  void
+}
+fun matcher<T>(x: Bar<T>): void {
+  x match {
+  | o @ Foo _ -> tester(o)
+  }
+}

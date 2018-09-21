@@ -1,0 +1,7 @@
+File "./expand/invalid/macro_undefined.sk", line 3, characters 5-14:
+No macro '#undefined' in scope.
+1 | class C() {
+2 |   macro fun m(): void {
+3 |     #undefined
+  |     ^^^^^^^^^^
+4 |   }

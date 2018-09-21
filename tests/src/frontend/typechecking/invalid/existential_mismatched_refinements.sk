@@ -1,0 +1,17 @@
+base class Expr
+class IntExpr<T: Int>(T) extends Expr
+class BoolExpr<T: Bool>(T) extends Expr
+
+fun int_perform<T: Int>(_: T): void {
+  void
+}
+fun bool_perform<T: Bool>(_: T): void {
+  void
+}
+
+fun perform(e: Expr): void {
+  e match {
+  | IntExpr(i) -> bool_perform(i)
+  | BoolExpr(b) -> int_perform(b)
+  }
+}

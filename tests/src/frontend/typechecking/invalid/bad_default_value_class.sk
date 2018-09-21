@@ -1,0 +1,8 @@
+mutable base class P {
+  children =
+  | L()
+  | R()
+}
+
+class No1{x: L = R()}
+mutable base class No2{x: mutable L = L()}

@@ -1,0 +1,4 @@
+File "./syntax/invalid/fun_typo_declaration.sk", line 1, characters 1-4:
+'func' is not a valid keyword, did you mean 'fun' instead?
+1 | func f(): void {}
+  | ^^^^

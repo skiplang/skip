@@ -1,0 +1,12 @@
+File "./syntax/invalid/invalid_at.sk", line 2, characters 11-11:
+Expected '}'. Found '@'.
+1 | fun main(): void {
+2 |   Some(0) @ x
+  |           ^
+3 | }
+
+File "./syntax/invalid/invalid_at.sk", line 1, characters 18-18:
+ For opening '{'
+1 | fun main(): void {
+  |                  ^
+2 |   Some(0) @ x

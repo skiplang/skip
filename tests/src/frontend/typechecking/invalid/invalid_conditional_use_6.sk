@@ -1,0 +1,24 @@
+trait X {
+  overridable fun getVal(): Int {
+    0
+  }
+}
+base class P {
+  overridable fun getVal(): Int {
+    0
+  }
+}
+trait Y extends X
+trait O {
+  overridable fun getVal(): Int {
+    0
+  }
+}
+
+class C<T>(x: T) extends P uses O, Y[T: Y] {
+  fun getVal from Y;
+}
+
+fun no<T>(c: C<T>): Int {
+  c.getVal()
+}

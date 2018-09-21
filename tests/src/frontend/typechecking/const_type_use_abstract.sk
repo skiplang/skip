@@ -1,0 +1,8 @@
+base class Foo {
+  type T1;
+  type T2: this::T1 default this::T1;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,8 @@
+fun f(_a: Int, _b: Float = 1.0): void {
+  void
+}
+
+fun main(): void {
+  f(1, 1.0, 3, 5);
+  void
+}

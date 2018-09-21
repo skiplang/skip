@@ -1,0 +1,984 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias AU = SkipAstUtils;
+module alias JS = SkipJsIst;
+module alias O = OuterIst;
+
+module SkipJsIstUtils;
+
+/* interesting string values */
+const strict_directive: String = "use strict";
+const module_str: String = "module";
+const exports: String = "exports";
+const require: String = "require";
+const console: String = "console";
+const log: String = "log";
+const json: String = "JSON";
+const stringify: String = "stringify";
+const global: String = "global";
+const bool_class: String = "Bool";
+const string_class: String = "String";
+const float_class: String = "Float";
+const int_class: String = "Int";
+const char_class: String = "Char";
+const array_class: String = "Array";
+const __constructor: String = "__constructor";
+const __classname: String = "__classname";
+const __type_switch_id: String = "__type_switch_id";
+const __named_parameters: String = "__named_parameters";
+const __cache: String = "__cache";
+const super: String = "super";
+const __value: String = "__value";
+const error: String = "Error";
+const init_sk_constants: String = "init_sk_constants";
+const copyNativeFunctions: String = "copyNativeFunctions";
+const init: String = "init";
+const skip: String = "skip";
+const initNativeClass: String = "initNativeClass";
+const sk: String = "sk";
+const mixinBaseMembers: String = "mixinBaseMembers";
+const call: String = "call";
+const bind: String = "bind";
+const __copy: String = "__copy";
+const __init: String = "__init";
+const isInstance: String = "isInstance";
+const __bases: String = "__bases";
+const prototype: String = "prototype";
+const exception_class: String = "Exception";
+const deepFreeze: String = "deepFreeze";
+const __deepFreeze: String = "__deepFreeze";
+const __getSwitchValue: String = "__getSwitchValue";
+const asyncToGenerator: String = "asyncToGenerator";
+const createTrackedFunction: String = "createTrackedFunction";
+const js_map: String = "Map";
+const js_object: String = "Object";
+const create: String = "create";
+const defineProperty: String = "defineProperty";
+const configurable: String = "configurable";
+const enumerable: String = "enumerable";
+const writable: String = "writable";
+const value: String = "value";
+const undefined: String = "undefined";
+const temp: String = "temp";
+const get: String = "get";
+const set: String = "set";
+const length: String = "length";
+const name: String = "name";
+const throwException: String = "throwException";
+const __: String = "__";
+const class_class: String = "Class";
+const _frozen: String = "$frozen";
+const _makeChar: String = "$makeChar";
+const makeChar: String = "makeChar";
+const _void: String = "$void";
+const None: String = "None";
+const Some: String = "Some";
+const toSkipGenerator: String = "toSkipGenerator";
+
+const keywordList: List<String> = List[
+  // keywords
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "export",
+  "extends",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  // future reserved workds
+  "await",
+  "enum",
+  // strict reserved words
+  "use",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "implements",
+  "let",
+  "static",
+
+  // other troublesome JS identifiers
+  "arguments",
+  "undefined",
+  "caller",
+  "callee",
+  "eval",
+];
+
+const keywords: SSet = keywordList.foldr(((s, kws) -> kws.set(s)), SSet[]);
+
+fun is_js_keyword(value: String): Bool {
+  keywords.contains(value)
+}
+
+// Translates non-identifier chars to JS identifier chars.
+// Non-identifier chars in class(akak prototype) member names
+// forces JS VMs to de-optimize the class.
+// Keep this in sync with mangleIdentifierChar in skip.js.
+
+fun ensure_identifier_chars(value: String): String {
+  // invariant("_" != value, "Unexpected local named '_'");
+  value
+    .chars()
+    .map(ch -> {
+      ch match {
+      | '!' -> "$bg"
+      | '=' -> "$eq"
+      | '>' -> "$gt"
+      | '<' -> "$lt"
+      | '@' -> "$at"
+      | '.' -> "$dt"
+      | '%' -> "$pc"
+      | '+' -> "$pl"
+      | '-' -> "$mi"
+      | '*' -> "$ti"
+      | '/' -> "$dv"
+      | '&' -> "$am"
+      | '|' -> "$br"
+      | _ -> ch.toString()
+      }
+    })
+    .join("")
+}
+
+fun ensure_keyword_mangled(value: String): String {
+  if (is_js_keyword(value)) {
+    "$" + value
+  } else {
+    value
+  }
+}
+
+type Name = O.Name;
+
+fun pos_btw(start: FileRange, _end: FileRange): FileRange {
+  start
+}
+/*
+  if (start = FileRange.none || end_ = FileRange.none) then FileRange.none
+  else FileRange.btw start end_
+*/
+
+fun pos_of_list(ps: List<FileRange>): FileRange {
+  ps match {
+  | List.Nil() -> FileRange.none
+  | _ -> pos_btw(ps.getHead(), ps.reversed().getHead())
+  }
+}
+
+fun pos_of_exprs(es: List<JS.Pos_expression>): FileRange {
+  pos_of_list(es.map(p -> p.i0))
+}
+
+fun pos_of_statements(ss: List<JS.Pos_statement>): FileRange {
+  pos_of_list(ss.map(p -> p.i0))
+}
+
+fun make_name(pos: FileRange, id: String): Name {
+  O.Name(pos, id)
+}
+
+fun make_predefined_name(id: String): Name {
+  make_name(FileRange.none, id)
+}
+
+fun strip_position_of_name(name: Name): Name {
+  make_predefined_name(name.id)
+}
+
+fun string_to_identifier(value: String): String {
+  ensure_keyword_mangled(ensure_identifier_chars(value))
+}
+
+fun is_valid_identifier(value: String): Bool {
+  value == string_to_identifier(value)
+}
+
+fun name_to_identifier(name: Name): String {
+  string_to_identifier(name.id)
+}
+
+fun name_to_identifier_name(name: Name): Name {
+  O.Name(name.pos, name_to_identifier(name))
+}
+
+fun make_identifier(n: Name): JS.Pos_expression {
+  (n.pos, JS.Identifier(name_to_identifier(n)))
+}
+
+fun name_to_sk_var_name(name: Name): Name {
+  O.Name(name.pos, "sk$" + name_to_identifier(name))
+}
+
+fun make_predefined_identifier(id: String): JS.Pos_expression {
+  make_identifier(make_predefined_name(id))
+}
+
+fun singleton_name_of_class_name(className: String): Name {
+  make_predefined_name(string_to_identifier("singleton$" + className))
+}
+
+fun undefined_expr(pos: FileRange): JS.Pos_expression {
+  (pos, JS.Identifier(undefined))
+}
+
+fun make_binary(
+  left: JS.Pos_expression,
+  op: JS.Binary_operator,
+  right: JS.Pos_expression,
+): JS.Pos_expression {
+  pos = pos_btw(left.i0, right.i0);
+  (pos, JS.Binary(left, op, right))
+}
+
+fun make_is_undefined(expr: JS.Pos_expression): JS.Pos_expression {
+  make_binary(expr, JS.BinaryStrictEquals(), undefined_expr(FileRange.none))
+}
+
+fun make_bool_literal(pos: FileRange, value: Bool): JS.Pos_expression {
+  (pos, JS.BoolLiteral(value))
+}
+
+fun make_string_literal(pos: FileRange, value: String): JS.Pos_expression {
+  (pos, JS.StringLiteral(value))
+}
+
+fun make_float_literal(pos: FileRange, value: Float): JS.Pos_expression {
+  (pos, JS.Literal(value.toString()))
+}
+
+fun make_char_literal(pos: FileRange, value: Int): JS.Pos_expression {
+  (pos, JS.Literal(value.toString()))
+}
+
+fun make_array_access(
+  obj: JS.Pos_expression,
+  index: JS.Pos_expression,
+): JS.Pos_expression {
+  (pos_btw(obj.i0, index.i0), JS.ArrayAccess(obj, index))
+}
+
+fun make_member_access(
+  obj: JS.Pos_expression,
+  member: Name,
+): JS.Pos_expression {
+  (
+    pos_btw(obj.i0, member.pos),
+    JS.MemberAccess(obj, name_to_identifier(member)),
+  )
+}
+
+fun make_dotted_name(first: Name, second: Name): JS.Pos_expression {
+  make_member_access(make_identifier(first), second)
+}
+
+fun make_this(pos: FileRange): JS.Pos_expression {
+  (pos, JS.This())
+}
+
+fun make_this_access(member: Name): JS.Pos_expression {
+  make_member_access(make_this(member.pos), member)
+}
+
+fun make_global_name(name: Name): JS.Pos_expression {
+  make_member_access(make_identifier(make_predefined_name(global)), name)
+}
+
+fun make_internal_name(identifier: String): JS.Pos_expression {
+  make_member_access(
+    make_identifier(make_predefined_name(skip)),
+    make_predefined_name(identifier),
+  )
+}
+
+/* sk$name */
+// Prefer make_sk_var_name function to access Skip symbols.
+
+fun make_sk_var_name(name: Name): JS.Pos_expression {
+  make_identifier(name_to_sk_var_name(name))
+}
+
+/* global.sk.name */
+// Avoid using this function when possible.
+// This function should only be used during initialization
+// and for copying back natives to the sk$name.4
+// Use make_sk_var_name to access skip symbols which is more efficient.
+
+fun make_sk_name(name: Name): JS.Pos_expression {
+  make_member_access(make_identifier(make_predefined_name(sk)), name)
+}
+
+// sk.__.name
+fun make_sk_private_name(name: Name): JS.Pos_expression {
+  make_member_access(make_sk_name(make_predefined_name(__)), name)
+}
+
+fun make_prototype(expr: JS.Pos_expression): JS.Pos_expression {
+  make_member_access(expr, make_predefined_name(prototype))
+}
+
+fun make_prototype_member(
+  expr: JS.Pos_expression,
+  member: Name,
+): JS.Pos_expression {
+  make_member_access(make_prototype(expr), member)
+}
+
+fun make_expression_statement(
+  pos_expression: JS.Pos_expression,
+): JS.Pos_statement {
+  (pos_expression.i0, JS.ExpressionStatement(pos_expression))
+}
+
+fun make_use_strict(pos: FileRange): JS.Pos_statement {
+  make_expression_statement(make_string_literal(pos, strict_directive))
+}
+
+fun make_call_expr(
+  fn: JS.Pos_expression,
+  arguments: List<JS.Pos_expression>,
+): JS.Pos_expression {
+  pos = pos_of_exprs(List.Cons(fn, arguments));
+  (pos, JS.Call(fn, arguments))
+}
+
+fun make_call_statement(
+  fn: JS.Pos_expression,
+  arguments: List<JS.Pos_expression>,
+): JS.Pos_statement {
+  make_expression_statement(make_call_expr(fn, arguments))
+}
+
+fun make_super_call(pos: FileRange): JS.Pos_statement {
+  make_call_statement(make_identifier(make_name(pos, super)), List[])
+}
+
+fun make_or(exprs: List<JS.Pos_expression>): JS.Pos_expression {
+  make_or = (l, r) -> make_binary(l, JS.BinaryOr(), r);
+  exprs.getTail().foldl(make_or, exprs.getHead())
+}
+
+fun make_get_value(pos_expression: JS.Pos_expression): JS.Pos_expression {
+  pos = pos_expression.i0;
+  make_member_access(pos_expression, make_name(pos, __value))
+}
+
+fun make_named_function_expression(
+  name: String,
+  is_generator: Bool,
+  parameters: List<String>,
+  body: List<JS.Pos_statement>,
+): JS.Pos_expression {
+  (
+    FileRange.none,
+    JS.Function(
+      JS.Function_definition{
+        function_is_generator => is_generator,
+        function_name => name,
+        function_parameters => parameters,
+        function_body => body,
+      },
+    ),
+  )
+}
+
+fun make_function_definition(
+  is_generator: Bool,
+  parameters: List<String>,
+  body: List<JS.Pos_statement>,
+): JS.Function_definition {
+  JS.Function_definition{
+    function_is_generator => is_generator,
+    function_name => "",
+    function_parameters => parameters,
+    function_body => body,
+  }
+}
+
+fun make_paren_expression(expression: JS.Pos_expression): JS.Pos_expression {
+  (expression.i0, JS.Paren(expression))
+}
+
+fun make_function_expression(
+  pos: FileRange,
+  isGenerator: Bool,
+  parameters: List<String>,
+  body: List<JS.Pos_statement>,
+): JS.Pos_expression {
+  (
+    pos,
+    JS.Function(
+      JS.Function_definition{
+        function_body => body,
+        function_is_generator => isGenerator,
+        function_name => "",
+        function_parameters => parameters,
+      },
+    ),
+  )
+}
+
+fun make_lambda_expression(
+  pos: FileRange,
+  parameters: List<String>,
+  body: List<JS.Pos_statement>,
+): JS.Pos_expression {
+  make_paren_expression(
+    (
+      pos,
+      JS.Lambda(
+        JS.Lambda_definition{
+          lambda_parameters => parameters,
+          lambda_body => body,
+        },
+      ),
+    ),
+  )
+}
+
+/* fn.call(arguments)) */
+fun make_call_call_expr(
+  fn: JS.Pos_expression,
+  arguments: List<JS.Pos_expression>,
+): JS.Pos_expression {
+  make_call_expr(make_member_access(fn, make_predefined_name(call)), arguments)
+}
+
+fun make_call_call(
+  fn: JS.Pos_expression,
+  arguments: List<JS.Pos_expression>,
+): JS.Pos_statement {
+  make_expression_statement(make_call_call_expr(fn, arguments));
+}
+
+fun make_json_stringify(value: JS.Pos_expression): JS.Pos_expression {
+  pos = value.i0;
+  make_call_expr(
+    make_dotted_name(make_name(pos, json), make_name(pos, stringify)),
+    List[value],
+  )
+}
+
+fun make_new_expression(
+  class_name: JS.Pos_expression,
+  arguments: List<JS.Pos_expression>,
+): JS.Pos_expression {
+  pos = pos_of_exprs(List.Cons(class_name, arguments));
+  (pos, JS.New(class_name, arguments))
+}
+
+fun make_new_literal(
+  class_name: Name,
+  value: JS.Pos_expression,
+): JS.Pos_expression {
+  make_new_expression(
+    make_sk_var_name(class_name),
+    List[make_paren_expression(value)],
+  )
+}
+
+fun make_string(pos: FileRange, value: String): JS.Pos_expression {
+  make_new_literal(
+    make_name(pos, string_class),
+    make_string_literal(pos, value),
+  )
+}
+
+fun make_float(pos: FileRange, value: Float): JS.Pos_expression {
+  make_new_literal(make_name(pos, float_class), make_float_literal(pos, value))
+}
+
+fun make_int_literal(pos: FileRange, value: Int): JS.Pos_expression {
+  (pos, JS.Literal(value.toString()))
+}
+
+fun make_byte_literal(pos: FileRange, value: Char): JS.Pos_expression {
+  (pos, JS.Literal(value.code().toString()))
+}
+
+fun int_high_bits(value: Int): Int {
+  value.ushr(32)
+}
+
+fun int_low_bits(value: Int): Int {
+  value.and(4294967295)
+}
+
+fun make_int(pos: FileRange, value: Int): JS.Pos_expression {
+  make_new_expression(
+    make_sk_var_name(make_name(pos, int_class)),
+    List[
+      make_float_literal(pos, int_low_bits(value).toFloat()),
+
+      make_float_literal(pos, int_high_bits(value).toFloat()),
+    ],
+  )
+}
+
+fun make_bool(pos: FileRange, value: Bool): JS.Pos_expression {
+  make_new_literal(make_name(pos, bool_class), make_bool_literal(pos, value))
+}
+
+// Chars are interned, so use $makeChar instead of new.
+fun make_char(pos: FileRange, value: Int): JS.Pos_expression {
+  make_call_expr(
+    make_predefined_identifier(_makeChar),
+    List[make_char_literal(pos, value)],
+  )
+}
+
+fun make_assign(
+  left: JS.Pos_expression,
+  right: JS.Pos_expression,
+): JS.Pos_expression {
+  make_binary(left, JS.BinaryAssign(), right)
+}
+
+fun make_assign_statement(
+  left: JS.Pos_expression,
+  right: JS.Pos_expression,
+): JS.Pos_statement {
+  make_expression_statement(make_assign(left, right))
+}
+
+// sk$name = value;
+
+fun assign_global_var_declaration(
+  name: Name,
+  value: JS.Pos_expression,
+): JS.Pos_statement {
+  make_assign_statement(make_sk_var_name(name), value)
+}
+
+// sk$name = sk.name = value;
+
+fun assign_global_declaration(
+  name: Name,
+  value: JS.Pos_expression,
+): JS.Pos_statement {
+  assign_global_var_declaration(name, make_assign(make_sk_name(name), value))
+}
+
+/* skip."name"] = ... */
+
+fun make_assign_internal(
+  name: String,
+  value: JS.Pos_expression,
+): JS.Pos_statement {
+  make_assign_statement(make_internal_name(name), value)
+}
+
+fun function_of_statement(pos_statement: JS.Pos_statement): JS.Pos_expression {
+  make_lambda_expression(
+    pos_statement.i0,
+    List[],
+    statement_to_list(pos_statement),
+  )
+}
+
+fun function_of_statements(
+  statements: List<JS.Pos_statement>,
+): JS.Pos_expression {
+  make_lambda_expression(statements.getHead().i0, List[], statements)
+}
+
+fun paramless_call(func: JS.Pos_expression): JS.Pos_expression {
+  make_paren_expression(make_call_expr(func, List[]))
+}
+
+fun statement_to_expression(
+  pos_statement: JS.Pos_statement,
+): JS.Pos_expression {
+  paramless_call(function_of_statement(pos_statement))
+}
+
+fun statements_to_expression(
+  statements: List<JS.Pos_statement>,
+): JS.Pos_expression {
+  statements match {
+  | List.Nil() -> undefined_expr(FileRange.none)
+  | _ -> paramless_call(function_of_statements(statements))
+  }
+}
+
+fun make_asyncify(generator_func: JS.Pos_expression): JS.Pos_expression {
+  make_call_expr(make_internal_name(asyncToGenerator), List[generator_func])
+}
+
+fun maybe_asyncify(
+  is_generator: Bool,
+  func: JS.Pos_expression,
+): JS.Pos_expression {
+  if (is_generator) {
+    make_asyncify(func)
+  } else {
+    func
+  }
+}
+
+fun make_memoized(func: JS.Pos_expression, is_method: Bool): JS.Pos_expression {
+  make_call_expr(
+    make_internal_name(createTrackedFunction),
+    List[func, make_bool_literal(FileRange.none, is_method)],
+  )
+}
+
+fun maybe_memoize(
+  is_memoized: Bool,
+  is_method: Bool,
+  func: JS.Pos_expression,
+): JS.Pos_expression {
+  if (is_memoized) {
+    make_memoized(func, is_method)
+  } else {
+    func
+  }
+}
+
+fun make_new_error(message: String): JS.Pos_expression {
+  make_new_expression(
+    make_predefined_identifier(error),
+    List[make_string_literal(FileRange.none, message)],
+  )
+}
+
+fun make_throw(value: JS.Pos_expression): JS.Pos_statement {
+  // skip.throwException(sk, value)
+  make_call_statement(
+    make_internal_name(throwException),
+    List[make_identifier(make_predefined_name(sk)), value],
+  );
+}
+
+fun make_throw_string(message: String): JS.Pos_statement {
+  make_throw(make_new_error(message))
+}
+
+fun make_var(name: Name): JS.Pos_statement {
+  (
+    name.pos,
+    JS.Variable(
+      JS.Variable_statement{
+        variable_is_var => true,
+        variable_is_const => false,
+        variable_name => make_identifier(name),
+        variable_initializer => .None(),
+      },
+    ),
+  )
+}
+
+fun make_var_init(name: Name, init: JS.Pos_expression): JS.Pos_statement {
+  (
+    name.pos,
+    JS.Variable(
+      JS.Variable_statement{
+        variable_is_var => true,
+        variable_is_const => false,
+        variable_name => make_identifier(name),
+        variable_initializer => .Some(init),
+      },
+    ),
+  )
+}
+
+// var sk$name = sk.name = value;
+
+fun declare_and_assign_global_declaration(
+  name: Name,
+  value: JS.Pos_expression,
+): JS.Pos_statement {
+  make_var_init(
+    name_to_sk_var_name(name),
+    make_assign(make_sk_name(name), value),
+  )
+}
+
+fun make_default_export(value: JS.Pos_expression): JS.Pos_statement {
+  make_assign_statement(
+    make_member_access(
+      make_identifier(make_predefined_name(module_str)),
+      make_predefined_name(exports),
+    ),
+    value,
+  )
+}
+
+fun make_require_statement(
+  var_name: String,
+  module_name: String,
+): JS.Pos_statement {
+  make_var_init(
+    make_predefined_name(var_name),
+    make_call_expr(
+      make_identifier(make_predefined_name(require)),
+      List[make_string_literal(FileRange.none, module_name)],
+    ),
+  )
+}
+
+fun make_instanceof(
+  left: JS.Pos_expression,
+  right: JS.Pos_expression,
+): JS.Pos_expression {
+  make_binary(left, JS.BinaryInstanceof(), right)
+}
+
+/* skip.isInstance(object, global.sk.name) */
+
+fun make_isinstance(obj: JS.Pos_expression, name: Name): JS.Pos_expression {
+  make_call_expr(
+    make_internal_name(isInstance),
+    List[obj, make_sk_var_name(name)],
+  )
+}
+
+/* obj.__deepFreeze(new Map()) */
+
+fun make_deep_freeze(obj: JS.Pos_expression): JS.Pos_expression {
+  make_call_expr(
+    make_internal_name(deepFreeze),
+    List[obj, make_new_expression(make_predefined_identifier(js_map), List[])],
+  )
+}
+
+/* obj.__getSwitchValue() */
+
+fun make_get_switch_value(obj: JS.Pos_expression): JS.Pos_expression {
+  make_call_expr(
+    make_member_access(obj, make_predefined_name(__getSwitchValue)),
+    List[],
+  )
+}
+
+/* obj.__type_switch_id */
+
+fun make_get_type_switch_value(obj: JS.Pos_expression): JS.Pos_expression {
+  make_member_access(obj, make_predefined_name(__type_switch_id))
+}
+
+/* obj.name.bind(obj) */
+
+fun make_bind(obj: JS.Pos_expression, name: Name): JS.Pos_expression {
+  make_call_expr(
+    make_member_access(
+      make_member_access(obj, name),
+      make_predefined_name(bind),
+    ),
+    List[obj],
+  )
+}
+
+fun make_array(exprs: List<JS.Pos_expression>): JS.Pos_expression {
+  (pos_of_exprs(exprs), JS.Array(exprs))
+}
+
+fun make_tuple(exprs: List<JS.Pos_expression>): JS.Pos_expression {
+  make_array(exprs)
+}
+
+fun get_arguments_of_call(expr: JS.Pos_expression): List<JS.Pos_expression> {
+  expr.i1 match {
+  | JS.Call(_, arguments) -> arguments
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+fun make_return(value: JS.Pos_expression): JS.Pos_statement {
+  (value.i0, JS.Return(.Some(value)))
+}
+
+/* Object.create(expr) */
+
+fun make_object_create(expr: JS.Pos_expression): JS.Pos_expression {
+  make_call_expr(
+    make_dotted_name(
+      make_predefined_name(js_object),
+      make_predefined_name(create),
+    ),
+    List[expr],
+  )
+}
+
+/*
+Object.defineProperty(obj, name, {
+  configurable: true,
+  enumerable: true,
+  value: value,
+  writable: true,
+})
+*/
+
+fun make_define_property(
+  obj: JS.Pos_expression,
+  name: Name,
+  expr: JS.Pos_expression,
+): JS.Pos_expression {
+  make_call_expr(
+    make_dotted_name(
+      make_predefined_name(js_object),
+      make_predefined_name(defineProperty),
+    ),
+    List[
+      obj,
+
+      make_string_literal(name.pos, name_to_identifier(name)),
+
+      (
+        FileRange.none,
+        JS.Object(
+          List[
+            (configurable, make_bool_literal(FileRange.none, true)),
+
+            (enumerable, make_bool_literal(FileRange.none, true)),
+
+            (writable, make_bool_literal(FileRange.none, true)),
+            (value, expr),
+          ],
+        ),
+      ),
+    ],
+  )
+}
+
+/*
+Note that expr should be a function.
+
+Object.defineProperty(obj, name, {
+  configurable: true,
+  enumerable: true,
+  get: expr,make_lambda_expression
+})
+*/
+
+fun make_define_get_property(
+  obj: JS.Pos_expression,
+  name: Name,
+  expr: JS.Pos_expression,
+): JS.Pos_expression {
+  make_call_expr(
+    make_dotted_name(
+      make_predefined_name(js_object),
+      make_predefined_name(defineProperty),
+    ),
+    List[
+      obj,
+
+      make_string_literal(name.pos, name_to_identifier(name)),
+
+      (
+        FileRange.none,
+        JS.Object(
+          List[
+            (configurable, make_bool_literal(FileRange.none, true)),
+
+            (enumerable, make_bool_literal(FileRange.none, true)),
+            (get, expr),
+          ],
+        ),
+      ),
+    ],
+  )
+}
+
+fun make_define_cached_get_property(
+  obj: JS.Pos_expression,
+  name: Name,
+  expr: JS.Pos_expression,
+): JS.Pos_expression {
+  pos = name.pos;
+  t = O.Name(pos, temp);
+  make_define_get_property(
+    obj,
+    name,
+    function_of_statements(
+      List[
+        make_var_init(t, expr),
+
+        make_expression_statement(
+          make_define_property(obj, name, make_identifier(t)),
+        ),
+
+        make_return(make_identifier(t)),
+      ],
+    ),
+  )
+}
+
+fun make_named_block(
+  label: String,
+  statements: List<JS.Pos_statement>,
+): JS.Pos_statement {
+  (FileRange.none, JS.LabeledStatement(label, statements))
+}
+
+fun statement_to_list(statement: JS.Pos_statement): List<JS.Pos_statement> {
+  statement.i1 match {
+  | JS.Block(statements) ->
+    statements match {
+    | List.Cons(head, List.Nil()) -> statement_to_list(head)
+    | _ -> statements
+    }
+  | _ -> List[statement]
+  }
+}
+
+fun make_block(statements: List<JS.Pos_statement>): JS.Pos_statement {
+  (FileRange.none, JS.Block(statements))
+}
+
+fun make_if(
+  condition: JS.Pos_expression,
+  true_branch: JS.Pos_statement,
+  false_branch: ?JS.Pos_statement,
+): JS.Pos_statement {
+  pos_end = false_branch match {
+  | .Some((pos, _)) -> pos
+  | .None() -> true_branch.i0
+  };
+  (pos_btw(condition.i0, pos_end), JS.If(condition, true_branch, false_branch))
+}
+
+fun make_conditional(
+  condition: JS.Pos_expression,
+  true_branch: JS.Pos_expression,
+  false_branch: JS.Pos_expression,
+): JS.Pos_expression {
+  (
+    pos_btw(condition.i0, false_branch.i0),
+    JS.Conditional(condition, true_branch, false_branch),
+  )
+}

@@ -1,0 +1,32 @@
+File "./typechecking/invalid/contravariance6.sk", line 20, characters 25-30:
+Invalid argument
+18 |
+19 | fun make(): Container<Foo<B<Int>>> {
+20 |   Container(aFoo()).add(bFoo())
+   |                         ^^^^^^
+21 | }
+
+File "./typechecking/invalid/contravariance6.sk", line 12, characters 17-17:
+The type: A<(Int, Int)>
+10 | }
+11 |
+12 | fun aFoo(): Foo<A<(Int, Int)>> {
+   |                 ^
+13 |   Foo()
+
+File "./typechecking/invalid/contravariance6.sk", line 15, characters 17-17:
+Is not a subtype of: B<Int>
+13 |   Foo()
+14 | }
+15 | fun bFoo(): Foo<B<Int>> {
+   |                 ^
+16 |   Foo()
+
+File "./typechecking/invalid/contravariance6.sk", line 15, characters 17-17:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: A<(Int, Int)>
+13 |   Foo()
+14 | }
+15 | fun bFoo(): Foo<B<Int>> {
+   |                 ^
+16 |   Foo()

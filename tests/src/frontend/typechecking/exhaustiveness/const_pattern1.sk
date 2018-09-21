@@ -1,0 +1,11 @@
+// exhaustiveness checking should read through constant initializers
+const MyBool: Bool = true;
+
+fun main(): void {
+  print_raw(
+    true match {
+    | MyBool -> "Pass\n"
+    | false -> "Fail\n"
+    },
+  )
+}

@@ -1,0 +1,3162 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Type Joining and Unification. */
+/*****************************************************************************/
+module alias A = SkipAst;
+
+module alias N = SkipNamedAst;
+
+module alias TU = SkipTypingUtils;
+
+module SkipTypes;
+
+// TODO it might have been a bad idea to shadow here, was done for dogfooding
+base class Exception extends .Exception
+
+// General Error for Subtying Mismatch
+class Join(N.Type_, N.Type_) extends Exception
+// Mismatch function arity
+class ArityMismatch(FileRange, Int, FileRange, Int) extends Exception
+// Mismatch type argument arity
+class TypeArityMismatch(FileRange, Int, Int) extends Exception
+// Recursive type variables, alpha => ... => alpha
+class RecursiveType(FileRange) extends Exception
+// A frozen type cannot be the subtype of a chilled type
+class FrozenPreservation(child: N.Type_, joined: N.Type_) extends Exception
+// A chilled type cannot be the subtype of a frozen type
+class MutPreservation(
+  child: N.Type_,
+  joined: N.Type_,
+  targ: N.Type_,
+  tparam: N.Type_parameter,
+) extends Exception
+
+// Cannot convert certain types to readonly/frozen
+base class InvalidToReadonly(List<(FileRange, String)>) extends .Exception
+class MutLambdaToReadonly extends InvalidToReadonly
+class AwaitableToReadonly extends InvalidToReadonly
+/*****************************************************************************/
+/* Environment */
+/*****************************************************************************/
+class Env{
+  // The set of already visited classes. Important for detecting infinite loops
+  promoted: SSet,
+  // Stand alone ktraits are only allowed when solving constraints
+  solving_constraints: Bool,
+  this_class: ?N.Name,
+  // Set of tvars, kept for recursive type detection
+  tvars: ISet,
+  tparam_constraints: TU.TparamConstraints,
+}
+
+class Acc{subst: IMap<N.Type_>, constraints: TU.Constraints}
+
+// invariant function modifiers
+fun join_modifiers_inv<Ta>(
+  exn: Exception,
+  cmp_mods: (Ta, Ta) ~> Order,
+  ml1: Array<Ta>,
+  ml2: Array<Ta>,
+): Array<Ta> {
+  i1 = ml1.values();
+  i2 = ml2.values();
+  result = mutable Vector[];
+  loop {
+    (i1.next(), i2.next()) match {
+    | (None(), None()) -> break result.toArray()
+    | (None(), _)
+    | (_, None()) ->
+      throw exn
+    | (Some(x1), Some(x2)) ->
+      cmp_mods(x1, x2) match {
+      | EQ() ->
+        elt = x1; // arbitary since equal
+        result.push(elt)
+      | _ -> throw exn
+      }
+    }
+  }
+}
+
+// join minus/plus or plus/minus function modifiers
+fun join_modifiers_minus_plus<Ta>(
+  exn: Exception,
+  cmp_mods: (Ta, Ta) ~> Order,
+  ml: Array<Ta>,
+  pl: Array<Ta>,
+): Array<Ta> {
+  mIter = ml.values();
+  pIter = pl.values();
+  mCur = mIter.next();
+  pCur = pIter.next();
+  result = mutable Vector[];
+  loop {
+    (mCur, pCur) match {
+    | (None(), _) -> break result.toArray()
+    | (_, None()) -> throw exn
+    | (Some(mElt), Some(pElt)) ->
+      cmp_mods(mElt, pElt) match {
+      | EQ() ->
+        elt = mElt; // arbitary since equal
+        result.push(elt);
+        !mCur = mIter.next();
+        !pCur = pIter.next()
+      | LT() -> throw exn
+      | GT() -> !pCur = pIter.next()
+      }
+    }
+  }
+}
+
+// join minus/minus function modifiers
+fun join_modifiers_minus_minus<Ta>(
+  _exn: Exception,
+  cmp_mods: (Ta, Ta) ~> Order,
+  ml1: Array<Ta>,
+  ml2: Array<Ta>,
+): Array<Ta> {
+  uniq_modifiers(
+    cmp_mods,
+    ml1.concat(ml2).sortedBy(x ~> Orderable.create(x, cmp_mods)),
+  )
+}
+
+fun uniq_modifiers<Ta>(cmp_mods: (Ta, Ta) ~> Order, ml: Array<Ta>): Array<Ta> {
+  result = mutable Vector[];
+  iter = ml.values();
+  cur1 = iter.next();
+  cur2 = iter.next();
+  loop {
+    (cur1, cur1) match {
+    | (None _, Some _) -> invariant_violation("ICE impossible iteration step")
+    | (None(), None()) -> break result.toArray()
+    | (Some(elt), None()) ->
+      result.push(elt);
+      break result.toArray()
+    | (Some(elt1), Some(elt2)) ->
+      cmp_mods(elt1, elt2) match {
+      | EQ() -> void
+      | _ -> result.push(elt1)
+      };
+      !cur1 = cur2;
+      !cur2 = iter.next()
+    }
+  }
+}
+
+// join plus/plus function modifiers
+fun join_modifiers_plus_plus<Ta>(
+  exn: Exception,
+  cmp_mods: (Ta, Ta) ~> Order,
+  ml1: Array<Ta>,
+  ml2: Array<Ta>,
+): Array<Ta> {
+  iter1 = ml1.values();
+  iter2 = ml2.values();
+  cur1 = iter1.next();
+  cur2 = iter2.next();
+  result = mutable Vector[];
+  loop {
+    (cur1, cur2) match {
+    | (None(), _)
+    | (_, None()) ->
+      break void
+    | (Some(elt1), Some(elt2)) ->
+      cmp_mods(elt1, elt2) match {
+      | EQ() ->
+        // arbitary since equal
+        result.push(elt1);
+        !cur1 = iter1.next();
+        !cur2 = iter2.next()
+      | LT() -> !cur1 = iter1.next()
+      | GT() -> !cur2 = iter2.next()
+      }
+    }
+  };
+  if (result.isEmpty()) throw exn;
+  result.toArray()
+}
+
+fun join_modifiers<Ta>(
+  exn: Exception,
+  cmp_mods: (Ta, Ta) ~> Order,
+  var1: A.Variance,
+  ml1: Array<Ta>,
+  var2: A.Variance,
+  ml2: Array<Ta>,
+): Array<Ta> {
+  (var1, var2) match {
+  | (A.Vplus(), A.Vplus()) -> join_modifiers_plus_plus(exn, cmp_mods, ml1, ml2)
+  | (A.Vminus(), A.Vminus()) ->
+    join_modifiers_minus_minus(exn, cmp_mods, ml1, ml2)
+  | (A.Vplus(), A.Vminus()) ->
+    join_modifiers_minus_plus(exn, cmp_mods, ml2, ml1)
+  | (A.Vminus(), A.Vplus()) ->
+    join_modifiers_minus_plus(exn, cmp_mods, ml1, ml2)
+  | (A.Vnone(), A.Vplus())
+  | (A.Vplus(), A.Vnone())
+  | (A.Vnone(), A.Vminus())
+  | (A.Vminus(), A.Vnone())
+  | (A.Vnone(), A.Vnone()) ->
+    join_modifiers_inv(exn, cmp_mods, ml1, ml2)
+  }
+}
+
+fun compare_purity_modifiers(
+  l: N.Purity_modifier,
+  r: N.Purity_modifier,
+): Order {
+  N.compare_purity_modifiers(l, r)
+}
+
+fun join_purity_modifiers(
+  exn: Exception,
+  v1: A.Variance,
+  p1: Array<N.Purity_modifier>,
+  v2: A.Variance,
+  p2: Array<N.Purity_modifier>,
+): Array<N.Purity_modifier> {
+  join_modifiers(exn, compare_purity_modifiers, v1, p1, v2, p2)
+}
+
+fun compare_tracking_modifiers(
+  l: N.Tracking_modifier,
+  r: N.Tracking_modifier,
+): Order {
+  N.compare_tracking_modifiers(l, r)
+}
+
+fun join_tracking_modifiers(
+  exn: Exception,
+  v1: A.Variance,
+  t1: Array<N.Tracking_modifier>,
+  v2: A.Variance,
+  t2: Array<N.Tracking_modifier>,
+): Array<N.Tracking_modifier> {
+  join_modifiers(exn, compare_tracking_modifiers, v1, t1, v2, t2)
+}
+
+fun join_tfun_modifiers(
+  exn: Exception,
+  v1: A.Variance,
+  p1: N.Tfun_modifiers,
+  v2: A.Variance,
+  p2: N.Tfun_modifiers,
+): N.Tfun_modifiers {
+  (p11, t1) = p1;
+  (p21, t2) = p2;
+  purity = join_purity_modifiers(exn, v1, p11, v2, p21);
+  tracking = join_tracking_modifiers(exn, v1, t1, v2, t2);
+  (purity, tracking)
+}
+
+fun purity_modifiers_for_tfrozen(
+  exn: Exception,
+  variance: A.Variance,
+  purity: Array<N.Purity_modifier>,
+): Array<N.Purity_modifier> {
+  join_purity_modifiers(exn, variance, purity, A.Vminus(), Array[N.Fpure()])
+}
+
+/*****************************************************************************/
+/* Pretty printing.
+ * This is going to be user facing, that's why it's different from the one
+ * used for debugging.
+ */
+/*****************************************************************************/
+fun to_string(nthis: ?N.Name, subst: IMap<N.Type_>, ty_: N.Type_): String {
+  (_, ty) = ty_;
+  to_string_(nthis, subst, ty)
+}
+
+fun to_string_(nthis: ?N.Name, subst: IMap<N.Type_>, x: N.Type__): String {
+  is_this = n ~>
+    nthis match {
+    | Some(n2) -> n.i1 == n2.i1
+    | None() -> false
+    };
+  x match {
+  | N.Tanything() -> "_"
+  | N.Tfrozen _ -> "frozen"
+  | N.TnonNullable _ -> "nonNullable"
+  | N.Tset(_, _, _, elts) if (elts.isEmpty()) -> "Unresolved"
+  | N.Tpromoted(_, mode, _, _, n, tyl)
+  | N.Tapply(mode, n, tyl) ->
+    to_string_tapply(nthis, subst, mode, n, tyl)
+  | N.Tfun(_, mods, _, params, rty) ->
+    (is_mutable, is_untracked) = fun_is_mutable_is_untracked(mods);
+    (if (is_untracked) "untracked " else "") +
+      "(" +
+      to_string_params(nthis, subst, params) +
+      (if (is_mutable) " -> " else " ~> ") +
+      to_string(nthis, subst, rty) +
+      ")"
+  | N.Tparam(None(), _, _, (_, n)) -> n
+  | N.Tparam(Some _, _, _, (_, n)) -> "frozen " + n
+  | N.Tvar(n) ->
+    subst.maybeGet(n) match {
+    | None() -> to_string_(nthis, subst, N.Tanything())
+    | Some(ty) -> to_string(nthis, subst, ty)
+    }
+  /* TODO add env for better printing when it isn't actually this, inst, or static */
+  | N.Tnamed(N.NThis(n), ty) if (is_this(n)) ->
+    "(this = " + to_string(nthis, subst, ty) + ")"
+  | N.Tnamed(N.NInst(n), ty) if (is_this(n)) ->
+    "(inst = " + to_string(nthis, subst, ty) + ")"
+  | N.Tnamed(N.NStatic(n), ty) if (is_this(n)) ->
+    "(static = " + to_string(nthis, subst, ty) + ")"
+  | N.Tnamed(N.NThis _, ty)
+  | N.Tnamed(N.NInst _, ty)
+  | N.Tnamed(N.NStatic _, ty) ->
+    to_string(nthis, subst, ty)
+
+  | N.Tnamed(N.NAlias((_, name)), ty) ->
+    "(" + name + " = " + to_string(nthis, subst, ty) + ")"
+  | N.Tnamed(N.NTydResolved(n, nl), ty) ->
+    "(" +
+      static_names(Array[n].concat(nl)) +
+      " = " +
+      to_string(nthis, subst, ty) +
+      ")"
+  | N.Tnamed(N.NTydAbstract(n, nl), ty) ->
+    "(" +
+      static_names(Array[n].concat(nl)) +
+      " : " +
+      to_string(nthis, subst, ty) +
+      ")"
+  | N.Tawaitable(_, ty) -> "^" + to_string(nthis, subst, ty)
+  | N.Tlambda(_, _, _, ty)
+  | N.Tdefault(ty) ->
+    to_string(nthis, subst, ty)
+  | N.Tset(
+    A.Vnone(),
+    mode,
+    _,
+    elts,
+  ) if (!elts.isEmpty() && elts[0].kind is A.KClass()) ->
+    elt = elts[0];
+    to_string_tapply(nthis, subst, mode, elt.name, elt.targs)
+  | N.Tset(A.Vnone(), mode, _, elts) ->
+    selts = elts.map(elt ->
+      to_string_tapply(nthis, subst, mode, elt.name, elt.targs)
+    );
+    selts.join(" & ")
+  | N.Tset(_, mode, _, elts) ->
+    invariant(!elts.isEmpty(), "Covered above");
+    elt = elts[0];
+    to_string_tapply(nthis, subst, mode, elt.name, elt.targs)
+  }
+}
+
+fun to_string_tapply(
+  nthis: ?N.Name,
+  subst: IMap<N.Type_>,
+  mode: N.Modality,
+  n: N.Name,
+  x: Array<N.Type_>,
+): String {
+  (mode match {
+  | m @ N.MnotFrozen _ -> m.toString() + " "
+  | N.Mchilled() -> ""
+  }) +
+    (x.size() match {
+    | 0 if (n.i1 == "Void") -> "void"
+    | 0 -> n.i1
+    | _ if (N.is_tuple_class(n)) -> to_string_tuple(nthis, subst, x)
+    | _ -> n.i1 + "<" + to_string_list(nthis, subst, x) + ">"
+    })
+}
+
+fun to_string_tuple(
+  nthis: ?N.Name,
+  subst: IMap<N.Type_>,
+  tyl: Array<N.Type_>,
+): String {
+  "(" + to_string_list(nthis, subst, tyl) + ")"
+}
+
+fun static_names(x: Array<N.Name>): String {
+  x.size() match {
+  | 0 -> invariant_violation("assert false")
+  | 1 -> x[0].i1
+  | _ -> x.map(n -> n.i1).join("::")
+  }
+}
+
+fun remove_bang(s: String): String {
+  s.replace("!", "")
+}
+
+fun to_string_list(
+  nthis: ?N.Name,
+  subst: IMap<N.Type_>,
+  x: Array<N.Type_>,
+): String {
+  x.size() match {
+  | 0 -> ""
+  | 1 -> to_string(nthis, subst, x[0])
+  | _ -> x.map(ty -> to_string(nthis, subst, ty)).join(", ")
+  }
+}
+
+fun to_string_params(
+  nthis: ?N.Name,
+  subst: IMap<N.Type_>,
+  x: Parameters<N.Type_>,
+): String {
+  x match {
+  | Positional(l) -> `(${l.map(ty -> to_string(nthis, subst, ty)).join(", ")})`
+  | Named(m) ->
+    "{" +
+      m.reduce(
+        (acc, name, ty) ->
+          name.i1 + ": " + to_string(nthis, subst, ty) + ", " + acc,
+        "}",
+      )
+  }
+}
+
+/*****************************************************************************/
+/* Helper function */
+/*****************************************************************************/
+fun fun_is_mutable_is_untracked(x: N.Tfun_modifiers): (Bool, Bool) {
+  (purity, tracking) = x;
+  is_mutable = purity.size() == 1 && purity[0] is N.Fmutable();
+  is_untracked = tracking.size() == 1 && tracking[0] is N.Funtracked();
+  (is_mutable, is_untracked)
+}
+
+/*****************************************************************************/
+/* Replaces type variables with their "real" type, leaves the type unchanged
+ * otherwise.
+ */
+/*****************************************************************************/
+fun unfold_type(subst: IMap<N.Type_>, x: N.Type_): N.Type_ {
+  x match {
+  | (pos, N.Tvar(n)) ->
+    subst.maybeGet(n) match {
+    | None() -> (pos, N.Tanything())
+    | Some(ty) -> unfold_type(subst, ty)
+    }
+  | (_, N.Tnamed(_, ty)) -> unfold_type(subst, ty)
+  | x1 -> x1
+  }
+}
+
+// Helper for grabbign the fields from a tset
+// TODO just replace this function with 'as'
+fun assert_tset(
+  x: (FileRange, N.Type__),
+): (FileRange, N.Variance, N.Modality, SMap<String>, Array<N.InterElt>) {
+  x match {
+  | (pos, N.Tset(var, mode, tparams, tyl)) -> (pos, var, mode, tparams, tyl)
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+// Helper for grabbign the fields from a tpromoted
+// TODO just replace this function with 'as'
+fun assert_tpromoted(x: (FileRange, N.Type__)): (FileRange, N.Tpromoted) {
+  x match {
+  | (pos, tp @ N.Tpromoted _) -> (pos, tp)
+  | _ -> invariant_violation("assert false")
+  }
+}
+
+// Fully replaces any mapped tvars with their mapped value
+// Free tvars are kept
+fun fill_vars(subst: IMap<N.Type_>, ty: N.Type_): N.Type_ {
+  N.type_map(
+    (x -> {
+      x match {
+      | (pos, N.Tvar(n)) ->
+        subst.maybeGet(n) match {
+        | None() -> (pos, N.Tvar(n))
+        | Some(ty1) -> fill_vars(subst, ty1)
+        }
+      | t -> t
+      }
+    }),
+    ty,
+  )
+}
+
+fun is_this(env: Env, cstr: String): Bool {
+  env.this_class match {
+  | None() -> false
+  | Some((_, this_class)) -> compare(this_class, cstr) is EQ()
+  }
+}
+
+/*****************************************************************************/
+/* Turns a mutable type into an immutable. */
+/*****************************************************************************/
+
+fun freeze(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: N.Type_,
+): N.Type_ {
+  x match {
+  | (_, N.Tvar(tvar_id)) ->
+    subst.maybeGet(tvar_id) match {
+    | None() -> x
+    | Some(ty) -> freeze(caller_pos, subst, bounds, ty)
+    }
+  | (pos, ty) -> (pos, freeze_(caller_pos, subst, bounds, pos, ty))
+  }
+}
+
+fun freeze_(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  pos: FileRange,
+  x: N.Type__,
+): N.Type__ {
+  x match {
+  | N.Tanything()
+  | N.Tfrozen _
+  | N.TnonNullable _ ->
+    x
+  | N.Tapply(_, class_name, tyl) ->
+    N.Tapply(
+      N.Mchilled(),
+      class_name,
+      freeze_list(caller_pos, subst, bounds, tyl),
+    )
+  | N.Tpromoted(var, _, seen, tparams, class_name, tyl) ->
+    N.Tpromoted(
+      var,
+      N.Mchilled(),
+      seen,
+      tparams,
+      class_name,
+      freeze_list(caller_pos, subst, bounds, tyl),
+    )
+  | N.Tawaitable _ -> error_freeze_awaitable(caller_pos, pos)
+  | N.Tfun(variance, modifiers, targs, params, rty) ->
+    freeze_modifiers(caller_pos, pos, modifiers.i0);
+    N.Tfun(variance, modifiers, targs, params, rty)
+  | N.Tvar _ -> invariant_violation("assert false")
+  | N.Tparam(_, var, id, name) ->
+    verify_freezable_tparam(caller_pos, subst, bounds, id);
+    N.Tparam(Some(caller_pos), var, id, name)
+  | N.Tset(var, _, tparams, interl) ->
+    N.Tset(
+      var,
+      N.Mchilled(),
+      tparams,
+      freeze_inter(caller_pos, subst, bounds, interl),
+    )
+  | N.Tlambda(var, tid, modifiers, ty) ->
+    freeze_modifiers(caller_pos, pos, modifiers.i0);
+    N.Tlambda(var, tid, modifiers, freeze(caller_pos, subst, bounds, ty))
+  | N.Tdefault(ty) -> N.Tdefault(freeze(caller_pos, subst, bounds, ty))
+  | N.Tnamed(name, ty) -> N.Tnamed(name, freeze(caller_pos, subst, bounds, ty))
+  }
+}
+
+fun freeze_modifiers(
+  caller_pos: FileRange,
+  lambda_pos: FileRange,
+  x: Array<N.Purity_modifier>,
+): void {
+  if (x.isEmpty()) return void;
+
+  x[0] match {
+  | N.Fpure() -> void
+  | N.Fmutable() ->
+    SkipError.errorl(
+      List[
+        (caller_pos, "Cannot freeze a mutable lambda"),
+        (lambda_pos, "This is the lambda you are trying to freeze"),
+      ],
+    )
+  }
+}
+
+fun error_freeze_awaitable<T>(
+  caller_fr: FileRange,
+  awaitable_fr: FileRange,
+): T {
+  SkipError.errorl(
+    List[
+      (caller_fr, "Cannot freeze an awaitable type"),
+      (
+        awaitable_fr,
+        "If you need a non-mutable version of this type, try using 'await' in an async context to remove the awaitable",
+      ),
+    ],
+  )
+}
+
+fun freeze_list(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tyl: Array<N.Type_>,
+): Array<N.Type_> {
+  tyl.map(p -> freeze(caller_pos, subst, bounds, p))
+}
+
+fun freeze_umap(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tym: UMap<N.Type_>,
+): UMap<N.Type_> {
+  tym.map((_, p) -> freeze(caller_pos, subst, bounds, p))
+}
+
+fun freeze_option(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: ?N.Type_,
+): ?N.Type_ {
+  x match {
+  | None() -> None()
+  | Some(ty) -> Some(freeze(caller_pos, subst, bounds, ty))
+  }
+}
+
+fun freeze_inter(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt_l: Array<N.InterElt>,
+): Array<N.InterElt> {
+  elt_l.map(p -> freeze_inter_elt(caller_pos, subst, bounds, p))
+}
+
+fun freeze_inter_elt(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt: N.InterElt,
+): N.InterElt {
+  elt with {targs => freeze_list(caller_pos, subst, bounds, elt.targs)}
+}
+
+fun verify_freezable_tparam(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  id: String,
+): void {
+  for (ty in bounds.findUppers(id)) {
+    verify_freezable_type_(caller_pos, subst, bounds, ty)
+  }
+}
+
+fun verify_freezable_type_(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  ty: N.Type_,
+): void {
+  unfold_type(subst, ty).i1 match {
+  | N.Tparam(_, _, id, _) ->
+    verify_freezable_tparam(caller_pos, subst, bounds, id)
+  | N.Tlambda(_, _, modifiers, _)
+  | N.Tfun(_, modifiers, _, _, _) ->
+    freeze_modifiers(caller_pos, ty.i0, modifiers.i0)
+  | N.Tawaitable _ -> error_freeze_awaitable(caller_pos, ty.i0)
+  | _ -> void
+  }
+}
+
+/*****************************************************************************/
+/* Turns a mutable or readonly type into a chilled type
+ * i.e. the outer most mutability mode is made to be 'immutable'
+ */
+/*****************************************************************************/
+
+fun chill(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: N.Type_,
+): N.Type_ {
+  x match {
+  | (_, N.Tvar(tvar_id)) ->
+    subst.maybeGet(tvar_id) match {
+    | None() -> x
+    | Some(ty) -> chill(caller_pos, subst, bounds, ty)
+    }
+  | (pos, ty) -> (pos, chill_(caller_pos, subst, bounds, pos, ty))
+  }
+}
+
+fun chill_(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  pos: FileRange,
+  x: N.Type__,
+): N.Type__ {
+  x match {
+  | N.Tanything()
+  | N.Tfrozen _
+  | N.TnonNullable _ ->
+    x
+  | N.Tapply(_, class_name, tyl) ->
+    N.Tapply(
+      N.Mchilled(),
+      class_name,
+      chill_list(caller_pos, subst, bounds, tyl),
+    )
+  | N.Tpromoted(var, _, seen, tparams, class_name, tyl) ->
+    N.Tpromoted(
+      var,
+      N.Mchilled(),
+      seen,
+      tparams,
+      class_name,
+      chill_list(caller_pos, subst, bounds, tyl),
+    )
+  | N.Tawaitable _ -> error_chill_awaitable(caller_pos, pos)
+  | N.Tfun(variance, modifiers, targs, params, rty) ->
+    chill_modifiers(caller_pos, pos, modifiers.i0);
+    N.Tfun(variance, modifiers, targs, params, rty)
+  | N.Tvar _ -> invariant_violation("assert false")
+  | N.Tparam(frozen_, var, id, name) -> N.Tparam(frozen_, var, id, name)
+  | N.Tset(var, _, tparams, interl) ->
+    N.Tset(
+      var,
+      N.Mchilled(),
+      tparams,
+      chill_inter(caller_pos, subst, bounds, interl),
+    )
+  | N.Tlambda(var, tid, modifiers, ty) ->
+    chill_modifiers(caller_pos, pos, modifiers.i0);
+    N.Tlambda(var, tid, modifiers, chill(caller_pos, subst, bounds, ty))
+  | N.Tdefault(ty) -> N.Tdefault(chill(caller_pos, subst, bounds, ty))
+  | N.Tnamed(name, ty) -> N.Tnamed(name, chill(caller_pos, subst, bounds, ty))
+  }
+}
+
+fun chill_modifiers(
+  caller_pos: FileRange,
+  lambda_pos: FileRange,
+  x: Array<N.Purity_modifier>,
+): void {
+  if (x.isEmpty()) return void;
+  x[0] match {
+  | N.Fpure() -> void
+  | N.Fmutable() ->
+    SkipError.errorl(
+      List[
+        (caller_pos, "Cannot take a frozen or readonly view mutable lambda"),
+        (
+          lambda_pos,
+          "This is the lambda you are trying to view as non-mutable",
+        ),
+      ],
+    )
+  }
+}
+
+fun error_chill_awaitable<T>(caller_fr: FileRange, awaitable_fr: FileRange): T {
+  SkipError.errorl(
+    List[
+      (caller_fr, "Cannot take a frozen or readonly view of an awaitable type"),
+      (
+        awaitable_fr,
+        "If you need a non-mutable version of this type, try using 'await' in an async context to remove the awaitable.\nOr if this is a field on an object, try moving the type of this field into a type parameter so that mutability is visible from the type of the object",
+      ),
+    ],
+  )
+}
+
+fun chill_list(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tyl: Array<N.Type_>,
+): Array<N.Type_> {
+  tyl.map(p -> chill(caller_pos, subst, bounds, p))
+}
+
+fun chill_umap(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tym: UMap<N.Type_>,
+): UMap<N.Type_> {
+  tym.map((_, p) -> chill(caller_pos, subst, bounds, p))
+}
+
+fun chill_option(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: ?N.Type_,
+): ?N.Type_ {
+  x match {
+  | None() -> None()
+  | Some(ty) -> Some(chill(caller_pos, subst, bounds, ty))
+  }
+}
+
+fun chill_inter(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt_l: Array<N.InterElt>,
+): Array<N.InterElt> {
+  elt_l.map(p -> chill_inter_elt(caller_pos, subst, bounds, p))
+}
+
+fun chill_inter_elt(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt: N.InterElt,
+): N.InterElt {
+  elt with {targs => chill_list(caller_pos, subst, bounds, elt.targs)}
+}
+
+/*****************************************************************************/
+/* Turns a mutable type into a readonly. */
+/*****************************************************************************/
+fun to_readonly(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: N.Type_,
+): N.Type_ {
+  try {
+    to_readonly_exn(caller_pos, subst, bounds, x)
+  } catch {
+  | InvalidToReadonly(msg_list) -> SkipError.errorl(msg_list)
+  }
+}
+
+fun to_readonly_exn(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: N.Type_,
+): N.Type_ {
+  x match {
+  | (_, N.Tvar(tvar_id)) ->
+    subst.maybeGet(tvar_id) match {
+    | None() -> x
+    | Some(ty) -> to_readonly_exn(caller_pos, subst, bounds, ty)
+    }
+  | (fr, N.Tapply(mode, class_name, tyl)) ->
+    (!fr, new_mode) = to_readonly_modality(caller_pos, fr, mode);
+    (
+      fr,
+      N.Tapply(
+        new_mode,
+        class_name,
+        to_readonly_list(caller_pos, subst, bounds, tyl),
+      ),
+    )
+  | (fr, N.Tpromoted(var, mode, seen, tparams, class_name, tyl)) ->
+    (!fr, new_mode) = to_readonly_modality(caller_pos, fr, mode);
+    (
+      fr,
+      N.Tpromoted(
+        var,
+        new_mode,
+        seen,
+        tparams,
+        class_name,
+        to_readonly_list(caller_pos, subst, bounds, tyl),
+      ),
+    )
+  | (fr, N.Tset(var, mode, tparams, interl)) ->
+    (!fr, new_mode) = to_readonly_modality(caller_pos, fr, mode);
+    (
+      fr,
+      N.Tset(
+        var,
+        new_mode,
+        tparams,
+        to_readonly_inter(caller_pos, subst, bounds, interl),
+      ),
+    )
+
+  | (_, N.Tanything())
+  | (_, N.Tfrozen _)
+  | (_, N.TnonNullable _) ->
+    x
+
+  | (fr, N.Tawaitable _) -> error_readonly_awaitable(caller_pos, fr)
+  | (fr, N.Tfun(variance, modifiers, targs, params, rty)) ->
+    to_readonly_modifiers(caller_pos, fr, modifiers.i0);
+    (fr, N.Tfun(variance, modifiers, targs, params, rty))
+  | (_, N.Tparam(Some _, _, _, _)) ->
+    invariant_violation("This was done before subst, how frozen?")
+  | (_, N.Tparam(None(), _, id, _)) ->
+    verify_readonly_tparam(caller_pos, subst, bounds, id);
+    x
+  | (fr, N.Tlambda(var, tid, modifiers, ty)) ->
+    to_readonly_modifiers(caller_pos, fr, modifiers.i0);
+    (
+      fr,
+      N.Tlambda(
+        var,
+        tid,
+        modifiers,
+        to_readonly_exn(caller_pos, subst, bounds, ty),
+      ),
+    )
+  | (fr, N.Tdefault(ty)) ->
+    (fr, N.Tdefault(to_readonly_exn(caller_pos, subst, bounds, ty)))
+  | (fr, N.Tnamed(name, ty)) ->
+    (fr, N.Tnamed(name, to_readonly_exn(caller_pos, subst, bounds, ty)))
+  }
+}
+
+fun to_readonly_modifiers(
+  caller_pos: FileRange,
+  lambda_pos: FileRange,
+  x: Array<N.Purity_modifier>,
+): void {
+  if (x.isEmpty()) return void;
+  x[0] match {
+  | N.Fpure() -> void
+  | N.Fmutable() ->
+    throw MutLambdaToReadonly(
+      List[
+        (caller_pos, "Cannot have a readonly view of a mutable lambda"),
+        (lambda_pos, "This is the lambda you are trying to make reaodnly"),
+      ],
+    )
+  }
+}
+
+fun error_readonly_awaitable<T>(
+  caller_fr: FileRange,
+  awaitable_fr: FileRange,
+): T {
+  throw AwaitableToReadonly(
+    List[
+      (caller_fr, "Cannot take a readonly view of any awaitable type"),
+      (
+        awaitable_fr,
+        "If you need a non-mutable version of this type, try using 'await' in an async context to remove the awaitable",
+      ),
+    ],
+  )
+}
+
+fun to_readonly_list(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tyl: Array<N.Type_>,
+): Array<N.Type_> {
+  tyl.map(p -> to_readonly_exn(caller_pos, subst, bounds, p))
+}
+
+fun to_readonly_umap(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  tym: UMap<N.Type_>,
+): UMap<N.Type_> {
+  tym.map((_, p) -> to_readonly_exn(caller_pos, subst, bounds, p))
+}
+
+fun to_readonly_option(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  x: ?N.Type_,
+): ?N.Type_ {
+  x match {
+  | None() -> None()
+  | Some(ty) -> Some(to_readonly_exn(caller_pos, subst, bounds, ty))
+  }
+}
+
+fun to_readonly_inter(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt_l: Array<N.InterElt>,
+): Array<N.InterElt> {
+  elt_l.map(p -> to_readonly_inter_elt(caller_pos, subst, bounds, p))
+}
+
+fun to_readonly_inter_elt(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  elt: N.InterElt,
+): N.InterElt {
+  elt with {targs => to_readonly_list(caller_pos, subst, bounds, elt.targs)}
+}
+
+fun to_readonly_modality(
+  caller_fr: FileRange,
+  orig_fr: FileRange,
+  mode: N.Modality,
+): (FileRange, N.Modality) {
+  mode match {
+  | N.Mmutable _ -> (caller_fr, N.Mreadonly(caller_fr))
+  | _ -> (orig_fr, mode)
+  }
+}
+
+fun verify_readonly_tparam(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  id: String,
+): void {
+  for (ty in bounds.findUppers(id)) {
+    verify_readonly_type_(caller_pos, subst, bounds, ty)
+  }
+}
+
+fun verify_readonly_type_(
+  caller_pos: FileRange,
+  subst: IMap<N.Type_>,
+  bounds: TU.TparamConstraints,
+  ty: N.Type_,
+): void {
+  unfold_type(subst, ty).i1 match {
+  | N.Tparam(_, _, id, _) ->
+    verify_readonly_tparam(caller_pos, subst, bounds, id)
+  | N.Tlambda(_, _, modifiers, _)
+  | N.Tfun(_, modifiers, _, _, _) ->
+    to_readonly_modifiers(caller_pos, ty.i0, modifiers.i0)
+  | N.Tawaitable _ -> error_readonly_awaitable(caller_pos, ty.i0)
+  | _ -> void
+  }
+}
+
+/*****************************************************************************/
+/* Type promotion.
+ * Promotion is the process of expanding object types into their full type
+ * hierarchy
+ * Promotion also tracks the current variance position along the way.
+ * Examples
+ * base class Animal { children = Cat() | Dog() }
+ * promote(+, Animal) => +{Animal}
+ * promote(+, Cat) => +{Cat, Animal}
+ * promote(+, Dog) => +{Dog, Animal}
+ *
+ * Where +{Animal} is Tset(VPlus, "Animal", Array[])
+ *
+ * class Co<+T>()
+ * class Inv<T>()
+ * class Contra<-T>()
+ *
+ * promote(+, Co<Dog>) => +{Co<+{Dog, Animal}>}
+ * promote(., Co<Dog>) => .{Co<.{Dog, Animal}>}
+ * promote(-, Co<Dog>) => -{Co<-{Dog, Animal}>}
+ * promote(+, Inv<Dog>) => +{Co<.{Dog, Animal}>}
+ * promote(., Inv<Dog>) => .{Co<.{Dog, Animal}>}
+ * promote(-, Inv<Dog>) => -{Co<.{Dog, Animal}>}
+ * promote(+, Contra<Dog>) => +{Contra<-{Dog, Animal}>}
+ * promote(., Contra<Dog>) => .{Contra<.{Dog, Animal}>}
+ * promote(-, Contra<Dog>) => -{Contra<+{Dog, Animal}>}
+ *
+ * As an optimization, we lazily create the Tsets as the hierarchy expansion
+ * can be expensive and slow. Instead we mark the type as promoted with any
+ * necessary information
+ *
+ * So
+ * promote(+, Animal) => Tpromoted(Vplus, Animal)
+ *
+ * The Tpromoteds become Tsets as needed during join
+ */
+/*****************************************************************************/
+fun promote(
+  env: Env,
+  variance: N.Variance,
+  subst: IMap<N.Type_>,
+  x: N.Type_,
+): N.Type_ {
+  x match {
+  | (_, N.Tanything()) -> x
+  | (fr, N.Tfrozen _) -> (fr, N.Tfrozen(variance))
+  | (fr, N.TnonNullable _) -> (fr, N.TnonNullable(variance))
+  | (pos, N.Tnamed(names, ty)) ->
+    ty1 = promote(env, variance, subst, ty);
+    (pos, N.Tnamed(names, ty1))
+  | ty @ (_, N.Tvar(tv)) ->
+    subst.maybeGet(tv) match {
+    | None() -> ty
+    | Some((pos, _)) if (env.tvars.contains(tv)) ->
+      SkipError.error(pos, "Recursive type")
+    | Some(x1) ->
+      tvars = env.tvars.set(tv);
+      !env = env with {tvars};
+      promote(env, variance, subst, x1)
+    }
+  | (pos, N.Tapply(mode, cname, targs)) ->
+    cd = SkipNaming.getClass(cname);
+    targs1 = promote_targs(env, variance, mode, subst, cd, targs);
+    (pos, N.Tpromoted(variance, mode, env.promoted, SortedMap[], cname, targs1))
+  | (pos, N.Tpromoted(_, mode, seen, tparams, cname, targs)) ->
+    cd = SkipNaming.getClass(cname);
+    targs1 = promote_targs(env, variance, mode, subst, cd, targs);
+    (pos, N.Tpromoted(variance, mode, seen, tparams, cname, targs1))
+  | (pos, N.Tfun(_, ml, tyl, params, rty)) ->
+    ml1 = promote_tfun_modifiers(ml);
+    params1 = params.map(p -> contra_promote(env, variance, subst, p));
+    rty1 = promote(env, variance, subst, rty);
+    (pos, N.Tfun(variance, ml1, tyl, params1, rty1))
+  | (pos, N.Tparam(frozen_, _, id, name)) ->
+    (pos, N.Tparam(frozen_, variance, id, name))
+  | (pos, N.Tlambda(_, id, ml, ty)) ->
+    ml1 = promote_tfun_modifiers(ml);
+    ty1 = promote(env, variance, subst, ty);
+    (pos, N.Tlambda(variance, id, ml1, ty1))
+  | (pos, N.Tawaitable(_, ty)) ->
+    ty1 = promote(env, variance, subst, ty);
+    (pos, N.Tawaitable(variance, ty1))
+  | (pos, N.Tdefault(ty)) ->
+    ty1 = promote(env, variance, subst, ty);
+    (pos, N.Tdefault(ty1))
+  | (pos, N.Tset(_, mode, tparams, l)) ->
+    l1 = l.map(p -> promote_inter_elt(env, variance, mode, subst, p));
+    (pos, N.Tset(variance, mode, tparams, l1))
+  }
+}
+
+fun has_looped_promotion(env: Env, nm: N.Name): Bool {
+  (_, cname) = nm;
+  env.promoted.contains(cname)
+}
+
+fun promote_inter_elt(
+  env: Env,
+  variance: N.Variance,
+  mode: N.Modality,
+  subst: IMap<N.Type_>,
+  elt: N.InterElt,
+): N.InterElt {
+  cd = SkipNaming.getClass(elt.name);
+  targs = promote_targs(env, variance, mode, subst, cd, elt.targs);
+  // dont promote the conditions, done lazily on filtering
+  elt with {targs}
+}
+
+fun contra_promote(
+  env: Env,
+  variance: N.Variance,
+  subst: IMap<N.Type_>,
+  ty: N.Type_,
+): N.Type_ {
+  variance1 = {
+    variance match {
+    | A.Vplus() -> A.Vminus()
+    | A.Vminus() -> A.Vplus()
+    | A.Vnone() -> A.Vnone()
+    }
+  };
+  promote(env, variance1, subst, ty)
+}
+
+fun promote_tfun_modifiers(modifiers: N.Tfun_modifiers): N.Tfun_modifiers {
+  (purity, tracking) = modifiers;
+  !purity = purity.size() match {
+  | 0 -> invariant_violation("assert false")
+  | 1 ->
+    purity[0] match {
+    | N.Fpure() -> Array[N.Fpure(), N.Fmutable()]
+    | N.Fmutable() -> purity
+    }
+  | 2 ->
+    invariant(
+      purity[0] is N.Fpure() && purity[1] is N.Fmutable(),
+      "assert false",
+    );
+    purity
+  | _ -> invariant_violation("assert false")
+  };
+  !tracking = tracking.size() match {
+  | 0 -> invariant_violation("assert false")
+  | 1 ->
+    tracking[0] match {
+    | N.Ftracked() -> Array[N.Ftracked(), N.Funtracked()]
+    | N.Funtracked() -> tracking
+    }
+  | 2 ->
+    invariant(
+      tracking[0] is N.Ftracked() && tracking[1] is N.Funtracked(),
+      "assert false",
+    );
+    tracking
+  | _ -> invariant_violation("assert false")
+  };
+  (purity, tracking)
+}
+
+fun promote_tapply(
+  next_id: () -> Int,
+  env: Env,
+  var: N.Variance,
+  mode: N.Modality,
+  subst: IMap<N.Type_>,
+  pos: FileRange,
+  tparams: SMap<String>,
+  class_name: N.Name,
+  targs: Array<N.Type_>,
+): N.Type_ {
+  cd = SkipNaming.getClass(class_name);
+  if (has_looped_promotion(env, class_name)) {
+    (pos, N.Tpromoted(var, mode, env.promoted, tparams, class_name, targs))
+  } else {
+    force_promote_tapply(
+      next_id,
+      env,
+      var,
+      mode,
+      subst,
+      pos,
+      tparams,
+      cd,
+      targs,
+    )
+  }
+}
+
+fun force_promote_tapply(
+  next_id: () -> Int,
+  env: Env,
+  var: N.Variance,
+  mode: N.Modality,
+  subst: IMap<N.Type_>,
+  pos: FileRange,
+  tparams: SMap<String>,
+  cd: N.Class_def,
+  targs: Array<N.Type_>,
+): N.Type_ {
+  inter = make_promoted(next_id, env, var, mode, subst, pos, cd, targs);
+  (pos, N.Tset(var, mode, tparams, inter))
+}
+
+fun promote_targs(
+  env: Env,
+  variance: N.Variance,
+  mode: N.Modality,
+  subst: IMap<N.Type_>,
+  cd: N.Class_def,
+  tyl: Array<N.Type_>,
+): Array<N.Type_> {
+  mode match {
+  | N.Mmutable _ -> !variance = A.Vnone()
+  | _ -> void
+  };
+  variance_l = cd.tparams.map(p -> p.i0);
+  variance_l.zipWith(tyl, (var, ty) ->
+    promote_targ(env, variance, subst, var, ty)
+  )
+}
+
+fun promote_targ(
+  env: Env,
+  variance: A.Variance,
+  subst: IMap<N.Type_>,
+  tparam_variance: N.Variance,
+  ty: N.Type_,
+): N.Type_ {
+  tparam_variance match {
+  | A.Vminus() -> contra_promote(env, variance, subst, ty)
+  | A.Vnone() -> promote(env, A.Vnone(), subst, ty)
+  | A.Vplus() -> promote(env, variance, subst, ty)
+  }
+}
+
+fun compare_set_elt(l: N.InterElt, r: N.InterElt): Order {
+  N.compare_set_elt(l, r)
+}
+
+fun make_promoted(
+  next_id: () -> Int,
+  env: Env,
+  variance: N.Variance,
+  mode: N.Modality,
+  subst: IMap<N.Type_>,
+  pos: FileRange,
+  cd: N.Class_def,
+  targs: Array<N.Type_>,
+): Array<N.InterElt> {
+  tparams = cd.tparams.map(N.tparam_ident);
+  subst_tparams = N.make_subst(pos, tparams, targs);
+  promoted = env.promoted.set(cd.name.i1);
+  parent_tenv = env with {promoted};
+  parents = cd.extends_.values().concat(cd.use.values());
+  tsubst = t -> N.type_subst(freeze, subst_tparams, env.tparam_constraints, t);
+  seenParents = mutable Set[];
+  uniqueParents = true;
+  parentElts = parents.map(parent -> {
+    (name, targa, info) = parent;
+    if (uniqueParents) {
+      if (seenParents.contains(name.i1)) !uniqueParents = false else {
+        seenParents.insert(name.i1)
+      }
+    };
+    !targa = targa.map(tsubst);
+    // conditions are filtered/solved during joining
+    conditions = info.conditions.map(wca ->
+      wca.map(wc -> {
+        lhs = tsubst(wc.i0);
+        rhs = wc.i1.map(tsubst);
+        // dont promote the conditions, done lazily on filtering
+        (lhs, rhs)
+      })
+    );
+    elt = make_promoted_elt(name, targa, conditions);
+    /* We should pass around a real position here. Worth it? */
+    promote_inter_elt(parent_tenv, variance, mode, subst, elt)
+  });
+  elt = N.InterElt{
+    depth => cd.depth,
+    kind => cd.kind,
+    name => cd.name,
+    targs => targs,
+    conditions => N.ECNoConditions(),
+  };
+  fullElts = mutable Vector[];
+  fullElts.push(elt);
+  parentElts.each(fullElts.push);
+  fullElts.sortBy(x ~> Orderable.create(x, compare_set_elt));
+  result = fullElts.toArray();
+  // Due to multiple inheritance, we need to uniqueify the set
+  if (uniqueParents) {
+    result;
+  } else {
+    acc = Acc{subst, constraints => SkipTypingUtils.Constraints::empty};
+    (after_acc, uniqued) = uniq_join(next_id, env, acc, result);
+    if (!after_acc.constraints.isEmpty()) {
+      SkipError.error(pos, "ICE Constraints added during promotion")
+    };
+    uniqued
+  }
+}
+
+fun make_promoted_elt(
+  name: N.Name,
+  targs: Array<N.Type_>,
+  wcs: Array<Array<N.Whenclause>>,
+): N.InterElt {
+  cd = SkipNaming.getClass(name);
+  conditions = if (wcs.isEmpty()) N.ECNoConditions() else N.ECConditions(wcs);
+  N.InterElt{depth => cd.depth, kind => cd.kind, name, targs, conditions}
+}
+
+/*****************************************************************************/
+/* Joining */
+/*****************************************************************************/
+/* joining is the core process for the type system to infer types in the program
+ * There are 3 key parts that are important to understand
+ * - Joining a type and a tvar, makes a new tvar for the type and then joins the
+ *   two tvars
+ * - Joining two tvars: join the types the two tvars map to. (if they map to
+ *   other tvars they need to be expanded until a type is found). Take result
+ *   of joining the two types and bind it to a new tvar. Take the old tvars and
+ *   bind them to the new tvar
+ * - Joining object types is a process of set manipulation. The process is
+ *   derived from these 3 rules
+ *   - A +/plus/covariant tset can only shrink
+ *   - A -/minus/contravariant tset can only grow
+ *   - A ./invariant tset cannot change
+ *   To join the two tsets, you attempt to combine the two sets while making
+ *   sure these properties hold. If there is an element in the set at which
+ *   the property cannot hold, you throw
+ */
+fun join(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  // BufferedPrinter.pp(SkipNamedAstPp.type, ty1);
+  // BufferedPrinter.pp(SkipNamedAstPp.type, ty2);
+  // print_error_ln("");
+  /* this grossness is to preserve Tnamed when joining Tvars and a type
+   * And to preserve Tnamed on Tany, which is needed for type constants
+   * on the PHP backend
+   */
+  (N.unfold_tnamed(ty1), ty1, N.unfold_tnamed(ty2), ty2) match {
+  | ((_, N.Tdefault(ty11)), _, _, _) -> join(next_id, env, acc, ty11, ty2)
+  | (_, _, (_, N.Tdefault(ty21)), _) -> join(next_id, env, acc, ty1, ty21)
+  | (tvar @ (_, N.Tvar(_)), _, _, (_, N.Tnamed _)) ->
+    join_into_new_tvar(next_id, env, acc, tvar, ty2)
+  | (_, (_, N.Tnamed _), tvar @ (_, N.Tvar(_)), _) ->
+    join_into_new_tvar(next_id, env, acc, tvar, ty1)
+  | (_, (_, N.Tnamed _), _, (_, N.Tanything())) -> (acc, ty1)
+  | (_, (_, N.Tanything()), _, (_, N.Tnamed _)) -> (acc, ty2)
+  | (non_named_ty1, _, non_named_ty2, _) ->
+    join_(next_id, env, acc, non_named_ty1, non_named_ty2)
+  }
+}
+
+fun join_(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  ty1: N.Type_,
+  ty2: N.Type_,
+): (Acc, N.Type_) {
+  (ty1, ty2) match {
+  | ((_, N.Tanything()), ty) -> (acc, ty)
+  | (ty, (_, N.Tanything())) -> (acc, ty)
+
+  /* Tvar */
+  | ((pos, N.Tvar(var1)), (_, N.Tvar(var2))) ->
+    join_tvar(next_id, env, pos, acc, var1, var2)
+  | (tvar @ (_, N.Tvar(_)), other_ty)
+  | (other_ty, tvar @ (_, N.Tvar(_))) ->
+    join_into_new_tvar(next_id, env, acc, tvar, other_ty)
+
+  | (
+    (pos, N.Tlambda(var1, id, mods1, ty11)),
+    (_, N.Tlambda(var2, _, mods2, ty21)),
+  ) ->
+    exn = Join(ty1, ty2);
+    join_tfun_modifiers(exn, var1, mods1, var2, mods2) match {
+    | (purity, _) if (purity.isEmpty()) -> throw exn
+    | (_, tracking) if (tracking.isEmpty()) -> throw exn
+    | mods ->
+      variance = join_variance(var1, var2);
+      (!acc, ty) = join(next_id, env, acc, ty11, ty21);
+      (acc, (pos, N.Tlambda(variance, id, mods, ty)))
+    }
+  | ((pos, N.Tlambda(var, id, mods, ty11)), ty21)
+  | (ty21, (pos, N.Tlambda(var, id, mods, ty11))) ->
+    (!acc, ty) = join(next_id, env, acc, ty11, ty21);
+    (acc, (pos, N.Tlambda(var, id, mods, ty)))
+
+  /* Constraints */
+  | ((_, N.Tfrozen(A.Vplus())), tother)
+  | ((_, N.TnonNullable(A.Vplus())), tother)
+  | (tother, (_, N.Tfrozen(A.Vplus())))
+  | (tother, (_, N.TnonNullable(A.Vplus()))) ->
+    (acc, tother)
+  | ((fr, N.Tfrozen(var1)), (_, N.Tfrozen(var2))) ->
+    (acc, (fr, N.Tfrozen(join_variance(var1, var2))))
+  | ((fr, N.TnonNullable(var1)), (_, N.TnonNullable(var2))) ->
+    (acc, (fr, N.TnonNullable(join_variance(var1, var2))))
+  | (
+    (_, N.Tfrozen(A.Vminus())),
+    (pos, N.Tfun(variance, (purity, tracking), tyl, params, rty)),
+  )
+  | (
+    (pos, N.Tfun(variance, (purity, tracking), tyl, params, rty)),
+    (_, N.Tfrozen(A.Vminus())),
+  ) ->
+    exn = Join(ty1, ty2);
+    jpure = purity_modifiers_for_tfrozen(exn, variance, purity);
+    if (jpure.isEmpty()) throw exn;
+    (acc, (pos, N.Tfun(variance, (jpure, tracking), tyl, params, rty)))
+  | ((ffr, tfrozen_ @ N.Tfrozen(A.Vminus())), tother)
+  | (tother, (ffr, tfrozen_ @ N.Tfrozen(A.Vminus()))) ->
+    join_contra_tfrozen(env, acc, (ffr, tfrozen_), tother)
+  | (tyc, (_, N.TnonNullable(A.Vminus())))
+  | ((_, N.TnonNullable(A.Vminus())), tyc) ->
+    if (is_not_nullable(env, tyc)) (acc, tyc) else throw Join(ty1, ty2)
+  /* Functions */
+  | (
+    (pos, N.Tfun(variance1, mods1, _, params1, rty1)),
+    (_, N.Tfun(variance2, mods2, _, params2, rty2)),
+  ) ->
+    (!acc, params) = join_params(next_id, env, pos, acc, params1, params2);
+    (!acc, rty) = join(next_id, env, acc, rty1, rty2);
+    exn = Join(ty1, ty2);
+    join_tfun_modifiers(exn, variance1, mods1, variance2, mods2) match {
+    | (purity, _) if (purity.isEmpty()) -> throw exn
+    | (_, tracking) if (tracking.isEmpty()) -> throw exn
+    | mods ->
+      variance = join_variance(variance1, variance2);
+      (acc, (pos, N.Tfun(variance, mods, Array[], params, rty)))
+    }
+  | ((tpos, N.Tapply _), _)
+  | (_, (tpos, N.Tapply _)) ->
+    print_stack_trace();
+    print_error_ln(tpos.toString());
+    print_error_ln("Internal error, expected a promoted type:");
+    BufferedPrinter.pp(SkipNamedAstPp.type, ty1);
+    BufferedPrinter.pp(SkipNamedAstPp.type, ty2);
+    SkipError.fail()
+  /* Type params */
+  | (
+    (pos1, N.Tparam(frozen1, var1, pid1, param_name)),
+    (_, N.Tparam(frozen2, var2, pid2, _)),
+  ) if (pid1 == pid2) ->
+    frozen_ = (frozen1, frozen2) match {
+    | (None(), None())
+    | (Some _, Some _) ->
+      frozen1
+    | (None(), Some _) ->
+      is_frozen_map_tparam(env.tparam_constraints, acc.subst, pid1) match {
+      | Some _ ->
+        None() // frozen so no need for frozen marker
+      | None() ->
+        throw (Join(ty1, ty2)) // not frozen so throw
+      }
+    | (Some _, None()) ->
+      is_frozen_map_tparam(env.tparam_constraints, acc.subst, pid2) match {
+      | Some _ ->
+        None() // frozen so no need for frozen marker
+      | None() ->
+        throw (Join(ty1, ty2)) // not frozen so throw
+      }
+    };
+    var = join_variance(var1, var2);
+    (acc, (pos1, N.Tparam(frozen_, var, pid1, param_name)))
+  | (
+    tp1 @ (_, N.Tparam(frozen1, A.Vplus(), pid1, _)),
+    tp2 @ (_, N.Tparam(frozen2, A.Vplus(), pid2, _)),
+  ) ->
+    exn = Join(ty1, ty2);
+    try {
+      tyl1 = env.tparam_constraints.findUppers(pid1);
+      freeze_upper = should_freeze_upper(
+        env.tparam_constraints,
+        acc.subst,
+        frozen1,
+        pid1,
+      );
+      join_try_list(next_id, exn, env, acc, tp2, freeze_upper, tyl1)
+    } catch {
+    | Join _ ->
+      tyl2 = env.tparam_constraints.findUppers(pid2);
+      freeze_upper = should_freeze_upper(
+        env.tparam_constraints,
+        acc.subst,
+        frozen2,
+        pid2,
+      );
+      join_try_list(next_id, exn, env, acc, tp1, freeze_upper, tyl2)
+    }
+  | ((_, N.Tparam(frozen_, A.Vplus(), pid, _)), ty) ->
+    tyl = env.tparam_constraints.findUppers(pid);
+    freeze_upper = should_freeze_upper(
+      env.tparam_constraints,
+      acc.subst,
+      frozen_,
+      pid,
+    );
+    join_try_list(next_id, Join(ty1, ty2), env, acc, ty, freeze_upper, tyl)
+  | (ty, (_, N.Tparam(frozen_, A.Vplus(), pid, _))) ->
+    tyl = env.tparam_constraints.findUppers(pid);
+    freeze_upper = should_freeze_upper(
+      env.tparam_constraints,
+      acc.subst,
+      frozen_,
+      pid,
+    );
+    join_try_list(next_id, Join(ty1, ty2), env, acc, ty, freeze_upper, tyl)
+  /* Awaitable */
+  | ((fr, N.Tawaitable(v1, inner1)), (_, N.Tawaitable(v2, inner2))) ->
+    var = join_variance(v1, v2);
+    (!acc, inner) = join(next_id, env, acc, inner1, inner2);
+    (acc, (fr, N.Tawaitable(var, inner)))
+  /* Object types */
+  | ((_, N.Tset(_, _, _, elts)), _)
+  | (_, (_, N.Tset(_, _, _, elts))) if (elts.isEmpty()) ->
+    throw Join(ty1, ty2)
+
+  | (tp @ (_, N.Tpromoted(v1, m1, _, _, _, _)), (_, N.Tset(v2, m2, _, _))) ->
+    maybe_join_modality(v1, m1, v2, m2) match {
+    | None() -> throw Join(ty1, ty2)
+    | Some _ -> void
+    };
+    join(
+      next_id,
+      env,
+      acc,
+      promote_tpromoted(next_id, env, acc.subst, assert_tpromoted(tp)),
+      ty2,
+    )
+  | ((_, N.Tset(v1, m1, _, _)), tp @ (_, N.Tpromoted(v2, m2, _, _, _, _))) ->
+    maybe_join_modality(v1, m1, v2, m2) match {
+    | None() -> throw Join(ty1, ty2)
+    | Some _ -> void
+    };
+    join(
+      next_id,
+      env,
+      acc,
+      ty1,
+      promote_tpromoted(next_id, env, acc.subst, assert_tpromoted(tp)),
+    )
+
+  | (
+    (pos, N.Tpromoted(var1, mode1, _, tparams1, n1, tyl1)),
+    (_, N.Tpromoted(var2, mode2, _, tparams2, n2, tyl2)),
+  ) if (compare(n1.i1, n2.i1) is EQ()) ->
+    mode = maybe_join_modality(var1, mode1, var2, mode2) match {
+    | None() -> throw Join(ty1, ty2)
+    | Some(m) -> m
+    };
+    !tyl1 = maybe_update_tpromoted_targs_variance(
+      env,
+      mode,
+      mode1,
+      var1,
+      acc,
+      n1,
+      tyl1,
+    );
+    !tyl2 = maybe_update_tpromoted_targs_variance(
+      env,
+      mode,
+      mode2,
+      var2,
+      acc,
+      n2,
+      tyl2,
+    );
+    var = join_variance(var1, var2);
+    (!acc, tyl) = join_list_(next_id, env, acc, tyl1, tyl2);
+    tparams = join_set_tparams(var1, tparams1, var2, tparams2);
+    (acc, (pos, N.Tpromoted(var, mode, SSet[], tparams, n1, tyl)))
+  | (t1 @ (_, N.Tpromoted _), t2 @ (_, N.Tpromoted _)) ->
+    join_tpromoted(next_id, env, acc, Join(ty1, ty2), t1, t2)
+
+  | (
+    (pos, ts1 @ N.Tset(var1, mode1, tparams1, elts1)),
+    (pos2, ts2 @ N.Tset(var2, mode2, tparams2, elts2)),
+  ) ->
+    exn = Join(ty1, ty2);
+    mode = maybe_join_modality(var1, mode1, var2, mode2) match {
+    | None() -> throw exn
+    | Some(m) -> m
+    };
+    !elts1 = maybe_update_elts_variance(env, mode, mode1, var1, acc, elts1);
+    !elts2 = maybe_update_elts_variance(env, mode, mode2, var2, acc, elts2);
+    (var, (!acc, elts)) = join_set(
+      next_id,
+      exn,
+      env,
+      acc,
+      var1,
+      elts1,
+      var2,
+      elts2,
+    );
+    tparams = join_set_tparams(var1, tparams1, var2, tparams2);
+    all_ktype_1 = all_ktype(elts1);
+    all_ktype_2 = all_ktype(elts2);
+    tyl3 = {
+      if (all_ktype_1 && all_ktype_2) {
+        elts
+      } else if ((all_ktype_1 || all_ktype_2) && env.solving_constraints) {
+        elts
+      } else {
+        drop_extraneous_ktype(elts)
+      }
+    };
+    if (tyl3.isEmpty()) throw exn;
+    joined = (pos, N.Tset(var, mode, tparams, tyl3));
+    !acc = verify_mutability_preservation_tset(env, acc, (pos, ts1), joined);
+    !acc = verify_mutability_preservation_tset(env, acc, (pos2, ts2), joined);
+    (acc, joined)
+
+  | _ -> throw Join(ty1, ty2)
+  }
+}
+
+fun join_try_list(
+  next_id: () -> Int,
+  exn: Exception,
+  env: Env,
+  acc: Acc,
+  ty: N.Type_,
+  freeze_upper: ?FileRange,
+  tyl2: Array<N.Type_>,
+): (Acc, N.Type_) {
+  for (ty2 in tyl2) {
+    ty2 match {
+    /* Contraints already handled */
+    | (_, N.Tfrozen _)
+    | (_, N.TnonNullable _) ->
+      continue
+    | _ -> void
+    };
+    // skip ktraits if not solving constraints
+    if (!env.solving_constraints && is_tset_all_ktype(acc.subst, ty2)) continue;
+
+    try {
+      ty2_fixed = maybe_freeze_upper_bound(
+        acc.subst,
+        env.tparam_constraints,
+        freeze_upper,
+        ty2,
+      );
+      return join(next_id, env, acc, ty, ty2_fixed)
+    } catch {
+    | Join _ -> void
+    }
+  };
+
+  throw exn
+}
+
+fun is_tset_all_ktype(subst: IMap<N.Type_>, ty: N.Type_): Bool {
+  unfold_type(subst, ty) match {
+  | (_, N.Tpromoted(_, _, _, _, cname, _)) ->
+    cd = SkipNaming.getClass(cname);
+    cd.kind == A.KTrait()
+  | (_, N.Tset(_, _, _, elts)) -> all_ktype(elts)
+  | _ -> false
+  }
+}
+
+fun join_variance(var1: N.Variance, var2: N.Variance): N.Variance {
+  (var1, var2) match {
+  | (A.Vplus(), A.Vplus()) -> A.Vplus()
+  | (A.Vminus(), A.Vminus()) -> A.Vminus()
+  | _ -> A.Vnone()
+  }
+}
+
+fun maybe_join_modality(
+  var1: N.Variance,
+  mode1: N.Modality,
+  var2: N.Variance,
+  mode2: N.Modality,
+): ?N.Modality {
+  (var1, mode1, var2, mode2) match {
+  | (A.Vplus(), N.Mmutable _, _, rd @ N.Mreadonly _)
+  | (_, rd @ N.Mreadonly _, A.Vplus(), N.Mmutable _) ->
+    Some(rd)
+
+  | (A.Vplus(), N.Mchilled(), _, rd @ N.Mreadonly _)
+  | (_, rd @ N.Mreadonly _, A.Vplus(), N.Mchilled()) ->
+    Some(rd)
+
+  | (A.Vplus(), N.Mchilled(), A.Vplus(), N.Mmutable(fr))
+  | (A.Vplus(), N.Mmutable(fr), A.Vplus(), N.Mchilled()) ->
+    Some(N.Mreadonly(fr))
+
+  | (_, N.Mchilled(), _, N.Mchilled())
+  | (_, N.Mreadonly _, _, N.Mreadonly _)
+  | (_, N.Mmutable _, _, N.Mmutable _) ->
+    Some(mode1)
+
+  | _ -> None()
+  }
+}
+
+fun all_ktype(x: Array<N.InterElt>): Bool {
+  !x.isEmpty() &&
+    /* Taking advandtage of the sorted set elements */
+    x[0].kind is A.KTrait()
+}
+
+/* We need to filter out traits from sources outside of the joined
+ * hierarchy. For example
+ *
+ * trait Arith { ... }
+ * base class Bogus
+ * class Foo(x : Int) extends Bogus implemnts Arith
+ * class Bar(x : String) extends Bogus implemnts Arith
+ *
+ * a = if (true) Foo(42) else Bar(invariant_violation(""))
+ * b = if (true) Bar("hello") else Foo(invariant_violation(""))
+ * If we do not filter out the ktypes
+ * We will have a and b with the type Promoted[ Bogus, Arith ]
+ * which would allow
+ * a + b
+ * which would cause a Foo + Bar which could explode at runtime
+ */
+fun drop_extraneous_ktype(elts: Array<N.InterElt>): Array<N.InterElt> {
+  if (elts.isEmpty()) return elts;
+  if (elts[0].kind is A.KClass()) return elts;
+
+  kbases = elts.values().filter(elt -> elt.kind != A.KTrait());
+  kbases_implement = mutable Set[];
+  for (elt in kbases) {
+    for (parName in SkipNaming.getClass(elt.name).use.keys()) {
+      kbases_implement.insert(parName.i1)
+    }
+  };
+  elts.filter(elt -> {
+    elt.kind match {
+    | A.KClass() -> invariant_violation("assert false")
+    | A.KBase() -> true
+    | A.KTrait() -> kbases_implement.contains(elt.name.i1)
+    }
+  })
+}
+
+fun promote_tpromoted(
+  next_id: () -> Int,
+  env: Env,
+  subst: IMap<N.Type_>,
+  p: (FileRange, N.Tpromoted),
+): N.Type_ {
+  (pos, p_) = p;
+  !env = env with {promoted => p_.promoted_set};
+  cd = SkipNaming.getClass(p_.name);
+  var = if (has_looped_promotion(env, p_.name)) A.Vnone() else p_.variance;
+  force_promote_tapply(
+    next_id,
+    env,
+    var,
+    p_.mode,
+    subst,
+    pos,
+    p_.tparam_set,
+    cd,
+    p_.targs,
+  )
+}
+
+/* Optimized joining of two tpromoteds, you could promote both into tsets
+ * and join (which happens in the plus/mins case), but the other cases
+ * can be done quicker
+ */
+fun join_tpromoted(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  exn: Exception,
+  t1: (FileRange, N.Type__),
+  t2: (FileRange, N.Type__),
+): (Acc, N.Type_) {
+  tp1 = assert_tpromoted(t1);
+  (pos1, tp1_) = tp1;
+  var1 = tp1_.variance;
+  mode1 = tp1_.mode;
+  tp2 = assert_tpromoted(t2);
+  (pos2, tp2_) = tp2;
+  var2 = tp2_.variance;
+  mode2 = tp2_.mode;
+  mode = maybe_join_modality(var1, mode1, var2, mode2) match {
+  | None() -> throw Join(t1, t2)
+  | Some(m) -> m
+  };
+  join_plus_with_none_or_minus = (pos, plus_tp, mn_tp) -> {
+    mn_tp_ = mn_tp.i1;
+    mvar = mn_tp_.variance;
+    mtparams = mn_tp_.tparam_set;
+    mn = mn_tp_.name;
+    mtyl = mn_tp_.targs;
+    invariant(
+      plus_tp.i1.name.i1 != mn.i1,
+      "ICE same elt tpromoted is a separate case",
+    );
+    mkind = SkipNaming.getClass(mn).kind;
+    pkind = SkipNaming.getClass(plus_tp.i1.name).kind;
+    pty_promoted = promote_tpromoted(next_id, env, acc.subst, plus_tp);
+    (_, _, _, ptparams, interl) = assert_tset(pty_promoted);
+    (facc, tyl) = join_tpromoted_tyl(
+      next_id,
+      pos,
+      env,
+      acc,
+      exn,
+      mn,
+      mtyl,
+      interl,
+    );
+    tparams = join_set_tparams(A.Vplus(), ptparams, mvar, mtparams);
+    new_ty = (pos, N.Tpromoted(A.Vnone(), mode, SSet[], tparams, mn, tyl));
+    !facc = verify_mutability_preservation_tpromoted(
+      env,
+      facc,
+      plus_tp,
+      new_ty,
+    );
+    (mkind, pkind) match {
+    | (A.KTrait(), A.KTrait()) -> void
+    | (A.KTrait(), _) if (env.solving_constraints) -> void
+    | (A.KTrait(), _) ->
+      throw exn // needed for try catch
+    | _ -> void
+    };
+    (facc, new_ty)
+  };
+  (var1, var2) match {
+  | (A.Vminus(), A.Vminus())
+  | (A.Vplus(), A.Vplus()) ->
+    ty1 = promote_tpromoted(next_id, env, acc.subst, tp1);
+    ty2 = promote_tpromoted(next_id, env, acc.subst, tp2);
+    join(next_id, env, acc, ty1, ty2)
+  | (A.Vplus(), A.Vnone())
+  | (A.Vplus(), A.Vminus()) ->
+    !tp1 = maybe_update_tpromoted_variance(env, mode, acc, tp1);
+    !tp2 = maybe_update_tpromoted_variance(env, mode, acc, tp2);
+    join_plus_with_none_or_minus(pos1, tp1, tp2)
+  | (A.Vnone(), A.Vplus())
+  | (A.Vminus(), A.Vplus()) ->
+    !tp1 = maybe_update_tpromoted_variance(env, mode, acc, tp1);
+    !tp2 = maybe_update_tpromoted_variance(env, mode, acc, tp2);
+    join_plus_with_none_or_minus(pos2, tp2, tp1)
+  | (A.Vnone(), A.Vminus())
+  | (A.Vminus(), A.Vnone())
+  /* checked for same type above in join */
+  | (A.Vnone(), A.Vnone()) ->
+    throw exn
+  }
+}
+
+fun join_tpromoted_tyl(
+  next_id: () -> Int,
+  pos: FileRange,
+  env: Env,
+  acc: Acc,
+  exn: Exception,
+  n1: N.Name,
+  tyl1: Array<N.Type_>,
+  elts: Array<N.InterElt>,
+): (Acc, Array<N.Type_>) {
+  for (elt in elts) {
+    if (n1.i1 == elt.name.i1) {
+      valid = validConditions(next_id, env, acc, elt);
+      if (!valid) throw exn;
+
+      return join_list(next_id, env, pos, acc, tyl1, elt.targs)
+    }
+  };
+
+  throw exn
+}
+
+fun join_set(
+  next_id: () -> Int,
+  exn: Exception,
+  env: Env,
+  acc: Acc,
+  var1: N.Variance,
+  tyl1: Array<N.InterElt>,
+  var2: N.Variance,
+  tyl2: Array<N.InterElt>,
+): (N.Variance, (Acc, Array<N.InterElt>)) {
+  (var1, var2) match {
+  | (A.Vplus(), A.Vplus()) ->
+    (A.Vplus(), join_set_plus_plus(next_id, env, acc, tyl1, tyl2))
+  | (A.Vminus(), A.Vminus()) ->
+    (A.Vminus(), join_set_minus_minus(next_id, env, acc, tyl1, tyl2))
+  | (A.Vplus(), A.Vminus()) ->
+    (A.Vnone(), join_set_minus_plus(next_id, exn, env, acc, tyl2, tyl1))
+  | (A.Vminus(), A.Vplus()) ->
+    (A.Vnone(), join_set_minus_plus(next_id, exn, env, acc, tyl1, tyl2))
+  | (A.Vnone(), A.Vplus())
+  | (A.Vplus(), A.Vnone())
+  | (A.Vnone(), A.Vminus())
+  | (A.Vminus(), A.Vnone())
+  | (A.Vnone(), A.Vnone()) ->
+    (A.Vnone(), join_set_inv(next_id, exn, env, acc, tyl1, tyl2))
+  }
+}
+
+fun join_set_plus_plus(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  tyl1: Array<N.InterElt>,
+  tyl2: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  iter1 = tyl1.values();
+  iter2 = tyl2.values();
+  cur1 = iter1.next();
+  cur2 = iter2.next();
+  result = mutable Vector[];
+  loop {
+    (cur1, cur2) match {
+    | (None(), _)
+    | (_, None()) ->
+      break (acc, result.toArray())
+    | (Some(elt1), Some(elt2)) ->
+      compare_set_elt(elt1, elt2) match {
+      | EQ() ->
+        allValid =
+          validConditions(next_id, env, acc, elt1) &&
+          validConditions(next_id, env, acc, elt2);
+        if (allValid) {
+          conditions = satisfyConditions(elt1.conditions, elt2.conditions);
+          join_set_elt_opt(next_id, env, acc, elt1, elt2, conditions) match {
+          | None() -> void
+          | Some((nacc, set_elt)) ->
+            !acc = nacc;
+            result.push(set_elt)
+          }
+        };
+        !cur1 = iter1.next();
+        !cur2 = iter2.next()
+      | LT() -> !cur1 = iter1.next()
+      | GT() -> !cur2 = iter2.next()
+      }
+    }
+  }
+}
+
+/* KeepMultiple
+ * For uniq_join when making a Tset, it is safe to keep multiple condition
+ * lists, where only list of conditions need to be satisfied
+ * This is safe since the class must be internally consistent and satisfiable
+ * with only one of the lists of conditions
+ * BUT this is not true in the minus/minus case, since the conditions are
+ * coming from different classes
+ */
+fun uniqElt(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  elt1: N.InterElt,
+  elt2: N.InterElt,
+  keepMultiple: Bool,
+): (Acc, ?N.InterElt) {
+  (elt1.conditions, elt2.conditions) match {
+  | (N.ECConditions(conds1), N.ECConditions(conds2)) if (keepMultiple) ->
+    conds = N.ECConditions(conds1.concat(conds2));
+    (!acc, elt) = join_set_elt(next_id, env, acc, elt1, elt2, conds);
+    (acc, Some(elt))
+  | _ ->
+    elt1Valid = validConditions(next_id, env, acc, elt1);
+    elt2Valid = validConditions(next_id, env, acc, elt2);
+    // Add elt if either conditions satisified, but take targs only from the
+    // valid elts
+    (elt1Valid, elt2Valid) match {
+    | (true, true) ->
+      conds = satisfyConditions(elt1.conditions, elt2.conditions);
+      (!acc, elt) = join_set_elt(next_id, env, acc, elt1, elt2, conds);
+      (acc, Some(elt))
+    | (true, false) ->
+      !elt1.conditions = satisfyCondition(elt1.conditions);
+      (acc, Some(elt1))
+    | (false, true) ->
+      !elt2.conditions = satisfyCondition(elt2.conditions);
+      (acc, Some(elt2))
+    | (false, false) -> (acc, None())
+    }
+  }
+}
+fun uniq_join(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  a: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  result = mutable Vector[];
+  iter = a.values();
+  cur1 = iter.next();
+  cur2 = iter.next();
+  loop {
+    (cur1, cur2) match {
+    | (None(), Some _) -> invariant_violation("assert false")
+    | (None(), None()) -> break (acc, result.toArray())
+    | (Some(elt), None()) ->
+      result.push(elt);
+      break (acc, result.toArray())
+    | (Some(elt1), Some(elt2)) ->
+      if (elt1.name.i1 == elt2.name.i1) {
+        (!acc, eltOpt) = uniqElt(next_id, env, acc, elt1, elt2, true);
+        eltOpt match {
+        | None() ->
+          !cur1 = cur2;
+          !cur2 = iter.next()
+        | Some(joined) ->
+          result.push(joined);
+          !cur1 = Some(joined);
+          !cur2 = iter.next()
+        }
+      } else {
+        result.push(elt1);
+        !cur1 = cur2;
+        !cur2 = iter.next()
+      }
+    }
+  }
+}
+
+fun join_set_minus_minus(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  tyl1: Array<N.InterElt>,
+  tyl2: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  result = mutable Vector[];
+  iter1 = tyl1.values();
+  iter2 = tyl2.values();
+  cur1 = iter1.next();
+  cur2 = iter2.next();
+  loop {
+    (cur1, cur2) match {
+    | (None(), None()) -> break (acc, result.toArray())
+    | (Some(elt), None())
+    | (None(), Some(elt)) ->
+      // Drop any unsatisified conditional elements
+      rem = cur1 match {
+      | None() -> Array[elt].values().concat(iter2)
+      | Some _ -> Array[elt].values().concat(iter1)
+      };
+      rem
+        .filter(elt -> validConditions(next_id, env, acc, elt))
+        .map(elt -> elt with {conditions => satisfyCondition(elt.conditions)})
+        .each(result.push);
+      break (acc, result.toArray())
+    | (Some(elt1), Some(elt2)) ->
+      compare_set_elt(elt1, elt2) match {
+      | EQ() ->
+        // add if either conditions satsified
+        (!acc, maybeJoined) = uniqElt(next_id, env, acc, elt1, elt2, false);
+        maybeJoined.each(result.push);
+        !cur1 = iter1.next();
+        !cur2 = iter2.next()
+      | LT() ->
+        // add only if satsified conditions
+        if (validConditions(next_id, env, acc, elt1)) {
+          !elt1.conditions = satisfyCondition(elt1.conditions);
+          result.push(elt1)
+        };
+        !cur1 = iter1.next()
+      | GT() ->
+        // add only if satsified conditions
+        if (validConditions(next_id, env, acc, elt2)) {
+          !elt2.conditions = satisfyCondition(elt2.conditions);
+          result.push(elt2)
+        };
+        !cur2 = iter2.next()
+      }
+    }
+  }
+}
+
+fun join_set_minus_plus(
+  next_id: () -> Int,
+  exn: Exception,
+  env: Env,
+  acc: Acc,
+  mtyl: Array<N.InterElt>,
+  ptyl: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  mIter = mtyl.values();
+  pIter = ptyl.values();
+  mCur = mIter.next();
+  pCur = pIter.next();
+  result = mutable Vector[];
+  loop {
+    (mCur, pCur) match {
+    | (None(), _) -> break (acc, result.toArray())
+    | (Some(mElt), None()) ->
+      // The end of the minus list needs to be empty or conditional
+      conditional = minus -> minus.isConditional();
+      allConditional = conditional(mElt) && mIter.all(conditional);
+      if (allConditional) break (acc, result.toArray()) else throw exn
+    | (Some(minus), Some(plus)) ->
+      compare_set_elt(minus, plus) match {
+      | EQ() ->
+        minusValid = validConditions(next_id, env, acc, minus);
+        plusValid = validConditions(next_id, env, acc, plus);
+        // If the minus isn't satisfied, its safe to drop
+        // If the minus is satisfied, and the plus isn't,
+        //   and the minus isn't conditional, throw
+        // Otherwise join
+        (minusValid, plusValid) match {
+        | (true, false) if (!minus.isConditional()) -> throw exn
+        | (true, true) ->
+          conds = satisfyConditions(minus.conditions, plus.conditions);
+          (!acc, joined) = join_set_elt(next_id, env, acc, minus, plus, conds);
+          result.push(joined)
+        | _ -> void
+        };
+        !mCur = mIter.next();
+        !pCur = pIter.next()
+      // Safe to drop from the minus side if it is conditional, always safe to
+      // drop from plus
+      | LT() if (minus.isConditional()) -> !mCur = mIter.next()
+      | GT() -> !pCur = pIter.next()
+      | _ -> throw exn
+      }
+    }
+  }
+}
+
+fun join_set_inv(
+  next_id: () -> Int,
+  exn: Exception,
+  env: Env,
+  acc: Acc,
+  tyl1: Array<N.InterElt>,
+  tyl2: Array<N.InterElt>,
+): (Acc, Array<N.InterElt>) {
+  iter1 = tyl1.values();
+  iter2 = tyl2.values();
+  cur1 = iter1.next();
+  cur2 = iter2.next();
+  result = mutable Vector[];
+  loop {
+    (cur1, cur2) match {
+    | (None(), None()) -> break (acc, result.toArray())
+    | (None(), Some(elt))
+    | (Some(elt), None()) ->
+      // The end of the longer list needs to be empty or conditional
+      rem = cur1 match {
+      | None() -> Array[elt].values().concat(iter2)
+      | Some _ -> Array[elt].values().concat(iter1)
+      };
+      allConditional = rem.all(elt -> elt.isConditional());
+      if (allConditional) break (acc, result.toArray()) else throw exn
+    | (Some(elt1), Some(elt2)) ->
+      compare_set_elt(elt1, elt2) match {
+      | EQ() ->
+        // Both conditions need to be valid to keep
+        allValid =
+          validConditions(next_id, env, acc, elt1) &&
+          validConditions(next_id, env, acc, elt2);
+        if (allValid) {
+          conds = satisfyConditions(elt1.conditions, elt2.conditions);
+          (!acc, joined) = join_set_elt(next_id, env, acc, elt1, elt2, conds);
+          result.push(joined)
+        };
+        !cur1 = iter1.next();
+        !cur2 = iter2.next()
+      // Always safe to drop conditional elements,
+      // because only traits can be conditional, so it only affects constraints
+      | _ if (elt1.isConditional()) -> !cur1 = iter1.next()
+      | _ if (elt2.isConditional()) -> !cur2 = iter2.next()
+      | _ -> throw exn
+      }
+    }
+  }
+}
+
+fun join_set_elt_opt(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  elt1: N.InterElt,
+  etl2: N.InterElt,
+  conditions: N.InterEltConditions,
+): ?(Acc, N.InterElt) {
+  try {
+    Some(join_set_elt(next_id, env, acc, elt1, etl2, conditions))
+  } catch {
+  | FrozenPreservation _
+  | MutPreservation _
+  | Join _ ->
+    None()
+  }
+}
+
+fun join_set_elt(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  elt1: N.InterElt,
+  elt2: N.InterElt,
+  conditions: N.InterEltConditions,
+): (Acc, N.InterElt) {
+  pos = elt1.name.i0;
+  assert(compare(elt1.name.i1, elt2.name.i1) is EQ());
+  (!acc, targs) = join_list(next_id, env, pos, acc, elt1.targs, elt2.targs);
+  (acc, elt1 with {targs, conditions})
+}
+
+// if either are no conditions, stay no conditions
+// Conditions/Satisfied become Satisfied
+fun satisfyConditions(
+  c1: N.InterEltConditions,
+  c2: N.InterEltConditions,
+): N.InterEltConditions {
+  (c1, c2) match {
+  | (N.ECNoConditions(), _)
+  | (_, N.ECNoConditions()) ->
+    N.ECNoConditions()
+  | _ -> N.ECSatisfied()
+  }
+}
+
+// No conditions stay no conditions
+// Conditions/Satisfied become Satisfied
+fun satisfyCondition(c: N.InterEltConditions): N.InterEltConditions {
+  c match {
+  | N.ECNoConditions() -> N.ECNoConditions()
+  | _ -> N.ECSatisfied()
+  }
+}
+
+/*
+ * In the past, these checks for valid conditional trait usage used to be done
+
+ * BUT in some cases, we need to join the initial parts of the Tset in order
+ * check the conditions
+ * Imagine join +None<alpha> +Some<String>
+ * we need to know alpha=String before checking the conditions
+ */
+fun validConditions(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  elt: N.InterElt,
+): Bool {
+  elt.conditions match {
+  | N.ECNoConditions()
+  | N.ECSatisfied() ->
+    true
+  | N.ECConditions(conditions) ->
+    conditions.any(inner -> validConditionsList(next_id, env, acc, inner))
+  }
+}
+
+// Conditions are valid if
+// - there are no conditions
+// - they have no unresolved tvars
+// - all constraints are satisfied, i.e. t1 <: t2 & ... & tn
+fun validConditionsList(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  conditions: Array<N.Whenclause>,
+): Bool {
+  if (conditions.isEmpty()) return true;
+
+  if (hasUnresolvedConditions(acc.subst, conditions)) {
+    false
+  } else {
+    conditions.all(cond ->
+      filter_condition(next_id, env, acc, cond) match {
+      | Some(nacc) ->
+        !acc = nacc;
+        true
+      | None() -> false
+      }
+    )
+  }
+}
+
+// TODO during the try catch we might generate strings for error messages
+// This is unnecessary work since we will just catch them
+fun filter_condition(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  condition: (N.Type_, Array<N.Type_>),
+): ?Acc {
+  !env.solving_constraints = true;
+  (lhs, rhss) = condition;
+  !lhs = promote(env, A.Vplus(), acc.subst, lhs);
+  try {
+    for (rhs in rhss) {
+      !rhs = promote(env, A.Vminus(), acc.subst, rhs);
+      (!acc, _) = join(next_id, env, acc, lhs, rhs);
+    };
+
+    if (acc.constraints.isEmpty()) Some(acc) else None()
+  } catch {
+  // Note, doesn't catch .Exception
+  | Exception _ -> None()
+  }
+}
+
+fun join_set_tparams(
+  var1: N.Variance,
+  tparams1: SMap<String>,
+  var2: N.Variance,
+  tparams2: SMap<String>,
+): SMap<String> {
+  (var1, var2) match {
+  | (A.Vplus(), A.Vplus()) -> join_set_tparams_plus_plus(tparams1, tparams2)
+  | (A.Vminus(), A.Vminus()) -> join_set_tparams_minus_minus(tparams1, tparams2)
+  | (A.Vplus(), A.Vminus()) -> join_set_tparams_minus_plus(tparams2, tparams1)
+  | (A.Vminus(), A.Vplus()) -> join_set_tparams_minus_plus(tparams2, tparams1)
+  | (A.Vnone(), A.Vplus())
+  | (A.Vplus(), A.Vnone())
+  | (A.Vnone(), A.Vminus())
+  | (A.Vminus(), A.Vnone())
+  | (A.Vnone(), A.Vnone()) ->
+    join_set_tparams_inv(tparams1, tparams2)
+  }
+}
+
+fun join_set_tparams_plus_plus(
+  tparams1: SMap<String>,
+  tparams2: SMap<String>,
+): SMap<String> {
+  if (tparams1.isEmpty() || tparams2.isEmpty()) {
+    SortedMap[]
+  } else {
+    tparams1.merge(tparams2)
+  }
+}
+
+fun join_set_tparams_minus_minus(
+  tparams1: SMap<String>,
+  tparams2: SMap<String>,
+): SMap<String> {
+  tparams1.merge(tparams2)
+}
+
+fun join_set_tparams_minus_plus(
+  mtparams: SMap<String>,
+  ptparams: SMap<String>,
+): SMap<String> {
+  if (is_subset_eq(mtparams, ptparams)) {
+    mtparams
+  } else {
+    SortedMap[]
+  }
+}
+
+fun join_set_tparams_inv(
+  tparams1: SMap<String>,
+  tparams2: SMap<String>,
+): SMap<String> {
+  if (is_set_eq(tparams1, tparams2)) {
+    tparams1
+  } else {
+    SortedMap[]
+  }
+}
+
+fun is_subset_eq(ssub: SMap<String>, ssuper: SMap<String>): Bool {
+  ssub.size() <= ssuper.size() && ssub.all((i, _) -> ssuper.containsKey(i))
+}
+
+fun is_set_eq(s1: SMap<String>, s2: SMap<String>): Bool {
+  s1.eqBy(s2, (_, _) -> true)
+}
+
+fun join_into_new_tvar(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  tvar1: N.Type_,
+  other_ty: N.Type_,
+): (Acc, N.Type_) {
+  tvar_id = next_id();
+  !acc.subst = acc.subst.set(tvar_id, other_ty);
+  tvar2 = (other_ty.i0, N.Tvar(tvar_id));
+  join(next_id, env, acc, tvar1, tvar2)
+}
+
+fun join_tvar(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  init_tvar1: Int,
+  init_tvar2: Int,
+): (Acc, N.Type_) {
+  /* Tie together the chains of type variables instead of individual ones
+   * Example
+   * a1 \
+   *     -> b1
+   * a2 /
+   *
+   * a3 \
+   *     -> b2
+   * a4 /
+   *
+   * If we join a2 and a3, we REALLY want to join b1 and b2 instead
+   */
+  (n1, tyopt1) = flatten_tvar(acc.subst, init_tvar1);
+  (n2, tyopt2) = flatten_tvar(acc.subst, init_tvar2);
+  same_tvar = n1 == n2;
+  (tyopt1, tyopt2) match {
+  | (Some((_, N.Tvar _)), _)
+  | (_, Some((_, N.Tvar _))) ->
+    invariant_violation("bad flatten_tvar")
+
+  // Already pointing to same tvar
+  | (None(), _) if (same_tvar) -> (acc, (pos, N.Tvar(n1)))
+  | (Some(ty), _) if (same_tvar) -> (acc, ty)
+
+  // The end of each tvar chain points to nothing, so just add a tvar
+  | (None(), None()) ->
+    tvar = (pos, N.Tvar(next_id()));
+    (fwd_tvar(fwd_tvar(acc, n2, tvar), n1, tvar), tvar)
+  // The end of each tvar chain points to a type, so tie the chains together
+  // and join the types
+  | _ ->
+    tvar_id = next_id();
+    tvar = (pos, N.Tvar(tvar_id));
+    ty1 = tyopt1 match {
+    | None() -> (pos, N.Tanything())
+    | Some(ty) -> ty
+    };
+    ty2 = tyopt2 match {
+    | None() -> (pos, N.Tanything())
+    | Some(ty) -> ty
+    };
+    !acc = fwd_tvar(acc, n1, tvar);
+    !acc = fwd_tvar(acc, n2, tvar);
+    (!acc, ty) = join(next_id, env, acc, ty1, ty2);
+    /* did the new_tvar already get bound? */
+    acc.subst.maybeGet(tvar_id) match {
+    | None() -> (acc with {subst => acc.subst.set(tvar_id, ty)}, ty)
+    | Some((pos1, _)) -> throw RecursiveType(pos1)
+    }
+  }
+}
+
+/* add id => tvar to subst, and replace all n => id with n => tvar
+ * to keep forwarding chains short.
+ */
+fun fwd_tvar(acc: Acc, id: Int, tvar: N.Type_): Acc {
+  // using foldl with set instead of map to reduce allocation
+  subst = acc.subst.reduce(
+    (m, cur_id, ty) ->
+      ty match {
+      | (_, N.Tvar(id1)) if (id == id1) -> m.set(cur_id, tvar)
+      | _ -> m
+      },
+    acc.subst,
+  );
+  // manually set id and tvar incase subst is empty
+  acc with {subst => subst.set(id, tvar)}
+}
+
+/* given a tvar, return the tvar at the end of its subst chain
+   or None, if this id substs directly to a concrete type or is unmapped
+   ("root" in the union-find sense)
+ */
+fun tvar_root(subst: IMap<N.Type_>, id: Int): ?N.Type_ {
+  subst.maybeGet(id) match {
+  | Some(ty) ->
+    N.unfold_tnamed(ty) match {
+    | (_, N.Tvar(id2)) ->
+      tvar_root(subst, id2) match {
+      | t @ Some(_) -> t
+      | None() -> Some(ty)
+      }
+    | _ -> None()
+    }
+  | None() -> None()
+  }
+}
+
+fun flatten_tvar(subst: IMap<N.Type_>, id: Int): (Int, ?N.Type_) {
+  subst.maybeGet(id) match {
+  | Some(ty) ->
+    N.unfold_tnamed(ty) match {
+    | (_, N.Tvar(id2)) -> flatten_tvar(subst, id2)
+    | _ -> (id, Some(ty))
+    }
+  | None() -> (id, None())
+  }
+}
+
+fun join_array(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  a1: Array<N.Type_>,
+  a2: Array<N.Type_>,
+): (Acc, Array<N.Type_>) {
+  arity1 = a1.size();
+  arity2 = a2.size();
+  if (arity1 != arity2) {
+    throw TypeArityMismatch(pos, arity1, arity2)
+  };
+  joineda = a1.zipWith(a2, (x1, x2) -> {
+    (!acc, x) = join(next_id, env, acc, x1, x2);
+    x
+  });
+  (acc, joineda)
+}
+
+fun join_list(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  l1: Array<N.Type_>,
+  l2: Array<N.Type_>,
+): (Acc, Array<N.Type_>) {
+  arity1 = l1.size();
+  arity2 = l2.size();
+  if (arity1 != arity2) {
+    throw TypeArityMismatch(pos, arity1, arity2)
+  };
+  join_list_(next_id, env, acc, l1, l2)
+}
+
+fun join_list_(
+  next_id: () -> Int,
+  env: Env,
+  acc: Acc,
+  l1: Array<N.Type_>,
+  l2: Array<N.Type_>,
+): (Acc, Array<N.Type_>) {
+  l = l1.zipWith(l2, (x1, x2) -> {
+    (!acc, x) = join(next_id, env, acc, x1, x2);
+    x
+  });
+  (acc, l)
+}
+
+fun join_funs(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  p1: (Parameters<N.Type_>, N.Type_),
+  p2: (Parameters<N.Type_>, N.Type_),
+): (Acc, Parameters<N.Type_>, N.Type_) {
+  (fty_params1, fty_return1) = p1;
+  (fty_params2, fty_return2) = p2;
+  (!acc, fty_params) = join_params(
+    next_id,
+    env,
+    pos,
+    acc,
+    fty_params1,
+    fty_params2,
+  );
+  (!acc, fty_return) = join(next_id, env, acc, fty_return1, fty_return2);
+  (acc, fty_params, fty_return)
+}
+
+fun join_params(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  fty_params1: Parameters<N.Type_>,
+  fty_params2: Parameters<N.Type_>,
+): (Acc, Parameters<N.Type_>) {
+  (fty_params1, fty_params2) match {
+  | (Positional(tyl1), Positional(tyl2)) ->
+    (!acc, tyl) = join_array(next_id, env, pos, acc, tyl1, tyl2);
+    (acc, Positional(tyl))
+  | (Named(m1), Named(m2)) ->
+    l1 = m1.reduce(
+      (acc: List<(N.Name, N.Type_)>, x: N.Name, y: N.Type_) ->
+        List.Cons((x, y), acc),
+      (List[] : List<(N.Name, N.Type_)>),
+    );
+    l2 = m2.reduce(
+      (acc: List<(N.Name, N.Type_)>, x: N.Name, y: N.Type_) ->
+        List.Cons((x, y), acc),
+      (List[] : List<(N.Name, N.Type_)>),
+    );
+    (!acc, l) = join_named_params(next_id, env, pos, acc, l1, l2);
+    m = l.foldl(
+      ((z, p) -> {
+        (x, y) = p;
+        z.add(x, y)
+      }),
+      UMap[],
+    );
+    (acc, Named(m))
+  | _ -> invariant_violation("TODO incompatible fun parameter kinds")
+  }
+}
+
+fun join_named_params(
+  next_id: () -> Int,
+  env: Env,
+  pos: FileRange,
+  acc: Acc,
+  l1: List<((FileRange, String), N.Type_)>,
+  l2: List<((FileRange, String), N.Type_)>,
+): (Acc, List<((FileRange, String), N.Type_)>) {
+  (l1, l2) match {
+  | (List.Nil(), List.Nil()) -> (acc, List[])
+  | (List.Cons((_, _), _), List.Nil())
+  | (List.Nil(), List.Cons((_, _), _)) ->
+    invariant_violation("TODO incompatible fun params")
+  | (List.Cons((name1, ty1), rl1), List.Cons((name2, ty2), rl2)) ->
+    if (name1.i1 != name2.i1) {
+      invariant_violation("TODO error incompatible fun params")
+    };
+    (!acc, ty) = join(next_id, env, acc, ty1, ty2);
+    (!acc, rl) = join_named_params(next_id, env, pos, acc, rl1, rl2);
+    (acc, List.Cons((name1, ty), rl))
+  }
+}
+
+// TODO Kill me
+fun is_not_nullable(env: Env, ty_: N.Type_): Bool {
+  (_, ty) = ty_;
+  ty match {
+  | N.Tdefault _
+  | N.Tlambda _
+  | N.Tanything()
+  | N.Tfrozen _
+  | N.Tvar _ ->
+    invariant_violation("should already be handled")
+  | N.TnonNullable _
+  | N.Tawaitable _
+  | N.Tfun _ ->
+    true
+  | N.Tparam(_, _, id, _) ->
+    tyl = env.tparam_constraints.findUppers(id).filter(ty ->
+      ty match {
+      | (_, N.Tfrozen _) -> false
+      | _ -> true
+      }
+    );
+    !tyl.isEmpty() && tyl.all(ty -> is_not_nullable(env, ty))
+  | N.Tpromoted(_, _, _, _, n, _)
+  | N.Tapply(_, n, _) ->
+    is_not_nullable_class(n)
+  | N.Tset(_, _, _, elts) -> elts.all(p -> is_not_nullable_elt(p))
+  | N.Tnamed(_, inner) -> is_not_nullable(env, inner)
+  }
+}
+
+fun is_not_nullable_elt(elt: N.InterElt): Bool {
+  is_not_nullable_class(elt.name)
+}
+
+fun is_not_nullable_class(p: N.Name): Bool {
+  (_, n) = p;
+  n match {
+  | "Box" | "Null" | "Nullable" -> false
+  | _ -> true
+  }
+}
+
+private fun verify_mutability_preservation_tpromoted(
+  env: Env,
+  acc: Acc,
+  child_ty: (FileRange, N.Tpromoted),
+  joined_ty: (FileRange, N.Tpromoted),
+): Acc {
+  child_mode = child_ty.i1.mode;
+  child_name = child_ty.i1.name;
+  child_tyl = child_ty.i1.targs;
+  new_mode = joined_ty.i1.mode;
+  new_name = joined_ty.i1.name;
+  (child_mode, new_mode) match {
+  | _ if (child_name.i1 == new_name.i1) -> acc
+  | (N.Mmutable _, N.Mmutable _)
+  | (_, N.Mreadonly _) ->
+    acc
+  | (N.Mchilled(), N.Mchilled()) ->
+    CheckMutPreservation(env, child_ty, joined_ty, SSet[new_name.i1]).point(
+      acc,
+      child_name,
+      child_tyl,
+    )
+  | _ -> invariant_violation("ICE bad mode join in mut preservation tpromoted")
+  }
+}
+
+private fun verify_mutability_preservation_tset(
+  env: Env,
+  acc: Acc,
+  child_ty: (FileRange, N.Tset),
+  joined_ty: (FileRange, N.Tset),
+): Acc {
+  child_mode = child_ty.i1.mode;
+  child_elts = child_ty.i1.elts;
+  new_mode = joined_ty.i1.mode;
+  new_elts = joined_ty.i1.elts;
+  (child_mode, new_mode) match {
+  | (N.Mmutable _, N.Mmutable _)
+  | (_, N.Mreadonly _) ->
+    acc
+  | (N.Mchilled(), N.Mchilled()) ->
+    parents = new_elts.values().map(e -> e.name.i1) |> SSet::createFromIterator;
+    CheckMutPreservation(env, child_ty, joined_ty, parents).sets(
+      acc,
+      child_elts,
+    )
+  | _ -> invariant_violation("ICE bad mode join in mut preservation tpromoted")
+  }
+}
+
+private class CheckMutPreservation(
+  env: Env,
+  child_ty: N.Type_,
+  joined_ty: N.Type_,
+  parents: SSet,
+) {
+  fun sets(acc: Acc, child_elts: Array<N.InterElt>): Acc {
+    mk_map = acc ->
+      child_elts.reduce(
+        (fm, elt) -> fm.merge(this.point_(acc, elt.name, elt.targs)),
+        SortedMap[],
+      );
+    this.check(acc, mk_map)
+  }
+
+  fun point(acc: Acc, child_name: N.Name, child_tyl: Array<N.Type_>): Acc {
+    if (this.parents.contains(child_name.i1)) return acc;
+    this.check(acc, acc -> this.point_(acc, child_name, child_tyl))
+  }
+
+  fun point_(
+    acc: Acc,
+    name: N.Name,
+    tyl: Array<N.Type_>,
+  ): IMap<TU.MutPreservationConstraint> {
+    cd = SkipNaming.getClass(name);
+    tyl
+      .values()
+      .zip(cd.tparams.values().zip(cd.tparam_parents.values()))
+      .reduce(
+        (m, tyTpVis) -> {
+          (ty, (tp, vis)) = tyTpVis;
+          this.tparam(acc, m, ty, tp, vis)
+        },
+        SortedMap[],
+      )
+  }
+
+  private fun check(
+    acc: Acc,
+    mk_map: Acc -> IMap<TU.MutPreservationConstraint>,
+  ): Acc {
+    tconstraints = this.env.tparam_constraints;
+    subst = acc.subst;
+    is_frozen_map(tconstraints, subst, this.joined_ty) match {
+    | None() ->
+      is_frozen_map(tconstraints, subst, this.child_ty) match {
+      | None() ->
+        acc // both child and parent are not frozen
+      | Some _ -> throw FrozenPreservation(this.child_ty, this.joined_ty)
+      }
+    | Some(parent_m) ->
+      child_m = mk_map(acc);
+      not_visible_by_parent = child_m.filter((i, _) ->
+        !parent_m.containsKey(i)
+      );
+      constraints = not_visible_by_parent.reduce(
+        (constrs, _, constr) -> constrs.add_contraint(constr),
+        acc.constraints,
+      );
+      acc with {constraints}
+    }
+  }
+
+  private fun tparam(
+    acc: Acc,
+    m: IMap<TU.MutPreservationConstraint>,
+    targ_ty: N.Type_,
+    tp: N.Type_parameter,
+    visible: SSet,
+  ): IMap<TU.MutPreservationConstraint> {
+    // the type is still visible when upcast to the parents,
+    // no preservation check needed
+    if (visible.any(this.parents.contains)) return m;
+
+    is_frozen_map(this.env.tparam_constraints, acc.subst, targ_ty) match {
+    | None() ->
+      throw MutPreservation(this.child_ty, this.joined_ty, targ_ty, tp)
+    | Some(m2) ->
+      m2_constraints = m2.map((_, tv) ->
+        TU.MutPreservationConstraint(
+          this.child_ty,
+          this.joined_ty,
+          targ_ty,
+          tp,
+          tv,
+        )
+      );
+      m.merge(m2_constraints)
+    }
+  }
+}
+
+private fun join_contra_tfrozen(
+  env: Env,
+  acc: Acc,
+  tfrozen: (FileRange, N.Tfrozen),
+  ty: N.Type_,
+): (Acc, N.Type_) {
+  is_frozen_(env, acc, tfrozen, ty) match {
+  | None() -> throw Join(ty, tfrozen)
+  | Some(nacc) -> (nacc, ty)
+  }
+}
+
+private fun is_frozen(env: Env, acc: Acc, ty: N.Type_): ?Acc {
+  is_frozen_(env, acc, (ty.i0, N.Tfrozen(A.Vminus())), ty)
+}
+
+private fun is_frozen_(
+  env: Env,
+  acc: Acc,
+  tfrozen: (FileRange, N.Tfrozen),
+  ty: N.Type_,
+): ?Acc {
+  tfrozenl = Array[tfrozen];
+  is_frozen_map(env.tparam_constraints, acc.subst, ty).map(m -> {
+    constraints = m.reduce(
+      (constrs, _, tvar) -> constrs.add(ty.i0, tvar, tfrozenl),
+      acc.constraints,
+    );
+    acc with {constraints}
+  })
+}
+
+private fun is_frozen_map(
+  tconstraints: TU.TparamConstraints,
+  subst: IMap<N.Type_>,
+  ty: N.Type_,
+): ?IMap<(FileRange, N.Tvar)> {
+  ty.i1 match {
+  | tvar @ N.Tvar(id) ->
+    subst.maybeGet(id) match {
+    | None() -> Some(SortedMap[id => (ty.i0, tvar)])
+    | Some(inner) -> is_frozen_map(tconstraints, subst, inner)
+    }
+  | N.Tdefault(inner)
+  | N.Tlambda(_, _, _, inner)
+  | N.Tnamed(_, inner) ->
+    is_frozen_map(tconstraints, subst, inner)
+
+  // Normal cases
+  | N.Tfrozen _ -> Some(SortedMap[])
+
+  | N.Tpromoted(_, N.Mchilled(), _, _, _, targs)
+  | N.Tapply(
+    N.Mchilled(),
+    _,
+    targs,
+  ) if (targs.isEmpty()) ->
+    Some(SortedMap[])
+
+  | N.Tpromoted(_, N.Mchilled(), _, _, _, tyl)
+  | N.Tapply(N.Mchilled(), _, tyl) ->
+    some: ?IMap<(FileRange, N.Tvar)> = Some(SortedMap[]);
+    tyl.foldl(
+      (fm, x) ->
+        fm.flatMap(m1 ->
+          is_frozen_map(tconstraints, subst, x).map(m2 -> m1.merge(m2))
+        ),
+      some,
+    )
+  | N.Tset(_, N.Mchilled(), _, elts) ->
+    some: ?IMap<(FileRange, N.Tvar)> = Some(SortedMap[]);
+    elts.foldl(
+      (fmopt, elt) ->
+        fmopt match {
+        | None() -> fmopt
+        | Some _ ->
+          elt.targs.foldl(
+            (fm2, x) ->
+              fm2.flatMap(m2 ->
+                is_frozen_map(tconstraints, subst, x).map(m1 -> m1.merge(m2))
+              ),
+            fmopt,
+          )
+        },
+      some,
+    )
+
+  // Constraint cases
+  | N.Tanything()
+  | N.TnonNullable _ ->
+    None()
+
+  | N.Tawaitable _ -> None()
+
+  | N.Tpromoted(_, N.MnotFrozen _, _, _, _, _)
+  | N.Tapply(N.MnotFrozen _, _, _)
+  | N.Tset(_, N.MnotFrozen _, _, _) ->
+    None()
+
+  | N.Tparam(Some _, _, _, _) -> Some(SortedMap[])
+
+  | N.Tparam(_, _, id, _) -> is_frozen_map_tparam(tconstraints, subst, id)
+
+  | N.Tfun(_, mods, _, _, _) ->
+    if (is_frozen_tfun_modifiers(mods)) Some(SortedMap[]) else None()
+  }
+}
+
+fun is_frozen_tfun_modifiers(mods: N.Tfun_modifiers): Bool {
+  (purity, _) = mods;
+  invariant(!purity.isEmpty(), "impposible tfun");
+  purity[0] is N.Fpure()
+}
+
+private fun is_frozen_map_tparam(
+  tconstraints: TU.TparamConstraints,
+  subst: IMap<N.Type_>,
+  id: String,
+): ?IMap<(FileRange, N.Tvar)> {
+  frozen_bounds = tconstraints
+    .findUppers(id)
+    .map(ty -> {
+      res = is_frozen_map(tconstraints, subst, ty);
+      res.each(m -> invariant(m.isEmpty(), "ICE tvar in a tparam?"));
+      res
+    })
+    .filter(fm -> fm.isSome());
+  if (frozen_bounds.isEmpty()) None() else Some(SortedMap[])
+}
+
+fun should_freeze_upper(
+  tconstraints: TU.TparamConstraints,
+  subst: IMap<N.Type_>,
+  frozen_: ?FileRange,
+  tparam_id: String,
+): ?FileRange {
+  /* If the tparam was frozen via a freeze,
+   * we must freeze the upper bounds
+   * But if was already 'frozen', freeze or no freeze, we don't need to
+   * freeze the upper bounds */
+  frozen_ match {
+  | Some(_) ->
+    is_frozen_map_tparam(tconstraints, subst, tparam_id) match {
+    | None() ->
+      frozen_ // not frozen yet
+    | Some _ ->
+      None() // already frozen
+    }
+  | _ -> frozen_
+  }
+}
+
+fun maybe_freeze_upper_bound(
+  subst: IMap<N.Type_>,
+  tparam_constraints: TU.TparamConstraints,
+  freeze_upper: ?FileRange,
+  ty: N.Type_,
+): N.Type_ {
+  freeze_upper match {
+  /* If the tparam was frozen via a freeze,
+   * we must freeze the upper bounds */
+  | Some(pos) ->
+    is_frozen_map(tparam_constraints, subst, ty) match {
+    | None() -> freeze(pos, subst, tparam_constraints, ty)
+    | Some(m) ->
+      invariant(m.isEmpty(), "ICE tvar in tparam upper bound?");
+      ty
+    }
+  | _ -> ty
+  }
+}
+
+// If promoting from mutable -> readonly, rerun promotion to remove the invariant
+// restriction on mutable types
+fun maybe_update_tpromoted_variance(
+  env: Env,
+  joined_mode: N.Modality,
+  acc: Acc,
+  tp: (FileRange, N.Tpromoted),
+): (FileRange, N.Tpromoted) {
+  (fr, tp_) = tp;
+  (tp_.mode, joined_mode, tp_.variance) match {
+  | (N.Mmutable _, N.Mreadonly _, A.Vplus())
+  | (N.Mmutable _, N.Mreadonly _, A.Vminus()) ->
+    cd = SkipNaming.getClass(tp_.name);
+    fixed_targs = promote_targs(
+      env,
+      tp_.variance,
+      joined_mode,
+      acc.subst,
+      cd,
+      tp_.targs,
+    );
+    (fr, tp_ with {mode => joined_mode, targs => fixed_targs})
+  | _ -> tp
+  }
+}
+
+// If promoting from mutable -> readonly, rerun promotion to remove the invariant
+// restriction on mutable types
+fun maybe_update_tpromoted_targs_variance(
+  env: Env,
+  joined_mode: N.Modality,
+  orig_mode: N.Modality,
+  var: A.Variance,
+  acc: Acc,
+  n: N.Name,
+  targs: Array<N.Type_>,
+): Array<N.Type_> {
+  (orig_mode, joined_mode, var) match {
+  | (N.Mmutable _, N.Mreadonly _, A.Vplus())
+  | (N.Mmutable _, N.Mreadonly _, A.Vminus()) ->
+    cd = SkipNaming.getClass(n);
+    promote_targs(env, var, joined_mode, acc.subst, cd, targs)
+  | _ -> targs
+  }
+}
+
+// If promoting from mutable -> readonly, rerun promotion to remove the invariant
+// restriction on mutable types
+fun maybe_update_elts_variance(
+  env: Env,
+  joined_mode: N.Modality,
+  orig_mode: N.Modality,
+  var: A.Variance,
+  acc: Acc,
+  elts: Array<N.InterElt>,
+): Array<N.InterElt> {
+  (orig_mode, joined_mode, var) match {
+  | (N.Mmutable _, N.Mreadonly _, A.Vplus())
+  | (N.Mmutable _, N.Mreadonly _, A.Vminus()) ->
+    elts.map(p -> promote_inter_elt(env, var, joined_mode, acc.subst, p))
+  | _ -> elts
+  }
+}
+
+/*****************************************************************************/
+/* Returns true if a type contains an unbound type variable. */
+/*****************************************************************************/
+fun has_unresolved(subst: IMap<N.Type_>, ty_: N.Type_): Bool {
+  (_, ty) = ty_;
+  has_unresolved_(subst, ty)
+}
+
+fun has_unresolved_(subst: IMap<N.Type_>, x: N.Type__): Bool {
+  x match {
+  | N.Tfrozen _
+  | N.TnonNullable _
+  | N.Tanything() ->
+    false
+  | N.Tpromoted(_, _, _, _, _, tyl)
+  | N.Tapply(_, _, tyl) ->
+    has_unresolved_array(subst, tyl)
+  | N.Tfun(_, _, _, params, rty) ->
+    has_unresolved_parameters(subst, params) || has_unresolved(subst, rty)
+  | N.Tparam _ -> false
+  | N.Tvar(tvar_id) ->
+    subst.maybeGet(tvar_id) match {
+    | None() -> true
+    | Some(ty) -> has_unresolved(subst, ty)
+    }
+  | N.Tawaitable(_, ty)
+  | N.Tlambda(_, _, _, ty)
+  | N.Tdefault(ty)
+  | N.Tnamed(_, ty) ->
+    has_unresolved(subst, ty)
+  | N.Tset(_, _, _, interl) -> has_unresolved_inter(subst, interl)
+  }
+}
+
+fun has_unresolved_array(subst: IMap<N.Type_>, tyl: Array<N.Type_>): Bool {
+  tyl.any(p -> has_unresolved(subst, p))
+}
+
+fun has_unresolved_parameters(
+  subst: IMap<N.Type_>,
+  x: Parameters<N.Type_>,
+): Bool {
+  x match {
+  | Positional(tya) -> tya.any(ty -> has_unresolved(subst, ty))
+  | Named(tym) -> tym.any((_, ty) -> has_unresolved(subst, ty))
+  }
+}
+
+fun has_unresolved_inter(subst: IMap<N.Type_>, elt_l: Array<N.InterElt>): Bool {
+  elt_l.any(p -> has_unresolved_inter_elt(subst, p))
+}
+
+fun has_unresolved_inter_elt(subst: IMap<N.Type_>, elt: N.InterElt): Bool {
+  has_unresolved_array(subst, elt.targs)
+}
+
+fun hasUnresolvedConditions(
+  subst: IMap<N.Type_>,
+  conditions: Array<N.Whenclause>,
+): Bool {
+  conditions.any(wc ->
+    has_unresolved(subst, wc.i0) || wc.i1.any(t -> has_unresolved(subst, t))
+  )
+}

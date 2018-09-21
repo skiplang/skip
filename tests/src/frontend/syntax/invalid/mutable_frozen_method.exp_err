@@ -1,0 +1,6 @@
+File "./syntax/invalid/mutable_frozen_method.sk", line 2, characters 3-16:
+Invalid modifiers. Methods cannot be both 'mutable' and 'frozen'
+1 | class C() {
+2 |   frozen mutable fun m(): String { "Fail" }
+  |   ^^^^^^^^^^^^^^
+3 | }

@@ -1,0 +1,165 @@
+base class A {
+  static overridable fun f(): String {
+    "A"
+  }
+}
+
+base class B extends A {
+  static overridable fun f(): String {
+    "B"
+  }
+}
+
+class C() extends B {
+  static fun f(): String {
+    "C"
+  }
+}
+
+// These just inherit A's method.
+base class D extends A
+class E() extends D
+
+@no_inline
+fun callA1(x: Base<A>): String {
+  x::f()
+}
+@no_inline
+fun callA2(x: Class<A>): String {
+  x::f()
+}
+@no_inline
+fun callA3(x: Concrete<A>): String {
+  x::f()
+}
+@no_inline
+fun callB1(x: Base<B>): String {
+  x::f()
+}
+@no_inline
+fun callB2(x: Class<B>): String {
+  x::f()
+}
+@no_inline
+fun callB3(x: Concrete<B>): String {
+  x::f()
+}
+@no_inline
+fun callC2(x: Class<C>): String {
+  x::f()
+}
+@no_inline
+fun callC3(x: Concrete<C>): String {
+  x::f()
+}
+@no_inline
+fun callD1(x: Base<D>): String {
+  x::f()
+}
+@no_inline
+fun callD2(x: Class<D>): String {
+  x::f()
+}
+@no_inline
+fun callD3(x: Concrete<D>): String {
+  x::f()
+}
+@no_inline
+fun callE2(x: Class<E>): String {
+  x::f()
+}
+@no_inline
+fun callE3(x: Concrete<E>): String {
+  x::f()
+}
+
+// Inlinable
+fun icallA1(x: Base<A>): String {
+  x::f()
+}
+fun icallA2(x: Class<A>): String {
+  x::f()
+}
+fun icallA3(x: Concrete<A>): String {
+  x::f()
+}
+fun icallB1(x: Base<B>): String {
+  x::f()
+}
+fun icallB2(x: Class<B>): String {
+  x::f()
+}
+fun icallB3(x: Concrete<B>): String {
+  x::f()
+}
+fun icallC2(x: Class<C>): String {
+  x::f()
+}
+fun icallC3(x: Concrete<C>): String {
+  x::f()
+}
+fun icallD1(x: Base<D>): String {
+  x::f()
+}
+fun icallD2(x: Class<D>): String {
+  x::f()
+}
+fun icallD3(x: Concrete<D>): String {
+  x::f()
+}
+fun icallE2(x: Class<E>): String {
+  x::f()
+}
+fun icallE3(x: Concrete<E>): String {
+  x::f()
+}
+
+fun main(): void {
+  print_raw(
+    (callA1(A) +
+      icallA1(A) +
+      callA1(B) +
+      icallA1(B) +
+      callA1(D) +
+      icallA1(D) +
+      callA2(A) +
+      icallA2(A) +
+      callA2(B) +
+      icallA2(B) +
+      callA2(C) +
+      icallA2(C) +
+      callA2(D) +
+      icallA2(D) +
+      callA2(E) +
+      icallA2(E) +
+      callA3(C) +
+      icallA3(C) +
+      callA3(E) +
+      icallA3(E) +
+      callB1(B) +
+      icallB1(B) +
+      callB2(B) +
+      icallB2(B) +
+      callB2(C) +
+      icallB2(C) +
+      callB3(C) +
+      icallB3(C) +
+      callC2(C) +
+      icallC2(C) +
+      callC3(C) +
+      icallC3(C) +
+      callD1(D) +
+      icallD1(D) +
+      callD2(D) +
+      icallD2(D) +
+      callD2(E) +
+      icallD2(E) +
+      callD3(E) +
+      icallD3(E) +
+      callE2(E) +
+      icallE2(E) +
+      callE3(E) +
+      icallE3(E) +
+      "\n"),
+  )
+}

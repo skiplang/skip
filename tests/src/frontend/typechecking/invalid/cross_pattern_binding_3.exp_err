@@ -1,0 +1,10 @@
+File "./typechecking/invalid/cross_pattern_binding_3.sk", line 19, characters 5-5:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | X()
+17 |   | XSome(x)
+18 |   | YSome(x) ->
+19 |     x match {
+   |     ^^^^^^^^^
+20 |     | Y() -> void
+   |     ^^^^^^^^^^^^^

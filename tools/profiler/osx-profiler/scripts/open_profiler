@@ -1,0 +1,94 @@
+#!/usr/bin/osascript
+on run argv
+	try
+		set tool to item 1 of argv
+		set target to item 2 of argv
+		set flags to item 3 of argv
+		set cwd to item 4 of argv
+
+		# my activateInstruments(tool)
+		tell application "Instruments" to activate
+		delay 1
+		tell application "System Events" to keystroke "g" using {command down, shift down}
+		delay 0.1
+		tell application "System Events" to keystroke tool
+		# press enter
+		tell application "System Events" to key code 36
+		delay 2
+
+		tell application "System Events"
+			tell process "Instruments"
+				my clickUI(group 1 of toolbar 1 of window 1, "Process")
+				delay 0.5
+			end tell
+		end tell
+		# These killall system event commands are used to shut down any
+		# stalled responses from Instruments that occur in between commands.
+		# without the killalls there are random several-second-long delays
+		do shell script "killall System\\ Events"
+		delay 0.1
+		tell application "System Events"
+			tell process "Instruments"
+				my clickUI(group 1 of toolbar 1 of window 1, "Choose Target...")
+				delay 0.5
+			end tell
+		end tell
+		do shell script "killall System\\ Events"
+		delay 0.1
+		tell application "System Events"
+			tell process "Instruments"
+				keystroke "g" using {command down, shift down}
+				keystroke target
+				delay 0.8
+				# press enter
+				key code 36
+				delay 0.8
+				tell window 1
+					tell sheet 1
+						set value of text field 1 to flags
+						set value of text field 2 to cwd
+					end tell
+				end tell
+				delay 0.8
+				# press enter
+				key code 36
+				delay 1.5
+				keystroke "r" using command down
+			end tell
+		end tell
+	on error errStr number errorNumber
+		if errStr contains "assistive access" then
+			tell application "System Preferences"
+				activate
+				set the current pane to pane id "com.apple.preference.security"
+				reveal anchor "Privacy_Accessibility" of pane id "com.apple.preference.security"
+			end tell
+			tell application "Instruments" to quit
+			display dialog "Please click the lock at the bottom left and then add your terminal to the list of allowed apps and run this script again. You only have to do this once. Applescript needs this permission to run properly."
+			error "Run the script again once you have added your terminal program to the list of allowed applications."
+		else
+			display dialog "Please don't touch your mouse or keyboard while the profiler is running! If you didn't and still received an error, please report the following information as a bug: " & errStr & errorNumber as text
+		end if
+	end try
+end run
+
+# subroutine to find and click a UI element through breadth-first-search
+on clickUI(currentItem, val)
+	tell application "System Events"
+		tell process "Instruments"
+			# add current contents to element queue
+			set q to entire contents of currentItem
+			repeat while ((count of q) > 0)
+				set currentElement to item 1 of q
+				if (value of currentElement is val) or (title of currentElement is val) or (description of currentElement is val) then
+					ignoring application responses
+						click currentElement
+						return
+					end ignoring
+				end if
+				# delete rid of first item, add new contents
+				set q to (rest of q) & entire contents of currentElement
+			end repeat
+		end tell
+	end tell
+end clickUI

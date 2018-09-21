@@ -1,0 +1,8 @@
+async fun genString(): ^String {
+  "Pass\n"
+}
+
+fun main(): void {
+  x = awaitSynchronously(genString());
+  print_raw(x)
+}

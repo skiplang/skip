@@ -1,0 +1,21 @@
+{
+  "skipVersion": "1.0",
+  "variables": {
+    "var": {
+      "values": [ "v1", "v2" ],
+      "default": "v1"
+    }
+  },
+  "programUnits": {
+    "lib": {
+      "kind": "Library",
+      "sources": [],
+      "parameters": {
+        "var": {
+          "v1": { "sources": [ "t.sk" ] },
+          "v2": { "sources": [ "t.sk" ] }
+        }
+      }
+    }
+  }
+}

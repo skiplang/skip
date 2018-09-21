@@ -1,0 +1,16 @@
+class A() extends C, D
+class B() extends C, D
+base class C
+base class D
+
+fun foo(): C {
+  if (true) {
+    A()
+  } else {
+    B()
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

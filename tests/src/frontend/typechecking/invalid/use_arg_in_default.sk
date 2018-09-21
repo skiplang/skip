@@ -1,0 +1,14 @@
+fun f(i: Int, d: Int = i): Int {
+  _ = i;
+  d
+}
+
+fun main(): void {
+  print_raw(
+    if (f(42) == 42) {
+      "Pass\n"
+    } else {
+      "Fail"
+    },
+  )
+}

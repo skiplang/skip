@@ -1,0 +1,7 @@
+class C() {
+  frozen mutable fun m(): String { "Fail" }
+}
+
+fun main(): String {
+  C::m()
+}

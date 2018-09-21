@@ -1,0 +1,86 @@
+const IntConst: Int = 42;
+
+base class B
+
+class PC(i: Int) extends B {}
+class NC{s: String, b: Bool} extends B {}
+
+// Positive Cases
+fun matchesConst(): Bool {
+  (40 + 2) is IntConst;
+}
+
+fun matchesTuple(): Bool {
+  (40 + 2, !true, "Hello") is (IntConst, false, _);
+}
+
+fun matchesParen(): Bool {
+  (40 + 2) is (IntConst);
+}
+
+fun matchesClass(): Bool {
+  (PC(42) : B) is PC _;
+}
+
+fun matchesNamedArgs(): Bool {
+  (NC{s => "Hello", b => false} : B) is NC{b => false};
+}
+
+fun matchesPositionalArgs(): Bool {
+  (PC(42) : B) is PC(IntConst);
+}
+
+fun matchesNegativeLiteral(): Bool {
+  (-1 * 12) is -12;
+}
+
+// Negative cases
+fun matchesConstFail(): Bool {
+  !(41 is IntConst);
+}
+
+fun matchesTupleFail(): Bool {
+  !((41, true, "Hello") is (IntConst, false, _));
+}
+
+fun matchesParenFail(): Bool {
+  !(4 is (IntConst));
+}
+
+fun matchesClassFail(): Bool {
+  !((PC(42) : B) is NC _);
+}
+
+fun matchesNamedArgsFail(): Bool {
+  !((NC{s => "Hello", b => false} : B) is NC{b => true});
+}
+
+fun matchesPositionalArgsFail(): Bool {
+  !((PC(40) : B) is PC(IntConst));
+}
+
+fun matchesNegativeLiteralFail(): Bool {
+  !(12 is -12);
+}
+
+fun check(f: () ~> Bool): void {
+  print_string(if (f()) "Pass" else "Fail");
+}
+
+fun main(): void {
+  check(matchesConst);
+  check(matchesTuple);
+  check(matchesParen);
+  check(matchesClass);
+  check(matchesNamedArgs);
+  check(matchesPositionalArgs);
+  check(matchesNegativeLiteral);
+
+  check(matchesConstFail);
+  check(matchesTupleFail);
+  check(matchesParenFail);
+  check(matchesClassFail);
+  check(matchesNamedArgsFail);
+  check(matchesPositionalArgsFail);
+  check(matchesNegativeLiteralFail);
+}

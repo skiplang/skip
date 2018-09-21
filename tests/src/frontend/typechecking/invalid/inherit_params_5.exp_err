@@ -1,0 +1,11 @@
+File "./typechecking/invalid/inherit_params_5.sk", line 2, characters 12-14:
+To add fields to an inherited constructor, it cannot be declared as final
+1 | base class Foo final {f: Int}
+2 | base class Bar{f2: Int} extends Foo
+  |            ^^^
+
+File "./typechecking/invalid/inherit_params_5.sk", line 1, characters 16-20:
+Constructor for 'Foo' was declared as final here
+1 | base class Foo final {f: Int}
+  |                ^^^^^
+2 | base class Bar{f2: Int} extends Foo

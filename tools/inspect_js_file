@@ -1,0 +1,8 @@
+# inspect_js_file [--no-unhandled-exception-stack] sk-to-js-file [args...]
+
+# Like run_js_file, but waits for a connection to the Chrome Dev Tools debugger
+# After launching an Sk program with this file, open 'chrome://inspect' in
+# the Chrome web browser and click the 'inspect' link to begin debugging.
+
+export NODE_PARAMS="${NODE_PARAMS} --inspect-brk"
+$(dirname "$0")/run_js_file "$@"

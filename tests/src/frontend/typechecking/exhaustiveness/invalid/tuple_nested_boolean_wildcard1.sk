@@ -1,0 +1,8 @@
+fun test(): String {
+  (1, true) match {
+  | _ -> "Fail\n"
+  | (1, true) -> "Fail1\n"
+  | (_, true) -> "Fail2\n"
+  | (_, _) -> "Fail3\n"
+  }
+}

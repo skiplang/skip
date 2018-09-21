@@ -1,0 +1,44 @@
+
+
+module alias X = Y;
+
+module alias X = Z;
+
+
+fun main(): void {
+  a = Vector[
+
+
+    "a",
+
+
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa(bbbbbbbbbbbbbbbbbbbbbb, cccccccccccccccccccc),
+
+
+
+    "c",
+    "d",
+
+    "e", "f",
+
+  ];
+
+  print_raw(Vector[a, b, c]);
+}
+
+class X() {
+  children =
+
+  | A()
+
+
+  | B() | C()
+
+  fun a(): void { void }
+  fun b(): void { void }
+
+
+
+  fun c(): void { void }
+
+}

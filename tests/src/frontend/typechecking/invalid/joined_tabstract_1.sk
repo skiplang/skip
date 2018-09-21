@@ -1,0 +1,38 @@
+class Inv<T>(value: T)
+
+base class AbsC {
+  type T: Test.MixedScalar;
+  deferred fun get(): Inv<this::T>;
+  deferred fun add(Inv<this::T>): String;
+}
+class IntC() extends AbsC {
+  type T = Test.MixedInt;
+  fun get(): Inv<this::T> {
+    Inv(Test.MixedInt(42))
+  }
+  fun add(x: Inv<this::T>): String {
+    i = x.value;
+    i match {
+    | Test.MixedInt(v) -> Test.MixedInt(v + v).toString()
+    }
+  }
+}
+
+class StringC() extends AbsC {
+  type T = Test.MixedString;
+  fun get(): Inv<this::T> {
+    Inv(Test.MixedString("no"))
+  }
+  fun add(x: Inv<this::T>): String {
+    s = x.value;
+    s match {
+    | Test.MixedString(v) -> Test.MixedString(v + v).toString()
+    }
+  }
+}
+
+fun main(): void {
+  i: AbsC = IntC();
+  s: AbsC = StringC();
+  print_raw(s.add(i.get()))
+}

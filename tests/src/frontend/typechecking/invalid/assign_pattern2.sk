@@ -1,0 +1,14 @@
+base class Foo<T>
+
+class Bar extends Foo<Int>
+class Baz(value: String) extends Foo<String>
+
+fun makeFoo(): Foo<String> {
+  Baz("Pass\n")
+}
+
+fun main(): String {
+  s = "Fail";
+  Baz(s) = makeFoo();
+  s
+}

@@ -1,0 +1,20 @@
+base class List<T> {
+  fun add<T2>[T: T2](x: T2): List<T2> {
+    Cons<T2>(x, this)
+  }
+  fun addMutable<T2>[T: mutable T2](x: mutable T2): mutable List<mutable T2> {
+    mutable Cons<mutable T2>(x, this)
+  }
+}
+
+class Cons<T>(T, List<T>) extends List<T>
+class Nil<T> extends List<T>
+
+base class A
+class B extends A
+class C extends A
+
+fun test(): List<A> {
+  x = Nil<A>();
+  freeze(x.add(mutable B()))
+}

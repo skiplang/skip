@@ -1,0 +1,33 @@
+module A;
+module end;
+
+module B;
+module end;
+
+module C;
+fun f(): void {
+  void
+}
+module end;
+
+module D;
+fun f(): void {
+  void
+}
+module end;
+
+module E;
+
+fun f(): void {
+  void
+}
+
+module end;
+
+module F;
+
+fun f(): void {
+  void
+}
+
+module end;

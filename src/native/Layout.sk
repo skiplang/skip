@@ -1,0 +1,435 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module OuterIstToIR;
+
+// This file use field layout using a graph-coloring algorithm.
+//
+// This allows us to handle laying out complex, multiply-inherited class
+// hierarchies without needing any indirection or interior pointers, but
+// possibly at the cost of wasted space in some objects.
+//
+// We don't literally use graph coloring, as that would only try to minimize
+// the size of the largest object, and not care about the sizes of smaller
+// objects. That isn't what we want.
+
+// (class, field name) hash key.
+private value class FieldKey(
+  sclass: SClassID,
+  name: String,
+) uses Hashable, Equality {
+  fun ==(other: FieldKey): Bool {
+    this.sclass == other.sclass && this.name == other.name
+  }
+}
+
+// A field which needs an offset assigned.
+private class FieldLayoutConstraint(
+  // Name of the field.
+  name: String,
+  // Type of the field.
+  typ: ScalarType,
+  // All classes that must agree on the same offset for this field.
+  types: Array<SClassID>,
+)
+
+// Round up 'offset' to be suitably aligned for 'typ', and not span
+// a 64-bit word unnecessarily.
+private fun alignField(
+  offset: Int,
+  typ: ScalarType,
+  isCppExport: Bool = false,
+): Int {
+  bitAlignment = typ.bitAlignment;
+  if (isCppExport && bitAlignment < 8) {
+    !bitAlignment = 8;
+  };
+  n = roundUp(offset, bitAlignment);
+
+  // Never allow e.g. a 3-bit bitfield to span an Int64 boundary
+  // as that is too difficult to work with. This math says the first
+  // and last bit must agree with block of 64 aligned bits they are in.
+  end = n + typ.bitSize;
+  if (n.xor(end - 1).and(-64) != 0 && typ.bitSize <= 64) {
+    roundUp(n, 64)
+  } else {
+    n
+  }
+}
+
+mutable private class LayoutBuilder(
+  fields: mutable Vector<LayoutSlot> = mutable Vector[],
+  mutable prevIndex: Int = 0,
+  mutable prevType: ScalarType = ScalarType::gcPointer,
+) {
+  // Find the first available bit offset to store a field of the given type,
+  // such that the offset is >= startBitOffset.
+  mutable fun findOffset(startBitOffset: Int, typ: ScalarType): Int {
+    bitSize = typ.bitSize;
+
+    if (bitSize == 0) {
+      // All zero-bit fields can get stored at the beginning.
+      this.!prevIndex = 0;
+      this.!prevType = typ;
+      0
+    } else {
+      bitAlignment = typ.bitAlignment;
+
+      // Often avoid pathological performance by remembering where the previous
+      // scan ended. If this scan is at least as hard, then start where the last
+      // one ended.`
+      index = if (
+        bitSize >= this.prevType.bitSize &&
+        bitAlignment >= this.prevType.bitAlignment
+      ) {
+        this.prevIndex
+      } else {
+        0
+      };
+
+      if (index != 0) {
+        // If we aren't starting our search at the beginning, make sure
+        // the first possible bit offset we might return is after all of
+        // the slots we are skipping over.
+        prev = this.fields[index - 1];
+        prevBitEnd = prev.bitOffset + prev.typ.bitSize;
+        !startBitOffset = max(startBitOffset, prevBitEnd)
+      };
+
+      offset = alignField(startBitOffset, typ);
+
+      // Use a dumb scanning loop looking for a "first fit" hole where we
+      // can stick this field.
+      foundIt = false;
+      while (index < this.fields.size() && !foundIt) {
+        // See if we can insert our new field right before this one.
+        f = this.fields[index];
+
+        if (offset + bitSize <= f.bitOffset) {
+          // Success! All done.
+          !foundIt = true
+        } else {
+          // Did not fit, keep looking.
+          !index = index + 1;
+          fieldEnd = f.bitOffset + f.typ.bitSize;
+          if (offset < fieldEnd) {
+            !offset = alignField(fieldEnd, typ)
+          }
+        }
+      };
+
+      if (!foundIt && !this.fields.isEmpty()) {
+        // Append a new field to the end.
+        !index = this.fields.size();
+        last = this.fields[this.fields.size() - 1];
+        endOffset = alignField(last.bitOffset + last.typ.bitSize, typ);
+        !offset = max(offset, endOffset);
+      };
+
+      this.!prevIndex = index;
+      this.!prevType = typ;
+
+      offset
+    }
+  }
+
+  // Permanently reserve the most recent offset returned by findOffset.
+  mutable fun reservePrevOffset(
+    name: String,
+    offset: Int,
+    resetIndex: Bool,
+  ): void {
+    slot = LayoutSlot(name, offset, this.prevType);
+    this.fields.insert(this.prevIndex, slot);
+
+    // Accelerate the next search by starting after this match if appropriate.
+    this.!prevIndex = if (resetIndex) {
+      0
+    } else {
+      this.prevIndex + 1
+    }
+  }
+}
+
+mutable private class FieldLayoutChooser(
+  specializer: mutable Specializer,
+
+  // True for every class which is part of a connected component of classes
+  // that has been or is being graph-colored.
+  classAlreadyProcessed: mutable UnorderedSet<SClassID>,
+
+  // Every (class, field) pair which has been added to a layout constraint.
+  fieldsDone: mutable UnorderedSet<FieldKey> = mutable UnorderedSet[],
+) {
+  // Update the bitOffset field in all SClass fields to have offsets.
+  static fun run(specializer: mutable Specializer): void {
+    flc = mutable FieldLayoutChooser(
+      specializer,
+      UnorderedSet::mcreate(specializer.sclasses.size()),
+    );
+
+    // Process all the fixed layout classes first
+    for (info in specializer.sclasses) {
+      sc = info.sclass;
+      if (
+        annotationsContainParam(sc.annotations, "@cpp_export", sc.pos).isSome()
+      ) {
+        flc.classAlreadyProcessed.insert(sc.id);
+        info.!sclass = sc with {
+          layout => Some(layoutCppExportClass(specializer, sc.fields)),
+        };
+      }
+    };
+
+    emptyLayout = Some(Array[]);
+
+    for (info in specializer.sclasses) {
+      sc = info.sclass;
+      if (!sc.isArray() && !sc.kind.isValueClass()) {
+        if (sc.fields.isEmpty()) {
+          // No fields means empty layout. This check is important because
+          // otherwise we will never assign the 'layout' field of concrete
+          // classes with no fields but with covariant subtypes. The reason
+          // is that with no fields, no field layout constraints get created
+          // by the colorer, and those are what trigger assigning to 'layout'.
+          info.!sclass = sc with {layout => emptyLayout};
+        } else if (flc.classAlreadyProcessed.maybeInsert(sc.id)) {
+          constraints = flc.buildConstraintsForConnectedClasses(sc);
+          if (!constraints.isEmpty()) {
+            flc.assignFieldOffsets(constraints)
+          } else {
+            info.!sclass = sc with {layout => emptyLayout};
+          }
+        }
+      }
+    }
+  }
+
+  // Create a FieldLayoutConstraint for all classes which need to agree
+  // on the bit offset for 'field'.
+  //
+  // Note that this is not necessarily the same as constraining all connected
+  // classes reachable via the subtype+supertype graph that happen to have
+  // a field with the same name as 'field'. There may be multiple subgraphs of
+  // classes with a field with that name, but which do not share a common
+  // base class with that field. In that case, those subgraphs can color that
+  // field's offset independently (and indeed, they must, because those
+  // subgraph fields may not even have a common type).
+  //
+  // So instead we "flood fill" out from the initial class to adjacent classes
+  // that have a field with the same name.
+  private mutable fun constrainConnectedClassesWithField(
+    start: SClass,
+    field: SField,
+  ): FieldLayoutConstraint {
+    typesWithField = mutable Vector[start.id];
+    name = field.name;
+
+    i = 0;
+    while (i < typesWithField.size()) {
+      sid = typesWithField[i];
+      !i = i + 1;
+
+      info = this.specializer.sclasses[sid];
+
+      // Visit all supertypes and constrain those with this field to
+      // use the same offset as this type.
+      for (superID in info.supertypes) {
+        if (this.fieldsDone.maybeInsert(FieldKey(superID, name))) {
+          superInfo = this.specializer.sclasses[superID];
+          if (superInfo.sclass.maybeGetField(name).isSome()) {
+            typesWithField.push(superID)
+          }
+        }
+      };
+
+      // Same as above, but for all subtypes.
+      for (subID in info.subtypes) {
+        subInfo = this.specializer.sclasses[subID];
+        if (this.fieldsDone.maybeInsert(FieldKey(subID, name))) {
+          if (!subInfo.sclass.maybeGetField(name).isSome()) {
+            subInfo.sclass.die(
+              "Expected class " +
+                subInfo.sclass +
+                " to have field '" +
+                name +
+                "' because its supertype " +
+                info.sclass +
+                " does.",
+            )
+          };
+
+          typesWithField.push(subID)
+        }
+      }
+    };
+
+    // Get this field's primitive type. We don't have legal GlobalEnv
+    // yet so we can't use Type::getScalarType().
+    fieldSClass = this.specializer.sclasses[field.typ.sclassID].sclass;
+    fieldPrim = fieldSClass.getScalarType();
+
+    FieldLayoutConstraint(field.name, fieldPrim, typesWithField.toArray())
+  }
+
+  // Return field layout constraints for the transitive closure of stateful
+  // classes connected to 'start.
+  mutable fun buildConstraintsForConnectedClasses(
+    start: SClass,
+  ): mutable Vector<FieldLayoutConstraint> {
+    constraints = mutable Vector[];
+
+    connectedClassesStack = mutable Vector[start.id];
+
+    while (!connectedClassesStack.isEmpty()) {
+      sid = connectedClassesStack.pop();
+      sclass = this.specializer.sclasses[sid].sclass;
+
+      for (field in sclass.fields) {
+        if (this.fieldsDone.maybeInsert(FieldKey(sid, field.name))) {
+          // We have not yet determined layout constraints for this field.
+          constraint = this.constrainConnectedClassesWithField(sclass, field);
+
+          // Add this field's bit offset to the pile of work for graph coloring.
+          constraints.push(constraint);
+          // Each class we created a constraint for may itself have additional
+          // fields that need to be part of this graph coloring process.
+          // Add those to the connected component now.
+          for (csid in constraint.types) {
+            if (this.classAlreadyProcessed.maybeInsert(csid)) {
+              connectedClassesStack.push(csid)
+            }
+          }
+        }
+      }
+    };
+
+    constraints
+  }
+
+  // Assign field offsets for all the fields in this.constraints.
+  private mutable fun assignFieldOffsets(
+    constraints: mutable Vector<FieldLayoutConstraint>,
+  ): void {
+    // As a heuristic, process the field that affects the most classes first.
+    // This tends to put base class fields first, which is what we want.
+    constraints.sortBy(x ~>
+      Orderable.create(x, (c1, c2) ~> {
+        (c2.types.size(), c1.typ).compare((c1.types.size(), c2.typ))
+      })
+    );
+
+    // Remember a LayoutBuilder for each class in any constraint.
+    // NOTE: The compiler won't let us make a mutable Map with mutable values
+    // so we need to indirect via an integer index into classLayouts.
+    classToLayout = mutable UnorderedMap[];
+    classLayouts = mutable Vector[];
+
+    // For each constraint, choose a bit offset for its field that works
+    // for every class sharing that constraint. We greedily choose the first
+    // match, relying on our sort heuristic to make that a reasonable choice.
+    for (constraint in constraints) {
+      // Make sure every class has a LayoutBuilder.
+      for (sid in constraint.types) {
+        if (classToLayout.maybeSet(sid, classLayouts.size())) {
+          classLayouts.push(mutable LayoutBuilder())
+        }
+      };
+
+      // Find the first field offset that works for every class.
+      offset = -1;
+      done = false;
+      needReset = false;
+      while (!done) {
+        !done = true;
+        for (sid in constraint.types) {
+          layout = classLayouts[classToLayout[sid]];
+          nextOffset = layout.findOffset(max(offset, 0), constraint.typ);
+
+          if (nextOffset != offset) {
+            if (offset >= 0) {
+              // We weren't able to use the same offset as all previous
+              // classes, so we'll need to make another outer pass.
+              !done = false;
+
+              // Since at least this type has skipped over an otherwise
+              // valid "gap", we need to prevent the usual optimization
+              // of starting future scans after the last successful match,
+              // since that would permanently skip this hole.
+              !needReset = true;
+            };
+            !offset = nextOffset
+          }
+        }
+      };
+      // Reserve that space from each class so nothing overlaps it.
+      //
+      // TODO: When reusing this code for vtables, we'll want to remember
+      // precisely what value in each slot so identical data can legally
+      // overlap.
+      for (sid in constraint.types) {
+        classLayouts[classToLayout[sid]].reservePrevOffset(
+          constraint.name,
+          offset,
+          needReset,
+        )
+      }
+    };
+
+    // Update all SClasses to know their field bit offsets.
+    for (sidAndLayoutIndex in classToLayout.items()) {
+      (sid, layoutIndex) = sidAndLayoutIndex;
+      layout = classLayouts[layoutIndex].fields;
+      info = this.specializer.sclasses[sid];
+      sc = info.sclass;
+
+      sc.pos.invariant(sc.fields.size() == layout.size(), "Layout mismatch");
+
+      info.!sclass = sc with {layout => Some(layout.toArray())}
+    }
+  }
+}
+
+// Lay out fields for one class with no super- or subclasses.
+//
+// Normally we lay out all classes together, to solve inheritance-related
+// constraints. But that's too early for the magic object holding global
+// constants so we can run just it here.
+fun layoutOneStandaloneClass(
+  fields: Array<SField>,
+  env: GlobalEnv,
+  existingLayout: Array<LayoutSlot> = Array[],
+): Array<LayoutSlot> {
+  builder = mutable LayoutBuilder(Vector::mcreateFromItems(existingLayout));
+
+  for (field in fields) {
+    offset = builder.findOffset(0, field.typ.getScalarType(env));
+    builder.reservePrevOffset(field.name, offset, false)
+  };
+
+  builder.fields.toArray()
+}
+
+private fun layoutCppExportClass(
+  s: mutable Specializer,
+  fields: Array<SField>,
+): Array<LayoutSlot> {
+  nextOffset = 0;
+  fields
+    .sortedBy(f ~> f.index)
+    .map(field -> {
+      // Get this field's primitive type. We don't have legal GlobalEnv
+      // yet so we can't use Type::getScalarType().
+      fieldSClass = s.sclasses[field.typ.sclassID].sclass;
+      scalarType = fieldSClass.getScalarType();
+
+      // Naturally align the bit offsets
+      offset = alignField(nextOffset, scalarType, true);
+      !nextOffset = offset + scalarType.bitSize;
+      LayoutSlot(field.name, offset, scalarType)
+    });
+}

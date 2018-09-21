@@ -1,0 +1,13 @@
+module X;
+value class .X<T0>() {}
+module end;
+
+extension class X {
+  fun f(_: T0): void {
+    print_string("Pass")
+  }
+}
+
+fun main(): void {
+  X<void>().f(void)
+}

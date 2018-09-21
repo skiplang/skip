@@ -1,0 +1,11 @@
+File "./syntax/invalid/name_collision_3.sk", line 2, characters 7-11:
+Listy was already defined as a type
+1 | type Listy = Int;
+2 | class Listy{}
+  |       ^^^^^
+
+File "./syntax/invalid/name_collision_3.sk", line 1, characters 6-10:
+Defined here
+1 | type Listy = Int;
+  |      ^^^^^
+2 | class Listy{}

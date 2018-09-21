@@ -1,0 +1,13 @@
+base class Foo
+class Bar extends Foo
+class Baz extends Foo
+
+fun makeFoo(): Foo {
+  Baz()
+}
+
+fun main(): String {
+  Bar() = makeFoo();
+  _ = 42;
+  "Fail"
+}

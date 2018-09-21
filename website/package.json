@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "start": "docusaurus-start --port 8082"
+  },
+  "dependencies": {
+    "docusaurus": "^1.0.13",
+    "express-http-proxy": "^1.0.6"
+  }
+}

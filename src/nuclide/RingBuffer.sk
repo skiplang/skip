@@ -1,0 +1,69 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// https://en.wikipedia.org/wiki/Circular_buffer
+mutable class RingBuffer<+T> private {
+  elements: mutable Vector<T>,
+  capacity: Int,
+  mutable start: Int = 0,
+  mutable size_: Int = 0,
+} extends Sequence<T> {
+  static fun create(capacity: Int): mutable RingBuffer<T> {
+    mutable RingBuffer{capacity, elements => Vector::mcreate(capacity)}
+  }
+
+  readonly fun size(): Int {
+    this.size_;
+  }
+
+  readonly fun get(index: Int): T {
+    if (index < 0 && index >= this.size()) {
+      throwOutOfBounds();
+    };
+    this.elements[this.clamp(this.start + index)]
+  }
+
+  readonly fun values(): mutable Iterator<T> {
+    for (index in Range(0, this.size())) yield this[index]
+  }
+
+  // Adding a value to a non-full buffer increases the number of elements
+  // by 1.
+  // Adding a value to a full buffer overwrites the earliest entry.
+  mutable fun add(value: T): void {
+    invariant(this.capacity > 0);
+    index = this.endIndex();
+    if (index == this.elements.size()) {
+      this.elements.push(value)
+    } else {
+      this.elements.set(index, value);
+    };
+    if (this.isFull()) {
+      this.!start = this.clamp(this.start + 1);
+    } else {
+      this.!size_ = this.size_ + 1;
+    }
+  }
+
+  private readonly fun endIndex(): Int {
+    this.clamp(this.start + this.size_)
+  }
+
+  readonly fun isFull(): Bool {
+    this.size_ == this.capacity
+  }
+
+  private readonly fun clamp(index: Int): Int {
+    result = if (index >= this.capacity) {
+      index - this.capacity
+    } else {
+      index
+    };
+    invariant(result >= 0 && result < this.capacity);
+    result;
+  }
+}

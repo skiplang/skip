@@ -1,0 +1,4 @@
+File "./syntax/invalid/missing_constructor.sk", line 1, characters 7-9:
+Missing class constructor fields. You can define positional fields with 'Foo()' or named fields with 'Foo{}'
+1 | class Foo
+  |       ^^^

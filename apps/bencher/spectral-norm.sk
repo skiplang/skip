@@ -1,0 +1,89 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Modified from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/spectralnorm-csharpcore-1.html
+module SpectralNorm;
+
+fun a(i: Int, j: Int): Float {
+  1.0 / ((((i + j) * (i + j + 1)).shr(1)) + i + 1).toFloat();
+}
+
+fun approximate(n: Int): Float {
+  // create unit vector
+  u = Array::mfill(n, 1.0);
+
+  // 20 steps of the power method
+  v = Array::mfill(n, 0.0);
+
+  for (_ in Range(0, 10)) {
+    multiplyAtAv(n, u, v);
+    multiplyAtAv(n, v, u);
+  };
+
+  // B=AtA         A multiplied by A transposed
+  // v.Bv /(v.v)   eigenvalue of v
+  vBv = 0.0;
+  vv = 0.0;
+  for (i in Range(0, n)) {
+    !vBv = vBv + u[i] * v[i];
+    !vv = vv + v[i] * v[i];
+  };
+
+  Math.sqrt(vBv / vv)
+}
+
+/* multiply vector v by matrix A */
+fun multiplyAv(
+  n: Int,
+  v: mutable Array<Float>,
+  av: mutable Array<Float>,
+): void {
+  for (i in Range(0, n)) {
+    av![i] = 0.0;
+    for (j in Range(0, n)) {
+      av![i] = av[i] + a(i, j) * v[j];
+    }
+  }
+}
+
+/* multiply vector v by matrix A transposed */
+fun multiplyAtv(
+  n: Int,
+  v: mutable Array<Float>,
+  atv: mutable Array<Float>,
+): void {
+  for (i in Range(0, n)) {
+    atv![i] = 0.0;
+    for (j in Range(0, n)) {
+      atv![i] = atv[i] + a(j, i) * v[j];
+    }
+  }
+}
+
+/* multiply vector v by matrix A and then by matrix A transposed */
+fun multiplyAtAv(
+  n: Int,
+  v: mutable Array<Float>,
+  atAv: mutable Array<Float>,
+): void {
+  u = Array::mfill(n, 0.0);
+
+  multiplyAv(n, v, u);
+  multiplyAtv(n, u, atAv);
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  n = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(100);
+  bencher.bench{
+    run => () -> {
+      approximate(n)
+    },
+  }
+}
+
+module end;

@@ -1,0 +1,4 @@
+File "./syntax/invalid/declare_outside_module.sk", line 1, characters 17-17:
+Unexpected '.'. If you want to declare something that belongs in a module, you need to first open the module with 'module SomeModule;'
+1 | class SomeModule.SomeClass
+  |                 ^

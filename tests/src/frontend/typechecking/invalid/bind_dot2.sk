@@ -1,0 +1,9 @@
+mutable class Foo(value: mutable Bar)
+mutable class Bar(mutable dummy: String = "")
+
+fun main(): void {
+  foo = Foo(Bar());
+  !foo.value = mutable Bar();
+  _ = foo;
+  print_raw("Fail")
+}

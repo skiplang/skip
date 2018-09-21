@@ -1,0 +1,19 @@
+mutable base class P<+T: mutable Ref<Int>> final (v: T) {
+  deferred static fun new(x: T): mutable this {
+    mutable static(x)
+  }
+
+  readonly fun get(): Int {
+    this.v.value
+  }
+}
+mutable class C extends P<mutable Ref<Int>>
+
+fun main(): void {
+  ref = mutable Ref(0);
+  c: mutable C = C::new(ref);
+  x1 = c.get();
+  ref.set(42);
+  x2 = c.get();
+  if (x1 != x2) print_string("Pass")
+}

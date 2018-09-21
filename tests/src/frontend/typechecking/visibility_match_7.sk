@@ -1,0 +1,11 @@
+class Foo{x: Int, protected y: Int}
+
+fun no(f: Foo): Int {
+  f match {
+  | Foo{x => a} -> a
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

@@ -1,0 +1,7 @@
+File "./typechecking/invalid/typeconst_12.sk", line 7, characters 34-34:
+Baz::T is not yet defined and cannot be used other than with `this` inside it's defining class
+5 | }
+6 |
+7 | class Bar() extends Foo<this::T::T> {
+  |                                  ^
+8 |   type T = Baz;

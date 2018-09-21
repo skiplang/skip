@@ -1,0 +1,3 @@
+base class Foo {
+  type T: Test.MixedInt default Test.MixedScalar;
+}

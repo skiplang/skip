@@ -1,0 +1,15 @@
+File "./typechecking/invalid/freeze_unresolved_tvar.sk", line 20, characters 7-27:
+Invalid freeze on unresolved type. This type has type parameters that are not yet resolved.
+18 | fun main(): void {
+19 |   a = mutable A(37);
+20 |   x = mutable X(a, () -> a);
+   |       ^^^^^^^^^^^^^^^^^^^^^
+21 |   _ = freeze(x);
+
+File "./typechecking/invalid/freeze_unresolved_tvar.sk", line 21, characters 14-14:
+Try annotating this expression
+19 |   a = mutable A(37);
+20 |   x = mutable X(a, () -> a);
+21 |   _ = freeze(x);
+   |              ^
+22 |   call(x);

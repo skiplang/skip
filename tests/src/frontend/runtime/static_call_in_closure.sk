@@ -1,0 +1,14 @@
+class Foo() {
+  static fun hello(): () ~> String {
+    () ~> static::world()
+  }
+
+  private static fun world(): String {
+    "Pass\n"
+  }
+}
+
+fun main(): void {
+  f = Foo::hello();
+  print_raw(f())
+}

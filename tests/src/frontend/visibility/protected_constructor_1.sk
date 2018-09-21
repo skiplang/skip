@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("Pass")
+}
+class X protected () {
+  private static fun new_priv(): this {
+    static()
+  }
+  protected static fun new_prot(): this {
+    static()
+  }
+  static fun new(): this {
+    X()
+  }
+}

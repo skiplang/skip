@@ -1,0 +1,9 @@
+base class A(x: Int = 0)
+class B extends A
+
+fun main(): void {
+  f = (a: A) -> a.x;
+  _ = f(B());
+  _ = f((B() : A));
+  print_string("Pass")
+}

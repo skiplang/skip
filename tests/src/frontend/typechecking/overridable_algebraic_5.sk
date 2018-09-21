@@ -1,0 +1,11 @@
+base class P final () {
+  fun foo(): Int
+  | C _ -> 37
+}
+
+base class L extends P
+class C extends L, P
+
+fun main(): void {
+  print_string("Pass")
+}

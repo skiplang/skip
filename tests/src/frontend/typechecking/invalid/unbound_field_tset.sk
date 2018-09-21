@@ -1,0 +1,33 @@
+base class L{l: Int} {
+  static fun lstat(): void {
+    void
+  }
+}
+base class R{r: Int} {
+  static fun rstat(): void {
+    void
+  }
+}
+
+class A extends L, R {
+  static fun astat(): void {
+    void
+  }
+}
+class B extends L, R {
+  static fun bstat(): void {
+    void
+  }
+}
+
+fun foo(): void {
+  l = 0;
+  r = 1;
+  x = if (true) {
+    A{l, r}
+  } else {
+    B{l, r}
+  };
+  x.z;
+  void
+}

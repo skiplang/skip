@@ -1,0 +1,23 @@
+File "./typechecking/invalid/pattern_match_constraints2.sk", line 8, characters 5-9:
+Invalid pattern. Constraint not satisfied when refining the type for this branch
+ 6 | fun shouldFail<T: C1>(x: Bar<T>): void {
+ 7 |   x match {
+ 8 |   | Foo() -> void
+   |     ^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/pattern_match_constraints2.sk", line 4, characters 25-26:
+The type: C2
+2 | class C2()
+3 | base class Bar<+T>
+4 | class Foo() extends Bar<C2>
+  |                         ^^
+5 |
+
+File "./typechecking/invalid/pattern_match_constraints2.sk", line 6, characters 19-20:
+Is not a subtype of: C1
+4 | class Foo() extends Bar<C2>
+5 |
+6 | fun shouldFail<T: C1>(x: Bar<T>): void {
+  |                   ^^
+7 |   x match {

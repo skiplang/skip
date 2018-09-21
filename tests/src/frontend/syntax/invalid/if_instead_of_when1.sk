@@ -1,0 +1,6 @@
+fun test(): void {
+  1 match {
+  | x when (x == 1) -> "Nope\n"
+  | x -> "Boom\n"
+  }
+}

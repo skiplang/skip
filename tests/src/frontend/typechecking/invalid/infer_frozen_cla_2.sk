@@ -1,0 +1,4 @@
+class Foo<T: frozen>(T)
+fun test(): void {
+  _ = Foo(mutable Array[0])
+}

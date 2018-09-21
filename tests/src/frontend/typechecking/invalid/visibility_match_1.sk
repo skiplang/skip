@@ -1,0 +1,7 @@
+class Foo(x: Int, private y: Int)
+
+fun no(f: Foo): Int {
+  f match {
+  | Foo(a, b) -> a + b
+  }
+}

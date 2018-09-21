@@ -1,0 +1,7 @@
+File "./typechecking/invalid/const_using_tparam_2.sk", line 3, characters 26-26:
+Class constants cannot use the class generics
+1 | class B<T: String>() {
+2 |   const x: String = {
+3 |     a = (Array[] : Array<T>);
+  |                          ^
+4 |     a.concat(Array["Fail\n"])[0];

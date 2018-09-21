@@ -1,0 +1,7 @@
+File "./typechecking/invalid/unused_locals_in_met_default.sk", line 4, characters 7-7:
+Local variable 'x' was not used. Prefix it with an underscore to silence the error: '_x'
+2 |   fun f1(
+3 |     f: Int = {
+4 |       x = 1;
+  |       ^
+5 |       42

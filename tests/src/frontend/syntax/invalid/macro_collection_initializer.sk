@@ -1,0 +1,11 @@
+trait TR {
+  macro fun f(): String {
+    (#ThisClass[]).toString()
+  }
+}
+
+extension class Vector uses TR
+
+fun main(): void {
+  print_string(Vector[""].f())
+}

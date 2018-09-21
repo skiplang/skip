@@ -1,0 +1,23 @@
+File "./typechecking/invalid/invalid_conditional_use_6.sk", line 23, characters 3-12:
+Constraint not satisfied
+21 |
+22 | fun no<T>(c: C<T>): Int {
+23 |   c.getVal()
+   |   ^^^^^^^^^^
+24 | }
+
+File "./typechecking/invalid/invalid_conditional_use_6.sk", line 22, characters 16-16:
+The type: T
+20 | }
+21 |
+22 | fun no<T>(c: C<T>): Int {
+   |                ^
+23 |   c.getVal()
+
+File "./typechecking/invalid/invalid_conditional_use_6.sk", line 18, characters 41-41:
+Is not a subtype of: Y
+16 | }
+17 |
+18 | class C<T>(x: T) extends P uses O, Y[T: Y] {
+   |                                         ^
+19 |   fun getVal from Y;

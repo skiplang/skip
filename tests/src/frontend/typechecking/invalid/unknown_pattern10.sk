@@ -1,0 +1,21 @@
+base class Hide
+class Foo<T>(x: T) extends Hide
+class Bar(x: Int) extends Hide
+
+fun nest(x: Hide): Hide {
+  x match {
+  | Foo(v) ->
+    show(v);
+    nest(Foo(Array[v]))
+  | o @ Bar _ -> o
+  }
+}
+
+fun main(): void {
+  print_raw(
+    nest(Bar(0)) match {
+    | Foo _ -> "Fail"
+    | Bar _ -> "Pass\n"
+    },
+  )
+}

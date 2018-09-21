@@ -1,0 +1,27 @@
+base class Foo {
+  type T: Test.MixedScalar;
+
+  static fun isValid(x: Test.MixedScalar): Bool {
+    x match {
+    | this::T _ -> true
+    | _ -> false
+    }
+  }
+}
+
+class Bar() extends Foo {
+  type T = Test.MixedInt;
+}
+
+fun main(): void {
+  print_raw(
+    if (
+      Bar::isValid(Test.MixedInt(42)) &&
+      !Bar::isValid(Test.MixedString("42"))
+    ) {
+      "Pass\n"
+    } else {
+      "Fail"
+    },
+  )
+}

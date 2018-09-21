@@ -1,0 +1,18 @@
+fun main(): void {
+  print_string("Pass")
+}
+
+module List_;
+
+base class .List_<T> {
+  children =
+  | Nil()
+  | Cell{head: T, tail: List_<T>}
+}
+
+fun test(x: List_<_>): Int {
+  x match {
+  | Nil() -> 1
+  | Cell _ -> 0
+  }
+}

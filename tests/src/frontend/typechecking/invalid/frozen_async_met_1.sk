@@ -1,0 +1,5 @@
+mutable class Foo(mutable v: Int) {
+  async readonly fun no(): ^void {
+    void
+  }
+}

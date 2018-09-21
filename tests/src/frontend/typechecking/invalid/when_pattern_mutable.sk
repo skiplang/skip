@@ -1,0 +1,15 @@
+mutable class Foo(mutable x: Int)
+
+fun shouldFail(): String {
+  o = mutable Foo(42);
+  o match {
+  | Foo(
+    x,
+  ) if ({
+    o.!x = 100;
+    x == 100
+  }) ->
+    "Nope\n"
+  | _ -> "Fail\n"
+  }
+}

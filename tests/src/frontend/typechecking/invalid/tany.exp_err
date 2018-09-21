@@ -1,0 +1,7 @@
+File "./typechecking/invalid/tany.sk", line 9, characters 25-28:
+[Internal Error] The type cannot be resolved. It is likely a type parameter that has not received a concrete type argument in this typechecking context. Often this can be worked around by supplying a type annotation: for example, if you write Vector[], it may suffice to write (e.g.) Vector<String>[]. Note that this is a limitation of the current type system - your code is probably not at fault. (site=is_mutable)
+ 7 |   debug(
+ 8 |     sortedNames
+ 9 |       .mapWithIndex((i, name) ~> (i + 1) * score_name(name))
+   |                         ^^^^
+10 |       .reduce((x, y) -> x + y, 0),

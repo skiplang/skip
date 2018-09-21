@@ -1,0 +1,17 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+value class UInt32 private (private value: Int32) uses Integral {
+  fun toInt(): Int {
+    this.value.and(0xFFFFFFFF)
+  }
+  static fun truncate(n: Int): UInt32 {
+    UInt32(Int32::truncate(n))
+  }
+  const min: UInt32 = UInt32::truncate(0);
+  const max: UInt32 = UInt32::truncate(0xFFFFFFFF);
+}

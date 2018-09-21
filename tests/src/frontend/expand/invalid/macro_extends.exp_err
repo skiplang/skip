@@ -1,0 +1,5 @@
+File "./expand/invalid/macro_extends.sk", line 1, characters 19-20:
+Macros may only be used inside bodies of methods marked 'macro'.
+1 | class C{} extends #T {}
+  |                   ^^
+2 |

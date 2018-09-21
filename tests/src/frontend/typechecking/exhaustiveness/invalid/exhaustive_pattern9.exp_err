@@ -1,0 +1,9 @@
+File "./typechecking/exhaustiveness/invalid/exhaustive_pattern9.sk", line 2, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | Int _
+1 | fun matcher(value: Int): Int {
+2 |   value match {
+  |   ^^^^^^^^^^^^^
+3 |   | 42 -> 42
+  |   ^^^^^^^^^^

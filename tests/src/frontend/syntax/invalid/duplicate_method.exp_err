@@ -1,0 +1,14 @@
+File "./syntax/invalid/duplicate_method.sk", line 5, characters 7-7:
+Name already bound: m
+3 |     0
+4 |   }
+5 |   fun m(_x: Int): String {
+  |       ^
+6 |     ""
+
+File "./syntax/invalid/duplicate_method.sk", line 2, characters 7-7:
+Previously here
+1 | class C() {
+2 |   fun m(): Int {
+  |       ^
+3 |     0

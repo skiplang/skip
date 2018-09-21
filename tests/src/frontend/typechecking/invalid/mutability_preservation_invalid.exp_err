@@ -1,0 +1,80 @@
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 6, characters 15-44:
+Invalid annotation
+Invalid upcast. Mutability is not preserved.
+4 |
+5 | fun no1(): void {
+6 |   _: P<Int> = C1<mutable Vector<Int>, Int>();
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 6, characters 15-44:
+The type 'C1<mutable Vector<Int>, Int>' has the type parameter 'T1' instantiated with a non-frozen type argument 'mutable Vector<Int>'
+4 |
+5 | fun no1(): void {
+6 |   _: P<Int> = C1<mutable Vector<Int>, Int>();
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 6, characters 15-44:
+It was found to necessary to upcast to the type: P<Int>
+4 |
+5 | fun no1(): void {
+6 |   _: P<Int> = C1<mutable Vector<Int>, Int>();
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 2, characters 10-11:
+But this type parameter is not visible after the upcast, which resulted in the new type to be considered fully frozen.
+1 | base class P<T>
+2 | class C1<T1, T2>() extends P<T2>
+  |          ^^
+3 | class C2<T>() extends P<Int>
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 6, characters 18-36:
+This is not safe since the original type contained this non-frozen type
+4 |
+5 | fun no1(): void {
+6 |   _: P<Int> = C1<mutable Vector<Int>, Int>();
+  |                  ^^^^^^^^^^^^^^^^^^^
+7 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 10, characters 15-39:
+Invalid annotation
+Invalid upcast. Mutability is not preserved.
+ 8 |
+ 9 | fun no2(): void {
+10 |   _: P<Int> = C2<mutable Vector<Int>>()
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 10, characters 15-39:
+The type 'C2<mutable Vector<Int>>' has the type parameter 'T' instantiated with a non-frozen type argument 'mutable Vector<Int>'
+ 8 |
+ 9 | fun no2(): void {
+10 |   _: P<Int> = C2<mutable Vector<Int>>()
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 10, characters 15-39:
+It was found to necessary to upcast to the type: P<Int>
+ 8 |
+ 9 | fun no2(): void {
+10 |   _: P<Int> = C2<mutable Vector<Int>>()
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+11 | }
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 3, characters 10-10:
+But this type parameter is not visible after the upcast, which resulted in the new type to be considered fully frozen.
+1 | base class P<T>
+2 | class C1<T1, T2>() extends P<T2>
+3 | class C2<T>() extends P<Int>
+  |          ^
+4 |
+
+File "./typechecking/invalid/mutability_preservation_invalid.sk", line 10, characters 18-36:
+This is not safe since the original type contained this non-frozen type
+ 8 |
+ 9 | fun no2(): void {
+10 |   _: P<Int> = C2<mutable Vector<Int>>()
+   |                  ^^^^^^^^^^^^^^^^^^^
+11 | }

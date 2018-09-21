@@ -1,0 +1,109 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module alias PT = ParseTree;
+
+module SkipAnnotations;
+
+type ParseTree = PT.ParseTree;
+
+fun visit(
+  tree: ParseTree,
+  annotation: String,
+  onAnnotation: (annotation: ParseTree, target: AnnotationTarget) -> void,
+): void {
+  (mutable SkipAnnotationVisitor{annotation, onAnnotation}).visit(tree)
+}
+
+base class AnnotationTarget {
+  children =
+  | ClassAnnotation{
+    moduleTree: ?PT.ModuleTree,
+    classTree: PT.ClassDeclarationTree,
+  }
+  | FunctionAnnotation{
+    moduleTree: ?PT.ModuleTree,
+    classTree: ?PT.ClassDeclarationTree,
+    functionTree: PT.FunctionDeclarationTree,
+  }
+  | MethodAnnotation{
+    moduleTree: ?PT.ModuleTree,
+    classTree: PT.ClassDeclarationTree,
+    methodTree: PT.MethodDeclarationTree,
+  }
+}
+
+mutable class SkipAnnotationVisitor{
+  annotation: String,
+  onAnnotation: (annotation: ParseTree, target: AnnotationTarget) -> void,
+  private mutable moduleTree: ?PT.ModuleTree = None(),
+  private mutable classTree: ?PT.ClassDeclarationTree = None(),
+} extends PT.ParseTreeVisitor {
+  mutable fun visit(tree: ParseTree): void {
+    tree match {
+    | moduleTree @ PT.ModuleTree _ ->
+      this.!moduleTree = Some(moduleTree);
+      this.visitChildren(tree);
+      this.!moduleTree = None()
+    | methodTree @ PT.MethodDeclarationTree{modifiers} ->
+      getAnnotations(modifiers, this.annotation).each(modifier ->
+        this.onAnnotation(
+          modifier,
+          MethodAnnotation{
+            moduleTree => this.moduleTree,
+            classTree => this.classTree.fromSome(),
+            methodTree,
+          },
+        )
+      )
+    | functionTree @ PT.FunctionDeclarationTree{modifiers} ->
+      getAnnotations(modifiers, this.annotation).each(modifier ->
+        this.onAnnotation(
+          modifier,
+          FunctionAnnotation{
+            moduleTree => this.moduleTree,
+            classTree => this.classTree,
+            functionTree,
+          },
+        )
+      )
+    | classTree @ PT.ClassDeclarationTree{modifiers} ->
+      getAnnotations(modifiers, this.annotation).each(modifier ->
+        this.onAnnotation(
+          modifier,
+          ClassAnnotation{moduleTree => this.moduleTree, classTree},
+        )
+      );
+      this.!classTree = Some(classTree);
+      this.visitChildren(tree);
+      this.!classTree = None()
+    | _ -> this.visitChildren(tree)
+    }
+  }
+}
+
+fun getAnnotations(
+  modifiers: ParseTree,
+  annotation: String,
+): mutable Iterator<ParseTree> {
+  modifiers.getList().values().filter(modifier ->
+    modifierIsAnnotation(modifier, annotation)
+  )
+}
+
+fun modifierIsAnnotation(modifier: ParseTree, annotation: String): Bool {
+  (modifier is PT.AnnotationTree _) &&
+    {
+      modifierTree = (modifier as PT.AnnotationTree _);
+      tokenTree = modifierTree.at;
+      nameTree = modifierTree.name;
+      tokenTree.matchTreeKind(TokenKind.AT()) &&
+        nameTree.getTokenString() == annotation
+    };
+}
+
+module end;

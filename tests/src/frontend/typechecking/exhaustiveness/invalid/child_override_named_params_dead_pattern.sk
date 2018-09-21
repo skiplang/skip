@@ -1,0 +1,10 @@
+base class A{x: Int}
+class B{y: Bool} extends A
+
+fun myMatch(x: A): String {
+  x match {
+  | A{x => 1} -> "a"
+  | B{y => true, x => 1} -> "c"
+  | A{x => _} -> "b"
+  }
+}

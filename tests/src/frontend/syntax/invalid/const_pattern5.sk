@@ -1,0 +1,10 @@
+class C(x: Int = 42)
+
+const MyC: C = C();
+
+fun shouldFail(x: Int): String {
+  C(x) match {
+  | MyC -> "Pass\n"
+  | _ -> "Fail\n"
+  }
+}

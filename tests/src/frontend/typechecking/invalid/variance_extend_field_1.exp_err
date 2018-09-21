@@ -1,0 +1,13 @@
+File "./typechecking/invalid/variance_extend_field_1.sk", line 2, characters 12-15:
+Invalid variance annotation
+1 | class Boxy<T>(x: T)
+2 | class Foo<-Tbad>{x: Boxy<Tbad>}
+  |            ^^^^
+3 |
+
+File "./typechecking/invalid/variance_extend_field_1.sk", line 2, characters 26-29:
+The parameter appears in an invariant position
+1 | class Boxy<T>(x: T)
+2 | class Foo<-Tbad>{x: Boxy<Tbad>}
+  |                          ^^^^
+3 |

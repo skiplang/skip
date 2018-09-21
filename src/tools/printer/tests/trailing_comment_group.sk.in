@@ -1,0 +1,15 @@
+fun main(): void {
+  assertEqual/* more than 80 cols */(
+    thisIsALongExpressionThatMakesItGoOver80Columns,
+    0,
+  );
+  assertEqual/* more than 80 cols */ (this.make(10).maxBy(x ~> 10 - x).fromSome(), 0);
+  assertEqual(/* more than 80 cols */ this.make(10).maxBy(x ~> 10 - x).fromSome(), 0);
+  assertEqual(this.make(10).maxBy(x ~> 10 - x).fromSome(), 0 /* more than 80 cols */);
+  assertEqual(this.make(10).maxBy(x ~> 10 - x).fromSome(), 0) /* more than 80 cols */;
+  assertEqual( // invert
+    this.make(10).maxBy(x ~> 10 - x).fromSome(),
+    0
+  );
+  assertEqual(this.make(10).maxBy(x ~> 10 - x).fromSome(), 0) // invert
+}

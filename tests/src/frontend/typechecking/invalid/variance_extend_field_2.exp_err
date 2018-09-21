@@ -1,0 +1,13 @@
+File "./typechecking/invalid/variance_extend_field_2.sk", line 2, characters 12-12:
+Invalid variance annotation
+1 | base class Foo<-T>
+2 | class Bar<+T>(x: T) extends Foo<T>
+  |            ^
+3 |
+
+File "./typechecking/invalid/variance_extend_field_2.sk", line 2, characters 33-33:
+The parameter appears in a contravariant position
+1 | base class Foo<-T>
+2 | class Bar<+T>(x: T) extends Foo<T>
+  |                                 ^
+3 |

@@ -1,0 +1,2 @@
+base class B(x: String) {} // error, default before nondefault
+class C(y: String = "World!") extends B {}

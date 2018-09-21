@@ -1,0 +1,13 @@
+trait T {
+  macro fun f(): Int {
+    r = 0;
+    #forEachField (#field) !r = r + this.#field;
+    r
+  }
+}
+
+class C{private i: Int} uses T {}
+
+fun main(): void {
+  print_string(C{i => 42}.f().toString());
+}

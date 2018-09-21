@@ -1,0 +1,41 @@
+File "./typechecking/exhaustiveness/invalid/nested_pattern_shared_parent.sk", line 29, characters 7-31:
+The following pattern is unused:
+ | MyPositional(this::T1(e))
+27 |   fun test0(right: MyParams<Int>): String {
+28 |     right match {
+29 |     | MyPositional(this::T1(e)) -> "1digit" + e
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^
+30 |     | _ -> "other"
+
+File "./typechecking/exhaustiveness/invalid/nested_pattern_shared_parent.sk", line 29, characters 20-30:
+In particular, we encountered this sub-pattern
+ | this::T1(e)
+But expected one of
+ | MyArray(_)
+In that position.
+27 |   fun test0(right: MyParams<Int>): String {
+28 |     right match {
+29 |     | MyPositional(this::T1(e)) -> "1digit" + e
+   |                    ^^^^^^^^^^^
+30 |     | _ -> "other"
+
+File "./typechecking/exhaustiveness/invalid/nested_pattern_shared_parent.sk", line 17, characters 5-27:
+The following pattern is unused:
+ | MyPositional(MyList(e))
+15 | fun test0(right: MyParams<Int>): String {
+16 |   right match {
+17 |   | MyPositional(MyList(e)) -> "1digit" + e
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+18 |   | _ -> "other"
+
+File "./typechecking/exhaustiveness/invalid/nested_pattern_shared_parent.sk", line 17, characters 18-26:
+In particular, we encountered this sub-pattern
+ | MyList(e)
+But expected one of
+ | MyArray(_)
+In that position.
+15 | fun test0(right: MyParams<Int>): String {
+16 |   right match {
+17 |   | MyPositional(MyList(e)) -> "1digit" + e
+   |                  ^^^^^^^^^
+18 |   | _ -> "other"

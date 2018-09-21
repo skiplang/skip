@@ -1,0 +1,32 @@
+trait MyTC {
+  fun add(this): this;
+  fun toString(): String;
+}
+
+base class MyBase
+class Foo(x: Int) extends MyBase uses MyTC {
+  fun add(f: Foo): Foo {
+    Foo(this.x + f.x)
+  }
+  fun toString(): String {
+    this.x.toString()
+  }
+}
+class Bar(x: String) extends MyBase uses MyTC {
+  fun add(b: Bar): Bar {
+    Bar(this.x + b.x)
+  }
+  fun toString(): String {
+    this.x
+  }
+}
+
+fun addem<T: MyTC>(a: T, b: T): String {
+  a.add(b).toString()
+}
+
+fun main(): void {
+  x = if (true) Foo(112) else Bar("");
+  y = if (true) Bar("X") else Foo(42);
+  print_raw(addem(x, y))
+}

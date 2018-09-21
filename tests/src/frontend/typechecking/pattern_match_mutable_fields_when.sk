@@ -1,0 +1,12 @@
+mutable class Foo(bar: mutable Bar)
+mutable class Bar(mutable baz: String)
+
+fun main(): void {
+  bar = mutable Bar("Fail");
+  foo = mutable Foo(bar);
+  foo match {
+  | y @ Foo(Bar(x)) if (x == "Fail") -> y.bar.!baz = "Pass\n"
+  | _ -> void
+  };
+  print_raw(foo.bar.baz)
+}

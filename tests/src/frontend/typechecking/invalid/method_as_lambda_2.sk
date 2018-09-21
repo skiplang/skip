@@ -1,0 +1,10 @@
+mutable class Foo(mutable x: Int) {
+  readonly fun foo(): Int {
+    this.x
+  }
+}
+
+fun main(): void {
+  _: () ~> Int = (mutable Foo(0)).foo;
+  print_raw("FAIL")
+}

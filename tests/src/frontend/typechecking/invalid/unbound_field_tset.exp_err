@@ -1,0 +1,15 @@
+File "./typechecking/invalid/unbound_field_tset.sk", line 31, characters 3-5:
+The field z is undefined. Did you mean l or r?
+29 |     B{l, r}
+30 |   };
+31 |   x.z;
+   |   ^^^
+32 |   void
+
+File "./typechecking/invalid/unbound_field_tset.sk", line 27, characters 5-11:
+For the expression of type L
+25 |   r = 1;
+26 |   x = if (true) {
+27 |     A{l, r}
+   |     ^^^^^^^
+28 |   } else {

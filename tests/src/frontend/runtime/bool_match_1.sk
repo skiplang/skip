@@ -1,0 +1,8 @@
+fun main(): void {
+  print_raw(
+    false match {
+    | true -> "Fail"
+    | false -> "Pass\n"
+    },
+  )
+}

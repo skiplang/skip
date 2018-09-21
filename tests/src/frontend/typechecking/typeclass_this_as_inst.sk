@@ -1,0 +1,22 @@
+trait MyTC {
+  fun next(): ?inst;
+
+  fun skip(): ?inst {
+    Some(this)
+  }
+
+  fun maybe(): ?inst {
+    if (true) {
+      this.next() match {
+      | Some(next) -> next.next()
+      | None() -> invariant_violation("")
+      }
+    } else {
+      Some(this)
+    }
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

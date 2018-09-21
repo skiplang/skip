@@ -1,0 +1,11 @@
+@no_inline
+@gc
+fun appendString(out: mutable Vector<String>, n: Int): void {
+  out.push("long string #" + n)
+}
+
+fun main(): void {
+  v = mutable Vector[];
+  for (i in Range(0, 10)) appendString(v, i);
+  print_raw(v.join("\n") + "\n")
+}

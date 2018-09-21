@@ -1,0 +1,27 @@
+fun no1(): Int {
+  continue
+}
+
+fun no2(): void {
+  while (continue) void
+}
+
+fun no3(): void {
+  do void while (continue)
+}
+
+fun no4(): void {
+  for (_ in Vector[1, 2]) void else continue
+}
+
+fun no5(): void {
+  while (false) (() -> continue)()
+}
+
+fun no6(): void {
+  while (false) {
+    async {
+      continue
+    }
+  }
+}

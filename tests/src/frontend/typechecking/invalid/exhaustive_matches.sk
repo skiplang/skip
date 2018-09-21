@@ -1,0 +1,34 @@
+const IntConst: Int = 42;
+
+base class B
+
+class PC(i: Int) extends B {}
+class NC{s: String, b: Bool} extends B {}
+
+fun matchesTuple(): Bool {
+  (40 + 2, !true, "Hello") is (_, _, _);
+}
+
+fun matchesParen(): Bool {
+  (40 + 2) is (_);
+}
+
+fun matchesClass(): Bool {
+  PC(42) is PC _;
+}
+
+fun matchesNamedArgs(): Bool {
+  NC{s => "Hello", b => false} is NC{b => _};
+}
+
+fun matchesPositionalArgs(): Bool {
+  PC(42) is PC(_);
+}
+
+fun matchesUnderscore(): Bool {
+  (-1 * 12) is _;
+}
+
+fun main(): void {
+  void;
+}

@@ -1,0 +1,12 @@
+fun main(): void {
+  print_string("OK")
+}
+
+base class X {
+  async fun foo(): ^Int
+  | X() -> await this.foo()
+  | Y() -> await this.foo()
+}
+
+base class Y extends X
+class Z() extends Y

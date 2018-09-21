@@ -1,0 +1,4 @@
+fun main(): void {
+  l = (p1: String, _p2: Int) ~> p1;
+  print_raw(l("Pass\n", 42))
+}

@@ -1,0 +1,4 @@
+@annot(42)
+fun main(): void {
+  void
+}

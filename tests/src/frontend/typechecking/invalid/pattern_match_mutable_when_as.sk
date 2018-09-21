@@ -1,0 +1,15 @@
+mutable class C(mutable x: String) {
+  mutable fun checkX(): String {
+    val = this.x;
+    this.!x = "";
+    val
+  }
+}
+
+fun main(): void {
+  c = mutable C("Fail");
+  c match {
+  | c2 @ C(_) if (c2.checkX() == "Fail") -> c2.!x = "Booooom\n"
+  };
+  print_raw(c.x)
+}

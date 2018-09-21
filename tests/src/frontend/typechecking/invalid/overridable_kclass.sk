@@ -1,0 +1,5 @@
+class Foo() {
+  overridable fun foo(): void {
+    void
+  }
+}

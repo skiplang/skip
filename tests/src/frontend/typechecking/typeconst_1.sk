@@ -1,0 +1,17 @@
+base class MyParent final {deferred x: this::T} {
+  type T;
+  deferred static fun empty(x: this::T): this {
+    static{x => x}
+  }
+  deferred fun get(): this::T {
+    this.x
+  }
+}
+
+class MyChild extends MyParent {
+  type T = String;
+}
+
+fun main(): void {
+  print_raw(MyChild::empty("Pass\n").get())
+}

@@ -1,0 +1,2 @@
+base class X protected {f: Int}
+class Y private {g: Int} extends X

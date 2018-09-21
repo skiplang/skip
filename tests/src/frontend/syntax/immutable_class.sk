@@ -1,0 +1,12 @@
+fun main(): void {
+  foo1 = Foo{value => 1};
+  foo2 = foo1;
+  !foo2.value = foo2.value + 1;
+  print_raw(if (foo1.get() + foo2.get() == 3) "OK\n" else "FAILED")
+}
+
+class Foo{value: Int} {
+  fun get(): Int {
+    this.value
+  }
+}

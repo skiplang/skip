@@ -1,0 +1,47 @@
+File "./typechecking/invalid/typeconst_13.sk", line 12, characters 7-10:
+In 'Inty's version of the member 'breaky' inherited from 'Foo'
+10 | }
+11 |
+12 | class Inty extends Foo {
+   |       ^^^^
+13 |   type T = Test.MixedInt;
+
+File "./typechecking/invalid/typeconst_13.sk", line 8, characters 5-14:
+Invalid call of deferred method
+ 6 |   deferred fun breaky(b: Foo, v: this::T): this::T {
+ 7 |     _ = this.inout(v); // OK
+ 8 |     b.inout(v)
+   |     ^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/typeconst_13.sk", line 4, characters 3-10:
+'inout' was declared as 'deferred' and can only be called  from a 'deferred' method or from 'this'
+2 |   type T: Test.MixedScalar;
+3 |
+4 |   deferred fun inout(x: this::T): this::T;
+  |   ^^^^^^^^
+5 |
+
+File "./typechecking/invalid/typeconst_13.sk", line 20, characters 7-13:
+In 'Stringy's version of the member 'breaky' inherited from 'Foo'
+18 | }
+19 |
+20 | class Stringy extends Foo {
+   |       ^^^^^^^
+21 |   type T = Test.MixedString;
+
+File "./typechecking/invalid/typeconst_13.sk", line 8, characters 5-14:
+Invalid call of deferred method
+ 6 |   deferred fun breaky(b: Foo, v: this::T): this::T {
+ 7 |     _ = this.inout(v); // OK
+ 8 |     b.inout(v)
+   |     ^^^^^^^^^^
+ 9 |   }
+
+File "./typechecking/invalid/typeconst_13.sk", line 4, characters 3-10:
+'inout' was declared as 'deferred' and can only be called  from a 'deferred' method or from 'this'
+2 |   type T: Test.MixedScalar;
+3 |
+4 |   deferred fun inout(x: this::T): this::T;
+  |   ^^^^^^^^
+5 |

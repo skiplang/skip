@@ -1,0 +1,221 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*****************************************************************************/
+/* Entry point used for typechecking. Invoke it as
+ *
+ *     skip_check [ROOT_DIR | FILE]
+ *
+ * It will search upward from the given root path (or the current directory) for a
+ * .skipconfig file. See skipConfig.ml for more.
+ */
+/*****************************************************************************/
+
+// These types are taken from pkg/nuclide-language-service/lib/LanguageService.js
+class AtomPoint{row: Int, column: Int} {
+  fun toJson(): JSON.Value {
+    JSON.Object::createFromItems(
+      Vector[
+        ("row", JSON.IntNumber(this.row)),
+        ("column", JSON.IntNumber(this.column)),
+      ],
+    );
+  }
+}
+
+class AtomRange{start: AtomPoint, end: AtomPoint} {
+  fun toJson(): JSON.Value {
+    JSON.Object::createFromItems(
+      Vector[("start", this.start.toJson()), ("end", this.end.toJson())],
+    );
+  }
+}
+
+class DiagnosticTrace{text: String, filePath: String, range: AtomRange} {
+  fun toJson(): JSON.Value {
+    JSON.Object::createFromItems(
+      Vector[
+        ("type", JSON.String("Trace")),
+        ("text", JSON.String(this.text)),
+        ("filePath", JSON.String(this.filePath)),
+        ("range", this.range.toJson()),
+      ],
+    );
+  }
+}
+
+base class DiagnosticMessageKind() uses Show {
+  children =
+  | Lint()
+  | Review()
+  | Action()
+
+  fun toString(): String
+  | Lint() -> "lint"
+  | Review() -> "review"
+  | Action() -> "action"
+
+  fun toJson(): JSON.Value {
+    JSON.String(this.toString());
+  }
+}
+
+base class DiagnosticMessageType() uses Show {
+  children =
+  | Error()
+  | Warning()
+  | Info()
+  | Hint()
+
+  fun toString(): String
+  | Error() -> "Error"
+  | Warning() -> "Warning"
+  | Info() -> "Info"
+  | Hint() -> "Hint"
+
+  fun toJson(): JSON.Value {
+    JSON.String(this.toString());
+  }
+}
+
+class TextEdit{
+  oldRange: AtomRange,
+  newText: String,
+  // If included, this will be used to verify that the edit still applies cleanly.
+  oldText: ?String,
+}
+
+class DiagnosticFix{
+  oldRange: AtomRange,
+  newText: String,
+  // If included, this will be used to verify that the edit still applies cleanly.
+  // TODO: oldText: ?String,
+  speculative: Bool = false,
+  title: String = "Fix",
+} {
+  fun toJson(): JSON.Value {
+    JSON.Object::createFromItems(
+      Vector[
+        ("oldRange", this.oldRange.toJson()),
+        ("newText", JSON.String(this.newText)),
+        ("speculative", JSON.Bool(this.speculative)),
+        ("title", JSON.String(this.title)),
+      ],
+    );
+  }
+}
+
+class FileDiagnosticMessage{
+  // kind: DiagnosticMessageKind,
+  providerName: String,
+  type: DiagnosticMessageType,
+  filePath: String,
+  text: String,
+  range: AtomRange,
+  trace: Vector<DiagnosticTrace>,
+  fix: ?DiagnosticFix,
+} {
+  fun toJson(): JSON.Value {
+    fixField = this.fix match {
+    | None() -> Vector[]
+    | Some(fix) -> Vector[("fix", fix.toJson())]
+    };
+    JSON.Object::createFromItems(
+      Vector[
+        // ("kind", this.kind.toJson()),
+        ("providerName", JSON.String(this.providerName)),
+        ("type", this.type.toJson()),
+        ("text", JSON.String(this.text)),
+        ("range", this.range.toJson()),
+        ("filePath", JSON.String(this.filePath)),
+        ("trace", JSON.Array(this.trace.map(trace ~> trace.toJson()))),
+      ].concat(fixField),
+    );
+  }
+}
+
+class FileDiagnosticMap{map: Map<String, Vector<FileDiagnosticMessage>>} {
+  fun toJson(): JSON.Value {
+    JSON.Array(
+      this.map.items()
+        .map(item ~>
+          JSON.Array(
+            Vector[
+              JSON.String(item.i0),
+              JSON.Array(item.i1.map(message ~> message.toJson())),
+            ],
+          )
+        )
+        .collect(Vector),
+    );
+  }
+}
+
+fun positionToAtom(position: Position): AtomPoint {
+  AtomPoint{row => position.line(), column => position.column()};
+}
+
+fun rangeToAtom(range: TextRange): AtomRange {
+  AtomRange{
+    start => positionToAtom(range.start),
+    end => positionToAtom(range.end),
+  };
+}
+
+fun traceToDiagnosticTrace(trace: SkipError.Trace): DiagnosticTrace {
+  DiagnosticTrace{
+    text => trace.i1,
+    filePath => trace.i0.filename,
+    range => rangeToAtom(trace.i0.range),
+  };
+}
+
+fun errorToMessage(error: SkipError.Error): FileDiagnosticMessage {
+  traces = error.traces;
+  head = traces.getHead();
+  FileDiagnosticMessage{
+    // kind => Lint(),
+    providerName => "Skip",
+    type => Error(),
+    filePath => error.filename(),
+    text => head.i1,
+    range => rangeToAtom(head.i0.range),
+    trace => traces.getTail().map(traceToDiagnosticTrace).collect(Vector),
+    fix => error.fix.map(fix ->
+      DiagnosticFix{
+        oldRange => rangeToAtom(fix.oldRange),
+        newText => fix.newText,
+      }
+    ),
+  };
+}
+
+fun errorsToJson(errors: Vector<SkipError.Error>): JSON.Value {
+  map: mutable Map<
+    String,
+    mutable Vector<FileDiagnosticMessage>,
+  > = Map::mcreate();
+  for (error in errors) {
+    filePath = error.filename();
+    message = errorToMessage(error);
+    messages = map.maybeGet(filePath) match {
+    | None() -> mutable Vector[message]
+    | Some(oldMessages) ->
+      oldMessages.push(message);
+      oldMessages
+    };
+    map.set(filePath, messages);
+  };
+  FileDiagnosticMap{map => freeze(map)}.toJson();
+}
+
+untracked fun main(): void {
+  errors = SkipAnalyze.analyzeFile(SkipAnalyze.pathOfArguments());
+  JSON.Object(
+    Map["provider" => JSON.String("Skip"), "messages" => errorsToJson(errors)],
+  ).writeToStream(print_raw)
+}

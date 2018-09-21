@@ -1,0 +1,9 @@
+class Foo() {
+  async fun yes(): ^void {
+    void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

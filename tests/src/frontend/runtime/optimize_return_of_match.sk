@@ -1,0 +1,8 @@
+fun main(): void {
+  x = 42 match {
+  | 1 -> "Fail1"
+  | 2 -> "Fail2"
+  | _ -> "Pass\n"
+  };
+  print_raw(x)
+}

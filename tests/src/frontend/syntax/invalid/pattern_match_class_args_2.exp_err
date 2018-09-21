@@ -1,0 +1,7 @@
+File "./syntax/invalid/pattern_match_class_args_2.sk", line 5, characters 22-22:
+Expected '(', '{', or '_'
+3 |
+4 | fun main(): String {
+5 |   Foo(5) match { Foo x -> "No" }
+  |                      ^
+6 | }

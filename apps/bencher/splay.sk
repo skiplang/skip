@@ -1,0 +1,300 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Ported from the v8 splay benchmark at https://searchcode.com/codesearch/view/145733/
+
+const kSplayTreeSize: Int = 8000;
+const kSplayTreeModifications: Int = 80;
+const kSplayTreePayloadDepth: Int = 5;
+const seed: Random = Random::createWithState(123, 456);
+
+module Splay;
+
+mutable base class PayloadTree {
+  children =
+  | PayloadNode{left: mutable PayloadTree, right: mutable PayloadTree}
+  | Payload(mutable Array<Int>, String)
+}
+
+type Tree = ?mutable Node;
+
+mutable class Node{
+  key: ?Int = None(),
+  value: ?mutable PayloadTree = None(),
+  mutable left: Tree = None(),
+  mutable right: Tree = None(),
+} {
+  readonly fun traverse(f: readonly Node -> void): void {
+    current = this;
+    loop {
+      current.left match {
+      | None() -> void
+      | Some(left) -> left.traverse(f)
+      };
+      f(current);
+      !current = current.right match {
+      | None() -> break void
+      | Some(node) -> node
+      };
+    };
+  }
+}
+
+fun generatePayloadTree(depth: Int, tag: Int): mutable PayloadTree {
+  if (depth == 0) {
+    mutable Payload(
+      mutable Array[1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "String for key " + tag + " in leaf node",
+    )
+  } else {
+    mutable PayloadNode{
+      left => generatePayloadTree(depth - 1, tag),
+      right => generatePayloadTree(depth - 1, tag),
+    }
+  };
+}
+
+fun generateKey(rng: mutable Random): Int {
+  rng.next()
+}
+
+fun insertNewNode(splayTree: mutable SplayTree, rng: mutable Random): Int {
+  key = generateKey(rng);
+  while (splayTree.find(key).isSome()) {
+    !key = generateKey(rng);
+  };
+  payload = Some(generatePayloadTree(kSplayTreePayloadDepth, key));
+  splayTree.insert(key, payload);
+  key
+}
+
+fun splaySetup(rng: mutable Random): mutable SplayTree {
+  splayTree = mutable SplayTree();
+  for (_ in Range(0, kSplayTreeSize)) {
+    _ = insertNewNode(splayTree, rng)
+  };
+  splayTree
+}
+
+fun splayTearDown(splayTree: mutable SplayTree): void {
+  keys = splayTree.exportKeys();
+  splayTree.clear();
+  length = keys.size();
+  invariant(length == kSplayTreeSize, "Splay tree has wrong size.");
+  for (i in Range(0, kSplayTreeSize - 1)) {
+    invariant(keys[i] < keys[i + 1], "Splay tree not sorted.");
+  }
+}
+
+fun splayRun(splayTree: mutable SplayTree, rng: mutable Random): void {
+  for (_ in Range(0, kSplayTreeModifications)) {
+    key = insertNewNode(splayTree, rng);
+    greatest = splayTree.findGreatestLessThan(key);
+    toRemove = greatest match {
+    | Some(Node{key => Some(greatestKey)}) -> greatestKey
+    | None() -> key
+    | _ -> invariant_violation("Leaked empty node")
+    };
+    _ = splayTree.remove(toRemove);
+  }
+}
+
+mutable class SplayTree(private mutable root: Tree = None()) {
+  mutable fun clear(): void {
+    this.!root = None();
+  }
+
+  mutable fun insert(key: Int, value: ?mutable PayloadTree): void {
+    this.splay(key);
+    node = mutable Node{key => Some(key), value};
+    this.root match {
+    | None() -> this.!root = Some(node)
+    | root @ Some(rootNode @ Node{key => Some(oldKey)}) ->
+      if (oldKey != key) {
+        if (key > oldKey) {
+          node.!left = root;
+          node.!right = rootNode.right;
+          rootNode.!right = None();
+        } else {
+          node.!right = root;
+          node.!left = rootNode.left;
+          rootNode.!left = None();
+        };
+        this.!root = Some(node)
+      }
+    | _ -> invariant_violation("Leaked empty node")
+    }
+  }
+
+  mutable fun remove(key: Int): Tree {
+    this.splay(key);
+    removed = this.root;
+    removed match {
+    | None() -> invariant_violation("Can't remove from an empty tree.")
+    | Some(rootNode) ->
+      rootNode.left match {
+      | None() -> this.!root = rootNode.right
+      | left @ Some(_) ->
+        right = rootNode.right;
+        this.!root = left;
+        this.splay(key);
+        this.root match {
+        | Some(rootNode2) -> rootNode2.!right = right
+        | None() -> invariant_violation("Splay failure.")
+        }
+      }
+    };
+    removed
+  }
+
+  mutable fun find(key: Int): Tree {
+    this.splay(key);
+    this.root match {
+    | Some(Node{key => Some(rootKey)}) ->
+      if (rootKey == key) this.root else None()
+    | _ -> None()
+    }
+  }
+
+  mutable fun findMax(start: Tree): Tree {
+    this.root match {
+    | None() -> None<mutable Node>()
+    | Some(root) ->
+      current = start match {
+      | Some(startNode) -> startNode
+      | None() -> root
+      };
+      loop {
+        current.right match {
+        | None() -> break Some(current)
+        | Some(right) -> !current = right
+        }
+      }
+    }
+  }
+
+  mutable fun findGreatestLessThan(key: Int): Tree {
+    this.splay(key);
+    this.root match {
+    | None() -> None()
+    | Some(rootNode @ Node{key => Some(rootKey)}) ->
+      if (rootKey < key) {
+        this.root
+      } else {
+        rootNode.left match {
+        | None() -> None()
+        | left @ Some(_) -> this.findMax(left)
+        }
+      }
+    | _ -> invariant_violation("Leaked empty node")
+    }
+  }
+
+  mutable fun exportKeys(): mutable Vector<Int> {
+    results = mutable Vector[];
+    this.root match {
+    | None() -> void
+    | Some(rootNode) ->
+      rootNode.traverse(node -> {
+        node.key match {
+        | None() -> void
+        | Some(key) -> results.push(key)
+        };
+      })
+    };
+    results
+  }
+
+  private mutable fun splay(key: Int): void {
+    this.root match {
+    | None() -> void
+    | Some(current) ->
+      // Create a dummy node.  The use of the dummy node is a bit
+      // counter-intuitive: The right child of the dummy node will hold
+      // the L tree of the algorithm.  The left child of the dummy node
+      // will hold the R tree of the algorithm.  Using a dummy node, left
+      // and right will always be nodes and we avoid special cases.
+      dummy = mutable Node{};
+      leftDummy = dummy;
+      rightDummy = leftDummy;
+      loop {
+        currentKey = current.key match {
+        | None() -> invariant_violation("Leaked empty node")
+        | Some(k) -> k
+        };
+        if (key < currentKey) {
+          current.left match {
+          | None() -> break void
+          | Some(leftChild @ Node{key => Some(leftChildKey)}) ->
+            if (key < leftChildKey) {
+              // Rotate right
+              temp = leftChild;
+              current.!left = temp.right;
+              temp.!right = Some(current);
+              !current = temp;
+              if (current.left.isNone()) {
+                break void
+              }
+            };
+            // Link right
+            rightDummy.!left = Some(current);
+            !rightDummy = current;
+            !current = current.left match {
+            | None() -> mutable Node{}
+            | Some(node) -> node
+            }
+          | _ -> invariant_violation("Leaked empty node")
+          }
+        } else if (key > currentKey) {
+          current.right match {
+          | None() -> break void
+          | Some(rightChild @ Node{key => Some(rightChildKey)}) ->
+            if (key > rightChildKey) {
+              // Rotate left
+              temp = rightChild;
+              current.!right = temp.left;
+              temp.!left = Some(current);
+              !current = temp;
+              if (current.right.isNone()) {
+                break void
+              }
+            };
+            // Link left
+            leftDummy.!right = Some(current);
+            !leftDummy = current;
+            !current = current.right match {
+            | None() -> mutable Node{}
+            | Some(node) -> node
+            }
+          | _ -> invariant_violation("Leaked empty node")
+          }
+        } else {
+          break void
+        };
+      };
+
+      leftDummy.!right = current.left;
+      rightDummy.!left = current.right;
+      current.!left = dummy.right;
+      current.!right = dummy.left;
+      this.!root = Some(current)
+    };
+  }
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  rng = seed.clone();
+  splayTree = Splay.splaySetup(rng);
+  bencher.bench{
+    run => () -> {
+      Splay.splayRun(splayTree, rng);
+    },
+  }
+}
+
+module end;

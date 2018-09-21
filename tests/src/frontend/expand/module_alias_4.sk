@@ -1,0 +1,16 @@
+module alias I = M;
+
+module M;
+class Foo()
+module end;
+
+class ThisWorks(f: I.Foo)
+
+base class P {
+  children =
+  | L(f: I.Foo)
+}
+
+fun main(): void {
+  print_string("Pass")
+}

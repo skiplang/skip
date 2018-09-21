@@ -1,0 +1,7 @@
+fun foo(f: Int ~> Int): Int {
+  f(42)
+}
+
+fun bar(bad: (Int, Int) -> Int): Int {
+  foo(x ~> bad(x, x))
+}

@@ -1,0 +1,25 @@
+// Move this to a non-inlined function so it won't constant-fold.
+@no_inline
+fun stringHash(s: String): Int {
+  s.hash()
+}
+
+fun main(): void {
+  // Dump out hashes for two strings, once in a way that can be
+  // constant-folded, and once in a way that cannot.
+  s1 = "short";
+  s2 = "a much longer string, too long for SSO";
+
+  print_raw(
+    "short " +
+      stringHash(s1) +
+      " folded " +
+      s1.hash() +
+      "\n" +
+      "long " +
+      stringHash(s2) +
+      " folded " +
+      s2.hash() +
+      "\n",
+  );
+}

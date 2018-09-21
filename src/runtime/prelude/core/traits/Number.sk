@@ -1,0 +1,34 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Useful if you want to build an homogeneous collection of numbers and do
+// operations on them but you don't know if they are all Int or all Float nor
+// do you want to copy and paste the code to handle both cases.
+trait Number extends Hashable, Show, Orderable {
+  fun +(other: inst): inst;
+  fun -(other: inst): inst;
+  fun *(other: inst): inst;
+  fun /(other: inst): inst;
+  fun negate(): inst;
+
+  fun toFloat(): Float;
+  fun toInt(): Int;
+
+  // The problem that those (non-static) methods are trying to solve is to be
+  // able to create a value from a constant and use it with a Number.
+  // For example, if x is a Number, how to write the following:
+  //   x < 0
+  //   x < 0.0
+  // the proposed solution is to write
+  //   x < x.fromInt(0)
+  //
+  // A more elegant solution would be to allow to write
+  //   x < T::fromInt(0)
+  // but calling static methods on type parameters is not supported right now.
+  fun fromInt(x: Int): inst;
+  fun fromFloat(x: Float): inst;
+}

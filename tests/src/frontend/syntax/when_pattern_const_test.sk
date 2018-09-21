@@ -1,0 +1,10 @@
+const MyBool: Bool = true;
+
+fun main(): void {
+  print_raw(
+    1 match {
+    | _ if (MyBool) -> "Pass\n"
+    | _ -> "Fail\n"
+    },
+  )
+}

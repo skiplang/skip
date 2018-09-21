@@ -1,0 +1,13 @@
+File "./visibility/invalid/protected_constructor_3.sk", line 9, characters 5-7:
+Invalid constructor call for class X
+ 7 | class Z() {
+ 8 |   static fun newX(): X {
+ 9 |     X()
+   |     ^^^
+10 |   }
+
+File "./visibility/invalid/protected_constructor_3.sk", line 1, characters 9-17:
+It was declared as protected
+1 | class X protected () {
+  |         ^^^^^^^^^
+2 |   static fun new(): this {

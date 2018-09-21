@@ -1,0 +1,14 @@
+base class B {
+  children =
+  | C()
+  | D()
+
+  fun f(): void
+  | C() -> void
+  | D() -> void
+  | #T() -> void
+}
+
+fun main(): void {
+  void
+}

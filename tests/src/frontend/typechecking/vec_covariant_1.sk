@@ -1,0 +1,14 @@
+class MyContainer<+T: A>(value: T)
+
+base class A
+class B() extends A
+
+fun listOfObjects<T>(_: T -> MyContainer<A>): void {
+  void
+}
+
+fun main(): void {
+  f = _ -> MyContainer(B());
+  _ = listOfObjects(f);
+  print_string("Pass")
+}

@@ -1,0 +1,277 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Factory functions for creating ParseTree snippets.
+//
+// Useful for creating CodeMod's.
+//
+// NOTE: All created trees have range of TextRange.none.
+
+module alias TK = TokenKind;
+
+module ParseTree;
+
+const range: TextRange = TextRange.none;
+
+fun createSimpleToken(kind: TK.TokenKind): ParseTree {
+  invariant(kind.isSimple(), "Expected simple token kind");
+  token = Token.Token{
+    range,
+    kind,
+    value => kind.toString(),
+    leadingComments => Array[],
+    trailingComments => Array[],
+    errors => Array[],
+  };
+  TokenTree{range, token};
+}
+
+fun createStringLiteral<T: Show>(str: T): ParseTree {
+  token = Token.Token{
+    range,
+    kind => TK.STRING_LITERAL(),
+    value => str.toString(),
+    leadingComments => Array[],
+    trailingComments => Array[],
+    errors => Array[],
+  };
+  TokenTree{range, token};
+}
+
+fun createUnaryOperator(operator: TK.TokenKind): ParseTree {
+  invariant(operator.isUnaryOperator(), "Invalid unary operator");
+  createSimpleToken(operator);
+}
+
+fun createUnaryExpression(
+  operator: TK.TokenKind,
+  operand: ParseTree,
+): ParseTree {
+  UnaryExpressionTree{
+    range,
+    operator => createUnaryOperator(operator),
+    operand => maybeAddParens(operand.requiresParensAsUnaryOperand(), operand),
+  };
+}
+
+fun createBinaryExpression(
+  left: ParseTree,
+  operator: TK.TokenKind,
+  right: ParseTree,
+): ParseTree {
+  ParseTree.BinaryExpressionTree{
+    range,
+    left => maybeAddParens(left.requiresParensOnBinaryLeft(operator), left),
+    operator => ParseTree.createSimpleToken(operator),
+    right => maybeAddParens(right.requiresParensOnBinaryRight(operator), right),
+  }
+}
+
+fun createCallExpressionPositional(
+  func: ParseTree,
+  arguments: Array<ParseTree> = Array[],
+  typeArguments: ParseTree = ParseTree.EmptyTree{range},
+): ParseTree {
+  ParseTree.CallExpressionTree{
+    arguments => ParseTree.PositionalArgumentsTree{
+      arguments => ParseTree.ParseTreeList{
+        startDelimiter => createSimpleToken(TK.OPEN_PAREN()),
+        elements => arguments,
+        separators => Array::fill(
+          arguments.size(),
+          createSimpleToken(TK.COMMA()),
+        )/* .slice(1) */ ,
+        separatorKind => Some(TK.COMMA()),
+        endDelimiter => createSimpleToken(TK.CLOSE_PAREN()),
+        range,
+      },
+      range,
+    },
+    func,
+    range,
+    typeArguments,
+  }
+}
+
+fun createNonTypeIdentifier(name: String): ParseTree {
+  ParseTree.TokenTree{
+    range,
+    token => Token.Token{
+      kind => TokenKind.NONTYPE_IDENTIFIER(),
+      range,
+      value => name,
+      leadingComments => Array[],
+      trailingComments => Array[],
+      errors => Array[],
+    },
+  }
+}
+
+fun createAnnotation(
+  name: String,
+  arguments: Sequence<String> = Array[],
+): ParseTree {
+  argumentsTree = if (arguments.isEmpty()) {
+    ParseTree.EmptyTree{range}
+  } else {
+    ParseTree.PositionalArgumentsTree{
+      arguments => ParseTree.ParseTreeList{
+        startDelimiter => createSimpleToken(TK.OPEN_PAREN()),
+        elements => arguments.map(createStringLiteral).collect(Array),
+        separators => Array::fill(
+          arguments.size(),
+          createSimpleToken(TK.COMMA()),
+        )/* .slice(1) */ ,
+        separatorKind => Some(TK.COMMA()),
+        endDelimiter => createSimpleToken(TK.CLOSE_PAREN()),
+        range,
+      },
+      range,
+    }
+  };
+  ParseTree.AnnotationTree{
+    at => ParseTree.TokenTree{
+      range,
+      token => Token.Token{
+        kind => TokenKind.AT(),
+        range,
+        value => "@",
+        leadingComments => Array[],
+        trailingComments => Array[],
+        errors => Array[],
+      },
+    },
+    arguments => argumentsTree,
+    name => ParseTree.TokenTree{
+      range,
+      token => Token.Token{
+        kind => TokenKind.NONTYPE_IDENTIFIER(),
+        range,
+        value => name,
+        leadingComments => Array[],
+        trailingComments => Array[],
+        errors => Array[],
+      },
+    },
+    range,
+  }
+}
+
+fun createMemberSelection(object: ParseTree, member: String): ParseTree {
+  createBinaryExpression(
+    maybeAddParens(object.requiresParensAsObjectInMemberSelection(), object),
+    TokenKind.PERIOD(),
+    ParseTree.createNonTypeIdentifier(member),
+  );
+}
+
+fun createParenExpression(value: ParseTree): ParseTree {
+  ParenExpressionTree{
+    range,
+    openParen => createSimpleToken(TK.OPEN_PAREN()),
+    value,
+    closeParen => createSimpleToken(TK.CLOSE_PAREN()),
+  };
+}
+
+fun maybeAddParens(addParens: Bool, expression: ParseTree): ParseTree {
+  if (addParens) {
+    createParenExpression(expression)
+  } else {
+    expression
+  }
+}
+
+fun createEmpty(): ParseTree {
+  EmptyTree{range};
+}
+
+fun createTypeIdentifier(typename: String): ParseTree {
+  token = Token.Token{
+    range,
+    kind => TK.TYPE_IDENTIFIER(),
+    value => typename,
+    leadingComments => Array[],
+    trailingComments => Array[],
+    errors => Array[],
+  };
+  TokenTree{range, token};
+}
+
+fun createTypeName(typename: String): ParseTree {
+  GenericTypeNameTree{
+    range,
+    name => createTypeIdentifier(typename),
+    arguments => createEmpty(),
+  };
+}
+
+fun createGenericTypeName1(
+  typename: String,
+  arguments: Array<ParseTree>,
+): ParseTree {
+  GenericTypeNameTree{
+    range,
+    name => createTypeIdentifier(typename),
+    arguments => createDelimitedList(
+      TK.OPEN_ANGLE(),
+      arguments,
+      TK.CLOSE_ANGLE(),
+    ),
+  };
+}
+
+fun createDelimitedList(
+  start: TK.TokenKind,
+  elements: Array<ParseTree>,
+  end: TK.TokenKind,
+  separator: TK.TokenKind = TK.COMMA(),
+): ParseTree {
+  ParseTreeList{
+    range,
+    startDelimiter => createSimpleToken(start),
+    elements,
+    separators => Array::fill(elements.size(), createSimpleToken(separator)),
+    separatorKind => Some(separator),
+    endDelimiter => createSimpleToken(end),
+  };
+}
+
+fun createEmptyDelimitedList(
+  start: TK.TokenKind,
+  separatorKind: ?TK.TokenKind,
+  end: TK.TokenKind,
+): ParseTree {
+  ParseTreeList{
+    range,
+    startDelimiter => createSimpleToken(start),
+    elements => Array[],
+    separators => Array[],
+    separatorKind,
+    endDelimiter => createSimpleToken(end),
+  };
+}
+
+fun createCallArrayArguments(elements: Array<ParseTree>): ParseTree {
+  createDelimitedList(TK.OPEN_SQUARE(), elements, TK.CLOSE_SQUARE());
+}
+
+fun createCallArrayExpression(
+  func: ParseTree,
+  arguments: Array<ParseTree> = Array[],
+  typeArguments: ParseTree = createEmpty(),
+): ParseTree {
+  CallArrayExpressionTree{
+    range,
+    func,
+    bang => createEmpty(),
+    arguments => createCallArrayArguments(arguments),
+    typeArguments,
+  };
+}
+
+module end;

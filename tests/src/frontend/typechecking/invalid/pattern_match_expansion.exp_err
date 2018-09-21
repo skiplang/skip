@@ -1,0 +1,32 @@
+File "./typechecking/invalid/pattern_match_expansion.sk", line 10, characters 5-9:
+Invalid pattern. Constraint not satisfied when constraining this pattern's generics
+ 8 | fun shouldFail<T: C1>(x: Bar<T>): Int {
+ 9 |   x match {
+10 |   | Foo() -> 42
+   |     ^^^^^
+11 |   }
+
+File "./typechecking/invalid/pattern_match_expansion.sk", line 8, characters 30-30:
+The type: T
+ 6 | class Foo<+T: C2>() extends Bar<T>
+ 7 |
+ 8 | fun shouldFail<T: C1>(x: Bar<T>): Int {
+   |                              ^
+ 9 |   x match {
+
+File "./typechecking/invalid/pattern_match_expansion.sk", line 6, characters 15-16:
+Is not a subtype of: C2
+4 |
+5 | base class Bar<+T>
+6 | class Foo<+T: C2>() extends Bar<T>
+  |               ^^
+7 |
+
+File "./typechecking/invalid/pattern_match_expansion.sk", line 6, characters 15-16:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: CBase
+4 |
+5 | base class Bar<+T>
+6 | class Foo<+T: C2>() extends Bar<T>
+  |               ^^
+7 |

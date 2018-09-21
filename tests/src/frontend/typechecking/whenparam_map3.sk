@@ -1,0 +1,13 @@
+class Foo<T>(t: T) {
+  fun foo[T: Show](): T {
+    this.t
+  }
+}
+
+fun makeFoo(): String {
+  Foo("Pass\n").foo()
+}
+
+fun main(): void {
+  print_raw(makeFoo())
+}

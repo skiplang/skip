@@ -1,0 +1,171 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module BufferedPrinter;
+
+mutable class Out(
+  vector: mutable Vector<Char> = mutable Vector[],
+  mutable current_margin: Int = 0,
+  mutable last_was_nl: Bool = true,
+  mutable line: Int = 0,
+  mutable column: Int = 0,
+) {
+  mutable private fun add_char(ch: Char): void {
+    this.vector.push(ch);
+    this.!last_was_nl = (ch == '\n');
+    if (this.last_was_nl) {
+      this.!line = this.line + 1;
+      this.!column = 0
+    } else {
+      this.!column = this.column + 1
+    }
+  }
+
+  mutable private fun add_string(s: String): void {
+    s.each(this.add_char)
+  }
+
+  mutable private fun pad(): void {
+    if (this.last_was_nl) {
+      for (_ in Range(0, this.current_margin)) this.space()
+    }
+  }
+
+  mutable fun out(x: String): void {
+    this.pad();
+    this.add_string(x)
+  }
+
+  mutable fun out_char(c: Char): void {
+    this.pad();
+    this.add_char(c)
+  }
+
+  mutable fun newline(): void {
+    this.add_char('\n')
+  }
+
+  mutable fun space(): void {
+    this.add_char(' ')
+  }
+
+  mutable fun margin(f: () -> void): void {
+    this.!current_margin = this.current_margin + 2;
+    f();
+    this.!current_margin = this.current_margin - 2
+  }
+
+  readonly fun contents(): String {
+    String::fromChars(this.vector.toArray())
+  }
+
+  readonly fun get_line(): Int {
+    this.line
+  }
+
+  readonly fun get_column(): Int {
+    this.column
+  }
+}
+
+fun list_sep<T>(
+  sep: String,
+  f: (mutable Out, T) -> void,
+  o: mutable Out,
+  l: List<T>,
+): void {
+  l match {
+  | List.Nil() -> void
+  | List.Cons(x, List.Nil()) -> f(o, x)
+  | List.Cons(x, rl) ->
+    f(o, x);
+    o.out(sep);
+    list_sep(sep, f, o, rl)
+  }
+}
+
+fun array_sep<T>(
+  sep: String,
+  f: (mutable Out, T) -> void,
+  o: mutable Out,
+  a: Array<T>,
+): void {
+  if (a.isEmpty()) return void;
+
+  last = a.size() - 1;
+  for (i in Range(0, last)) {
+    f(o, a[i]);
+    o.out(sep);
+  } else {
+    f(o, a[last]);
+  }
+}
+
+fun list<T>(f: (mutable Out, T) -> void, o: mutable Out, l: List<T>): void {
+  list_sep(", ", f, o, l)
+}
+
+fun array<T>(f: (mutable Out, T) -> void, o: mutable Out, l: Array<T>): void {
+  array_sep(", ", f, o, l)
+}
+
+fun pair<T, U>(
+  f1: (mutable Out, T) -> void,
+  f2: (mutable Out, U) -> void,
+): (mutable Out, (T, U)) -> void {
+  (o, p) -> {
+    o.out("Pair: (");
+    f1(o, p.i0);
+    o.out(", ");
+    f2(o, p.i1);
+    o.out(")");
+  }
+}
+
+fun string(o: mutable Out, x: String): void {
+  o.out(x)
+}
+
+fun name(o: mutable Out, x: (FileRange, String)): void {
+  o.out(x.i1)
+}
+
+fun new_out(): mutable Out {
+  mutable Out()
+}
+
+fun pp_to_string<T>(f: (mutable Out, T) -> void, ast: T): String {
+  o = new_out();
+  f(o, ast);
+  o.contents()
+}
+
+fun pp_no_newline<T>(f: (mutable Out, T) -> void, ast: T): void {
+  str = pp_to_string(f, ast);
+  print_error(str)
+}
+
+fun pp<T>(f: (mutable Out, T) -> void, ast: T): void {
+  pp_no_newline(f, ast);
+  print_error("\n")
+}
+
+fun pp_list<T>(f: (mutable Out, T) -> void, ast: T): void {
+  str = pp_to_string(f, ast);
+  print_error(str);
+  print_error(", ")
+}
+
+fun writeTextFile(file: String, s: String): void {
+  FileSystem.writeTextFile(file, s)
+}
+
+fun out_to_file(file: String, o: mutable Out): void {
+  writeTextFile(file, o.contents())
+}
+
+module end;

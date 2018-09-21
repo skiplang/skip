@@ -1,0 +1,15 @@
+File "./visibility/invalid/private_inheritance.sk", line 13, characters 5-16:
+Cannot access world
+11 | class Child() extends Parent {
+12 |   fun fail(): void {
+13 |     this.world()
+   |     ^^^^^^^^^^^^
+14 |   }
+
+File "./visibility/invalid/private_inheritance.sk", line 6, characters 3-9:
+It was declared as private
+4 |   }
+5 |
+6 |   private fun world(): void {
+  |   ^^^^^^^
+7 |     this.hello()

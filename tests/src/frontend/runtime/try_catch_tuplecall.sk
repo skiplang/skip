@@ -1,0 +1,20 @@
+@no_inline
+@debug
+fun mightThrow(die: Bool = false): (String, String, String) {
+  if (die) {
+    invariant_violation("should not happen")
+  };
+  ("P", "a", "ss\n")
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      // Test returning a tuple inside a try, a special case for NBE.
+      (a, b, c) = mightThrow();
+      a + b + c
+    } catch {
+    | Exception _ -> "Fail\n"
+    },
+  );
+}

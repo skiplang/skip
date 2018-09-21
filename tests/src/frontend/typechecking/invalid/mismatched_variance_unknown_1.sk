@@ -1,0 +1,8 @@
+base class MyBox<+T>(x: T)
+class MyIndexedBox<T> extends MyBox<(Int, T)>
+
+fun no<T>(m: MyBox<T>): void {
+  m match {
+  | MyIndexedBox((i, v)) -> _ = (i, v)
+  }
+}

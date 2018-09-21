@@ -1,0 +1,13 @@
+class C(x: Int) {
+  macro fun m(): void {
+    #forEachField (#field) {
+      #forEachField (#field) {
+        #field
+      }
+    }
+  }
+}
+
+fun main(): void {
+  void
+}

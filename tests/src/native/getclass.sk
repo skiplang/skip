@@ -1,0 +1,30 @@
+base class B() {
+  static fun name(): String;
+}
+
+class A() extends B {
+  static fun name(): String {
+    "This is class A"
+  }
+}
+
+class C() extends B {
+  static fun name(): String {
+    "This is class C"
+  }
+}
+
+// Produce an array of test Strings.
+@no_inline
+@debug
+fun f(b: B): Concrete<B> {
+  class(b)
+}
+
+fun main(): void {
+  sa = f(A())::name();
+  sc = f(C())::name();
+
+  print_string(sa);
+  print_string(sc);
+}

@@ -1,0 +1,7 @@
+File "./typechecking/invalid/default_arg_5.sk", line 20, characters 3-5:
+Missing arguments, expected 1 but got 0
+18 |   f = if (p()) dpos else (a -> dpos(a));
+19 |   f(0);
+20 |   f()
+   |   ^^^
+21 | }

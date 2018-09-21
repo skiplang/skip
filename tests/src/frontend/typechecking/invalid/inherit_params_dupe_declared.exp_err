@@ -1,0 +1,11 @@
+File "./typechecking/invalid/inherit_params_dupe_declared.sk", line 2, characters 9-9:
+Field name already bound: x
+1 | base class B(x: Bool, y: Bool) {}
+2 | class C(x: Int, y: String) extends B
+  |         ^
+
+File "./typechecking/invalid/inherit_params_dupe_declared.sk", line 1, characters 14-14:
+Conflicts with field declared in B
+1 | base class B(x: Bool, y: Bool) {}
+  |              ^
+2 | class C(x: Int, y: String) extends B

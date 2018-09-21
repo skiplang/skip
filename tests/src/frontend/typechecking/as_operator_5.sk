@@ -1,0 +1,12 @@
+// diamond
+base class P
+base class Q extends P
+base class R extends P
+class S() extends Q, R
+class T() extends Q, R
+
+fun main(): void {
+  x: P = S();
+  _r = x as S _;
+  print_string("Pass")
+}

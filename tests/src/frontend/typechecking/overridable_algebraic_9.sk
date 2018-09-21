@@ -1,0 +1,20 @@
+base class P {
+  overridable fun foo(): String
+  | X _ -> "FAIL"
+  | B _ -> "FAIL"
+}
+
+base class X extends P {
+  fun foo(): String {
+    "Pass\n"
+  }
+}
+
+class A() extends X, P {
+  fun foo from X;
+}
+class B() extends P
+
+fun main(): void {
+  print_raw(A().foo())
+}

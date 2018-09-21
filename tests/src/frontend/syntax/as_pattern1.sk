@@ -1,0 +1,18 @@
+fun main(): void {
+  y = foo();
+  print_string(y.toString())
+}
+
+fun foo(): B {
+  x: A = B();
+  x as B _
+}
+
+base class A {
+  children =
+  | B()
+  | C()
+  fun toString(): String
+  | B() -> "OK"
+  | _ -> "FAIL"
+}

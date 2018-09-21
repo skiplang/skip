@@ -1,0 +1,4 @@
+fun main(): void {
+  x = 5;
+  _y = x as Bool _
+}

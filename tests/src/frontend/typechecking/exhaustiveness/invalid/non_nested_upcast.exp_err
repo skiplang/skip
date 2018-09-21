@@ -1,0 +1,10 @@
+File "./typechecking/exhaustiveness/invalid/non_nested_upcast.sk", line 7, characters 3-3:
+Non-exhaustive pattern match found.
+The following is the structure of a value that won't be matched:
+ | Y()
+5 | }
+6 | fun test(): String {
+7 |   (X() : A) match {
+  |   ^^^^^^^^^^^^^^^^^
+8 |   | X() -> "Fail\n"
+  |   ^^^^^^^^^^^^^^^^^

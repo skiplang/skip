@@ -1,0 +1,12 @@
+base class MyBox<+T>(x: T)
+class MyIndexedBox<T> extends MyBox<(Int, T)>
+
+fun yes<T>(m: MyBox<T>): void {
+  m match {
+  | MyIndexedBox _ -> print_string("Pass")
+  }
+}
+
+fun main(): void {
+  yes(MyIndexedBox((42, "")))
+}

@@ -1,0 +1,76 @@
+mutable class MyRef<T>(mutable r: T)
+
+fun any_tparam<T>(T): void {
+  void
+}
+fun imm_tparam<T: frozen>(T): void {
+  void
+}
+
+fun rdo_constr<T: readonly MyRef<Int>>(T): void {
+  void
+}
+fun rdo_arg<T>(readonly MyRef<T>): void {
+  void
+}
+fun rdo_ret<T>(x: T): readonly MyRef<T> {
+  mutable MyRef(x)
+}
+
+fun mut_constr<T: mutable MyRef<Int>>(T): void {
+  void
+}
+fun mut_arg<T>(mutable MyRef<T>): void {
+  void
+}
+fun mut_ret<T>(x: T): mutable MyRef<T> {
+  mutable MyRef(x)
+}
+
+fun imm_constr<T: MyRef<Int>>(T): void {
+  void
+}
+fun imm_arg<T>(MyRef<T>): void {
+  void
+}
+fun imm_ret<T>(x: T): MyRef<T> {
+  MyRef(x)
+}
+
+fun main(): void {
+  mut_r = mutable MyRef(0);
+  imm_r = MyRef(0);
+
+  any_tparam(0);
+  any_tparam(mutable Array[0]);
+  any_tparam(Array[0]);
+  any_tparam(mut_r);
+  any_tparam(imm_r);
+
+  imm_tparam(0);
+  imm_tparam(Array[0]);
+  imm_tparam(imm_r);
+
+  rdo_constr(mut_r);
+  rdo_constr(imm_r);
+  rdo_arg(mut_r);
+  rdo_arg(imm_r);
+  _ = rdo_ret(mut_r);
+  _ = rdo_ret(imm_r);
+
+  mut_constr(mut_r);
+  mut_arg(mut_r);
+  _ = mut_ret(mut_r);
+  _ = mut_ret(imm_r);
+  _ = mut_ret(0);
+  _ = mut_ret(Array[0]);
+  _ = mut_ret(mutable Array[0]);
+
+  imm_constr(imm_r);
+  imm_arg(imm_r);
+  _ = imm_ret(imm_r);
+  _ = imm_ret(0);
+  _ = imm_ret(Array[0]);
+
+  print_string("Pass")
+}

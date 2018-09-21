@@ -1,0 +1,24 @@
+async fun asyncMain(): ^void {
+  ids = Vector[1, 2, 3];
+  items = (await ids.genMap(id ~>
+    async {
+      result: ?(Int, Int) = None();
+      try {
+        item = await gen(id);
+        !result = Some((id, item));
+      } catch {
+      | _ -> void
+      };
+      result;
+    }
+  )).filterNone();
+  print_string(items.map(x -> `(${x.i0}, ${x.i1})`).toString())
+}
+
+fun main(): void {
+  awaitSynchronously(asyncMain())
+}
+
+async fun gen(id: Int): ^Int {
+  id
+}

@@ -1,0 +1,4 @@
+
+fun test(): void {
+  x as y
+}

@@ -1,0 +1,4 @@
+fun main(): void {
+  x = Ref(-42);
+  x.value=.negate()=.negate()
+}

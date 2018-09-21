@@ -1,0 +1,22 @@
+File "./typechecking/invalid/whenparam_call2.sk", line 8, characters 13-29:
+Constraint not satisfied
+ 6 |
+ 7 | fun main(): void {
+ 8 |   print_raw(Foo("Fail").bar().toString())
+   |             ^^^^^^^^^^^^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/whenparam_call2.sk", line 8, characters 17-22:
+The type: String
+ 6 |
+ 7 | fun main(): void {
+ 8 |   print_raw(Foo("Fail").bar().toString())
+   |                 ^^^^^^
+ 9 | }
+
+File "./typechecking/invalid/whenparam_call2.sk", line 2, characters 14-16:
+Is not a subtype of: Int
+1 | class Foo<T>(x: T) {
+2 |   fun bar[T: Int](): T {
+  |              ^^^
+3 |     this.x

@@ -1,0 +1,2 @@
+base class B(x: Bool, y: Bool) {}
+class C(x: Int, y: String) extends B

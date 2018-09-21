@@ -1,0 +1,11 @@
+base class P<+T>
+
+class Tester<T>() {
+  fun no<U>[mutable Ref<P<T>>: mutable Ref<P<U>>](x: T): U {
+    x
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

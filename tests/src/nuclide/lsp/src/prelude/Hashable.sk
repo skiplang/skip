@@ -1,0 +1,17 @@
+module Hashable;
+
+trait .Hashable {
+  // The hash method should return a 64-bit hash value. The bits do not
+  // need to be scrambled, that is the responsibility of the user of this
+  // method.
+  fun hash(): Int;
+}
+
+// Accumulate hash bits from n into seed. Borrowed from boost::hash_combine,
+// but using a 64 bit version of the golden ratio instead of 32.
+fun combine(seed: Int, n: Int): Int {
+  mix = seed.shl(6) + seed.ushr(2);
+  seed.xor(0x9e3779b97f4a7c15 + mix + n)
+}
+
+module end;

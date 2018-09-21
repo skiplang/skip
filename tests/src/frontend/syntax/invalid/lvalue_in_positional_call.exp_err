@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_in_positional_call.sk", line 2, characters 5-6:
+'.!' in non-lvalue
+1 | fun main(): String {
+2 |   f.!y()
+  |     ^^
+3 | }

@@ -1,0 +1,18 @@
+class MyExn<T: Show>(x: T) extends Exception {
+  fun getMessage(): String {
+    this.x.toString()
+  }
+}
+
+fun foo(b: Bool): String {
+  try {
+    if (b) throw MyExn(5) else throw MyExn("hi")
+  } catch {
+  | e @ Exception _ if (e is MyExn _) -> e.getMessage()
+  | _ -> "fail"
+  }
+}
+
+fun main(): void {
+  print_raw(foo(true).toString() + "\n")
+}

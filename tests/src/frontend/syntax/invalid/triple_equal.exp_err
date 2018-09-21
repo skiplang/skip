@@ -1,0 +1,6 @@
+File "./syntax/invalid/triple_equal.sk", line 2, characters 9-11:
+Invalid token '==='. Use '==' for value equality.
+1 | fun main(): String {
+2 |   if (1 === 2 && 3 !== 4)
+  |         ^^^
+3 |     "true\n"

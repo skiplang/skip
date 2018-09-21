@@ -1,0 +1,5 @@
+File "./typechecking/invalid/typeclass_impl.sk", line 2, characters 14-14:
+A trait cannot use another trait
+1 | trait X
+2 | trait Y uses X
+  |              ^

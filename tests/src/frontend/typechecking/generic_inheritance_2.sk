@@ -1,0 +1,11 @@
+trait Foo {
+  fun get<T1>(): T1;
+}
+
+base class Bar uses Foo {
+  fun get<T2>(): T2;
+}
+
+fun main(): void {
+  print_string("Pass")
+}

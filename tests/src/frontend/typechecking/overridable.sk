@@ -1,0 +1,14 @@
+fun main(): void {
+  print_string("OK")
+}
+base class Foo {
+  overridable fun foo(): void {
+    void
+  }
+}
+
+class Bar() extends Foo {
+  fun foo(): void {
+    void
+  }
+}

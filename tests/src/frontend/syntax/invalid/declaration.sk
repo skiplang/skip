@@ -1,0 +1,4 @@
+public fun main(): String {
+  "Fail"
+}
+

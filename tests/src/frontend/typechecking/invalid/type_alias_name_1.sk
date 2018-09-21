@@ -1,0 +1,12 @@
+class Bar<T>(T)
+type Foo<T> = Bar<T>;
+class Wrap1<T>()
+class Wrap2<T>()
+
+fun baz<V>(V): Wrap1<Foo<V>> {
+  Wrap1()
+}
+
+fun not_valid(): void {
+  _: Wrap2<Foo<String>> = baz(42)
+}

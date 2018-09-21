@@ -1,0 +1,14 @@
+File "./typechecking/invalid/named_default_constructor_multi.sk", line 6, characters 7-21:
+Invalid arguments
+4 |
+5 | fun main(): void {
+6 |   c = C{a => "Hello"}; // missing y
+  |       ^^^^^^^^^^^^^^^
+7 |   print_raw(c.a + c.b + c.x + c.y)
+
+File "./typechecking/invalid/named_default_constructor_multi.sk", line 2, characters 14-14:
+The parameter y is missing
+1 | base class A{x: String = "World"}
+2 | base class B{y: String}
+  |              ^
+3 | class C{a: String, b: String = ", "} extends A, B

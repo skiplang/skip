@@ -1,0 +1,4 @@
+fun main(): String {
+  a[].x = 42;
+  "Fail"
+}

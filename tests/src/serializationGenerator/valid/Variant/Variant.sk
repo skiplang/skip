@@ -1,0 +1,15 @@
+@serialize
+base class A() uses Show, Equality {
+  children =
+  | B(int: Int)
+  | C(string: String)
+  fun toString(): String
+  | B(int) -> `B(${int})`
+  | C(string) -> `C(${string})`
+}
+
+fun main(): void {
+  assertSerializes(`{"B": {"int": 0}}`, A::meta, (B(0) : A));
+  assertSerializes(`{"C": {"string": "test"}}`, A::meta, (C("test") : A));
+  print_string("Pass")
+}

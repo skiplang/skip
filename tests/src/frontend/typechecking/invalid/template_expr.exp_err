@@ -1,0 +1,15 @@
+File "./typechecking/invalid/template_expr.sk", line 4, characters 16-23:
+The field toString is undefined
+2 |
+3 | fun main(): void {
+4 |   print_raw(`${NoShow{}}`)
+  |                ^^^^^^^^
+5 | }
+
+File "./typechecking/invalid/template_expr.sk", line 4, characters 16-23:
+For the expression of type NoShow
+2 |
+3 | fun main(): void {
+4 |   print_raw(`${NoShow{}}`)
+  |                ^^^^^^^^
+5 | }

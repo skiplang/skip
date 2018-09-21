@@ -1,0 +1,198 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+// Modified from https://benchmarksgame-team.pages.debian.net/benchmarksgame/program/fasta-hack-4.html
+module Fasta;
+
+mutable class RandomFasta(
+  mutable last: Int,
+  mutable randoms: mutable Array<Float>,
+) {
+  const IA: Int = 3877;
+  const IC: Int = 29573;
+  const IM: Int = 139968; // 2187 * 67
+  const IM_float: Float = 139968.0;
+
+  static fun create(): mutable RandomFasta {
+    mutable RandomFasta(42, mutable Array[])
+  }
+
+  mutable fun reset(width: Int): void {
+    this.!randoms = Array::mfill(width, 0.0);
+  }
+
+  mutable fun gen_random(): void {
+    last = this.last;
+    for (i in Range(0, this.randoms.size())) {
+      !last = (last * static::IA + static::IC) % static::IM;
+      this.randoms![i] = last.toFloat() / static::IM_float;
+    };
+    this.!last = last;
+  }
+}
+
+/* Generate and write FASTA format */
+fun makeRandomFasta2(r: mutable RandomFasta, n: Int): void {
+  width = 60;
+  lines = n / width;
+  r.reset(width);
+
+  i = 0;
+  // full lines
+  while (
+    i < lines &&
+    {
+      pick = mutable Vector[];
+      r.gen_random();
+      for (x in r.randoms) {
+        if (x < 0.302954942668) {
+          pick.push('a');
+        } else if (x < 0.5009432431601) {
+          pick.push('c');
+        } else if (x < 0.6984905497992) {
+          pick.push('g');
+        } else {
+          pick.push('t');
+        };
+      };
+      // print_string(pick.join(""));
+      true;
+    }
+  ) {
+    !i = i + 1;
+  };
+  // last, partial line
+  w = n % width;
+  if (w != 0) {
+    pick = mutable Vector[];
+    r.reset(w);
+    r.gen_random();
+    for (x in r.randoms) {
+      if (x < 0.302954942668) {
+        pick.push('a');
+      } else if (x < 0.5009432431601) {
+        pick.push('c');
+      } else if (x < 0.6984905497992) {
+        pick.push('g');
+      } else {
+        pick.push('t');
+      };
+    };
+    // print_string(pick.join(""));
+  };
+}
+
+fun makeRandomFasta3(
+  r: mutable RandomFasta,
+  genelist: Array<Char>,
+  n: Int,
+): void {
+  width = 60;
+  lines = (n / width).toInt();
+  r.reset(width);
+  i = 0;
+  while (
+    i < lines &&
+    {
+      pick = mutable Vector[];
+      r.gen_random();
+      for (x in r.randoms) {
+        pick.push(genelist[(x * 100.0).toInt()]);
+      };
+      // print_string(pick.join(""));
+      true;
+    }
+  ) {
+    !i = i + 1;
+  };
+  // last, partial line
+  w = n % width;
+  if (w != 0) {
+    pick = mutable Vector[];
+    r.reset(w);
+    r.gen_random();
+    for (x in r.randoms) {
+      pick.push(genelist[(x * 100.0).toInt()]);
+    };
+    // print_string(pick.join(""));
+  };
+}
+
+fun makeRepeatFasta(s: Array<Char>, n: Int): void {
+  i = 0;
+  sLength = s.size();
+  lineLength = 60;
+  while (
+    n > 0 &&
+    {
+      if (n < lineLength) !lineLength = n;
+      if (i + lineLength < sLength) {
+        // print_string(s.slice(i, lineLength + i).join(""));
+        !i = i + lineLength;
+      } else {
+        // print_raw(s.slice(i).join(""));
+        !i = lineLength - (sLength - i);
+        // print_string(s.slice(0, i).join(""));
+      };
+      !n = n - lineLength;
+      true;
+    }
+  ) void;
+}
+
+@bench
+fun bench(bencher: Bencher): Bencher.BenchmarkStats {
+  n = arguments().maybeGet(0).flatMap(x -> x.toIntOption()).default(1000);
+
+  alu_string =
+    "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGG" +
+    "GAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGA" +
+    "CCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAAT" +
+    "ACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCA" +
+    "GCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGG" +
+    "AGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCC" +
+    "AGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA";
+
+  alu = Array::fillBy(alu_string.length(), i -> alu_string[i]);
+
+  iub = mutable Vector[];
+  for (item in Array[
+    'a' => 0.27,
+    'c' => 0.12,
+    'g' => 0.12,
+    't' => 0.27,
+    'B' => 0.02,
+    'D' => 0.02,
+    'H' => 0.02,
+    'K' => 0.02,
+    'M' => 0.02,
+    'N' => 0.02,
+    'R' => 0.02,
+    'S' => 0.02,
+    'V' => 0.02,
+    'W' => 0.02,
+    'Y' => 0.02,
+  ]) {
+    (key, value) = item;
+    for (_ in Range(0, (value * 100.0).toInt())) {
+      iub.push(key)
+    }
+  };
+  iub2 = iub.toArray();
+
+  r = RandomFasta::create();
+
+  bencher.bench{
+    run => () -> {
+      makeRepeatFasta(alu, n * 2);
+      makeRandomFasta3(r, iub2, n * 3);
+      makeRandomFasta2(r, n * 5);
+    },
+  }
+}
+
+module end;

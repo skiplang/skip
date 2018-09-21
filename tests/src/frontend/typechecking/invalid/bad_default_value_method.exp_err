@@ -1,0 +1,65 @@
+File "./typechecking/invalid/bad_default_value_method.sk", line 8, characters 18-20:
+Invalid default value
+ 6 |
+ 7 | class Test() {
+ 8 |   fun no1{x: L = R()}: void {
+   |                  ^^^
+ 9 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 8, characters 18-20:
+The type: R
+ 6 |
+ 7 | class Test() {
+ 8 |   fun no1{x: L = R()}: void {
+   |                  ^^^
+ 9 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 8, characters 14-14:
+Is not a subtype of: L
+ 6 |
+ 7 | class Test() {
+ 8 |   fun no1{x: L = R()}: void {
+   |              ^
+ 9 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 8, characters 14-14:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: P
+ 6 |
+ 7 | class Test() {
+ 8 |   fun no1{x: L = R()}: void {
+   |              ^
+ 9 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 11, characters 33-35:
+Invalid default value
+ 9 |     void
+10 |   }
+11 |   static fun no2{x: mutable L = L()}: void {
+   |                                 ^^^
+12 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 11, characters 33-35:
+The type: L
+ 9 |     void
+10 |   }
+11 |   static fun no2{x: mutable L = L()}: void {
+   |                                 ^^^
+12 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 11, characters 21-29:
+Is not a subtype of: mutable L
+ 9 |     void
+10 |   }
+11 |   static fun no2{x: mutable L = L()}: void {
+   |                     ^^^^^^^^^
+12 |     void
+
+File "./typechecking/invalid/bad_default_value_method.sk", line 11, characters 21-29:
+This type was found to be a fixed upper bound and could not be changed to a compatible type.
+To make these types compatible, annotate as this type: readonly L
+ 9 |     void
+10 |   }
+11 |   static fun no2{x: mutable L = L()}: void {
+   |                     ^^^^^^^^^
+12 |     void

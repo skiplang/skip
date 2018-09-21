@@ -1,0 +1,19 @@
+base class Foo<T: Test.MixedScalar> {
+  fun brokenfun(x: T): T;
+}
+
+class Bar<T: Test.MixedString>() extends Foo<T> {
+  fun brokenfun(x: T): T {
+    x match {
+    | Test.MixedString _ -> x
+    }
+  }
+}
+
+fun asFoo<T: Test.MixedScalar>(): Foo<T> {
+  Bar()
+}
+
+fun main(): void {
+  print_raw(asFoo().brokenfun(Test.MixedInt(42)).toString())
+}

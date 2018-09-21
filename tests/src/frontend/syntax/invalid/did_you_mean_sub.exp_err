@@ -1,0 +1,15 @@
+File "./syntax/invalid/did_you_mean_sub.sk", line 4, characters 3-7:
+The field pos is undefined. Did you mean cla_pos?
+2 |
+3 | fun f(a: A): String {
+4 |   a.pos
+  |   ^^^^^
+5 | }
+
+File "./syntax/invalid/did_you_mean_sub.sk", line 3, characters 10-10:
+For the expression of type A
+1 | class A{cla_pos: String}
+2 |
+3 | fun f(a: A): String {
+  |          ^
+4 |   a.pos

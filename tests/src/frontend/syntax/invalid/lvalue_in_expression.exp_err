@@ -1,0 +1,6 @@
+File "./syntax/invalid/lvalue_in_expression.sk", line 2, characters 9-10:
+'.!' in non-lvalue
+1 | fun a(): void {
+2 |   x = y.!x
+  |         ^^
+3 | }

@@ -1,0 +1,673 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module LowerLocalGC;
+
+/*
+
+This implements the localGC() and Debug.getMemoryFrameUsage() intrinsics
+(IR instructions LocalGC and ObstackUsage), and the @gc annotation.
+
+NOTE: We treat a "Return" or "Throw" in a @gc block as if it were a
+LocalGC immediately followed by that Instr. So when you see LocalGC below,
+that includes these cases.
+
+GC Instrs are tricky because they input whatever pointers happen to be
+live at that point, and produce updated values for relocatable pointers.
+See safepoint.sk for a general explanation of the SSA analysis and
+rewriting that happens here.
+
+ObstackUsage is lowered as well, inducing a new ObstackNote at function
+entry, just like LocalGC.
+
+*/
+
+// Heuristic ideas for when to GC:
+// - loops forever: no place to collect? seems bad (known limitation)
+//   need to add LocalGC along back-edge.
+// - small allocs or unlikely allocs => maybe leak, but need a bound on leaks
+// - sink note along edges that allocate/collect?
+
+private mutable class GCBlock extends Safepoint.SafepointBlockBase
+
+mutable class .LowerLocalGC{
+  // Redundant GC instrs we should discard (we do a poor job of detecting
+  // these but catch some easy cases).
+  deadGC: mutable UnorderedSet<InstrID> = mutable UnorderedSet[],
+
+  // Obstack note for the entire function.
+  gcNote: InstrID,
+
+  // did the function have @gc, without a @no_gc?
+  hasGC: Bool,
+
+  // rng state for logging
+  rng: mutable Random,
+} extends Safepoint<mutable GCBlock> {
+  static fun run(
+    f: Function,
+    env: GlobalEnv,
+    rng: mutable Random,
+  ): (Function, PassResult) {
+    pos = f.pos;
+    hasNoGC = annotationsContain(f.annotations, "@no_gc", pos);
+    hasGC = !hasNoGC && annotationsContain(f.annotations, "@gc", pos);
+
+    if (!static::shouldGC(f, hasNoGC, hasGC)) {
+      // No LocalGC, so nothing to do.
+      (f, PassUnchanged(kNoFunctions))
+    } else {
+      optinfo = OptimizerInfo::make(f);
+      d = mutable static{
+        optinfo,
+        env,
+        pos,
+        gcNote => optinfo.iid(),
+        hasGC,
+        rng,
+      };
+      d.go("lower_gc", true)
+    }
+  }
+
+  // True if this function has a gc annotation, LocalGC or ObstackUsage
+  // instructions, or allocates unbounded memory.
+  private static fun shouldGC(f: Function, hasNoGC: Bool, hasGC: Bool): Bool {
+    (!hasNoGC &&
+      kConfig.mainConfig.autogc &&
+      f.status match {
+      | OptDone{allocAmount} -> allocAmount is AllocUnbounded _
+      | OptPartial _ ->
+        f.pos.die(`Function $(f) still OptPartial in LowerGC pass.`)
+      }) ||
+      // no automatic gc, but might need note or have localGC() call
+      f.blocks.any(b -> b.instrs.any(instr -> static::needNote(instr, hasGC)))
+  }
+
+  protected readonly fun createSafepointBlock(): mutable GCBlock {
+    mutable GCBlock()
+  }
+
+  // We treat Return and Throw as if they "started with" a LocalGC inside
+  // an @gc function.
+  private static fun isGCInstr(instr: Stmt, hasGC: Bool): Bool {
+    instr match {
+    | LocalGC _ -> true
+    | Return _
+    | Throw _ ->
+      hasGC
+    | _ -> false
+    }
+  }
+
+  private static fun needNote(instr: Stmt, hasGC: Bool): Bool {
+    instr match {
+    | LocalGC _
+    | ObstackUsage _ ->
+      true
+    | Return _
+    | Throw _ ->
+      hasGC
+    | _ -> false
+    }
+  }
+
+  protected readonly fun isSafepoint(instr: Stmt): Bool {
+    static::isGCInstr(instr, this.hasGC || kConfig.mainConfig.autogc)
+  }
+
+  protected readonly fun isSaved(instr: Instr): Bool {
+    // the only things we need to feed to GC.
+    instr match {
+    | Constant _ ->
+      // Constants are immutable and allocated statically so
+      // always ignored by GC.
+      false
+    | FunParam _ ->
+      // FunParam values were by definition not allocated here, so
+      // there's no possible way they could get freed or relocated.
+      false
+    | p ->
+      // Only pointers are relocatable.
+      p.typ.exampleSClass(this.env).maybeGetScalarType() match {
+      | Some(t) -> t.isGCPointer()
+      | _ -> false
+      }
+    }
+  }
+
+  protected readonly fun liveBefore(): Bool {
+    // This doesn't matter for LocalGC or ObstackUsage, which have no operands.
+    //
+    // But for "Return" and "Throw", where we pretend there is a LocalGC
+    // preceding them (in functions with an @gc annotation), we want the
+    // implicit LocalGC to save/restore values live BEFORE the
+    // safepoint instr, not after, so for example the Return's operand(s)
+    // are garbage collected properly.
+    true
+  }
+
+  // Identify pointless LocalGCs.
+  protected mutable fun analyzeBlocks(blocks: Array<Block>): void {
+    for (b in blocks) {
+      // Check for back-to-back GCs and only do the last one.
+      nextIsGC = false;
+
+      for (ii in Range(0, b.instrs.size())) {
+        instr = b.instrs[b.instrs.size() - 1 - ii];
+        if (!this.isSafepoint(instr)) {
+          // TODO: We could determine a set of Instrs that, when placed
+          // between two LocalGC, still leave the second one redundant.
+          // For example, with "LocalGC;IntAdd;LocalGC" there is no reason
+          // to do the second GC.
+          !nextIsGC = false
+        } else if (nextIsGC) {
+          // Two LocalGC in a row, only keep the last one.
+          this.deadGC.insert(instr.id)
+        } else {
+          // We found a GC.
+          !nextIsGC = true;
+        }
+      }
+    }
+  }
+
+  // Return true if instr was replaced with a different instruction
+  protected mutable fun optimizeInstr(instr: Stmt): Bool {
+    cur = this.current;
+    cur.set(instr.id, instr.id);
+
+    // Get the possibly relocated value for an Instr.
+    remap = x -> cur.maybeGet(x).default(x);
+
+    if (this.isSafepoint(instr) && !this.deadGC.contains(instr.id)) {
+      manualGC = static::isGCInstr(instr, this.hasGC);
+
+      pos = instr.pos;
+      liveAndRelocatable = this.livePerSafepoint[instr.id];
+
+      for (ptr in liveAndRelocatable) {
+        if (!cur.containsKey(ptr)) {
+          instr.pos.die(
+            "Instr " +
+              instr +
+              " did not record where to " +
+              "find the relocated pointer for " +
+              this.getInstr(ptr),
+          )
+        }
+      };
+
+      // Every mutable pointer parameter represents a possible place
+      // outside this Obstack frame where a live pointer might have
+      // escaped. So we need to tell the GC about them, so it can trawl
+      // through them looking for pointers allocated inside this.gcNote.
+      escapeRoutes = this.optinfo.f.params.filter(fp ->
+        fp.typ.allowsPointerEscape(this.env)
+      ).map(fp -> fp.id);
+
+      live = liveAndRelocatable.concat(escapeRoutes);
+
+      live.size() match {
+      | 0 ->
+        // We are doing a GC with an empty root set.
+        _ = this.emitNamedCall{
+          args => Array[this.gcNote],
+          typ => tVoid,
+          pos,
+          mayRelocatePointers => true,
+          canThrow => false,
+          allocAmount => AllocNothing(),
+          name => if (manualGC) {
+            "SKIP_Obstack_collect0"
+          } else {
+            "SKIP_Obstack_inl_collect0"
+          },
+        }
+      | 1 ->
+        ptr = live[0];
+        r = this.getInstr(ptr);
+
+        call = this.emitNamedCall{
+          args => Array[this.gcNote, remap(ptr)],
+          typ => r.typ,
+          pos,
+          mayRelocatePointers => true,
+          canThrow => false,
+          allocAmount => AllocNothing(),
+          prettyName => r.prettyName,
+          name => if (manualGC) {
+            "SKIP_Obstack_collect1"
+          } else {
+            "SKIP_Obstack_inl_collect1"
+          },
+        };
+        if (!liveAndRelocatable.isEmpty()) {
+          cur.set(ptr, call.id)
+        }
+      | _ ->
+        // We are garbage collecting multiple pointers. To do this,
+        // we dump them into a stack array, pass that array to the
+        // runtime, then reload the relocated pointers from the array.
+        buf = this.emitAlloca{
+          zero => false,
+          pos,
+          byteAlignment => ptrByteSize,
+          byteSize => live.size() * ptrByteSize,
+          prettyName => "gcbuf",
+        }.id;
+
+        _ = this.emitNamedCall{
+          args => Array[this.constantInt(live.size() * ptrByteSize).id, buf],
+          typ => tVoid,
+          pos,
+          canThrow => false,
+          allocAmount => AllocNothing(),
+          name => "llvm.lifetime.start",
+        };
+
+        // Fill in the array with the the root set for the GC.
+        live.eachWithIndex((i, ptr) ->
+          _ = this.emitStackStore{
+            addrByteAlignment => ptrByteSize,
+            pos,
+            value => remap(ptr),
+            addr => buf,
+            bitOffset => i * ptrBitSize,
+          }
+        );
+
+        _ = this.emitNamedCall{
+          args => Array[this.gcNote, buf, this.constantInt(live.size()).id],
+          casts => Array["", "i8**"],
+          typ => tVoid,
+          pos,
+          mayRelocatePointers => true,
+          canThrow => false,
+          allocAmount => AllocNothing(),
+          name => if (manualGC) {
+            "SKIP_Obstack_collect"
+          } else {
+            "SKIP_Obstack_inl_collect"
+          },
+        };
+
+        // Load the relocated pointer values computed by the GC.
+        liveAndRelocatable.eachWithIndex((i, ptr) -> {
+          r = this.getInstr(ptr);
+          load = this.emitLoad{
+            typ => r.typ,
+            addrByteAlignment => ptrByteSize,
+            pos,
+            canCSE => false,
+            prettyName => r.prettyName,
+            addr => buf,
+            bitOffset => i * ptrBitSize,
+          };
+
+          // Note each one as the relocated version of its input pointer.
+          cur.set(ptr, load.id)
+        });
+
+        _ = this.emitNamedCall{
+          args => Array[this.constantInt(live.size() * ptrByteSize).id, buf],
+          typ => tVoid,
+          pos,
+          canThrow => false,
+          allocAmount => AllocNothing(),
+          name => "llvm.lifetime.end",
+        }
+      }
+    };
+
+    instr match {
+    | LocalGC _ ->
+      // This was fully handled above, so we are done.
+      true
+    | ObstackUsage _ ->
+      // replace with runtime call, passing in gcNote
+      _ = this.emitNamedCall{
+        id => instr.id,
+        typ => instr.typ,
+        pos => instr.pos,
+        name => "SKIP_Obstack_usage",
+        args => Array[this.gcNote],
+        canThrow => false,
+        allocAmount => AllocNothing(),
+      };
+      true
+    | _ ->
+      // Emit all other Instrs, including Return/Throw that had an
+      // implicit GC above.
+      this.defaultOptimizeInstr(instr, remap)
+    }
+  }
+
+  protected mutable fun beginOptimizeBlock(b: Block): void {
+    this.defaultBeginOptimizeBlock(b);
+
+    if (b.id == this.optinfo.f.blocks[0].id) {
+      // At function entry, emit an Obstack note.
+      _ = this.emitInstr(
+        ObstackNote{
+          id => this.gcNote,
+          typ => tNonGCPointer,
+          pos => b.instrs[0].pos,
+        },
+      )
+    };
+  }
+}
+
+// Return whether a function mayAlloc, by inspecting its OptimizationStatus.
+// If the status is OptPartial, return None() indicating we don't know yet.
+//
+// If it returns None(), it updates unfinishedDependencies to say what
+// it's waiting for.
+//
+// As its second return value, returns true iff this is a recursive call.
+private fun calleeAllocAmount(
+  name: SFunctionID,
+  caller: SFunctionID,
+  unfinishedDependencies: mutable UnorderedSet<SFunctionID>,
+  pos: Pos,
+  env: GlobalEnv,
+): (?AllocAmount, Bool) {
+  if (name == caller) {
+    // This is a recursive call. Locally we'll assume it doesn't allocate
+    // and the caller can figure out the recursion "looping" implications --
+    // if there are other allocations in this function, then this call
+    // forces it to be AllocUnbounded(), but if there aren't then it
+    // can stay as AllocNothing().
+    (Some(AllocNothing()), true)
+  } else {
+    amount = env.getFunction(name, pos).status match {
+    | OptDone{allocAmount} -> Some(allocAmount)
+    | OptPartial _ ->
+      // A call to an unfinished function -- we don't know if it allocates.
+      unfinishedDependencies.insert(name);
+      None()
+    };
+    (amount, false)
+  }
+}
+
+// How much memory might this Instr allocate at runtime?
+//
+// If we know the answer, returns Some(amount). If not, due to a call
+// to an unfinished target function, return None() and update
+// unfinishedDependencies to list the target function.
+//
+// As its second return value, returns true iff this is a recursive call.
+private fun instrAllocAmount(
+  instr: Stmt,
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+  unfinishedDependencies: mutable UnorderedSet<SFunctionID>,
+): (?AllocAmount, Bool) {
+  (
+    Some(
+      instr match {
+      // Wherever we generate NamedCall instructions, we require allocAmount
+      // to be given as axiomatic; there is no underlying Function body to
+      // analyze. Use it here.
+      | NamedCall{allocAmount} -> allocAmount
+
+      | CallFunctionBase{name} ->
+        // Early return to override the normal assumption that
+        // this is not a recursive call.
+        return calleeAllocAmount(
+          name,
+          optinfo.f.id,
+          unfinishedDependencies,
+          instr.pos,
+          env,
+        )
+
+      | call @ CallMethodBase _ ->
+        // iterate over callees.
+        amount = (AllocNothing() : AllocAmount);
+        recurses = false;
+        certain = true;
+
+        if (
+          optinfo.anyMethodImplementation(call, env, (_, name, _, _) -> {
+            (calleeAmount, r) = calleeAllocAmount(
+              name,
+              optinfo.f.id,
+              unfinishedDependencies,
+              instr.pos,
+              env,
+            );
+            !recurses = recurses || r;
+
+            calleeAmount match {
+            | Some(a) ->
+              !amount = max(amount, a);
+              amount is AllocUnbounded _
+            | None() ->
+              !certain = false;
+              false
+            }
+          }) ||
+          certain
+        ) {
+          // Early return to override the normal assumption that
+          // this is not a recursive call.
+          return (Some(amount), recurses)
+        } else {
+          return (None(), recurses)
+        }
+
+      | RawCallBase _ ->
+        instr.pos.die(`Unexpected ${instr} instruction before lowering.`)
+
+      | ArrayAlloc _
+      | ArrayClone _
+      | ArrayNew _
+      | FloatToString _
+      | Freeze _
+      | IntToString _
+      | Object _
+      | ObstackAlloc _
+      | ObstackShallowClone _
+      | StringConcat _
+      | With _ ->
+        // NOTE: We treat even Instrs that can allocate a variable number
+        // of bytes, like ArrayAlloc, as "AllocBounded()". The idea is
+        // that many functions allocate small arrays and we shouldn't
+        // count that against them. What really matters is loops, which
+        // will appear unbounded.
+        AllocBounded()
+
+      // Remaining instructions do not alloc
+      | Throw _
+      | Alloca _
+      | AsyncReturn _
+      | BoolCmpEq _
+      | BoolCmpLe _
+      | BoolCmpLt _
+      | BoolCmpNe _
+      | BytePointerAdd _
+      | Cast _
+      | FloatAdd _
+      | FloatBits _
+      | FloatCmpEq _
+      | FloatCmpLe _
+      | FloatCmpLt _
+      | FloatCmpNe _
+      | FloatDiv _
+      | FloatMul _
+      | FloatSub _
+      | FloatToInt _
+      | GetConst _
+      | GetCurrentAwaitable _
+      | GetField _
+      | If _
+      | IndirectJump _
+      | IntAdd _
+      | IntAnd _
+      | IntClz _
+      | IntCmpEq _
+      | IntCmpLe _
+      | IntCmpLt _
+      | IntCmpNe _
+      | IntCmpUle _
+      | IntCmpUlt _
+      | IntCtz _
+      | IntDiv _
+      | Intern _
+      | IntMul _
+      | IntOr _
+      | IntPopcount _
+      | IntRem _
+      | IntSll _
+      | IntSra _
+      | IntSrl _
+      | IntSub _
+      | IntToFloat _
+      | IntXor _
+      | Jump _
+      | LandingPad _
+      | Load _
+      | LoadVTableEntry _
+      | LocalGC _
+      | ObstackUsage _
+      | ObstackNote _
+      | Reinterpret _
+      | Return _
+      | SetField _
+      | SignExtend _
+      | Store _
+      | StringCmp _
+      | StringCmpEq _
+      | StringHash _
+      | Suspend _
+      | Truncate _
+      | TupleExtract _
+      | TypeSwitch _
+      | Unreachable _
+      | ValueSwitch _
+      | ArraySize _
+      | ArrayUnsafeGet _
+      | ArrayUnsafeSet _
+      | Yield _
+      | YieldBreak _
+      | ZeroExtend _ ->
+        AllocNothing()
+      },
+    ),
+    false,
+  )
+}
+
+fun .funAllocAmount(
+  optinfo: mutable OptimizerInfo,
+  env: GlobalEnv,
+  unfinishedDependencies: ?mutable UnorderedSet<SFunctionID>,
+): ?AllocAmount {
+  // Does each block allocate AllocBounded()?
+  blockAllocs = Array::mfill(optinfo.idToBlock.size(), false);
+
+  anyRecurses = false;
+  anyAllocs = false;
+
+  // We collect up unfinished dependencies as we go, but don't dump
+  // them into the caller's set unless we have to. If we can prove
+  // that this function allocates an unbounded amount of memory, even
+  // though some subroutines aren't finished being compiled yet, then we
+  // don't need to wait for them.
+  tentativeDeps = mutable UnorderedSet[];
+
+  for (b in optinfo.f.blocks) {
+    for (instr in b.instrs) {
+      (amount, recurses) = instrAllocAmount(instr, optinfo, env, tentativeDeps);
+      !anyRecurses = anyRecurses || recurses;
+
+      amount match {
+      | None() ->
+        // At this point, optimistically assume the block does not allocate.
+        void
+      | Some(AllocNothing()) -> void
+      | Some(AllocBounded()) ->
+        !anyAllocs = true;
+        blockAllocs.set(b.id.id, true)
+      | Some(AllocUnbounded()) -> return Some(AllocUnbounded())
+      }
+    }
+  };
+
+  if (anyRecurses && anyAllocs) {
+    return Some(AllocUnbounded())
+  };
+
+  // Use an explicit recursion stack to avoid blowing the program
+  // stack recursing through a large function.
+  //
+  // Each stack entry is (block: Block, next_child_index_to_recurse_to: Int)
+  //
+  // If a Block is "onStack" that means it is part of the current recursion
+  // path starting at the entry block. So visiting one again means there
+  // is a loop.
+  stack = mutable Vector[];
+  onStack = Array::mfill(optinfo.idToBlock.size(), false);
+
+  // For all paths to each Block, what is the most Blocks along that
+  // path that allocate memory?
+  allocCount = Array::mfill(optinfo.idToBlock.size(), -1);
+
+  bounded = true;
+
+  visit = (b, count) -> {
+    blockIndex = b.id.id;
+    if (count > allocCount[blockIndex]) {
+      if (onStack[blockIndex]) {
+        // We found a loop that allocates, so the function allocates
+        // an unbounded amount of memory.
+        !bounded = false
+      } else {
+        allocCount.set(blockIndex, count);
+        stack.push((b, 0));
+        onStack.set(blockIndex, true)
+      }
+    }
+  };
+
+  visit(optinfo.f.blocks[0], 0);
+
+  while (!stack.isEmpty() && bounded) {
+    (b, successorIndex) = stack.pop();
+    blockIndex = b.id.id;
+
+    b.successors().maybeGet(successorIndex) match {
+    | Some(child) ->
+      // Got an unvisited child. Push this block so we later visit the
+      // child after that one (if any), then "recurse" to the child.
+      stack.push((b, successorIndex + 1));
+      visit(
+        optinfo.getBlock(child.target),
+        allocCount[blockIndex] + (if (blockAllocs[blockIndex]) 1 else 0),
+      )
+    | None() -> onStack.set(blockIndex, false)
+    }
+  };
+
+  if (!bounded) {
+    Some(AllocUnbounded())
+  } else if (!tentativeDeps.isEmpty()) {
+    // Something we call isn't finished yet, so we don't know the answer.
+    unfinishedDependencies match {
+    | Some(u) -> u.extend(tentativeDeps)
+    | None() -> void
+    };
+    None()
+  } else if (anyAllocs) {
+    Some(AllocBounded())
+  } else {
+    Some(AllocNothing())
+  }
+}

@@ -1,0 +1,5 @@
+File "./typechecking/invalid/positional_default_constructor_base.sk", line 2, characters 21-28:
+Optional parameters must be placed at the end
+1 | base class B(x: String) {} // error, default before nondefault
+2 | class C(y: String = "World!") extends B {}
+  |                     ^^^^^^^^

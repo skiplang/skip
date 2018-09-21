@@ -1,0 +1,7 @@
+File "./syntax/invalid/typespec_on_non_bind_lvalue.sk", line 3, characters 6-13:
+Type specifier not allowed on non-bind lvalue
+1 | fun main(): String {
+2 |   x = "Pass\n";
+3 |   !x : String = "Fail";
+  |      ^^^^^^^^
+4 |   x

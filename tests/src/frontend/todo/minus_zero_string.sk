@@ -1,0 +1,6 @@
+fun main(): void {
+  // -0.0 must print as "-0.0" not "0.0", as in Python, ocaml, C++, etc.
+  z1 = 0.0;
+  z2 = -0.0;
+  print_raw(z1.toString() + "#" + z2 + "\n")
+}

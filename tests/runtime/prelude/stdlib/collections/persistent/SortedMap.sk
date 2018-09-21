@@ -1,0 +1,962 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+module SortedMap;
+
+base class .SortedMap<+K: Orderable, +V> uses  //  extends KeyedSequence<K, V>
+  Show[K: readonly Show, V: readonly Show],
+  Hashable[K: Hashable, V: Hashable],
+  Equality[K: Equality, V: Equality],
+  Orderable[K: Orderable, V: Orderable],
+{
+  children =
+  | Nil()
+  | Node{
+    n: Int,
+    h: Int,
+    key: K,
+    value: V,
+    left: SortedMap<K, V>,
+    right: SortedMap<K, V>,
+  }
+
+  /* Constructors */
+
+  fun chill(): SortedMap<K, V> {
+    this
+  }
+
+  // TODO const
+  static fun create(): SortedMap<K, V> {
+    Nil()
+  }
+
+  static fun createFromItems<K2: Orderable, V2, I: readonly Sequence<(K2, V2)>>[
+    K: K2,
+    V: V2,
+  ](
+    items: I,
+  ): SortedMap<K2, V2> {
+    items.foldl(
+      (m, p) -> {
+        (k, v) = p;
+        m.set(k, v)
+      },
+      SortedMap::create(),
+    )
+  }
+
+  static fun createFromIterator<
+    K2: Orderable,
+    V2,
+    I: mutable Iterator<(K2, V2)>,
+  >[K: K2, V: V2](
+    items: I,
+  ): SortedMap<K2, V2> {
+    items.foldl(
+      (m, p) -> {
+        (k, v) = p;
+        m.set(k, v)
+      },
+      SortedMap::create(),
+    )
+  }
+
+  fun inspect(): Inspect {
+    InspectMap(
+      "SortedMap",
+      {
+        items = Vector::mcreate(this.size());
+        this.each((key, value) -> items.push((inspect(key), inspect(value))));
+        items.toArray();
+      },
+    );
+  }
+
+  /* Query */
+
+  fun isEmpty(): Bool
+  | Nil() -> true
+  | Node _ -> false
+
+  fun size(): Int
+  | Nil() -> 0
+  | Node _ -> this.n
+
+  // TODO rename to "contains"
+  fun containsKey<K2: Orderable>[K: K2](key: K2): Bool {
+    static::containsKeyImpl(this, key)
+  }
+
+  // helper for has(), amenable to current TCO
+  private static fun containsKeyImpl<K2: Orderable, V2>[K: K2, V: V2](
+    map: SortedMap<K2, V2>,
+    k: K2,
+  ): Bool {
+    map match {
+    | Nil() -> false
+    | Node{key, left, right} ->
+      compare(k, key) match {
+      | LT() -> static::containsKeyImpl(left, k)
+      | EQ() -> true
+      | GT() -> static::containsKeyImpl(right, k)
+      }
+    }
+  }
+
+  fun maybeGetItem<K2: Orderable>[K: K2](k: K2): ?(K, V)
+  | Nil() -> None()
+  | Node{key, value, left, right} ->
+    compare(k, key) match {
+    | LT() -> left.maybeGetItem(k)
+    | EQ() -> Some((key, value))
+    | GT() -> right.maybeGetItem(k)
+    }
+
+  fun getItem<K2: Orderable>[K: K2](key: K2): (K, V) {
+    this.maybeGetItem(key) match {
+    | None() -> throwKeyNotFound()
+    | Some(p) -> p
+    }
+  }
+
+  fun maybeGet<K2: Orderable, V2>[K: K2, V: V2](k: K2): ?V2 {
+    this.maybeGetItem(k).map(p -> p.i1)
+  }
+
+  fun get<K2: Orderable>[K: K2](key: K2): V {
+    this.getItem(key).i1
+  }
+
+  fun minimum(): ?(K, V)
+  | Nil() -> None()
+  | Node _ ->
+    this.left match {
+    | Nil() -> Some((this.key, this.value))
+    | _ -> this.left.minimum()
+    }
+
+  fun head(): ?V {
+    this.minimum().map(p -> p.i1)
+  }
+
+  fun maximum(): ?(K, V)
+  | Nil() -> None()
+  | Node _ ->
+    this.right match {
+    | Nil() -> Some((this.key, this.value))
+    | _ -> this.right.maximum()
+    }
+
+  fun last(): ?V {
+    this.maximum().map(p -> p.i1)
+  }
+
+  // Internal helper for ==.
+  private static fun eqLoop<K2: Orderable, V2: Equality>[K: K2, V: V2](
+    iter1: mutable ItemsIterator<K, V>,
+    iter2: mutable ItemsIterator<K2, V2>,
+  ): Bool {
+    (iter1.next(), iter2.next()) match {
+    | (Some(kv1), Some(kv2)) ->
+      kv1.i0 == kv2.i0 && kv1.i1 == kv2.i1 && static::eqLoop(iter1, iter2)
+    | (None(), None()) -> true
+    | _ -> false
+    }
+  }
+
+  // NOTE: This checks logical equality, not structural equality.
+  fun ==<K2: Orderable, V2: Equality>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Bool {
+    static::eqLoop(ItemsIterator::make(this), ItemsIterator::make(other))
+  }
+
+  // Internal helper for eqBy
+  private static fun eqByLoop<K2: Orderable, V2>[K: K2, V: V2](
+    iter1: mutable ItemsIterator<K, V>,
+    iter2: mutable ItemsIterator<K2, V2>,
+    eq: (V2, V2) -> Bool,
+  ): Bool {
+    (iter1.next(), iter2.next()) match {
+    | (Some(kv1), Some(kv2)) ->
+      kv1.i0 == kv2.i0 &&
+        eq(kv1.i1, kv2.i1) &&
+        static::eqByLoop(iter1, iter2, eq)
+    | (None(), None()) -> true
+    | _ -> false
+    }
+  }
+
+  // NOTE: This checks logical equality, not structural equality.
+  fun eqBy<K2: Orderable, V2>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+    eq: (V2, V2) -> Bool,
+  ): Bool {
+    static::eqByLoop(ItemsIterator::make(this), ItemsIterator::make(other), eq)
+  }
+
+  fun !=<X: Orderable, Y: Equality>[K: X, V: Y](other: SortedMap<X, Y>): Bool {
+    !(this == other)
+  }
+
+  // Internal helper for compare().
+  private static fun compareLoop<K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    iter1: mutable ItemsIterator<K, V>,
+    iter2: mutable ItemsIterator<K2, V2>,
+  ): Order {
+    iter1.next() match {
+    | None() ->
+      if (iter2.next().isNone()) {
+        EQ()
+      } else {
+        LT()
+      }
+    | Some(kv1) ->
+      iter2.next() match {
+      | None() -> GT()
+      | Some(kv2) ->
+        kv1.compare(kv2) match {
+        | EQ() -> static::compareLoop(iter1, iter2)
+        | c -> c
+        }
+      }
+    }
+  }
+
+  // Lexicographical comparison on the (key, value) pairs.
+  fun compare<K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Order {
+    static::compareLoop(ItemsIterator::make(this), ItemsIterator::make(other))
+  }
+
+  fun <<K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Bool {
+    this.compare(other) == LT()
+  }
+
+  fun ><K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Bool {
+    this.compare(other) == GT()
+  }
+
+  fun <=<K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Bool {
+    this.compare(other) != GT()
+  }
+
+  fun >=<K2: Orderable, V2: Orderable>[K: K2, V: V2](
+    other: SortedMap<K2, V2>,
+  ): Bool {
+    this.compare(other) != LT()
+  }
+
+  fun hash[K: Hashable, V: Hashable](): Int {
+    this.reduce(
+      (h, k, v) -> Hashable.combine(Hashable.combine(h, k.hash()), v.hash()),
+      47,
+    )
+  }
+
+  fun toString[K: readonly Show, V: readonly Show](): String {
+    if (this.isEmpty()) {
+      "SortedMap{}"
+    } else {
+      vec = Array::mfill(this.size(), "");
+      SortedMap::toStringRecursive(this, vec, 0);
+      "SortedMap{" + vec.join(", ") + "}"
+    }
+  }
+
+  private static fun toStringRecursive<K2: K, V2: V>[
+    K: readonly Show,
+    V: readonly Show,
+  ](
+    m: SortedMap<K2, V2>,
+    vec: mutable Array<String>,
+    offset: Int,
+  ): void {
+    m match {
+    | Nil() ->
+      invariant_violation(
+        "SortedMap::toStringRecursive(): Expected callers" +
+          "to check size() > 0",
+      )
+    | Node{key, value, left, right} ->
+      if (!left.isEmpty()) {
+        SortedMap::toStringRecursive(left, vec, offset)
+      };
+      newOffset: Int = offset + left.size();
+      vec![newOffset] = key.toString() + " => " + value;
+      if (!right.isEmpty()) {
+        SortedMap::toStringRecursive(right, vec, newOffset + 1)
+      };
+      void
+    }
+  }
+
+  /* Insertions and deletions */
+
+  fun set<K2: Orderable, V2>[K: K2, V: V2](
+    key: K2,
+    value: V2,
+  ): SortedMap<K2, V2> {
+    this.setWith(key, value, (_, v2) -> v2)
+  }
+
+  // Like set(), but throws a Duplicate exception if already present.
+  fun add<K2: Orderable, V2>[K: K2, V: V2](
+    key: K2,
+    value: V2,
+  ): SortedMap<K2, V2> {
+    this.setWith(key, value, (_, _) -> throw Duplicate())
+  }
+
+  fun setWith<K2: Orderable, V2>[K: K2, V: V2](
+    key: K2,
+    value: V2,
+    f: (V2, V2) -> V2,
+  ): SortedMap<K2, V2>
+  | Nil() -> SortedMap::node(key, value, Nil(), Nil())
+  | Node _ ->
+    l: SortedMap<K2, V2> = this.left;
+    r: SortedMap<K2, V2> = this.right;
+    k: K2 = this.key;
+    v: V2 = this.value;
+    compare(key, this.key) match {
+    | LT() -> SortedMap::balance(k, v, l.setWith(key, value, f), r)
+    | EQ() -> SortedMap::node(k, f(v, value), l, r)
+    | GT() -> SortedMap::balance(k, v, l, r.setWith(key, value, f))
+    }
+
+  fun remove<K2: Orderable>[K: K2](key: K2): SortedMap<K, V>
+  | Nil() -> this
+  | Node _ ->
+    l = this.left;
+    r = this.right;
+    k = this.key;
+    v = this.value;
+    compare(key, k) match {
+    | LT() -> static::balance(k, v, l.remove(key), r)
+    | GT() -> static::balance(k, v, l, r.remove(key))
+    | EQ() -> static::concat(l, r)
+    }
+
+  /* Merging */
+  fun mergeWith<K2: Orderable, U, R>[K: K2](
+    other: SortedMap<K2, U>,
+    f: (K2, ?V, ?U) -> ?R,
+  ): SortedMap<K2, R> {
+    addL = this.reduce(
+      (result, key, value) ->
+        f(key, Some(value), other.maybeGet((key : K2))) match {
+        | None() -> result
+        | Some(resultValue) -> result.add((key : K2), resultValue)
+        },
+      SortedMap[],
+    );
+    other.reduce(
+      (result, key, value) ->
+        if (this.containsKey(key)) {
+          result
+        } else {
+          f(key, None(), Some(value)) match {
+          | None() -> result
+          | Some(resultValue) -> result.add(key, resultValue)
+          }
+        },
+      addL,
+    )
+  }
+
+  fun merge<K2: Orderable, V2>[K: K2, V: V2](
+    map2: SortedMap<K2, V2>,
+  ): SortedMap<K2, V2>
+  | Nil() -> map2
+  | Node _ ->
+    map2 match {
+    | Nil() -> this
+    | m2 @ Node _ ->
+      key: K2 = this.key;
+      value = this.value;
+      left = this.left;
+      right = this.right;
+      new_static: Concrete<SortedMap<K2, V2>> = static;
+      if (this.height() >= m2.height()) {
+        (k, v1, l1, r1) = (key, value, left, right);
+        (l2, v2, r2) = m2.split(key);
+        v = v2 match {
+        | Some(v) -> v
+        | _ -> v1
+        };
+        new_static::mergeImpl(k, v, l1.merge(l2), r1.merge(r2))
+      } else {
+        (l1, _v1, r1) = this.split(m2.key);
+        (k, v2, l2, r2) = (m2.key, m2.value, m2.left, m2.right);
+        new_static::mergeImpl(k, v2, l1.merge(l2), r1.merge(r2))
+      }
+    }
+
+  static fun mergeAll<K2: Orderable, V2, I: Sequence<SortedMap<K2, V2>>>[
+    K: K2,
+    V: V2,
+  ](
+    maps: I,
+  ): SortedMap<K2, V2> {
+    maps.foldl((m1, m2) -> m1.merge(m2), SortedMap::create())
+  }
+
+  /* Map and filter */
+
+  fun map<V2>(f: (K, V) -> V2): SortedMap<K, V2>
+  | Nil() -> Nil()
+  | Node _ ->
+    Node{
+      n => this.n,
+      h => this.h,
+      key => this.key,
+      left => this.left.map(f),
+      value => f(this.key, this.value),
+      right => this.right.map(f),
+    }
+
+  /*
+    TODO: following is an iterative version of map(), which isn't necessary
+    under current settings, but which also seems to produce bad pattern match code.
+    Leaving it here to investigate further after other match fixes go in.
+
+    fun map<V2>(f: V -> V2): SortedMap<K, V2> {
+      static::mapImpl(this, f)
+    }
+
+    // helper for map(), amenable to current TCO
+    private static fun mapImpl<V2>(
+      map: SortedMap<K, V>,
+      f: V -> V2
+    ): SortedMap<K, V2> {
+      state = MapState{ stack => List[], top => Init(map) };
+      cycle(state, state -> {
+        state.top match {
+        | Init(m) ->
+          m match {
+          | Nil() ->
+            Cycle.Next(state with { top => Term(Nil()) })
+          | Node{ left } ->
+            Cycle.Next(MapState{
+              stack => state.stack.push(NeedLeft(m)),
+              top => Init(left)
+            })
+        }
+        | NeedLeft _ | NeedRight _ ->
+          invariant_violation("Unexpected stack configuration in SortedMap::mapImpl (1)")
+        | Term(m1) ->
+          if (state.stack.isEmpty()) {
+            Cycle.Done(m1)
+          } else {
+            state.stack.popx() match {
+            | (tl, NeedLeft(Node{ value, right } as m)) ->
+              Cycle.Next(MapState{
+                stack => tl.push(NeedRight(m, m1, f(value))),
+                top => Init(right)
+              })
+            | (tl, NeedRight(Node{ n, h, key }, left, value)) ->
+              Cycle.Next(MapState{
+                stack => tl,
+                top => Term(Node{ n, h, key, left, value, right => m1 })
+              })
+            | _ ->
+              invariant_violation("Unexpected stack configuration in SortedMap::mapImpl (2)")
+            }
+          }
+        }
+      })
+    }
+  */
+
+  frozen async fun genMap<V2: frozen>(f: V ~> ^V2): ^SortedMap<K, V2>
+  | Nil() -> Nil()
+  | Node _ ->
+    (left, value, right) = await ASIO.join3(
+      this.left.genMap(f),
+      f(this.value),
+      this.right.genMap(f),
+    );
+    Node{left, key => this.key, value, right, h => this.h, n => this.n}
+
+  fun filter(f: (K, V) -> Bool): SortedMap<K, V>
+  | Nil() -> this
+  | Node _ ->
+    l2 = this.left.filter(f);
+    r2 = this.right.filter(f);
+    if (f(this.key, this.value)) {
+      static::balance(this.key, this.value, l2, r2)
+    } else {
+      static::concat(l2, r2)
+    }
+
+  frozen async fun genFilter(f: V ~> ^Bool): ^SortedMap<K, V>
+  | Nil() -> this
+  | Node _ ->
+    l2 = await this.left.genFilter(f);
+    r2 = await this.right.genFilter(f);
+    if (await f(this.value)) {
+      static::balance(this.key, this.value, l2, r2)
+    } else {
+      static::concat(l2, r2)
+    }
+
+  frozen async fun genFilterWithKey(f: (K, V) ~> ^Bool): ^SortedMap<K, V>
+  | Nil() -> this
+  | Node _ ->
+    l2 = await this.left.genFilterWithKey(f);
+    r2 = await this.right.genFilterWithKey(f);
+    if (await f(this.key, this.value)) {
+      static::balance(this.key, this.value, l2, r2)
+    } else {
+      static::concat(l2, r2)
+    }
+
+  fun items(): mutable Iterator<(K, V)> {
+    ItemsIterator::make(this)
+  }
+
+  fun keys(): mutable Iterator<K> {
+    KeysIterator::make(this)
+  }
+
+  fun values(): mutable Iterator<V> {
+    ValuesIterator::make(this)
+  }
+
+  /* Folds */
+  fun reduce<R>(f: (R, K, V) -> R, init: R): R {
+    result = init;
+    this.each((k, v) -> !result = f(result, k, v));
+    result
+  }
+
+  fun find(p: (K, V) -> Bool): ?V {
+    this.findItem(p).map(p -> p.i1)
+  }
+
+  fun findItem(p: (K, V) -> Bool): ?(K, V) {
+    this.items().find(kv -> {
+      (k, v) = kv;
+      p(k, v)
+    })
+  }
+
+  fun mapAcc<V2, R>(f: (R, K, V) -> (R, V2), init: R): (R, SortedMap<K, V2>)
+  | Nil() -> (init, Nil())
+  | Node _ ->
+    (r, left) = this.left.mapAcc(f, init);
+    (!r, value) = f(r, this.key, this.value);
+    (!r, right) = this.right.mapAcc(f, r);
+    m = Node::node(this.key, value, left, right);
+    (r, m)
+
+  // Returns a string containing the keys of this (converted to String per
+  // their Implementation of Show) with the given separator string between
+  // items.
+  fun joinKeys[K: readonly Show](separator: String): String {
+    strings = Array::mfill(this.size(), "");
+    index = 0;
+    this.each((k, _) -> {
+      strings.set(index, k.toString());
+      !index = index + 1;
+    });
+    strings.join(separator)
+  }
+
+  // Returns a string containing the values of this (converted to String per
+  // their Implementation of Show) with the given separator string between
+  // items.
+  fun joinValues[V: readonly Show](separator: String): String {
+    strings = Array::mfill(this.size(), "");
+    index = 0;
+    this.each((_, v) -> {
+      strings.set(index, v.toString());
+      !index = index + 1;
+    });
+    strings.join(separator)
+  }
+
+  /* Internals */
+  /* They need to be protected because of PHP's visibility enforcement */
+
+  protected fun height(): Int
+  | Nil() -> 0
+  | Node _ -> this.h
+
+  protected static fun node<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    v: V2,
+    l: SortedMap<K2, V2>,
+    r: SortedMap<K2, V2>,
+  ): Node<K2, V2> {
+    Node{
+      n => l.size() + r.size() + 1,
+      h => max(l.height(), r.height()) + 1,
+      key => k,
+      value => v,
+      left => l,
+      right => r,
+    }
+  }
+
+  protected static fun balance<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    v: V2,
+    l: SortedMap<K2, V2>,
+    r: SortedMap<K2, V2>,
+  ): SortedMap<K2, V2> {
+    hl = l.height();
+    hr = r.height();
+    if (hl > hr + 2) {
+      l match {
+      | Nil() -> invariant_violation("SortedMap::balance: empty left tree")
+      | Node{left => ll, right => lr, key => lk, value => lv, h => _, n => _} ->
+        if (ll.height() >= lr.height()) {
+          static::node(lk, lv, ll, static::node(k, v, lr, r))
+        } else {
+          lr match {
+          | Nil() ->
+            invariant_violation("SortedMap::balance: empty l.right tree")
+          | Node{
+            left => lrl,
+            right => lrr,
+            key => lrk,
+            value => lrv,
+            h => _,
+            n => _,
+          } ->
+            static::node(
+              lrk,
+              lrv,
+              static::node(lk, lv, ll, lrl),
+              static::node(k, v, lrr, r),
+            )
+          }
+        }
+      }
+    } else if (hr > hl + 2) {
+      r match {
+      | Nil() -> invariant_violation("SortedMap::balance empty right tree")
+      | Node{left => rl, right => rr, key => rk, value => rv} ->
+        if (rr.height() >= rl.height()) {
+          static::node(rk, rv, static::node(k, v, l, rl), rr)
+        } else {
+          rl match {
+          | Nil() -> invariant_violation("SortedMap::balance empty r.left tree")
+          | Node{left => rll, right => rlr, key => rlk, value => rlv} ->
+            static::node(
+              rlk,
+              rlv,
+              static::node(k, v, l, rll),
+              static::node(rk, rv, rlr, rr),
+            )
+          }
+        }
+      }
+    } else {
+      static::node(k, v, l, r)
+    }
+  }
+
+  protected static fun concat<K2: Orderable, V2>[K: K2, V: V2](
+    l: SortedMap<K2, V2>,
+    r: SortedMap<K2, V2>,
+  ): SortedMap<K2, V2> {
+    l match {
+    | Nil() -> r
+    | Node _ ->
+      r.minimum() match {
+      | None() -> l
+      | Some(p) ->
+        (k, v) = p;
+        static::balance(k, v, l, r.removeMin())
+      }
+    }
+  }
+
+  protected fun addMinBinding<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    v: V2,
+  ): SortedMap<K2, V2>
+  | Nil() -> SortedMap::node(k, v, Nil(), Nil())
+  | Node _ ->
+    SortedMap::balance(
+      this.key,
+      this.value,
+      this.left.addMinBinding(k, v),
+      this.right,
+    )
+
+  protected fun addMaxBinding<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    v: V2,
+  ): SortedMap<K2, V2>
+  | Nil() ->
+    new_static: Concrete<SortedMap<K2, V2>> = static;
+    new_static::node(k, v, Nil(), Nil())
+  | Node _ ->
+    new_static: Concrete<SortedMap<K2, V2>> = static;
+    new_static::balance(
+      this.key,
+      this.value,
+      this.left,
+      this.right.addMaxBinding(k, v),
+    )
+
+  protected static fun mergeImpl<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    v: V2,
+    l: SortedMap<K2, V2>,
+    r: SortedMap<K2, V2>,
+  ): SortedMap<K2, V2> {
+    lh = l.height();
+    rh = r.height();
+    l match {
+    | Nil() -> r.addMinBinding(k, v)
+    | ln @ Node _ ->
+      r match {
+      | Nil() -> l.addMaxBinding(k, v)
+      | rn @ Node _ ->
+        if (lh > rh + 2) {
+          static::balance(
+            ln.key,
+            ln.value,
+            ln.left,
+            static::mergeImpl(k, v, ln.right, r),
+          )
+        } else if (rh > lh + 2) {
+          static::balance(
+            rn.key,
+            rn.value,
+            static::mergeImpl(k, v, l, rn.left),
+            rn.right,
+          )
+        } else {
+          static::node(k, v, l, r)
+        }
+      }
+    }
+  }
+
+  protected fun split<K2: Orderable>[K: K2](
+    k: K2,
+  ): (SortedMap<K, V>, ?V, SortedMap<K, V>)
+  | Nil() -> (Nil(), None(), Nil())
+  | Node _ ->
+    compare(k, this.key) match {
+    | LT() ->
+      (ll, v, rl) = this.left.split(k);
+      (ll, v, static::mergeImpl(this.key, this.value, rl, this.right))
+    | EQ() -> (this.left, Some(this.value), this.right)
+    | GT() ->
+      (lr, v, rr) = this.right.split(k);
+      (static::mergeImpl(this.key, this.value, this.left, lr), v, rr)
+    }
+
+  protected static fun concatOrJoin<K2: Orderable, V2>[K: K2, V: V2](
+    k: K2,
+    x: ?V2,
+    l: SortedMap<K2, V2>,
+    r: SortedMap<K2, V2>,
+  ): SortedMap<K2, V2> {
+    x match {
+    | None() -> static::concat(l, r)
+    | Some(v) -> static::mergeImpl(k, v, l, r)
+    }
+  }
+
+  protected fun removeMin(): SortedMap<K, V>
+  | Nil() -> invariant_violation("SortedMap.removeMin called on Nil")
+  | Node _ ->
+    this.left match {
+    | Nil() -> this.right
+    | _ ->
+      static::balance(this.key, this.value, this.left.removeMin(), this.right)
+    }
+
+  /* Debugging */
+
+  fun checkInvariants(): void
+  | Nil() -> void
+  | Node _ ->
+    this.left.checkInvariants();
+    this.right.checkInvariants();
+    if (this.n != 1 + this.left.size() + this.right.size()) {
+      invariant_violation("Wrong size")
+    };
+    if (this.h != 1 + max(this.left.height(), this.right.height())) {
+      invariant_violation("Wrong height")
+    };
+    if (!(this.left.keys().all(k -> k < this.key))) {
+      invariant_violation("Left subtree has key larger than root")
+    };
+    if (!(this.right.keys().all(k -> k > this.key))) {
+      invariant_violation("Right subtree has key larger than root")
+    };
+    heightDifference = this.left.height() - this.right.height();
+    if (!(-2 <= heightDifference && heightDifference <= 2)) {
+      invariant_violation("Unbalanced tree")
+    };
+    void
+
+  fun getWithMiss<K2: Orderable>[K: K2](k: K2): Lookup<K2, V>
+  | Nil() -> InBetween{less => None(), greater => None()}
+  | Node{left => left_, right => right_, key => key_, value => value} ->
+    left: SortedMap<K2, V> = left_;
+    right: SortedMap<K2, V> = right_;
+    key: K2 = key_;
+    k.compare(key) match {
+    | LT() ->
+      left.getWithMiss(k) match {
+      | x @ Exact _ -> x
+      | x @ InBetween _ -> x with {less => Some(x.less.default((key, value)))}
+      }
+    | EQ() -> Exact{key, value}
+    | GT() ->
+      right.getWithMiss(k) match {
+      | x @ Exact _ -> x
+      | x @ InBetween _ ->
+        x with {greater => Some(x.greater.default((key, value)))}
+      }
+    }
+
+  fun each(f: (K, V) -> void): void {
+    this.items().each(i -> f(i.i0, i.i1));
+  }
+
+  fun all(p: (K, V) -> Bool): Bool {
+    this.items().all(kv -> p(kv.i0, kv.i1))
+  }
+
+  fun any(p: (K, V) -> Bool): Bool {
+    this.items().any(kv -> p(kv.i0, kv.i1))
+  }
+
+  fun mapItems<K2: Orderable, V2>(s: (K, V) -> (K2, V2)): SortedMap<K2, V2> {
+    this.items().map(i -> s(i.i0, i.i1)) |> SortedMap::createFromIterator
+  }
+
+  fun filterNone<U>[V: ?U](): SortedMap<K, U> {
+    this.items().filter(i -> i.i1.isSome()).map(i -> (i.i0, i.i1.fromSome())) |>
+      SortedMap::createFromIterator
+  }
+}
+
+// Common implementation for SortedMap Iterators.
+private mutable base class SortedMapIterator<+T, +K: Orderable, +V> final (
+  protected nodes: mutable Vector<Node<K, V>>,
+) extends Iterator<T> {
+  deferred static fun make(map: SortedMap<K, V>): mutable this {
+    map match {
+    | Nil() -> mutable static(mutable Vector<Node<K, V>>[])
+    | node @ Node _ ->
+      nodes: mutable Vector<Node<K, V>> = mutable Vector<Node<K, V>>[]; // TODO: size hint node.h
+      static::extend(nodes, node);
+      mutable static(nodes)
+    }
+  }
+
+  // Appends the left path of `node` to the tail of the buffer
+  private static fun extend<K: Orderable, V>(
+    nodes: mutable Vector<Node<K, V>>,
+    node: SortedMap<K, V>,
+  ): void {
+    loop {
+      node match {
+      | Nil() -> break void
+      | current @ Node _ ->
+        nodes.push(current);
+        !node = current.left
+      }
+    }
+  }
+
+  mutable fun next(): ?T {
+    if (this.nodes.size() <= 0) {
+      None()
+    } else {
+      node = this.nodes.pop();
+      v = Some(this.extractNodeValue(node));
+      // Traverse into the right subtree if it exists
+      static::extend(this.nodes, node.right);
+      v
+    }
+  }
+
+  protected mutable fun extractNodeValue(node: Node<K, V>): T;
+}
+
+private mutable class KeysIterator<+K: Orderable, +V> extends
+  SortedMapIterator<K, K, V>,
+{
+  protected mutable fun extractNodeValue(node: Node<K, V>): K {
+    node.key
+  }
+}
+
+private mutable class ValuesIterator<+K: Orderable, +V> extends
+  SortedMapIterator<V, K, V>,
+{
+  protected mutable fun extractNodeValue(node: Node<K, V>): V {
+    node.value
+  }
+}
+
+private mutable class ItemsIterator<+K: Orderable, +V> extends
+  SortedMapIterator<(K, V), K, V>,
+{
+  protected mutable fun extractNodeValue(node: Node<K, V>): (K, V) {
+    (node.key, node.value)
+  }
+}
+
+private base class Lookup<Tk, +Tv> {
+  fun map<TvOut>(Tv -> TvOut): Lookup<Tk, TvOut>;
+}
+
+private class Exact<Tk, +Tv>{key: Tk, value: Tv} extends Lookup<Tk, Tv> {
+  fun map<TvOut>(f: Tv -> TvOut): Exact<Tk, TvOut> {
+    Exact{key => this.key, value => f(this.value)}
+  }
+}
+
+private class InBetween<Tk, +Tv>{
+  less: ?(Tk, Tv),
+  greater: ?(Tk, Tv),
+} extends Lookup<Tk, Tv> {
+  fun map<TvOut>(f: Tv -> TvOut): InBetween<Tk, TvOut> {
+    InBetween{
+      less => this.less.map(t -> (t.i0, f(t.i1))),
+      greater => this.greater.map(t -> (t.i0, f(t.i1))),
+    }
+  }
+}
+
+/*
+// states for iterative map()
+private base class MapNode<+K: Orderable, +V, V2> {
+  children =
+  | Init(SortedMap<K, V>)
+  | NeedLeft(SortedMap<K, V>)
+  | NeedRight(SortedMap<K, V>, SortedMap<K, V2>, V2)
+  | Term(SortedMap<K, V2>)
+}
+
+private class MapState<K: Orderable, V, V2>{
+  list: List<MapNode<K, V, V2>>,
+  top: MapNode<K, V, V2>
+}
+*/

@@ -1,0 +1,17 @@
+class Cont<T: frozen>(x: T) {
+  fun get(): T {
+    this.x
+  }
+  fun set(x: T): this {
+    !this.x = x;
+    this
+  }
+
+  fun compareit<V: Orderable>[T: V](x: V): Order {
+    this.get().compare(x)
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

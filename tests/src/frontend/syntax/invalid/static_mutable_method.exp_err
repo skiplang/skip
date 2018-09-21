@@ -1,0 +1,6 @@
+File "./syntax/invalid/static_mutable_method.sk", line 2, characters 3-16:
+Invalid modifiers. Methods cannot be both 'mutable' and 'static'
+1 | class C() {
+2 |   static mutable fun m(): String { "Fail" }
+  |   ^^^^^^^^^^^^^^
+3 | }

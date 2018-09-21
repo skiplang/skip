@@ -1,0 +1,12 @@
+trait Z
+trait Y extends Z
+
+base class Parent<+T> {
+  fun compare<U: Z>[T: U](): void;
+}
+
+class Child<+T>() extends Parent<T> {
+  fun compare<U: Y>[T: U](): void {
+    void
+  }
+}

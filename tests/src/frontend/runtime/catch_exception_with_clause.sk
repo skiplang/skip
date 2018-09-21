@@ -1,0 +1,20 @@
+class MyExn(x: Int) extends Exception
+
+fun test(): void {
+  try {
+    throw MyExn(0)
+  } catch {
+  | MyExn(x) if (x == 42) -> invariant_violation("FAIL")
+  }
+}
+
+fun main(): void {
+  print_raw(
+    try {
+      test();
+      "FAIL"
+    } catch {
+    | MyExn(x) if (x == 0) -> "Pass\n"
+    },
+  )
+}

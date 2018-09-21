@@ -1,0 +1,123 @@
+@test
+// guard()
+fun testGuardSuccess(): void {
+  x = Result::guard(() -> 42);
+  assertTrue(x is Success(42));
+}
+
+@test
+fun testGuardFailure(): void {
+  x = Result::guard(() -> throw RuntimeError("oops!"));
+  assertTrue(x is Failure(RuntimeError("oops!")));
+}
+
+@test
+// map()
+fun testMapSuccess(): void {
+  x = Success(42).map(x ~> x * 2 + 1);
+  assertTrue(x is Success(85))
+}
+
+@test
+fun testMapFailure(): void {
+  x = Failure<Int, String>("oops!").map(x ~> x * 2 + 1);
+  assertTrue(x is Failure("oops!"));
+}
+
+@test
+// flatMap()
+fun testFlatMapSuccess(): void {
+  x = Success(42).flatMap(x ~> Success(x * 2 + 1));
+  assertTrue(x is Success(85));
+}
+
+@test
+fun testFlatMapFailure(): void {
+  x = Failure<Int, String>("oops!").flatMap(x ~> Success(x * 2 + 1));
+  assertTrue(x is Failure("oops!"));
+}
+
+@test
+// isSuccess/isFailure
+fun testIsSuccess(): void {
+  assertTrue(Success(42).isSuccess());
+  assertFalse(Success(42).isFailure());
+  assertFalse(Failure("oops!").isSuccess());
+  assertTrue(Failure("oops!").isFailure());
+}
+
+@test
+// fromSuccess()
+fun testFromSuccess(): void {
+  x = Success(42).fromSuccess();
+  assertEqual(x, 42);
+
+  throws = false;
+  try {
+    _ = Failure("oops!").fromSuccess();
+  } catch {
+  | _ -> !throws = true
+  };
+  assertTrue(throws);
+}
+
+@test
+// fromFailure()
+fun testFromFailure(): void {
+  x = Failure("oops!").fromFailure();
+  assertEqual(x, "oops!");
+
+  throws = false;
+  try {
+    _ = Success(42).fromFailure();
+  } catch {
+  | _ -> !throws = true
+  };
+  assertTrue(throws);
+}
+
+@test
+// maybeSuccess() / maybeFailure()
+fun testMaybeSuccess(): void {
+  success = Success(42);
+  assertTrue(success.maybeSuccess() is Some(42));
+  assertTrue(success.maybeFailure() is None());
+
+  failure = Failure("oops!");
+  assertTrue(failure.maybeFailure() is Some("oops!"));
+  assertTrue(failure.maybeSuccess() is None());
+}
+
+@test
+// == / !=
+fun testEquals(): void {
+  assertTrue(Success(42) == Success(42));
+  assertFalse(Success(42) != Success(42));
+  assertFalse(Success(42) == Success(24));
+  assertTrue(Success(42) != Success(24));
+}
+
+@test
+// compare()
+fun testCompare(): void {
+  results = Array[
+    Failure(0),
+    Failure(1),
+    Failure(2),
+    Success(3),
+    Success(4),
+    Success(5),
+  ];
+  for (i => left in results) {
+    for (j in Range(0, i + 1)) {
+      right = results[j];
+      if (i < j) {
+        assertTrue(left.compare(right) is LT())
+      } else if (i > j) {
+        assertTrue(left.compare(right) is GT())
+      } else {
+        assertTrue(left.compare(right) is EQ())
+      }
+    }
+  }
+}

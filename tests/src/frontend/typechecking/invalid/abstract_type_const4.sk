@@ -1,0 +1,8 @@
+base class Obj {
+  type Tid: Test.MixedScalar;
+}
+
+base class Foo {
+  type TObj: Obj;
+  type Tid = this::TObj::Tid;
+}

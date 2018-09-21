@@ -1,0 +1,12 @@
+const My_bool: Bool = true;
+
+fun shouldWork(x: Bool): String {
+  x match {
+  | My_bool -> "Pass\n"
+  | false -> "Doesn't pass\n"
+  }
+}
+
+fun main(): void {
+  print_raw(shouldWork(My_bool))
+}

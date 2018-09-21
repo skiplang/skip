@@ -1,0 +1,11 @@
+// We only look at the upper bounds for tparams individually -- if one of
+// them works accept it.
+fun test<T: (Int, Int) & Int>(x: T): void {
+  x match {
+  | (_, _) -> void
+  }
+}
+
+fun main(): void {
+  print_string("Pass")
+}

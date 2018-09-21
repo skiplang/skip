@@ -1,0 +1,11 @@
+mutable base class P<+T: mutable Ref<Int>> final (v: T)
+mutable class Foo extends P<mutable Ref<Int>>
+mutable class Bar<+T: mutable Ref<Int>> extends P<T>
+
+fun no(p: P<mutable Ref<Int>>): void {
+  p match {
+  | Foo(ref) ->
+    _: Ref<Int> = ref // mutable cast to frozen!
+  | Bar _ -> void
+  }
+}

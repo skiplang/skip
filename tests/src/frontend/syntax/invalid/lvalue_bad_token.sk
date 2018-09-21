@@ -1,0 +1,4 @@
+fun main(): String {
+  X = 42;
+  "Fail"
+}

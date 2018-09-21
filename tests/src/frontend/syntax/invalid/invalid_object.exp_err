@@ -1,0 +1,15 @@
+File "./syntax/invalid/invalid_object.sk", line 3, characters 7-7:
+Expected '}'. Found 'integer literal'.
+1 |
+2 | fun test(): void {
+3 |   A { 0 => 0 }
+  |       ^
+4 | }
+
+File "./syntax/invalid/invalid_object.sk", line 3, characters 5-5:
+ For opening '{'
+1 |
+2 | fun test(): void {
+3 |   A { 0 => 0 }
+  |     ^
+4 | }

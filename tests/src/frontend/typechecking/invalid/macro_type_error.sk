@@ -1,0 +1,14 @@
+class C(i: Int, s: String) {
+  macro fun typeError1(): Int {
+    #thisClassName
+  }
+  macro fun typeError2(): Int {
+    r = 0;
+    #forEachField (#field) !r = r + this.#field;
+    r
+  }
+}
+
+fun main(): void {
+  void
+}

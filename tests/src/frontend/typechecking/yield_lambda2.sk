@@ -1,0 +1,11 @@
+fun foo(): (Int) -> mutable Iterator<Int> {
+  (x: Int) -> for (i in Range(0, x)) yield i
+}
+
+fun main(): void {
+  if (foo()(5).collect(Vector) == Vector[0, 1, 2, 3, 4]) {
+    print_string("Pass")
+  } else {
+    print_string("Fail")
+  }
+}

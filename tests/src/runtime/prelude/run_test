@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+# Usage: run_test BACKEND_GEN [file1.sk file2.sk...] test.sk
+#
+# BACKEND_GEN is the command to run the test.
+#
+# The optional .sk files are library code to be tested.
+#
+# The final argument is the test file, described in UnitTest.sk.
+
+import argparse
+import imp
+import logging
+import os
+import pipes
+import re
+import subprocess
+import sys
+import tempfile
+import textwrap
+
+sys.path.insert(
+    1,
+    os.path.join( os.path.dirname(sys.argv[0]), "../../../runtime/tools" )
+)
+
+import common
+import unittest
+
+from common import GREEN, NORMAL, RED
+
+logger = logging.getLogger(__name__)
+
+
+def main(stack):
+    parser = argparse.ArgumentParser(
+        description="Run skip compiler tests", parents=[common.commonArguments()]
+    )
+    parser.add_argument("srcs", nargs="+", help="the .sk files to test")
+    args = common.parse_args(parser)
+
+    backend_gen = os.path.basename(args.backend_gen)
+    backend = common.getShortBackend()
+
+    test_file = common.computeRelativePath(args.srcs[-1])
+    expectError = "/invalid/" in test_file
+
+    if args.relative:
+        os.chdir(args.relative)
+
+    sk_main = unittest.build_main_file(
+        stack,
+        test_file,
+        backend,
+        annotation='test',
+        delegate_function='UnitTest.main',
+        rebuild=False)
+
+    logger.debug("Generated main() script at %s)" % (sk_main))
+
+    env = os.environ.copy()
+
+    # Note the '-- 1 2 -- 3' must be kept in sync with prelude/SystemTest.sk
+    expect_error = "true" if expectError else "false"
+    cmd = (
+        [args.backend_gen, common.prelude()]
+        + map(common.computeRelativePath, args.srcs)
+        + [sk_main, '--', '1', '2', '--', '3']
+        + ['--backend-gen', backend_gen, '--test-file', test_file,
+            '--expect-error', expect_error]
+    )
+    if (GREEN != ''):
+        cmd += ('--color-success', GREEN)
+    if (RED != ''):
+        cmd += ('--color-failure', RED)
+    if (NORMAL != ''):
+        cmd += ('--color-end', NORMAL)
+    logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+    result = common.RunCommand(
+        args.srcs[-1],
+        cmd,
+        env=env,
+        testReportsOk=(not expectError),
+        expectError=expectError,
+    )
+    if not result.checkReturnCode():
+        return 1
+
+    if expectError and result.report_diff():
+        return False
+
+    result.success()
+    return 0
+
+
+if __name__ == "__main__":
+    with common.ExitStack() as stack:
+        rc = main(stack)
+    sys.exit(rc)

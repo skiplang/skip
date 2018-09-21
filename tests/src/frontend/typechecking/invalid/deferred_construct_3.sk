@@ -1,0 +1,7 @@
+base class B final (x: Int, deferred y: this::T) {
+  type T;
+
+  fun no(c: Concrete<this>): B {
+    c(0, 100)
+  }
+}
