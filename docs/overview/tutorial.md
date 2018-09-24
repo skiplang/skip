@@ -40,8 +40,7 @@ fun main(): void {
 }
 ```
 
-Skip does not have a "return" keyword (it is an expression based language), the last value of a sequence is the one returned.
-Let's try it!
+Skip is an expression based language, so the last value of a sequence is the one returned by default. Let's try it!
 
 ```runnable
 fun test(): String {
@@ -352,13 +351,6 @@ fun main(): void {
 }
 ```
 
-Skip keeps track of external dependencies.
-Try modifying the coordinates of the points and watch the system update.
+## Demo
 
-TODO: Demo
-
-Let's finish with a more advanced example, so that you have a chance to write some Skip code.
-Write a program that computes the furthest point from (0, 0).
-But write it in such a way that updates take O(log(n)).
-
-TODO: Demo
+A demo application is available at [apps/bundler/](https://github.com/skiplang/skip-oss/tree/master/apps/bundler/README.md). The readme contains instructions for running the app.
