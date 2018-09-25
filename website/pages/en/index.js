@@ -99,7 +99,7 @@ class Index extends React.Component {
           <Container className="homeFeature">
             <h3>Efficient and Predictable GC</h3>
             <p>
-              Skip uses a novel approach to memory management that combines aspects of typical garbage collectors with more straightforward linear (bump) allocation schemes. Thanks to Skip's tracking of side effects the garbage collector only has to scan memory reachable from the root of a computation. In practical terms, this means that developers can write code with more predictable GC overhead.
+              Skip uses a novel approach to memory management that combines aspects of typical garbage collectors with more straightforward linear (bump) allocation schemes. Thanks to Skip's tracking of side effects the garbage collector only has to scan memory reachable from the root of a computation. In practical terms, this means that developers can write code with predictable GC overhead.
             </p>
           </Container>
           <Container className="homeFeature">

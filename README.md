@@ -24,7 +24,7 @@ Skip supports two complementary forms of concurrent programming, both of which a
 
 ### Efficient and Predictable GC
 
-Skip uses a novel approach to memory management that combines aspects of typical garbage collectors with more straightforward linear (bump) allocation schemes. Thanks to Skip's tracking of side effects the garbage collector only has to scan memory reachable from the root of a computation. In practical terms, this means that developers can write code with more predictable GC overhead.
+Skip uses a novel approach to memory management that combines aspects of typical garbage collectors with more straightforward linear (bump) allocation schemes. Thanks to Skip's tracking of side effects the garbage collector only has to scan memory reachable from the root of a computation. In practical terms, this means that developers can write code with predictable GC overhead.
 
 ### Hybrid Functional/Object-Oriented Language
 

@@ -68,8 +68,8 @@ cmake ..
 
 ## Configure And Build The Repo
 
-We use `cmake` to configure with an out-of-source build tree and `ninja` to build
-it.  From the repo top-level directory run:
+First, clone the repository (or if you plan to submit pull-requests, fork and then clone your fork). We use `cmake` to configure with an out-of-source build tree and `ninja` to build
+it.  From the top-level directory of the repository run:
 
     skip$ mkdir build
     skip$ cd build
