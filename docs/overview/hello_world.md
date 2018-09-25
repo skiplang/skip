@@ -5,7 +5,7 @@ title: Hello world!
 
 This document is a walkthrough of the Skip programming language. It is not meant to be an exhaustive language spec, but a good place to learn the language and its core design principles.
 
-**Note:** the reader is expected to be familiar with at least one main stream programming language, this is not a good place to learn how to program.
+**Note:** the reader is expected to be familiar with at least one mainstream programming language, this is not a good place to learn how to program.
 
 ## Hello world!
 

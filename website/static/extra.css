@@ -38,6 +38,11 @@ header h2.headerTitle {
   font-weight: bold;
 }
 
+.homeSplashFade .button {
+  color: #ffffff;
+  background-color: #b743b3;
+}
+
 .wrapper {
   max-width: 800px;
 }
