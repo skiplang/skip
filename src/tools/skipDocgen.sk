@@ -64,7 +64,11 @@ fun getCommentOfPosition(
   );
   iter.advanceTo(position);
   comments = iter.leadingComments();
-  comments.map(commentToString).join("");
+  comments.filter(notCopyrightLicenseHeader).map(commentToString).join("");
+}
+
+fun notCopyrightLicenseHeader(comment: Token.Comment): Bool {
+  !comment.value.matches(Regex::create("\\/\\*\\*\\s*\\n\\s*\\*\\s*Copyright\\s+\\(c\\)\\s+Facebook"));
 }
 
 class Arguments{
