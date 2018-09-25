@@ -180,7 +180,7 @@ module.exports = function({React, MarkdownBlock}) {
       h(
         'a',
         {
-          href: 'https://github.com/ReflexLang/ReflexLang/blob/master/src/runtime/' +
+          href: 'https://github.com/skiplang/skip/blob/master/src/runtime/' +
             method.sourceFile + '#L' + method.sourceLine,
           target: '_blank',
           style: {float: 'right'},

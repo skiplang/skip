@@ -49,3 +49,7 @@ http://www.skiplang.com
 ### Playground
 
 http://www.skiplang.com/playground
+
+## License
+
+Skip is [MIT licensed](./LICENSE).

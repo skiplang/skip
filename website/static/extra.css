@@ -29,6 +29,27 @@ header h2.headerTitle {
   display: none;
 }
 
+.homeSplashFade {
+  background: rgb(45, 45, 45);
+}
+
+.homeSplashFade h1 {
+  color: rgb(253, 243, 231);
+  font-weight: bold;
+}
+
+.wrapper {
+  max-width: 800px;
+}
+
+.home .container .wrapper h2 {
+  font-size: 200%;
+}
+
+.home {
+  margin-bottom: 4em;
+}
+
 .fixedHeaderContainer header img {
   height: 30px;
   margin-right: 7px;

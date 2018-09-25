@@ -7,7 +7,7 @@
   "license": "Creative Commons Attribution 4.0 International Public License",
   "repository": {
     "type": "git",
-    "url": "http://github.com/ReflexLang/ReflexLang.git"
+    "url": "http://github.com/skiplang/skip.git"
   },
   "watch": {
     "test-and-build": {
