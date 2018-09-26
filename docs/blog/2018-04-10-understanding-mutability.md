@@ -133,7 +133,8 @@ _ : Vector<Int> = v1.value;
 
 // An immutable value that contains a mutable value!
 v2: VectorRef<mutable Ref<Int>> = VectorRef(Vector[mutable Ref(42)]);
-// The field's written mutability is gone, but the generic's mutability is still around
+// The field's written mutability is gone, but the generic's mutability
+// is still around
 _ : Vector<mutable Ref<Int>> = v2.value;
 _ : mutable Ref<Int> = v2.value[0];
 
@@ -159,7 +160,8 @@ _ : readonly Vector<Int> = rv1.value;
 
 // mutable inside readonly value
 rv2: readonly VectorRef<mutable Ref<Int>> = VectorRef(Vector[mutable Ref(42)]);
-// The field's written mutability is gone, and replaced with 'readonly', but the generic's mutability remains
+// The field's written mutability is gone, and replaced with 'readonly',
+// but the generic's mutability remains
 _ : readonly Vector<mutable Ref<int>> = rv2.value;
 _ : mutable Ref<Int> = rv2.value[0];
 
