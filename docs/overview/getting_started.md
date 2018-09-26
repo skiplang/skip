@@ -89,4 +89,4 @@ The docker container uses a temporary file system by default, which means that t
 
 ## Developing Skip
 
-To develop the Skip language and toolchain itself, follow the guide in https://github.com/skiplang/skip/blob/master/docs/developer/README-cmake.md.
+To develop the Skip language and toolchain itself, [follow the guide](https://github.com/skiplang/skip/blob/master/docs/developer/README-cmake.md).
