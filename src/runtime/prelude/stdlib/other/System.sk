@@ -228,7 +228,7 @@ native fun getBuildVersion(): String;
 
 @cpp_runtime
 @may_alloc
-native fun read_stdin(): String;
+untracked native fun read_stdin(): String;
 
 @cpp_runtime
 @may_alloc

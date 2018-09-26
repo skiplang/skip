@@ -69,7 +69,7 @@ fun transformFileInPlace(filename: String, transFn: String -> String): void {
 
 // Modding a dir in place becomes:
 //    find dir -name '*.sk' | xargs skip_codemod --write
-fun main(): void {
+untracked fun main(): void {
   args = AP.parse(schema, arguments()) match {
   | Success(results) ->
     if (!results.rest.isEmpty()) {

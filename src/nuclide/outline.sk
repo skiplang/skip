@@ -277,7 +277,7 @@ fun processFile(fileName: String): void {
   outline(FileSystem.readTextFile(fileName))
 }
 
-fun main(): void {
+untracked fun main(): void {
   args = arguments();
   if (args.isEmpty()) {
     outline(read_stdin());

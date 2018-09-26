@@ -52,7 +52,7 @@ fun printToStdoutAndReportErrors(contents: String, filename: String): void {
   }
 }
 
-fun main(): void {
+untracked fun main(): void {
   errorMessage = "Usage: skip_printer [--write] [--list-different] <list_of_sk_files>\n";
   initialArgs = PrinterArguments{
     files => Vector[],

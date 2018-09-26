@@ -11,7 +11,7 @@
 
 module alias PT = ParseTree;
 
-fun main(): void {
+untracked fun main(): void {
   args = arguments();
   source = args.size() match {
   | 0 -> read_stdin()
