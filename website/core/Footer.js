@@ -47,7 +47,7 @@ class Footer extends React.Component {
             <a href={this.props.config.baseUrl + "playground"}>
               Playground
             </a>
-            <a href={this.props.config.baseUrl + "docs/logo.html"}>
+            <a href={this.props.config.baseUrl + "docs/assets.html"}>
               Logo & Assets
             </a>
           </div>
