@@ -43,7 +43,7 @@ If you try to compile the code, you will see that the method `capture_this` does
 
 ## Frozen Methods
 
-It is possible to define an `immutable method` within a mutable object by using the keyword `frozen`. It's a way to tell the compiler that you do not want that function to be callable when the object is mutable, you only want to have that method in the immutable case. This is useful when you need the object to actually refer to the immutable version of `this`. In the example above, you could make the method capture_this annotated with `frozen`. The compiler would then no longer complain on the return type of the method, but in the code that is attempting to call that method on a mutable version of the object.
+It is possible to define an `immutable method` within a mutable object by using the keyword `frozen`. It's a way to tell the compiler that you do not want that function to be callable when the object is mutable, you only want to have that method in the immutable case. This is useful when you need the object to actually refer to the immutable version of `this`. In the example above, you could make the method `capture_this` annotated with `frozen`. The compiler would then no longer complain on the return type of the method, but in the code that is attempting to call that method on a mutable version of the object.
 
 ## Freezing
 
