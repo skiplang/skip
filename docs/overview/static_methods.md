@@ -54,7 +54,7 @@ A call to `Parent::callChild()` results in the string `Parent`. A call to `Child
 
 ## Late Static Constructor
 
-Sometimes it can be useful to define a constructor method in a parent class. But when that is the case, we almost never want that method to return the parent class, what we want is to build an object of type `this`. `static`, which, remember, refers to the most specialized version of the class, comes in handy to do that.
+Sometimes it can be useful to define a constructor method in a parent class. But when that is the case, we almost never want that method to return the parent class, what we want is to build an object of type `this`. `static` comes in handy to do that, which, remember, refers to the most specialized version of the class.
 
 ```
 base class Parent final { value: Int } {
