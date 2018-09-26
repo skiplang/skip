@@ -7,7 +7,7 @@ title: Classes
 class Point(x: Int, y: Int) {}
 ```
 
-Fields are defined right next to the name of the class. They also define the one and only constructor of the class. Of course it is possible to define static methods acting as factories building points, but there is not notion of a constructor in the classic sense: a function that manipulates the object before the initialization. The reason for this is that we want pattern-matching to work as the dual operation of object creation for any object. Concretely if I write `Point(x, y)` in an expression, this needs to be the dual operation of writing `Point(x, y)` in a pattern: one builds it, the other one de-sugars it.
+Fields are defined right next to the name of the class. They also define the one and only constructor of the class. Of course it is possible to define static methods acting as factories building points, but there is no notion of a constructor in the classic sense: a function that manipulates the object before the initialization. The reason for this is that we want pattern-matching to work as the dual operation of object creation for any object. Concretely if I write `Point(x, y)` in an expression, this needs to be the dual operation of writing `Point(x, y)` in a pattern: one builds it, the other one de-sugars it.
 
 **Note**: the default, for any object construction is to be immutable. In this case, writing `Point(.., ..)` means that we are building an immutable version of the class Point. More detail on that later.
 
