@@ -68,7 +68,11 @@ fun getCommentOfPosition(
 }
 
 fun notCopyrightLicenseHeader(comment: Token.Comment): Bool {
-  !comment.value.matches(Regex::create("\\/\\*\\*\\s*\\n\\s*\\*\\s*Copyright\\s+\\(c\\)\\s+Facebook"));
+  !comment.value.matches(
+    Regex::create(
+      "\\/\\*\\*\\s*\\n\\s*\\*\\s*Copyright\\s+\\(c\\)\\s+Facebook",
+    ),
+  );
 }
 
 class Arguments{
