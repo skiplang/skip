@@ -2,7 +2,7 @@ set -e
 
 cd $(dirname $0)
 
-ROOT=/Users/aorenste/dev/skip
+ROOT=/Users/verlaguet/dev/skip
 
 INC=-I/usr/local/opt/llvm/include
 LIBS="-L/usr/local/opt/libffi/lib -lffi -lz -lcurses -lboost_filesystem -lboost_system -lpcre"

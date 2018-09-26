@@ -355,7 +355,7 @@ errors like:
 
 To setup Skip support in Nuclide:
 - Open 'Nuclide Settings' with Cmd-Opt-,
-- Set 'Directory of skip binaries' to something like: `/Users/aorenste/github/skip/nuclide`
+- Set 'Directory of skip binaries' to something like: `/Users/verlaguet/github/skip/nuclide`
 
 Build and install the Nuclide binaries with: `tools/update_nuclide`.
 
