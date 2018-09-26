@@ -38,9 +38,6 @@ class Footer extends React.Component {
             <a href={this.props.config.baseUrl + "docs/string.html"}>
               Standard Library
             </a>
-            <a href={this.props.config.baseUrl + "specification"}>
-              Specification
-            </a>
           </div>
           <div>
             <h5>Tools</h5>
