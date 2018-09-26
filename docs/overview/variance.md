@@ -17,7 +17,7 @@ class MyCollection<+T>(value: T) {
 }
 ```
 
-Note that the compiler might refuse the annotation if `T` appears is so-called `contra-variant` position within the definition of the class. As stated earlier, I won't go in the details of what that means here, just rework the API when the compiler is complaining.
+Note that the compiler might refuse the annotation if `T` appears in a so-called `contra-variant` position within the definition of the class. As stated earlier, I won't go in the details of what that means here, just rework the API when the compiler is complaining.
 
 ## Contra-variance
 
