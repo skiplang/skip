@@ -22,7 +22,7 @@ class NumInt(value: Int) {
 
 But is that really the type we want? We want to be able to compare numeric values, so we want isEqual to work with objects of type `Num` and not `NumInt`: the type `this` in the trait is too precise!
 
-That's what the type `inst` is for. `inst` should be read has: the type of the object that used the trait: in this case the type Num.
+That's what the type `inst` is for. `inst` should be read as: the type of the object that used the trait: in this case the type `Num`.
 
 ```
 class MyComparable {
