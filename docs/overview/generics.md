@@ -38,4 +38,4 @@ class MyReference<T>(value: T) {
 }
 ```
 
-In this case, the method `show` will only be made available when the type passed to MyReference implements `Show`. Calling the method `show` when the type of the generic doesn't satisfy the constraint will result in an error.
+In this case, the method `show` will only be made available when the type passed to MyReference implements `Showable`. Calling the method `show` when the type of the generic doesn't satisfy the constraint will result in an error.
