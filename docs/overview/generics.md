@@ -8,11 +8,11 @@ fun identity<T>(x: T): T { x }
 class MyReference<T>(T)
 ```
 
-It can sometime be useful to define functions or classes that just work with any type. That's what generics are for. One interesting thing about Skip generics is that they are inferred at the call site, you don't need to write the type arguments explicitly.
+It can sometimes be useful to define functions or classes that just work with any type. That's what generics are for. One interesting thing about Skip generics is that they are inferred at the call site, you don't need to write the type arguments explicitly.
 
 ```
 fun testingGenerics(): void {
-  // All of the following is valid
+  // All of the following are valid
   _ = identity(0);
   _ = identity<Int>(0);
   _ = MyReference(0);
