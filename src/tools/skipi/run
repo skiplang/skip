@@ -25,7 +25,7 @@ $PDIR/testing/UnitTest.sk"
 
 PARAMS="--output $SKIPI/hello_world.ll ./src/tools/skipi/hello_world.sk
 --export-function-as main=skip_main --preamble
-/Users/aorenste/dev/skip/build/tests/runtime/native/lib/preamble.ll $PRELUDE"
+/Users/verlaguet/dev/skip/build/tests/runtime/native/lib/preamble.ll $PRELUDE"
 
 # Need SKIP_NUM_THREADS=1 because our use of llvm is not thread safe
 #time SKIP_NUM_THREADS=1 build/bin/skip_to_llvm $PARAMS

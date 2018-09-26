@@ -10,6 +10,6 @@ them.
 
 ## Changing the docker image
 
-We use the docker image [aorenste/skip-ci](https://hub.docker.com/r/aorenste/skip-ci/) as our base.  This is a public image so don't add anything Facebook private in it.
+We use the docker image [verlaguet/skip-ci](https://hub.docker.com/r/verlaguet/skip-ci/) as our base.  This is a public image so don't add anything Facebook private in it.
 
 The docker image is defined in `.circleci/docker/skip/Dockerfile`.  This can be rebuilt by running the script `.circleci/docker/build`.

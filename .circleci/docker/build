@@ -3,7 +3,7 @@ set -ex
 
 # If you change these values make sure to change them in config.yml
 # (key: "jobs/build/docker/image") too.
-IMAGE=aorenste/skip-ci
+IMAGE=verlaguet/skip-ci
 VERSION=5
 
 docker pull ubuntu:18.04
