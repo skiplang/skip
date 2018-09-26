@@ -22,7 +22,7 @@ class Child extends MyValue {
 }
 ```
 
-What's going on here? We have defined a static method `make` that is a generic constructor. That constructor is now a factory that knows how to build objects of type `MyValue`. The children of MyValue will inherit that method, and therefore won't have to redefine it themselves. So why is that method deferred? Because the signature of make is going to be incompatible with the ones defined in the subclasses.
+What's going on here? We have defined a static method `make` that is a generic constructor. That constructor is now a factory that knows how to build objects of type `MyValue`. The children of MyValue will inherit that method, and therefore won't have to redefine it themselves. So why is that method deferred? Because the signature of `make` is going to be incompatible with the ones defined in the subclasses.
 
 ```
 _ = MyValue::make(0) // error: cannot call a deferred
