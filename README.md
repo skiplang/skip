@@ -42,7 +42,7 @@ Skip was designed by an experienced team including senior contributors to Action
 
 [Instructions for building with `cmake`](docs/developer/README-cmake.md)
 
-### Website
+## Website
 
 http://www.skiplang.com
 
