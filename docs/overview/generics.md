@@ -8,7 +8,7 @@ fun identity<T>(x: T): T { x }
 class MyReference<T>(T)
 ```
 
-It can sometimes be useful to define functions or classes that just work with any type. That's what generics are for. One interesting thing about Skip generics is that they are inferred at the call site, you don't need to write the type arguments explicitly.
+It can sometimes be useful to define functions or classes that work with any type. That's what generics are for. One interesting thing about Skip generics is that they are inferred at the call site, so you don't need to write the type arguments explicitly.
 
 ```
 fun testingGenerics(): void {
@@ -22,7 +22,7 @@ fun testingGenerics(): void {
 
 ## Constraints on generics
 
-It is possible to add constraints on generics. The constraint `T: X` should be understood as: any type, as long as it implements X.
+It is possible to add constraints on generics. The constraint `T: X` should be understood as: any type, as long as it implements `X`.
 
 ```
 fun sum<T: IntConvertible>(v: Vector<T>): ...
@@ -38,4 +38,4 @@ class MyReference<T>(value: T) {
 }
 ```
 
-In this case, the method `show` will only be made available when the type passed to MyReference implements `Showable`. Calling the method `show` when the type of the generic doesn't satisfy the constraint will result in an error.
+In this case, the method `show` will only be made available when the type passed to `MyReference` implements `Showable`. Calling the method `show` when the type of the generic doesn't satisfy the constraint will result in an error.

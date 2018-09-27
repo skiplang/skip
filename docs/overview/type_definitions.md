@@ -10,7 +10,7 @@ type MyTriplet = (Int, Int, Int);
 fun makeTriplet(): MyTriplet { (0, 0, 0) }
 ```
 
-Things become more interesting within a class. A class can define a type, and later redefine it in on of it's children.
+Things become more interesting within a class. A class can define a type, and later redefine it in one of its children.
 
 ```
 base class MyUser{name: String, age: Int} {
@@ -32,5 +32,4 @@ class StringKeyedUser{} {
 }
 ```
 
-In this example, we have defined the interface `MyUser` with a method `load` that references the most specialized instance of the type `ID` defined by the hierarchy.
-But why bother? After all, we could have defined the function load with the type `Int` directly and call it a day right? Well, that feature becomes particularly interesting when coupled with `deferred` methods.
+But why bother? After all, we could have defined the function load with the type `Int` directly and call it a day, right? Well, that feature becomes particularly interesting when coupled with `deferred` methods.

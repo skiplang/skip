@@ -5,7 +5,7 @@ title: Nullability
 
 ## Option Type
 
-The type option is defined as follow:
+The type option is defined as follows:
 
 ```
 base class Option<T> {
@@ -13,7 +13,7 @@ base class Option<T> {
 }
 ```
 
-That is useful when a value is sometimes present but not always, the way to de-sugar an Option value is by using pattern-matching. Also, because the type is used so often, there is a bit of syntax to avoid spelling out the word `Option` every time. `?Int` stands for `Option<Int>`. It is placed before (and not after) the type to make generics more readable: `MyGeneric<...>?` is less readable than `?MyGeneric<...>`, but of course that is debatable. 
+That is useful when a value is sometimes present but not always. The way to de-sugar an `Option` value is by using pattern matching. Also, because the type is used so often, there is a bit of syntax to avoid spelling out the word `Option` every time. `?Int` stands for `Option<Int>`. It is placed before (and not after) the type to keep the `?` readily visible even with generics : `MyGeneric<...>?` is arguably less readable than `?MyGeneric<...>`.
 
 ```
 fun zeroIfUndefined(value: Option<Int>): Int {

@@ -5,7 +5,7 @@ title: Deferred Methods
 
 ## Deferred methods
 
-A deferred method is a method that is inherited by the children of the class, but that is not callable by other methods (unless they are themselves deferred). That can be very useful to define a default implementation, but when that implementation signatures is such that it cannot be made visible safely.
+A deferred method is a method that is inherited by the children of the class, but that is not callable by other methods (unless they are themselves deferred). That can be very useful to define a default implementation, but when that implementation signature is such that it cannot be made visible safely.
 
 ```
 base class MyValue {value: this::TV} {

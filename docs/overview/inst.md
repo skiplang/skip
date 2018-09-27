@@ -3,8 +3,8 @@ id: inst
 title: The type inst
 ---
 
-Sometime, `this` is a little bit `too` precise. The type `this` always refers to the most precise type. The problem with that is that this is not always what we want, it often is, but not always.
-Let's imagine you are building an algorithm that mixes integers and floats, and you want to be able to compare them. You would create a type that would look like that:
+Sometime, `this` is a little bit *too* precise. The type `this` always refers to the most precise type. The problem with that is that `this` is often, but not always, what we want.
+Let's imagine you are building an algorithm that mixes integers and floats, and you want to be able to compare them. You would create types that would look like:
 
 ```
 base class Num uses MyComparable
@@ -20,9 +20,9 @@ class NumInt(value: Int) {
 }
 ```
 
-But is that really the type we want? We want to be able to compare numeric values, so we want isEqual to work with objects of type `Num` and not `NumInt`: the type `this` in the trait is too precise!
+But is that really the type we want? We want to be able to compare numeric values, so we want `isEqual` to work with objects of type `Num` and not `NumInt`. The type `this` in the trait is too precise!
 
-That's what the type `inst` is for. `inst` should be read as: the type of the object that used the trait: in this case the type `Num`.
+That's what the type `inst` is for. `inst` should be read as: the type of the object that used the trait — in this case the type `Num`.
 
 ```
 class MyComparable {

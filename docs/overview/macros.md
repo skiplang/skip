@@ -8,7 +8,7 @@ Skip has a limited form of macros. Macros are methods defined in base classes or
 For example:
 
 ```
-trait .Hashable {
+trait Hashable {
   overridable macro fun hash(): Int {
     h = #thisClassName.hash();
     #forEachField (#field) !h = combine(h, this.#field);
@@ -38,21 +38,15 @@ Also note that the `"Person".hash()` expression is evaluated at compile time ini
 
 Within a `macro` method, the following macros are available:
 
-`#thisClassName`
+- `#thisClassName`: Expands to a string literal containing the fully qualified name of the leaf class the method is being expanded into. It may be used as an expression.
 
-Expands to a string literal containing the fully qualified name of the leaf class the method is being expanded into. It may be used as an expression.
+- `#ThisClass`: Expands to the class type of the class being expanded into. It may be used as a type annotation as well as in pattern matching.
 
-`#ThisClass`
+- `#forEachField(#fieldIdentifier [, #fieldNameLiteral]) body`: `#forEachField` expands to an expression sequence where the `body` expression is expanded once for each field in the containing class. The expansion includes all fields in the class including those inherited from base classes.
 
-Expands to the class type of the class being expanded into. It may be used as a type annotation as well as in pattern matching.
+   Within `body` the `#fieldIdentifier` macro expands to an identifier equal to the name of the field being expanded. It may be used as an expression, or more commonly on the right hand side of the `.` member access operator.
 
-`#forEachField(#fieldIdentifier [, #fieldNameLiteral]) body`
-
-`#forEachField` expands to an expression sequence where the `body` expression is expanded once for each field in the containing class. The expansion includes all fields in the class including those inherited from base classes.
-
-Within `body` the `#fieldIdentifier` macro expands to an identifier equal to the name of the field being expanded. It may be used as an expression, or more commonly on the right hand side of the `.` member access operator.
-
-If present, the `#fieldNameLiteral` macro is also available in the `body` expression and expands to a string literal containing the name of the field being expanded.
+   If present, the `#fieldNameLiteral` macro is also available in the `body` expression and expands to a string literal containing the name of the field being expanded.
 
 ## Current Uses of Macros
 

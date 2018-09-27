@@ -11,7 +11,7 @@ fun add1(x: Int): Int {
 }
 ```
 
-Skip is a typed language, function declarations must include the type of all parameters, as well as the
+Skip is a typed language; function declarations must include the type of all parameters, as well as the
 type returned by the function. The body of a function is an expression which is evaluated
 to produce the return value of the function.
 
@@ -26,7 +26,7 @@ fun add1(x: Int): Int {
 }
 ```
 
-The variable `y` is introduced without specifying it's type; the types of local variables are inferred and rarely
+The variable `y` is introduced without specifying its type; the types of local variables are inferred and rarely
  need to be explicitly specified.
 
 ## Expression Sequences
@@ -41,7 +41,7 @@ assigned an initial value which is not later modified. In Skip the `=` operator 
 a new variable, but unlike other languages the `=` operator alone can not modify
 an existing variable.
 
-To modify a local variable prefix the variable with a `!` on the left hand side of the `=`.
+To modify a local variable, prefix the variable with a `!` on the left hand side of the `=`.
 
 ```
 fun add1(x: Int): Int {
@@ -53,7 +53,7 @@ fun add1(x: Int): Int {
 
 ## Types
 
-Skip is a typed language. Declarations like function parameters, return types, class fields
+Skip is a typed language. Declarations like function parameters, return types, and class fields
 all include type annotations. The compiler computes the type of all expressions
 and reports errors whenever an unexpected type is encountered.
 
@@ -61,7 +61,7 @@ and reports errors whenever an unexpected type is encountered.
 
 Skip includes the usual primitive types: `Int`, `Float`, `String`, `Char`, `Bool`, `void`.
 
-The Int type is 64-bit signed; the Float type holds 64 bit IEEE floating point values.
+The `Int` type is 64-bit signed; the `Float` type holds 64 bit IEEE floating point values.
 Skip also includes 8/16/32 bit signed and unsigned integral values.
 
 ## Explicit type annotations
@@ -105,5 +105,5 @@ fun discardUnusedValue(): 1 {
 }
 ```
 
-The result of variable declarations(`=`) and mutations(`! =`) is the `void` value.
+The result of variable declarations (`=`) and mutations (`! =`) is the `void` value.
 This enables them to be used as the non-terminal expression in a sequence.

@@ -3,12 +3,12 @@ id: lvalues
 title: Lvalues
 ---
 
-In Skip, an `!` designates which part of the lvalue is going to be modified. That notion is pretty unconventional, so let's just run through a few examples:
+In Skip, `!` designates which part of the lvalue is going to be modified. That notion is pretty unconventional, so let's just run through a few examples:
 
 ```
 x.!field1 = 0
 ```
-That last example works exactly like in most programming languages, the object that the variable `x` points to is going to be modified, the slot that corresponds to `field1` is going to be assigned the value `0`. Said differently, if `x` was pointing to `MyObject{ field1 => 42 }` it will point to the object `MyObject{ field1 => 0 }` after this expression is evaluated, and the modification will happen by physically updating the field `field1`. 
+That last example works exactly like in most programming languages; the object that the variable `x` points to is going to be modified, and the slot that corresponds to `field1` is going to be assigned the value `0`. Said differently, if `x` was pointing to `MyObject{ field1 => 42 }` it will point to the object `MyObject{ field1 => 0 }` after this expression is evaluated, and the modification will happen by physically updating the field `field1`. 
 
 ```
 !x.field1 = 0
