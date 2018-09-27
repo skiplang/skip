@@ -241,12 +241,12 @@ mutable class Point {mutable x: Int, y: Int} {
 
 extension class Point uses Equality, Show {
   // Defining equality for a Point
-  fun ==(other: this): Bool {
+  readonly fun ==(other: this): Bool {
     other.x == this.x && other.y == this.y    
   }
 
   // Defining string representation of a Point
-  fun toString(): String {
+  readonly fun toString(): String {
     `Point(${this.x.toString()}, ${this.y.toString()})`
   }
 }
