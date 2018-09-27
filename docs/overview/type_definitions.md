@@ -15,6 +15,7 @@ Things become more interesting within a class. A class can define a type, and la
 ```
 base class MyUser{name: String, age: Int} {
   type ID;
+  static fun load(this::ID): this;
 }
 
 class IntKeyedUser{} {
@@ -25,8 +26,11 @@ class IntKeyedUser{} {
 }
 class StringKeyedUser{} {
   type ID = String;
+  static fun load(key: this::ID): this {
+    ...
+  }
 }
 ```
 
-In this example, we have defined an interface of Users with a method `load` that references the most specialized instance of the type `ID` defined by the hierarchy.
+In this example, we have defined the interface `MyUser` with a method `load` that references the most specialized instance of the type `ID` defined by the hierarchy.
 But why bother? After all, we could have defined the function load with the type `Int` directly and call it a day right? Well, that feature becomes particularly interesting when coupled with `deferred` methods.
