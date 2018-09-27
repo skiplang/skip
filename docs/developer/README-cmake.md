@@ -38,8 +38,7 @@
 Install packages
 
 ```
-pacman -S base-devel git cmake python2 ninja nodejs clang boost libevent google-
-glog
+pacman -S base-devel git cmake python2 ninja nodejs clang boost libevent google-glog
 ```
 
 Set `python` to default to Python 2
