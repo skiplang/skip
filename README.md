@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/skiplang/skip.svg?style=svg)](https://circleci.com/gh/skiplang/skip)
+
 ## Project Status
 
 Skip is an experimental programming language developed at Facebook from 2015-2018.
@@ -40,7 +42,7 @@ Skip was designed by an experienced team including senior contributors to Action
 
 [Instructions for building with `cmake`](docs/developer/README-cmake.md)
 
-### Website
+## Website
 
 http://www.skiplang.com
 
