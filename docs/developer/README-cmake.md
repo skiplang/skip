@@ -35,7 +35,37 @@
 
 
 ### Arch Linux
-    pacman -S base-devel git cmake ninja nodejs clang boost libevent google-glog
+Install packages
+
+```
+pacman -S base-devel git cmake python2 ninja nodejs clang boost libevent google-
+glog
+```
+
+Set `python` to default to Python 2
+
+```
+ln -s /usr/bin/python2 $SOME_DIR/python
+export PATH=$SOME_DIR/python:$PATH
+```
+
+Disable warnings as errors by running `git apply` on the following patch
+
+```patch
+diff --git a/CMake/SkipCompiler.cmake b/CMake/SkipCompiler.cmake
+index c8ab080..f61d73c 100644
+--- a/CMake/SkipCompiler.cmake
++++ b/CMake/SkipCompiler.cmake
+@@ -52,7 +52,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
+     $<$<CONFIG:Debug>:-g>
+     $<$<CONFIG:Release>:-DNDEBUG>
+     -Wall
+-    -Werror
+     -msse4.2
+     -Wno-sign-compare
+     )
+
+```
 
 ### OS X
 
