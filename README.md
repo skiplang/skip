@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/skiplang/skip.svg?style=svg)](https://circleci.com/gh/skiplang/skip)
+
 ## Project Status
 
 Skip is an experimental programming language developed at Facebook from 2015-2018.
