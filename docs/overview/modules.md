@@ -3,7 +3,7 @@ id: modules
 title: Modules
 ---
 
-A module is a namespace regrouping top-level definitions such as types, classes, constants and functions.
+A module is a namespace regrouping top-level definitions such as types, classes, constants, and functions.
 
 ```
 module Canvas;
@@ -23,13 +23,13 @@ fun render(): Point {
 
 ## Absolute paths
 
-If a module defines a function that is also defined either at top-level, it is possible to refer to the top-level definition with an absolute path. Absolute paths start with a `.`.
+If a module defines a function that is also defined at the top level, it is possible to refer to the top-level definition with an absolute path. Absolute paths start with a `.`.
 
 ```
 module Canvas;
 fun render(): Point {
   point = (0, 0);
-  /* refers to the function move defined at top-level */
+  /* refers to the function move defined at top level */
   .move(point, 1, 1);
 }
 module end;
@@ -41,7 +41,7 @@ Sometimes, when a module is used very frequently in a file, or when the name of 
 
 ```
 module alias L = List;
-/* Passed this point in the file, L.foo is equivalent to List.foo */
+/* Past this point in the file, L.foo is equivalent to List.foo */
 ```
 
-The scope of an alias is the file only, aliases are not visible outside of the files where they are defined.
+The scope of an alias is the file only; aliases are not visible outside of the files where they are defined.

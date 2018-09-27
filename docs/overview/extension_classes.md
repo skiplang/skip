@@ -3,7 +3,7 @@ id: extension_classes
 title: Extension Classes
 ---
 
-A common problem with traits (and with base classes), is that they are sometimes defined `after the fact`. In other words, we want to add methods to an existing class to satisfy a constraint but we don't want to make those methods part of the original definition of the class. For example, let's say that I want to define a hashing function:
+A common problem with traits (and with base classes), is that they are sometimes defined *after the fact*. In other words, we want to add methods to an existing class to satisfy a constraint but we don't want to make those methods part of the original definition of the class. For example, let's say that we want to define a hashing function:
 
 ```
 trait Hashable {

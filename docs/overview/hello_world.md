@@ -17,4 +17,4 @@ fun main(): void {
 }
 ```
 
-A couple of things can already be noticed. Functions need type annotation: we specified the type of its return type (`void`). The special function named `main` is invoked as the entry point of your program. Also, we didn't use the keyword `return` because Skip is an expression based language: there is no notion of statement. We will see how to compose expressions in sequences later.
+A couple of things can already be noticed. Functions need type annotation: we specified the type of its return type (`void`). The special function named `main` is invoked as the entry point of your program. Also, we didn't use the keyword `return` because Skip is an expression-based language: there is no notion of statement. We will see how to compose expressions in sequences later.

@@ -3,7 +3,7 @@ id: pattern_matching
 title: Pattern Matching
 ---
 
-One of the key characteristics of Skip is that any class can be pattern-matched over. That's why the fields of a class look like they are parameters, and why they need to be defined right after the name of the class. It make pattern-matching feel like the `dual` operation of object construction.
+One of the key characteristics of Skip is that any class can be pattern-matched over. That's why the fields of a class look like they are parameters, and why they need to be defined right after the name of the class. It makes pattern matching feel like the *dual* operation of object construction.
 
 ```
 fun valueToInt(value: Parent): Int {
@@ -54,14 +54,14 @@ fun match(a: A): Int {
 }
 ```
 
-If the object you’re trying to match as private or protected fields, you won’t be able to access them. To pattern match, you’ll need to use `_` in the place of the fields you cannot access.
+If the object you’re trying to match has private or protected fields, you won’t be able to access them. To pattern match, you’ll need to use `_` in the place of the fields you cannot access.
 
 ```
 class A (private x: ?Int, y: ?Int)
 
 fun getNonNullY(a: A): Int {
   a match {
-  | A(_, Box(y))-> y
+  | A(_, Box(y)) -> y
   | _ -> 0
   }
 }

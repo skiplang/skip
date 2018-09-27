@@ -10,7 +10,7 @@ trait Showable {
 ```
 
 
-Skip defines a special kind of base classes called `traits`. They are different from a base class in the sense that they don't define a type. It is, for example, incorrect to define a field of type Showable.
+Skip defines a special kind of base classes called `traits`. They are different from a base class in the sense that they don't define a type. It is, for example, incorrect to define a field of type `Showable`.
 
 So what are they used for? Traits can only be used to constrain a generic! Why that restriction? Because it allows us to define more expressive traits.
 
@@ -51,4 +51,4 @@ fun tough<T: MyComparable>(x: T, y: T): Bool {
 }
 ```
 
-Now this works. Because a call to `tough` is guaranteed to have consistent arguments. And that's the essence of a trait! The key difference between a trait and base class is that all the instances of `this` in the interface are guaranteed to refer to the same type, which makes the definition of interfaces like `MyComparable` possible.
+Now this works. Because a call to `tough` is guaranteed to have consistent arguments. And that's the essence of a trait! The key difference between a trait and a base class is that all the instances of `this` in the interface are guaranteed to refer to the same type, which makes the definition of interfaces like `MyComparable` possible.

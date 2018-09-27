@@ -4,7 +4,7 @@ title: Control Flow
 ---
 
 Skip includes the usual control flow constructs including `if`, `for/in`, `while`,
-`do` and `loop`. Unlike most languages, Control flow constructs in Skip are expressions
+`do` and `loop`. Unlike most languages, control flow constructs in Skip are expressions
 and they produce values just like other expressions. Control flow expressions may be
 used in any context an expression is expected.
 

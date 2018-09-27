@@ -25,7 +25,7 @@ That's because `::` is an operator on values of type `Class` and that `Math` in 
 
 ## Late Static Binding
 
-Skip allows you to specialize static methods, in exactly the same way as with normal methods. When I write `this.foo()`, I am calling the most specialized method named `foo`. In other words, `this` refers to the type of the most precise object, the one that was used to instantiate the object.
+Skip allows static method specialization, in exactly the same way as with normal methods. When we write `this.foo()`, we are calling the most specialized method named `foo`. In other words, `this` refers to the type of the most precise object, the one that was used to instantiate the object.
 The exact equivalent is made available for static methods with `static::foo()`, except that in this case `static` refers to the most precise class.
 Concretely:
 
