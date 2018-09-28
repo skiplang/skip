@@ -1,6 +1,6 @@
 # Generic Types, Methods, and Functions
 
-##General
+## General
 
 Classes, their methods, and functions can be ***parameterized***; that is, their declarations can have one or more placeholder names—called ***type parameters***—that are associated with types via ***type arguments*** when a class is instantiated, or a method or function is called. A type, method, or function having such placeholder names is called a *generic type*, a *generic method*, or a *generic function*, respectively.
 
