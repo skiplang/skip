@@ -3,7 +3,7 @@ id: getting_started
 title: Getting Started
 ---
 
-There are two main options for compiling and running Skip programs. To quickly experiment with Skip we recommend using the [Docker container](#docker-image). For a full development environment and/or to develop Skip itself, see the [guide](#developing-skip).
+There are two main options for compiling and running Skip programs. To quickly experiment with Skip we recommend using the [Docker container](#docker-image). For a full development environment and/or to develop Skip itself, see the [guide](#developing-skip). If you want to develop Skip using a docker image, you can also do that, verlaguet/skip:dev is a good image to get started, it has all the necessary packages installed.
 
 ## Docker Image
 
