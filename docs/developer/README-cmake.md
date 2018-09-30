@@ -5,6 +5,7 @@
 1. [Prerequisites](#install-prerequisites)
     1. [Centos](#fb-centos-facebook-only)
     1. [Ubuntu 14.04](#ubuntu-1404)
+    1. [Arch Linux](#arch-linux)
     1. [OS X](#os-x)
 1. [Configure And Build](#configure-and-build-the-repo)
 1. [Adding New Source Files](#adding-new-source-files-or-targets)
