@@ -8,11 +8,11 @@ Whenever some exceptional condition is detected at runtime, an exception is ***t
 
 Exception handling involves the use of the following constructs:
 
-* [`try`](#sec-The-try-Expression), which allows a ***try-block*** of code containing one or more possible exception generations, to be tried
+* [`try`](Expressions.md#the-try-expression), which allows a ***try-block*** of code containing one or more possible exception generations, to be tried
 
-* [`catch`](#sec-The-try-Expression), which defines a ***catch-handler*** for each expected exception type thrown from the corresponding try-block or from some function it calls
+* [`catch`](Expressions.md#the-try-expression), which defines a ***catch-handler*** for each expected exception type thrown from the corresponding try-block or from some function it calls
 
-* [`throw`](#sec-The-throw-Expression), which generates an exception of a given type, from a place called a ***throw point***.
+* [`throw`](Expressions.md#the-throw-expression), which generates an exception of a given type, from a place called a ***throw point***.
 
 When an exception is thrown, an ***exception object*** of some subclass type of [`Exception`](RTL-type-Exception)  is created and made available to the associated catch-handler. That object encapsulates the fields of the thrown exception object, which the handler can use to determine the course of action.
 

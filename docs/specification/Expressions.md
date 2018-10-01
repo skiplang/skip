@@ -12,7 +12,7 @@ When an expression is evaluated, it produces a result. It might also produce a s
 
 An ***lvalue*** is an an expression that designates a memory location having a type. A ***modifiable lvalue*** is an lvalue whose value can be changed. A ***non-modifiable lvalue*** is an lvalue whose value cannot be changed.
 
-The occurrence of value computation and side effects is delimited by *sequence points*, places in a program's execution at which all the computations and side effects previously promised are complete, and no computations or side effects of future operations have yet begun. There is a sequence point at the end of each full expression. The [logical AND](#sec-Logical-AND-Operator), [logical OR](#sec-Logical-Inclusive-OR-Operator), and [function-call](#sec-Function-Call-Operator) operators each contain a sequence point. (For example, in the following series of expressions, `a = 10; b = f(a); b * 2`, there is sequence point at the end of each full expression, so the binding of `a` to 10 is completed before the value of `a` is passed to function `f`, and the binding of `b` to the value returned from `f` is completed before the value of `b` is multiplied by 2.)
+The occurrence of value computation and side effects is delimited by *sequence points*, places in a program's execution at which all the computations and side effects previously promised are complete, and no computations or side effects of future operations have yet begun. There is a sequence point at the end of each full expression. The [logical AND](Expressions.md#logical-and-operator), [logical OR](Expressions.md#logical-inclusive-or-operator), and [function-call](Expressions.md#function-call-operator) operators each contain a sequence point. (For example, in the following series of expressions, `a = 10; b = f(a); b * 2`, there is sequence point at the end of each full expression, so the binding of `a` to 10 is completed before the value of `a` is passed to function `f`, and the binding of `b` to the value returned from `f` is completed before the value of `b` is multiplied by 2.)
 
 When an expression contains multiple operators, the ***precedence*** of those operators controls the order in which those operators are applied. (For example, the expression `a - b / c` is evaluated as `a - (b / c)` because the / operator has higher precedence than the binary minus operator.) The precedence of an operator is defined by the position of its associated production in the syntactic grammar.
 If an operand occurs between two operators having the same precedence, the order in which the operations are performed is defined by those operators' ***associativity***. With *left-associative* operators, operations are performed left-to-right. With *right-associative* operators, operations are performed right-to-left. Operators that are neither left- nor right-associative are *non-associative*.
@@ -37,20 +37,20 @@ Unless stated otherwise, the result produced by an operator is not a modifiable 
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*qualified-type-name*](#sec-Types.General)
-* [*type-identifier*](#sec-Identifiers)
+* [*expression*](Expressions.md#mutation-operators)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*qualified-type-name*](Types.md#general)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
 
 **Constraints**
 
-For the form `.`*nontype-identifier*, the [global module](#sec-Modules.General) must contain directly a declaration for *nontype-identifier*.
+For the form `.`*nontype-identifier*, the [global module](Modules.md#general) must contain directly a declaration for *nontype-identifier*.
 
-For the form *type-identifier*`.`*nontype-identifier*, *type-identifier* must name a [module](#sec-Modules.General) that contains directly a declaration for the right-hand *nontype-identifier*.
+For the form *type-identifier*`.`*nontype-identifier*, *type-identifier* must name a [module](Modules.md#general) that contains directly a declaration for the right-hand *nontype-identifier*.
 
 **Semantics**
 
-The form `.`*nontype-identifier* names the *nontype-identifier* in the [global module](#sec-Modules.General). The form *type-identifier*`.`*nontype-identifier* names the *nontype-identifier* in the module named *type-identifier*.
+The form `.`*nontype-identifier* names the *nontype-identifier* in the [global module](Modules.md#general). The form *type-identifier*`.`*nontype-identifier* names the *nontype-identifier* in the module named *type-identifier*.
 
 ## Operator Definitions
 
@@ -66,7 +66,7 @@ A ***pattern*** is a structural representation of a set of one or more values. P
 
 There are several kinds of patterns: class, literal, constant, name, tuple, and wildcard. Each kind of pattern imposes restrictions on the type of the pattern’s test expression. Each kind of pattern specifies what values it matches, what bindings the pattern introduces into the target expression when a match is successful, and whether the pattern is exhaustive.
 
-Patterns are used in [pattern branch lists](#sec-Pattern-Branch-Lists) and [nested patterns](#sec-Pattern-Nesting). Each pattern context defines the test expression, target expression, and exhaustiveness requirement for the contained patterns.
+Patterns are used in [pattern branch lists](Expressions.md#pattern-branch-listss) and [nested patterns](Expressions.md#pattern-nesting). Each pattern context defines the test expression, target expression, and exhaustiveness requirement for the contained patterns.
 
 A ***pattern alias*** is a *nontype-identifier* associated with a pattern that can be used to refer to the matched pattern’s value in the pattern’s target expression. If *pattern* has the form *pattern-with-alias*, the alias’s *nontype-identifier* is bound to the matching test expression value.
 
@@ -90,19 +90,19 @@ A ***pattern alias*** is a *nontype-identifier* associated with a pattern that c
 </pre>
 
 **Defined elsewhere**
-* [*class-pattern*](#sec-Class-Patterns)
-* [*constant-pattern*](#sec-Constant-Patterns)
-* [*literal-pattern*](#sec-Literal-Patterns)
-* [*name-pattern*](#sec-Name-Pattern)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*tuple-pattern*](#sec-Tuple-Patterns)
-* [*wildcard-pattern*](#sec-Wildcard-Pattern)
+* [*class-pattern*](Expressions.md#class-patterns)
+* [*constant-pattern*](Expressions.md#constant-patterns)
+* [*literal-pattern*](Expressions.md#literal-patterns)
+* [*name-pattern*](Expressions.md#name-pattern)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*tuple-pattern*](Expressions.md#tuple-patterns)
+* [*wildcard-pattern*](Expressions.md#wildcard-pattern)
 
 An *as-pattern* causes *nontype-identifier* to bind to the matching expression.
 
 ### Pattern Branch Lists
 
-A ***pattern branch list*** is used to match a test expression against a series of patterns and to execute different code based on which pattern in the list was matched. Pattern branch lists are used in several contexts: [match expressions](#sec-The-match-Expression), [catch clauses](#sec-The-try-Expression), and [algebraic function bodies](#sec-Methods). Each pattern branch list context defines the test expression for that pattern branch list.
+A ***pattern branch list*** is used to match a test expression against a series of patterns and to execute different code based on which pattern in the list was matched. Pattern branch lists are used in several contexts: [match expressions](Expressions.md#the-match-expression), [catch clauses](Expressions.md#the-try-expression), and [algebraic function bodies](Classes.md#methods). Each pattern branch list context defines the test expression for that pattern branch list.
 
 A pattern branch list is a sequence of ***pattern branches***. Each pattern branch contains a list of one or more patterns, an optional when-clause, and a target expression. The test expression for each branch’s pattern list is the test expression of the pattern branch list. When a pattern branch list has more than one pattern, those patterns are OR’d together.
 
@@ -142,9 +142,9 @@ A *pattern-branch* whose *pattern* has one or more *wildcard-pattern*s and no *n
 
 **Defined elsewhere**
 
-* [*controlling-expression*](#sec-The-if-Expression)
-* [*expression*](#sec-Mutation-Operators.General)
-* [*pattern*](#sec-Patterns-and-Pattern-Matching.General)
+* [*controlling-expression*](Expressions.md#the-if-expression)
+* [*expression*](Expressions.md#mutation-operators)
+* [*pattern*](Expressions.md#patterns-and-pattern-matching)
 
 **Constraints**
 
@@ -227,7 +227,7 @@ C(a, b) match {
 
 The class expression `C(a, b)` is the test expression for the *class-pattern* `C(_, x)`. The integer expression `a` is the test expression for the nested *wildcard-pattern* `_`. The integer expression `b` is the test expression for the nested *name-pattern* `x`.
 
-Patterns can nest arbitrarily; for example, a tuple pattern might contain a class pattern that contains a tuple pattern, a named pattern, a wildcard pattern, and a different class pattern. (For some examples, see [tuple patterns](#sec-Tuple-Patterns).)
+Patterns can nest arbitrarily; for example, a tuple pattern might contain a class pattern that contains a tuple pattern, a named pattern, a wildcard pattern, and a different class pattern. (For some examples, see [tuple patterns](Expressions.md#tuple-patterns).)
 
 ### Wildcard Pattern
 
@@ -257,7 +257,7 @@ _ -> …           // the matching value is ignored
 _ as n …       // the matching value is bound to n
 ```
 
-Examples of *wildcard-pattern*s nested inside *tuple-pattern*s and *class-pattern*s can be seen in [§§](#sec-Tuple-Patterns) and [§§](#sec-Class-Patterns), respectively.
+Examples of *wildcard-pattern*s nested inside *tuple-pattern*s and *class-pattern*s can be seen in [§§](Expressions.md#tuple-patterns) and [§§](Expressions.md#class-patterns), respectively.
 
 ### Name Pattern
 
@@ -270,7 +270,7 @@ Examples of *wildcard-pattern*s nested inside *tuple-pattern*s and *class-patter
 
 **Defined elsewhere**
 
-* [*nontype-identifier*](#sec-Identifiers)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
 
 **Constraints**
 
@@ -290,7 +290,7 @@ This pattern is exhaustive.
 n -> …          // the new local variable n binds to the matching value
 ```
 
-Examples of *name-pattern*s nested inside *tuple-pattern*s and *class-pattern*s can be seen in [§§](#sec-Tuple-Patterns) and [§§](#sec-Class-Patterns), respectively.
+Examples of *name-pattern*s nested inside *tuple-pattern*s and *class-pattern*s can be seen in [§§](Expressions.md#tuple-patterns) and [§§](Expressions.md#class-patterns), respectively.
 
 ### Literal Patterns
 
@@ -308,12 +308,12 @@ Examples of *name-pattern*s nested inside *tuple-pattern*s and *class-pattern*s 
 
 **Defined elsewhere**
 
-* [*boolean-literal*](#sec-Boolean-Literals)
-* [*character-literal*](#sec-Character-Literals)
-* [*floating-literal*](#sec-Floating-Point-Literals)
-* [*integer-literal*](#sec-Integer-Literals)
-* [*string-literal*](#sec-String-Literals)
-* [*void-literal*](#sec-Void-Literal)
+* [*boolean-literal*](Lexical-Structure.md#boolean-literals)
+* [*character-literal*](Lexical-Structure.md#character-literals)
+* [*floating-literal*](Lexical-Structure.md#floating-point-literals)
+* [*integer-literal*](Lexical-Structure.md#integer-literals)
+* [*string-literal*](Lexical-Structure.md#string-literals)
+* [*void-literal*](Lexical-Structure.md#void-literal)
 
 **Constraints**
 
@@ -359,7 +359,7 @@ fun getStateStr(p: Bool): String {
 
 **Defined elsewhere**
 
-* [*qualified-type-name*](#sec-Types-General)
+* [*qualified-type-name*](Types.md#general)
 
 **Constraints**
 
@@ -414,7 +414,7 @@ fun isRGB(str: String): Bool {
 
 **Defined elsewhere**
 
-* [*pattern*](#sec-Patterns-and-Pattern-Matching.General)
+* [*pattern*](Expressions.md#patterns-and-pattern-matching)
 
 **Constraints**
 
@@ -424,7 +424,7 @@ The test expression must have a tuple type with the same number of elements as t
 
 Each element in a *tuple-pattern* is matched against the value of the corresponding element in the test expression. That element may have any type. The set of names bound in the pattern expression is the union of the name bindings for each element.
 
-A *tuple-pattern* may contain [nested patterns](#sec-Pattern-Nesting), each of which has its own test expression.
+A *tuple-pattern* may contain [nested patterns](Expressions.md#pattern-nesting), each of which has its own test expression.
 
 This pattern is exhaustive.
 
@@ -468,10 +468,10 @@ This pattern is exhaustive.
 
 **Defined elsewhere**
 
-* [*class-type-specifier*](#sec-Types.General)
-* [*nontype-identifier-list*](#sec-Identifiers)
-* [*pattern*](#sec-Patterns-and-Pattern-Matching.General)
-* [*pattern-comma-list*](#sec-Tuple-Patterns)
+* [*class-type-specifier*](Types.md#general)
+* [*nontype-identifier-list*](Lexical-Structure.md#identifiers)
+* [*pattern*](Expressions.md#patterns-and-pattern-matching)
+* [*pattern-comma-list*](Expressions.md#tuple-patterns)
 
 **Constraints**
 
@@ -499,7 +499,7 @@ For a *named-argument-pattern* including a *named-argument-value-pattern*, *name
 
 An *arguments-pattern* of the form `_` causes the matching expression to be ignored.
 
-A *class-pattern* may contain [nested patterns](#sec-Pattern-Nesting), each of which has its own test expression.
+A *class-pattern* may contain [nested patterns](Expressions.md#pattern-nesting), each of which has its own test expression.
 
 This pattern is exhaustive only if the type of the test expression is the class being matched.
 
@@ -565,30 +565,30 @@ C5 _ as x -> …         // bind the new local variable x to the matching value
 
 **Defined elsewhere**
 
-* [*block*](#sec-Blocks)
-* [*class-literal*](#sec-Class-Literals)
-* [*collection-literal*](#sec-Collection-Literals)
-* [*expression*](#sec-Mutation-Operators.General)
-* [*if-expression*](#sec-The-if-Expression)
-* [*lambda-creation-expression*](#sec-Lambda-Creation)
-* [*literal*](#sec-Literals)
-* [*match-expression*](#sec-The-match-Expression)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*qualified-nontype-name*](#sec-Expressions.General)
-* [*qualified-type-name*](#sec-Types-General)
-* [*throw-expression*](#sec-The-throw-Expression)
-* [*try-expression*](#sec-The-try-Expression)
-* [*tuple-creation-expression*](#sec-Tuple-Creation)
-* [*with-expression*](#sec-The-with-Expression)
+* [*block*](Expressions.md#blocks)
+* [*class-literal*](Expressions.md#class-literals)
+* [*collection-literal*](Expressions.md#collection-Literals)
+* [*expression*](Expressions.md#mutation-operators)
+* [*if-expression*](Expressions.md#the-if-expression)
+* [*lambda-creation-expression*](Expressions.md#lambda-creation)
+* [*literal*](Lexical-Structure.md#literals)
+* [*match-expression*](Expressions.md#the-match-expression)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*qualified-nontype-name*](Expressions.md#general)
+* [*qualified-type-name*](Types.md#general)
+* [*throw-expression*](Expressions.md#the-throw-expression)
+* [*try-expression*](Expressions.md#the-try-expression)
+* [*tuple-creation-expression*](Expressions.md#tuple-creation)
+* [*with-expression*](Expressions.md#the-with-expression)
 
 **Semantics**
 
 The type and value of a parenthesized *expression* are identical to those of the un-parenthesized *expression*.
 The variable `this` is predefined inside any instance method, and designates the current object. `this` is a non-modifiable lvalue.
 
-The variable `static` is predefined inside any static method, and is a [class literal](#sec-Class-Literals) for the current class type. `static` is a non-modifiable lvalue.
+The variable `static` is predefined inside any static method, and is a [class literal](Expressions.md#class-literals) for the current class type. `static` is a non-modifiable lvalue.
 
-The expression [`void`](#sec-Void-Literal) has type [`void`](#sec-The-Void-Type).
+The expression [`void`](Lexical-Structure.md#void-literal) has type [`void`](Types.md#the-void-type).
 
 ### Class Literals
 
@@ -601,12 +601,12 @@ The expression [`void`](#sec-Void-Literal) has type [`void`](#sec-The-Void-Type)
 
 **Defined elsewhere**
 
-* [*generic-type-argument-list*](#sec-Type-Arguments)
-* [*qualified-type-name*](#sec-Types-General)
+* [*generic-type-argument-list*](Generic-Types-Methods-and-Functions.md#type-arguments)
+* [*qualified-type-name*](Types.md#general)
 
 **Constraints**
 
-*qualified-type-name* must designate an accessible [base or ordinary class](#sec-Class-Declarations) type.
+*qualified-type-name* must designate an accessible [base or ordinary class](Classes.md#class-declarations) type.
 
 **Semantics**
 
@@ -647,9 +647,9 @@ v2: Class<M1.MyBase> = M1.MyBase;
 
 **Defined elsewhere**
 
-* [*expression-list*](#sec-Tuple-Creation)
-* [*generic-type-argument-list*](#sec-Type-Arguments)
-* [*qualified-type-name*](#sec-Types-General)
+* [*expression-list*](Expressions.md#tuple-creation)
+* [*generic-type-argument-list*](Generic-Types-Methods-and-Functions.md#type-arguments)
+* [*qualified-type-name*](Types.md#general)
 
 **Constraints**
 
@@ -704,7 +704,7 @@ which returns an empty collection of type `Vector<U`>.
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
 
 **Constraints**
 
@@ -769,8 +769,8 @@ fun f2(): void { void }
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*qualified-nontype-name*](#sec-Expressions.General)
+* [*expression*](Expressions.md#mutation-operators)
+* [*qualified-nontype-name*](Expressions.md#general)
 
 **Constraints**
 
@@ -815,8 +815,8 @@ v = f2(if (expression3) { expression4 } else { expression5 });
 
 **Defined elsewhere**
 
-* [*pattern-branch-list*](#sec-Pattern-Branch-Lists)
-* [*test-expression*](#sec-Patterns-and-Pattern-Matching.General)
+* [*pattern-branch-list*](Expressions.md#pattern-branch-listss)
+* [*test-expression*](Expressions.md#patterns-and-pattern-matching)
 
 **Constraints**
 
@@ -875,7 +875,7 @@ fun main(): void {
 
 
 **Defined elsewhere**
-* [*expression*](#sec-Mutation-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
 
 **Constraints**
 
@@ -885,7 +885,7 @@ The type of *expression* must be a subtype of class [`Exception`](RTL-type-Excep
 
 A *throw-expression* throws an exception immediately and unconditionally.
 
-Control never returns to the [throw point](#sec-Exception-Handling.General). See [§§](#sec-Exception-Handling.General) and [§§](#sec-The-try-Expression) for more details of throwing and catching exceptions.
+Control never returns to the [throw point](Exception-Handling.md#general). See [§§](Exception-Handling.md#general) and [§§](Expressions.md#the-try-expression) for more details of throwing and catching exceptions.
 
 To avoid type-compatibility errors, the type of a *throw-expression* is exactly the type needed in the context in which it appears, as demonstrated by the following:
 
@@ -932,10 +932,10 @@ Note: Although the body of a *catch-clause* resembles a *block*, it is not a *bl
 
 **Defined elsewhere**
 
-* [*block*](#sec-Blocks)
-* [*pattern-branch-list*](#sec-Pattern-Branch-Lists)
+* [*block*](Expressions.md#blocks)
+* [*pattern-branch-list*](Expressions.md#pattern-branch-listss)
 
-See [§§](#sec-Exception-Handling.General) and [`throw`](#sec-The-throw-Expression) for more details of throwing and catching exceptions.
+See [§§](Exception-Handling.md#general) and [`throw`](Expressions.md#the-throw-expression) for more details of throwing and catching exceptions.
 
 **Constraints**
 
@@ -945,7 +945,7 @@ The type of a try block must be `void`.
 
 Once an exception is thrown, the value of that exception becomes the test expression, and the environment searches for the nearest *pattern-branch* *pattern* that matches that value. The process begins at the current function level with a search for a try block that lexically encloses the throw point. The *pattern-branch*es in the *catch-clause* associated with that try block are considered in lexical order. If no match is found, the function that called the current function is searched for a lexically enclosing try block that encloses the call to the current function. This process continues until a *pattern-branch* is found that can handle the current exception.
 
-If a matching *pattern-branch* is located, the environment evaluates the *target-expression* (from *pattern-branch-list*) that corresponds to the matching *pattern*. If no matching *pattern-branch* is found, the program terminates [abnormally](#sec-Program-Termination), with that exception’s `getMessage` method being called with the resulting string being given to the execution environment. As such, *pattern-branch-list* need not be exhaustive.
+If a matching *pattern-branch* is located, the environment evaluates the *target-expression* (from *pattern-branch-list*) that corresponds to the matching *pattern*. If no matching *pattern-branch* is found, the program terminates [abnormally](Basic-Concepts.md#program-termination), with that exception’s `getMessage` method being called with the resulting string being given to the execution environment. As such, *pattern-branch-list* need not be exhaustive.
 
 The type and value of a *try-expression* are the type and value of the matching *pattern-branch*’s *target-expression*.
 
@@ -987,7 +987,7 @@ catch {
 **Defined elsewhere**
 
 * [*expression*](#sec-Binding-Operators.General)
-* [*nam-argument-expression-list*](#sec-Function-Call-Operator)
+* [*nam-argument-expression-list*](Expressions.md#function-call-operator)
 
 **Constraints**
 
@@ -1045,7 +1045,7 @@ d = c with { x => 40 } with { y => "down" };	// d.x = 40, d.y = "down"
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
 
 **Semantics**
 
@@ -1088,10 +1088,10 @@ tup = (ArrayKey, Float);
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*lambda-arrow*](#sec-Lambda-Types)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*nontype-identifier-list*](#sec-Identifiers)
+* [*expression*](Expressions.md#mutation-operators)
+* [*lambda-arrow*](Types.md#lambda-types)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*nontype-identifier-list*](Lexical-Structure.md#identifiers)
 
 **Semantics**
 
@@ -1101,7 +1101,7 @@ A *nontype-identifier* of  `_` causes the value of the corresponding argument to
 
 A lambda defined inside an instance method has access to the instance’s `this`.
 
-As with [*lambda-type-specifier*s](#sec-Lambda-Types), *lambda-creation-expression*s come in both immutable and mutable forms based on the choice of *lambda-arrow*.
+As with [*lambda-type-specifier*s](Types.md#lambda-types), *lambda-creation-expression*s come in both immutable and mutable forms based on the choice of *lambda-arrow*.
 
 `untracked` … **UNDER CONSTRUCTION**
 
@@ -1160,10 +1160,10 @@ fun f(): void {
 
 **Defined elsewhere**
 
-* [*function-call-expression*](#sec-Function-Call-Operator)
-* [*indexing-expression*](#sec-Indexing-Operator)
-* [*member-selection-expression*](#sec-Member-Selection-Operators)
-* [*primary-expression*](#sec-Primary-Expressions.General)
+* [*function-call-expression*](Expressions.md#function-call-operator)
+* [*indexing-expression*](Expressions.md#indexing-operator)
+* [*member-selection-expression*](Expressions.md#member-selection-operators)
+* [*primary-expression*](Expressions.md#primary-expressions)
 
 **Semantics**
 
@@ -1194,21 +1194,21 @@ These operators associate left-to-right.
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*postfix-expression*](#sec-Postfix-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*postfix-expression*](Expressions.md#postfix-operators)
 
-Positional- and named-parameter (and argument) forms are described in [§§](#sec-Functions.General).
+Positional- and named-parameter (and argument) forms are described in [§§](Functions.md#general).
 
 **Constraints**
 
-*postfix-expression* must designate an accessible function, an accessible method, or be a variable of [lambda type](#sec-Lambda-Types), or be a [class literal](#sec-Class-Literals) that designates an [ordinary class](#sec-Class-Declarations).
+*postfix-expression* must designate an accessible function, an accessible method, or be a variable of [lambda type](Types.md#lambda-types), or be a [class literal](Expressions.md#class-literals) that designates an [ordinary class](Classes.md#class-declarations).
 
 A constructor call of the form `this(…)`/`this{…}` must be made from within a method.
 
 The positional-argument form must only be used to call a function, method, or constructor whose parameter list is declared using the positional form. The named-argument form must only be used to call a function, method, or constructor whose parameter list is declared using the named form.
 
-A *function-call-expression* must contain an argument for each parameter in the called [function's declaration](#sec-Function-Declarations) not having a default value. Furthermore, if the call is to a constructor of a class having one or more base classes or using traits, the call must also contain an argument for each base-class or trait constructor parameter not having a default value.
+A *function-call-expression* must contain an argument for each parameter in the called [function's declaration](Functions.md#function-declarations) not having a default value. Furthermore, if the call is to a constructor of a class having one or more base classes or using traits, the call must also contain an argument for each base-class or trait constructor parameter not having a default value.
 
 Except for the case involving a base class mentioned above, a *function-call-expression* must not contain more arguments than there are corresponding parameters.
 
@@ -1222,13 +1222,13 @@ A native function must be called using positional notation.
 
 **Semantics**
 
-A *function-call-expression* whose *postfix-expression* is a class literal is a ***constructor call***, in which *postfix-expression* designates the ***called constructor***. A *function-call-expression* of the form `this(…)`/`this{…}` is also a constructor call.  Otherwise, a *function-call-expression* having a *postfix-expression* form is a ***function call*** in which *postfix-expression* designates the ***called function*** or ***called method***. In either case, *pos-argument-expression-list* and *nam-argument-expression-list* specify the arguments, if any, to be passed to the constructor, function, or method. Each argument corresponds to, and is bound to, a parameter in the called constructor, function, or method's declaration, as described in [§§](#sec-Function-Declarations).
+A *function-call-expression* whose *postfix-expression* is a class literal is a ***constructor call***, in which *postfix-expression* designates the ***called constructor***. A *function-call-expression* of the form `this(…)`/`this{…}` is also a constructor call.  Otherwise, a *function-call-expression* having a *postfix-expression* form is a ***function call*** in which *postfix-expression* designates the ***called function*** or ***called method***. In either case, *pos-argument-expression-list* and *nam-argument-expression-list* specify the arguments, if any, to be passed to the constructor, function, or method. Each argument corresponds to, and is bound to, a parameter in the called constructor, function, or method's declaration, as described in [§§](Functions.md#function-declarations).
 
-In a call to a constructor having a *pos-argument-expression-list*, the order of the argument *expressions* is significant, as described [here](#sec-Fields).
+In a call to a constructor having a *pos-argument-expression-list*, the order of the argument *expressions* is significant, as described [here](Classes.md#fields).
 
 The argument expressions in an argument list are evaluated left-to-right.
 
-When used from within an ordinary class, it’s a call to the constructor for that class. When used from within a base class, its a [deferred](#sec-Methods) call.
+When used from within an ordinary class, it’s a call to the constructor for that class. When used from within a base class, its a [deferred](Classes.md#methods) call.
 
 The return type of a constructor call is *qualified-type-name*.
 
@@ -1299,8 +1299,8 @@ c = C1("abc", true, 11, 22, "end", 1.2, '$', '*', 10, false)
 
 **Defined elsewhere**
 
-* [*nontype-identifier*](#sec-Identifiers)
-* [*postfix-expression*](#sec-Postfix-Operators.General)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*postfix-expression*](Expressions.md#postfix-operators)
 
 A *member-selection-expression* using `.` has the ***dot form*** while one using `::` has the ***double-colon form***.
 
@@ -1308,7 +1308,7 @@ A *member-selection-expression* using `.` has the ***dot form*** while one using
 
 In the dot form, *postfix-expression* must designate an instance of a class having an accessible member called *nontype-identifier*.
 
-In the double-colon form, *postfix-expression* must be a [class literal](#sec-Class-Literals) for a class having an accessible static member called *nontype-identifier*.
+In the double-colon form, *postfix-expression* must be a [class literal](Expressions.md#class-literals) for a class having an accessible static member called *nontype-identifier*.
 
 These operators cannot be defined for a user-defined type.
 
@@ -1374,21 +1374,21 @@ class(class(v1)::con3)::sm2()
 </pre>
 
 **Defined elsewhere**
-* [*postfix-expression*](#sec-Postfix-Operators.General)
+* [*postfix-expression*](Expressions.md#postfix-operators)
 
 **Constraints**
 
-*postfix-expression* must designate a tuple or an instance of an [indexable-collection-class type](#sec-Indexable-Collections).
+*postfix-expression* must designate a tuple or an instance of an [indexable-collection-class type](Classes.md#indexable-collections).
 
 When *postfix-expression* designates a tuple, *index* must be an *integer-literal* whose value is in the range \[0,*n*-1\], where *n* is the number of elements in that tuple’s type.
 
-When *postfix-expression* designates an instance of an indexable-collection-class type, that type must support [read indexing operations](#sec-Indexable-Collections).
+When *postfix-expression* designates an instance of an indexable-collection-class type, that type must support [read indexing operations](Classes.md#indexable-collections).
 
 **Semantics**
 
 When *postfix-expression* designates a tuple, *indexing-expression* designates element *index* in that tuple. The type of the result is that of the designated element.
 
-When *postfix-expression* designates an instance of an indexable-collection-class type, the semantics are unspecified. However, a [read indexing operation](#sec-Indexable-Collections) is performed, and the type of the result is that of the method `get`. (The indexable-collection-class type is encouraged to throw an exception of type `OutOfBounds` if *index* is invalid.)
+When *postfix-expression* designates an instance of an indexable-collection-class type, the semantics are unspecified. However, a [read indexing operation](Classes.md#indexable-collections) is performed, and the type of the result is that of the method `get`. (The indexable-collection-class type is encouraged to throw an exception of type `OutOfBounds` if *index* is invalid.)
 
 **Examples**
 
@@ -1443,12 +1443,12 @@ C4["right"]  //        "            "              "right"
 
 **Defined elsewhere**
 
-* [*async-expression*](#sec-Async-Operator)
-* [*await-expression*](#sec-Await-Operator)
-* [*class-literal-creation-expression*](#sec-Class-Literal-Creation-Operator)
-* [*mutable-expression*](#sec-Mutable-Operator)
-* [*postfix-expression*](#sec-Postfix-Operators.General)
-* [*unary-op-expression*](#sec-Unary-Arithmetic-Operators)
+* [*async-expression*](Expressions.md#async-operator)
+* [*await-expression*](Expressions.md#await-operator)
+* [*class-literal-creation-expression*](Expressions.md#class-literal-creation-operator)
+* [*mutable-expression*](Expressions.md#mutable-operator)
+* [*postfix-expression*](Expressions.md#postfix-operators)
+* [*unary-op-expression*](Expressions.md#unary-arithmetic-operators)
 
 **Semantics**
 
@@ -1466,7 +1466,7 @@ These operators are right-associative, except for *class-literal-creation-expres
 
 **Defined elsewhere**
 
-* [*multiplicative-expression*](#sec-Multiplicative-Operators)
+* [*multiplicative-expression*](Expressions.md#multiplicative-operators)
 
 **Semantics**
 
@@ -1501,7 +1501,7 @@ if (!flag) …
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
 
 **Constraints**
 
@@ -1509,7 +1509,7 @@ if (!flag) …
 
 **Semantics**
 
-The result of this operator is a [class literal](#sec-Class-Literals) that corresponds to the type of *expression*.
+The result of this operator is a [class literal](Expressions.md#class-literals) that corresponds to the type of *expression*.
 
 **Examples**
 
@@ -1534,13 +1534,13 @@ class(c)::sf()       // designates c's static method sf
 
 **Defined elsewhere**
 
-* [*unary-expression*](#sec-Unary-Operators.General)
+* [*unary-expression*](Expressions.md#unary-operators)
 
 **Semantics**
 
 The (possibly) asynchronous operations designated by *unary-expression* are executed.
 
-Let the type of *unary-expression* be *T*. The value of the result of *async-expression* is the value of *unary-expression* after it has been wrapped into a [`^`*T*](#sec-Reactive-Types) object. The type of the result of *async-expression* is`^`*T*.
+Let the type of *unary-expression* be *T*. The value of the result of *async-expression* is the value of *unary-expression* after it has been wrapped into a [`^`*T*](Types.md#reactive-types) object. The type of the result of *async-expression* is`^`*T*.
 
 **Examples**
 
@@ -1565,17 +1565,17 @@ Let the type of *unary-expression* be *T*. The value of the result of *async-exp
 
 **Defined elsewhere**
 
-* [*unary-expression*](#sec-Unary-Operators.General)
+* [*unary-expression*](Expressions.md#unary-operators)
 
 **Constraints**
 
-An *await-expression* can only appear inside an asynchronous context (such as an [*async-expression*](#sec-Async-Operator) or an async function or method).
+An *await-expression* can only appear inside an asynchronous context (such as an [*async-expression*](Expressions.md#async-operator) or an async function or method).
 
-*unary-expression* must have a [reactive type](#sec-Reactive-Types).
+*unary-expression* must have a [reactive type](Types.md#reactive-types).
 
 **Semantics**
 
-`await` suspends the execution of an async function until the result of the asynchronous operation represented by *unary-expression* is available. See [§§](#sec-Asynchronous-Functions) for more information.
+`await` suspends the execution of an async function until the result of the asynchronous operation represented by *unary-expression* is available. See [§§](Expressions.md#async-operator) for more information.
 
 The resulting value is the value of type *T* that was wrapped in the object of type `^`*T* returned from the async function. Consider the following:
 
@@ -1612,7 +1612,7 @@ The expression `f()` has type `^Int`, and the expression `await f()` has type `I
 
 **Defined elsewhere**
 
-* [*function-call-expression*](#sec-Function-Call-Operator)
+* [*function-call-expression*](Expressions.md#function-call-operator)
 
 **Constraints**
 
@@ -1643,7 +1643,7 @@ v = mutable C(1);
 
 **Defined elsewhere**
 
-* [*unary-op-expression*](#sec-Unary-Arithmetic-Operators)
+* [*unary-op-expression*](Expressions.md#unary-arithmetic-operators)
 
 **Semantics**
 
@@ -1684,7 +1684,7 @@ Integer division by zero results in an exception of type [`DivisionByZeroExcepti
 
 **Defined elsewhere**
 
-* [*multiplicative-expression*](#sec-Multiplicative-Operators)
+* [*multiplicative-expression*](Expressions.md#multiplicative-operators)
 
 **Semantics**
 
@@ -1727,7 +1727,7 @@ The `Int` class implements these as named methods. See [`Int.shl`](RTL-type-Int)
 
 **Defined elsewhere**
 
-* [*additive-expression*](#sec-Additive-Operators)
+* [*additive-expression*](Expressions.md#additive-operators)
 
 **Semantics**
 
@@ -1753,7 +1753,7 @@ For the binary operators `<=`, `<`, `>=`, and `>` with operands of type
 
 **Defined elsewhere**
 
-* [*relational-expression*](#sec-Relational-Operators)
+* [*relational-expression*](Expressions.md#relational-operators)
 
 **Semantics**
 
@@ -1765,7 +1765,7 @@ For the binary operators `==` and `!=` with operands of type
 * `Char`, see class [`Char`](RTL-type-Char)
 * `Int`, see class [`Int`](RTL-type-Int)
 * `Float`, see class [`Float`](RTL-type-Float)
-* [*class-literal*](#sec-Class-Literals), see class [`Class`](RTL-type-Class)
+* [*class-literal*](Expressions.md#class-literals), see class [`Class`](RTL-type-Class)
 
 These operators are left-associative.
 
@@ -1800,7 +1800,7 @@ The `Int` class implements these as named methods. See [`Int.or`](RTL-type-Int).
 
 **Defined elsewhere**
 
-* [*equality-expression*](#sec-Equality-Operators)
+* [*equality-expression*](Expressions.md#equality-operators)
 
 **Constraints**
 
@@ -1832,7 +1832,7 @@ if (month > 1 && month <= 12) …
 
 **Defined elsewhere**
 
-* [*logical-AND-expression*](#sec-Logical-AND-Operator)
+* [*logical-AND-expression*](Expressions.md#logical-and-operator)
 
 **Constraints**
 
@@ -1867,9 +1867,9 @@ if (month < 1 || month > 12) …
 
 **Defined elsewhere**
 
-* [*compound-mutation-expression*](#sec-Compound-Mutation)
-* [*logical-inc-OR-expression*](#sec-Logical-Inclusive-OR-Operator)
-* [*simple-mutation-expression*](#sec-Simple-Mutation)
+* [*compound-mutation-expression*](Expressions.md#compound-mutation)
+* [*logical-inc-OR-expression*](Expressions.md#logical-inclusive-or-operator)
+* [*simple-mutation-expression*](Expressions.md#simple-mutation)
 
 **Constraints**
 
@@ -1937,9 +1937,9 @@ These operators are non-associative.
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*type-specification*](types.md#sec-Types.General)
+* [*expression*](Expressions.md#mutation-operators)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*type-specification*](types.mdTypes.md#general)
 
 **Constraints**
 
@@ -1947,7 +1947,7 @@ Each mutation target being bound or assigned must designate a modifiable lvalue.
 
 For *simple-mutation-expression*: When a mutation target is being assigned, the type of *expression* must be a subtype
 of *mutation-target*’s type. In an assignment, the variable designated by *mutation-target* must already exist in the
-current [scope](#sec-Scope). In a binding, that variable must not already exist in the current scope.
+current [scope](Basic-Concepts.md#scope). In a binding, that variable must not already exist in the current scope.
 
 **TBD:** Under what circumstances is an explicit type needed on the target of a binding?
 
@@ -1957,9 +1957,9 @@ must be a subtype of *type-specifier*. A *nontype-identifier* that is a local va
 > Note: A *nontype-identifier* that that designates a parameter is not subject to such spelling rules based on usage.
 
 For *collection-set-target*: The mutable target must designate a mutable instance of an indexable-collection-class type
-that supports [write-mset indexing operations](#sec-Indexable-Collections).
+that supports [write-mset indexing operations](Classes.md#indexable-collections).
 
-For *collection-append-target*: The mutable target must designate a mutable instance of an indexable-collection-class type that supports [write-mpushBack indexing operations](#sec-Indexable-Collections).
+For *collection-append-target*: The mutable target must designate a mutable instance of an indexable-collection-class type that supports [write-mpushBack indexing operations](Classes.md#indexable-collections).
 
 For *field-assign-target*: The mutable target must be a mutable instance of a class having an accessible field called
 *nontype-identifier*.
@@ -1968,10 +1968,10 @@ For *with-assign-target*: The mutable target must be a mutable instance of a cla
 *nontype-identifier*.
 
 For *collection-member-assign-target*: The expression *assign-target* must designate an instance of an indexable-collection-class
-type that supports [write-set indexing operations](#sec-Indexable-Collections).
+type that supports [write-set indexing operations](Classes.md#indexable-collections).
 
 For *collection-append-assign-target*: The expression *assign-target* must designate an instance of an indexable-collection-class
-type that supports [write-pushBack indexing operations](#sec-Indexable-Collections).
+type that supports [write-pushBack indexing operations](Classes.md#indexable-collections).
 
 **Semantics**
 
@@ -1996,11 +1996,11 @@ that is the type of the mutation target. If *type-specification* is absent, the 
 For *tuple-mutation-target*: Each mutation target in *tuple-mutation-target-list* is bound (if `!` is omitted) or assigned
 (if `!` is present) to the lexically corresponding value in *expression*.
 
-For *collection-set-target*: The semantics are unspecified. However, a [write-mset indexing operation](#sec-Indexable-Collections)
+For *collection-set-target*: The semantics are unspecified. However, a [write-mset indexing operation](Classes.md#indexable-collections)
 is performed, and *assign-target* is modified according to the semantics of `mset`.
 
 For *collection-append-target*: The semantics are unspecified. However,
-a [write-mpushBack indexing operation](#sec-Indexable-Collections) is performed, and *assign-target* is modified
+a [write-mpushBack indexing operation](Classes.md#indexable-collections) is performed, and *assign-target* is modified
 according to the semantics of `mpushBack`.
 
 For *local-variable-assign-target*: The mutation target designated by *nontype-Identifier* is assigned to the value of *expression*.
@@ -2011,10 +2011,10 @@ For *with-assign-target*: The field designated by *nontype-identifier*, in a mut
 by *expression* is assigned to the value of *expression* in *simple-mutation-expression*.
 
 For *collection-member-assign-target*: The semantics are unspecified. However, a
-[write-set indexing operation](#sec-Indexable-Collections) is performed, and *assign-target* is assigned to the result of the `set` method.
+[write-set indexing operation](Classes.md#indexable-collections) is performed, and *assign-target* is assigned to the result of the `set` method.
 
 For *collection-append-assign-target*: The semantics are unspecified. However, a
-[write-pushBack indexing operation](#sec-Indexable-Collections) is performed, and *assign-target* is assigned to the result of the `pushBack` method.
+[write-pushBack indexing operation](Classes.md#indexable-collections) is performed, and *assign-target* is assigned to the result of the `pushBack` method.
 
 **Examples**
 
@@ -2119,8 +2119,8 @@ v1![] = "yyy";              // calls method mpushBack on that collection
 
 **Defined elsewhere**
 
-* [*expression*](#sec-Mutation-Operators.General)
-* [*unary-expression*](#sec-Unary-Operators.General)
+* [*expression*](Expressions.md#mutation-operators)
+* [*unary-expression*](Expressions.md#unary-operators)
 
 **Constraints**
 
@@ -2132,7 +2132,7 @@ An expression of the form `!`*e1* `=.` *e2* is equivalent `!`*e1* `=` *e1* `.` *
 
 The result has type `void`.
 
-**Examples**
+**Examples** 
 
 ```
 // Generic class Ref has a public field called value

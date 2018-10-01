@@ -2,7 +2,7 @@
 
 ## General
 
-Each [*source-unit*](#sec-Program-Structure) is made up of a set of (possibly empty) [*declaration-list*s](#sec-Module-Declarations)  from one or more ***module***s. This set always includes the unnamed ***global module***, which consists of those *declaration-list*s not part of a ***named module***.
+Each [*source-unit*](Basic-Concepts.md#program-structure) is made up of a set of (possibly empty) [*declaration-list*s](Modules.md#module-declarations)  from one or more ***module***s. This set always includes the unnamed ***global module***, which consists of those *declaration-list*s not part of a ***named module***.
 
 Any given module may have one or more ***module sections*** each of which is made up of a (possibly empty) *declaration-list*. The module sections for a module may be declared in any order. A module with multiple sections is treated as if all those sections were concatenated in lexical order.
 
@@ -12,7 +12,7 @@ The names of entities declared in a module can be made private to that module or
 
 A named module can also be known by one or more aliases.
 
-Each module has its own [scope](#sec-Scope).
+Each module has its own [scope](Basic-Concepts.md#scope).
 
 ## Module Declarations
 
@@ -35,7 +35,7 @@ Each module has its own [scope](#sec-Scope).
 
 **Defined elsewhere**
 
-* [*declaration-list*](#sec-Program-Structure)
+* [*declaration-list*](Basic-Concepts.md#program-structure)
 
 **Constraints**
 
@@ -47,11 +47,11 @@ The *declaration-list* in a *named-module-declaration* must not contain a *modul
 
 The right-hand *type-identifier* in a *module-alias-declaration* must not be a module alias. That is, a module alias cannot itself be aliased.
 
-A *module-alias-declaration* must precede all non-module-related [*declaration*s](#sec-Program-Structure) in a [*source-unit*](#sec-Program-Structure).
+A *module-alias-declaration* must precede all non-module-related [*declaration*s](Basic-Concepts.md#program-structure) in a [*source-unit*](Basic-Concepts.md#program-structure).
 
 **Semantics**
 
-A *named-module-declaration* introduces a [module section](#sec-Modules.General) for the module named *type-identifier*. A *named-module-declaration* ends at the following *module-end*, if any, or at the end of the parent *source-unit*.
+A *named-module-declaration* introduces a [module section](Modules.md#general) for the module named *type-identifier*. A *named-module-declaration* ends at the following *module-end*, if any, or at the end of the parent *source-unit*.
 
 Inside a module, names declared within that module can be used directly. Names can always be used by prefixing them with their parent module name followed by a period (`.`). In the case of the global module, the parent module name is omitted. Top-level public names having a prefix `.`, declared in a named module are promoted to the global module.
 

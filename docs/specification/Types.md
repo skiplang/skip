@@ -44,18 +44,18 @@ The meaning of a value is decided by its *type*.
 
 **Defined elsewhere**
 
-* [*generic-type-argument-list*](#sec-Type-Arguments)
-* [*generic-type-parameter-name*](#sec-Type-Parameters)
-* [*global-type-constant-declaration*](#sec-Types.Type-Constants)
-* [`inst`](#sec-The-inst-Type)
-* [*lambda-type-specifier*](#sec-Lambda-Types)
-* [*mutable-type-specifier*](#sec-Mutable-Types)
-* [*nullable-type-specifier*](#sec-Nullable-Types)
-* [`this`](#sec-The-this-Type)
-* [*reactive-type-specifier*](#sec-Reactive-Types)
-* [*tuple-type-specifier*](#sec-Tuple-Types)
-* [*type-identifier*](#sec-Identifiers)
-* [*underscore-type*](#sec-The-Underscore-Type)
+* [*generic-type-argument-list*](Generic-Types-Methods-and-Functions.md#type-arguments)
+* [*generic-type-parameter-name*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*global-type-constant-declaration*](Types.md#type-constants)
+* [`inst`](Types.md#the-inst-type)
+* [*lambda-type-specifier*](Types.md#lambda-types)
+* [*mutable-type-specifier*](Types.md#mutable-types)
+* [*nullable-type-specifier*](Types.md#nullable-types)
+* [`this`](Types.md#the-this-type)
+* [*reactive-type-specifier*](Types.md#reactive-types)
+* [*tuple-type-specifier*](Types.md#tuple-types)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*underscore-type*](Types.md#the-underscore-type)
 
 **Constraints**
 
@@ -121,7 +121,7 @@ As to how the `Char`s in a `String` translate into Unicode code points is unspec
 
 Conceptually, the type `void` indicates the absence of a value, and is used primarily as the return type of a function. However, the type has exactly one value, `void`. The representation of this type and its value is unspecified.
 
-An important use of this type and its value is as a marker/placeholder when using generic functions and classes. See [example](#sec-Void-Literal).
+An important use of this type and its value is as a marker/placeholder when using generic functions and classes. See [example](Lexical-Structure.md#void-literal).
 
 Note: Even though one can use `void` in the general type sense, such as defining a local variable of type `void` and passing and/or returning a value of that type to and/or from a function, the use of `void` as a general-purpose *type-specifier* is discouraged, as it can lead to obfuscated code.
 
@@ -136,7 +136,7 @@ Note: Even though one can use `void` in the general type sense, such as defining
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -170,7 +170,7 @@ When the function terminates normally, the String `"Hello"` is wrapped in an ins
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -236,10 +236,10 @@ Every base and ordinary class type is a subtype of type [`this`](#the-this-type)
 
 **Semantics**
 
-A ***tuple*** is a sequence of two or more elements, the number, type, and value of which are fixed at the time of [tuple creation](#sec-Tuple-Creation).
+A ***tuple*** is a sequence of two or more elements, the number, type, and value of which are fixed at the time of [tuple creation](Expressions.md#tuple-creation).
 
 Each element can have any type, and each unique, lexically ordered combination of element types designates a distinct tuple type.
-The elements in a tuple can be accessed using a [tuple pattern](#sec-Tuple-Pattern).
+The elements in a tuple can be accessed using a [tuple pattern](#tuple-pattern).
 
 **Examples**
 
@@ -276,9 +276,9 @@ c1 = C((22, "text"));
 </pre>
 
 **Defined elsewhere**
-* [*pos-parameter*](#sec-Function-Declarations)
-* [*pos-parameter-list*](#sec-Function-Declarations)
-* [*return-type*](#sec-Function-Declarations)
+* [*pos-parameter*](Functions.md#function-declarations)
+* [*pos-parameter-list*](Functions.md#function-declarations)
+* [*return-type*](Functions.md#function-declarations)
 
 **Constraints**
 
@@ -290,7 +290,7 @@ A mutable form lambda’s value cannot be stored in a field, nor can it be retur
 
 **Semantics**
 
-A ***lambda*** is an object that encapsulates a function with a given signature and return type. The function can be called through that object by using the [function-call operator](#sec-Function-Call-Operator).
+A ***lambda*** is an object that encapsulates a function with a given signature and return type. The function can be called through that object by using the [function-call operator](Expressions.md#function-call-operator).
 
 The `~>` form of *lambda-arrow* results in an ***immutable lambda form*** of *lambda-type-specifier*, while the `->` form results in a ***mutable lambda form***.
 
@@ -357,7 +357,7 @@ The first is a lambda taking one `String` argument and returning a lambda taking
 
 **Constraints**
 
-This type can only be used in a [*method-return-type*](#sec-Methods).
+This type can only be used in a [*method-return-type*](Classes.md#methods).
 
 **Semantics**
 
@@ -499,7 +499,7 @@ This type can only be used as the [type of a function parameter or return value]
 
 This type is for notation convenience.
 
-The presence of the type `_` in a *function-declaration-header* makes that function generic (if it isn’t already). Each type `_` in that *function-declaration-header* represents a placeholder for a distinct type parameter for that function. The set of placeholders becomes the set of type parameters for that function, in lexical order, after any explicit type parameters that function already has.
+The presence of the type `_` in a *function-declaration-header* makes that function generic (if it isn’t already). Each type `_` in that *function-declaration-header* represents a placeholder for a distinct type parameter for that function. The set of placeholders becomes the set of type parameters for that function, in lexical order, after any explicit type parameters that function already has. 
 
 **Examples**
 
@@ -559,7 +559,7 @@ There are two kinds of type constants:
 **Defined elsewhere**
 
 * [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
-* [*type-identifier*](#sec-Identifiers)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
 * [*type-specifier*](#general)
 
 **Constraints**

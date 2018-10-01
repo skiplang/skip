@@ -2,23 +2,23 @@
 
 ## General
 
-A ***class*** is a type that contains zero or more data and/or function *members*. An ***object*** (often called an ***instance***) of a class type is created (i.e., ***instantiated*** or ***constructed***) via the [function-call operator](#sec-Function-Call-Operator).
+A ***class*** is a type that contains zero or more data and/or function *members*. An ***object*** (often called an ***instance***) of a class type is created (i.e., ***instantiated*** or ***constructed***) via the [function-call operator](Expressions.md#function-call-operator).
 
 A ***trait*** is a class-like type used to support class types, and used with generics.
 
 Objects are the key data-structure in Skip. By default, they are immutable.
 
-Skip supports [***inheritance***](#sec-Class-Declarations), a means by which a *derived class* can *extend* (i.e., *inherit* from) and specialize one or more *base class*es. (Note: Unlike some languages, classes in Skip are **not** all derived from a common ancestor.) A class may *use* one or more [*traits*](#sec-Class-Declarations), each of which can contribute data and/or function members to that class.
+Skip supports [***inheritance***](Classes.md#class-declarations), a means by which a *derived class* can *extend* (i.e., *inherit* from) and specialize one or more *base class*es. (Note: Unlike some languages, classes in Skip are **not** all derived from a common ancestor.) A class may *use* one or more [*traits*](Classes.md#class-declarations), each of which can contribute data and/or function members to that class.
 
-An [***abstract*** class](#sec-Class-Declarations) is a class type intended for future derivation or implementation, but which cannot be instantiated directly. A class is made abstract by declaring one or more of its members to be abstract. A ***concrete*** class is a class that is not abstract. When a concrete class is derived from an abstract class, the concrete class must include an implementation for each of the abstract members it inherits. A trait can also be abstract or concrete.
+An [***abstract*** class](Classes.md#class-declarations) is a class type intended for future derivation or implementation, but which cannot be instantiated directly. A class is made abstract by declaring one or more of its members to be abstract. A ***concrete*** class is a class that is not abstract. When a concrete class is derived from an abstract class, the concrete class must include an implementation for each of the abstract members it inherits. A trait can also be abstract or concrete.
 
-A [***constructor***](#sec-Constructors) is a special method that is used to initialize an object immediately after it has been created.
+A [***constructor***](Classes.md#constructors) is a special method that is used to initialize an object immediately after it has been created.
 
-The non-native members of a base class can be ***overridden*** in a derived class by re-declaring them with the same signature as defined in the base class. However, with respect to its parameter list, an overriding constructor cannot have the same signature as those from its base classes; instead, it augments those by optionally providing new parameters. (See [constructors](#sec-Constructors).) Unless declared `final`, a constructor is implicitly overridable. A non-constructor class member not having the modifier `overridable` is ***final***. Final members cannot be overridden. Trait members are implicitly overridable and cannot be made otherwise.
+The non-native members of a base class can be ***overridden*** in a derived class by re-declaring them with the same signature as defined in the base class. However, with respect to its parameter list, an overriding constructor cannot have the same signature as those from its base classes; instead, it augments those by optionally providing new parameters. (See [constructors](Classes.md#constructors).) Unless declared `final`, a constructor is implicitly overridable. A non-constructor class member not having the modifier `overridable` is ***final***. Final members cannot be overridden. Trait members are implicitly overridable and cannot be made otherwise.
 
 The layout of an object is unspecified.
 
-It is useful to think about a class hierarchy as having [subtypes and supertypes](#sec-Class-Types-and-Subtypes).
+It is useful to think about a class hierarchy as having [subtypes and supertypes](Types.md#class-types-and-subtypes).
 
 By design, Skip does not support the OO idiom in which a subclass is created later on to support a use case that wasn't known when the class hierarchy was originally designed.
 
@@ -82,11 +82,11 @@ Note: Some languages (notably those supporting a single-inheritance model only) 
 
 **Defined elsewhere**
 
-* [*class-member-declarations*](#sec-Class-Members)
-* [*constructor-declaration*](#sec-Constructors)
-* [*generic-type-parameter-list*](#sec-Type-Parameters)
-* [*qualified-type-name*](#sec-Types.General)
-* [*type-identifier*](#sec-Identifiers)
+* [*class-member-declarations*](Classes.md#class-members)
+* [*constructor-declaration*](Classes.md#constructors)
+* [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*qualified-type-name*](Types.md#general)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
 
 **Constraints**
 
@@ -120,13 +120,13 @@ A *class-declaration* defines a class type by the name *class-name*. A *class-de
 
 The modifier `base` declares the class to be a ***base class***, which is an abstract class. A class that is not a base class is an ***ordinary class***.
 
-The modifier `native` declares the class or trait to be a [native](#sec-Native-Support) classor trait .
+The modifier `native` declares the class or trait to be a [native](Basic-Concepts.md#native-support) classor trait .
 
-The modifier `private` declares the class or trait to have private [accessibility](#sec-Accessibility). In the absence of `private`, a *class-declaration* has public accessibility.
+The modifier `private` declares the class or trait to have private [accessibility](Basic-Concepts.md#accessibility). In the absence of `private`, a *class-declaration* has public accessibility.
 
 The modifier `value` declares the class type to be a ***value class*** type. A value class has value semantics; every time an instance of a value class is used, a copy is made. In the absence of `value`, the class type is a ***reference class*** type. A reference class has reference semantics.
 
-*constructor-declaration* declares the fields for the classor trait, their default initial values, and whether the class or trait’s constructor argument list has positional or named form. If *constructor-declaration* is omitted, the class or trait has no fields and its (non-existent) constructor argument list is considered to have positional form. See [*constructor-declaration*](#sec-Constructors) for the details.
+*constructor-declaration* declares the fields for the classor trait, their default initial values, and whether the class or trait’s constructor argument list has positional or named form. If *constructor-declaration* is omitted, the class or trait has no fields and its (non-existent) constructor argument list is considered to have positional form. See [*constructor-declaration*](Classes.md#constructors) for the details.
 
 In an *extends-clause* for a class declaration, if an accessible base class exists by the name *qualified-type-name*, *extends-clause* specifies the base classes from which the class being declared is derived.
 
@@ -192,10 +192,10 @@ A class or trait may have zero or more ***members***, which define the data and 
 
 **Defined elsewhere**
 
-* [*child-class-declaration*](#sec-Child-Classes)
-* [*constant-declaration*](#sec-Constants)
-* [*method-declaration*](#sec-Methods)
-* [*type-constant-declaration*](#sec-Classes.Type-Constants)
+* [*child-class-declaration*](Classes.md#child-classes)
+* [*constant-declaration*](Classes.md#constants)
+* [*method-declaration*](Classes.md#methods)
+* [*type-constant-declaration*](Classes.md#type-constants)
 
 **Semantics**
 
@@ -203,17 +203,17 @@ The members of a class or trait are those specified by its *class-member-declara
 
 A class or trait may contain the following members:
 
-* [Child Classes](#sec-Child-Classes) – classes derived from this class.
-* [Constants](#sec-Constants) – the named constants associated with the class.
-* [Fields](#sec-Fields) – the instance variables of the class or trait, as declared in the class or trait’s constructor.
-* [Methods](#sec-Methods) – the computations and actions that can be performed by the class or by an instance of the class.
-* [Constructor](#sec-Constructors) – conceptually, the actions required to initialize the field set in an instance of the class or trait. (A constructor has no code.)
-* [Type Constant](#sec-Classes.Type-Constants) – the named types associated with the class.
+* [Child Classes](Classes.md#child-classes) – classes derived from this class.
+* [Constants](Classes.md#constants) – the named constants associated with the class.
+* [Fields](Classes.md#fields) – the instance variables of the class or trait, as declared in the class or trait’s constructor.
+* [Methods](Classes.md#methods) – the computations and actions that can be performed by the class or by an instance of the class.
+* [Constructor](Classes.md#constructors) – conceptually, the actions required to initialize the field set in an instance of the class or trait. (A constructor has no code.)
+* [Type Constant](Classes.md#type-constants) – the named types associated with the class.
 
 Methods can either be *static* or *instance* members. A static method is declared using `static`. An instance method is one that is not static. Constants and type constants are implicitly static. Fields are implicitly non-static.
 Each instance of a class contains its own, unique set of the fields declared for that class.
 
-The name of a static method, constant, or type constant can never be used on its own; it must always be used as the right-hand operand of the `::` [member selection operator](#sec-Member-Selection-Operators). The name of an instance method or field can never be used on its own; it must always be used as the right-hand operand of the `.` [member selection operator](#sec-Member-Selection-Operators). (There is one exception to this prohibition: A field name must be used on its own when named notation is used to set its value in a constructor call.)
+The name of a static method, constant, or type constant can never be used on its own; it must always be used as the right-hand operand of the `::` [member selection operator](Expressions.md#member-selection-operators). The name of an instance method or field can never be used on its own; it must always be used as the right-hand operand of the `.` [member selection operator](Expressions.md#member-selection-operators). (There is one exception to this prohibition: A field name must be used on its own when named notation is used to set its value in a constructor call.)
 
 ## Child Classes
 
@@ -233,8 +233,8 @@ The name of a static method, constant, or type constant can never be used on its
 
 **Defined elsewhere**
 
-* [*constructor-declaration*](#sec-Constructors)
-* [*type-identifier*](#sec-Identifiers)
+* [*constructor-declaration*](Classes.md#constructors)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
 
 **Constraints**
 
@@ -380,7 +380,7 @@ class C3(cf5: String) uses Tb, Tc extends Bb, Bc
 
 As the ordering of the names in the `extends` and `uses` clauses are the same, the argument list order in constructor calls to each is the same.
 
-As fields are defined in a [*constructor-declaration*](#sec-Constructors), refer to that section for more information.
+As fields are defined in a [*constructor-declaration*](Classes.md#constructors), refer to that section for more information.
 
 ## Constructors
 
@@ -428,11 +428,11 @@ As fields are defined in a [*constructor-declaration*](#sec-Constructors), refer
 
 **Defined elsewhere**
 
-* [*accessibility*](#sec-Methods)
-* [*default-value*](#sec-Function-Declarations)
-* [*generic-type-parameter-list*](#sec-Type-Parameters)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*type-specification*](#sec-Types.General)
+* [*accessibility*](Classes.md#methods)
+* [*default-value*](Functions.md#function-declarations)
+* [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*type-specification*](Types.md#general)
 
 **Constraints**
 
@@ -483,7 +483,7 @@ If *constructor-modifiers* is omitted or has no *accessibility* modifier, the *c
 
 If *constructor-pos-parameter-list* is present, each of its *nontype-identifier*s defines a field for that class or trait, and the mutability and accessibility of that field. For *constructor-nam-parameter-list*, each of its *nontype-identifier*s defines a field for that class or trait, the mutability and accessibility of that field, and the field’s default initial value, if any, if no corresponding argument is passed when the constructor is invoked. If *nontype-identifier* is omitted for a field, a field with unspecified name is used by the implementation. If *accessibility* is omitted from a field, public accessibility is assumed. If *constructor-pos-parameter-list* is omitted, the *constructor-declaration* contributes no fields..
 
-An ordinary class is instantiated by an explicit invocation of the [function-call operator](#sec-Function-Call-Operator). That call contains arguments for at least all of the fields in that class’s field set that do not have an *initializer*. Each field is bound to the value of its corresponding argument, except that for omitted arguments, in which case, the field is bound to its *initializer* value.
+An ordinary class is instantiated by an explicit invocation of the [function-call operator](Expressions.md#function-call-operator). That call contains arguments for at least all of the fields in that class’s field set that do not have an *initializer*. Each field is bound to the value of its corresponding argument, except that for omitted arguments, in which case, the field is bound to its *initializer* value.
 
 The modifier `final` in a base class allows a *constructor-declaration* from being provided in a derived class. If `final` is omitted, a *constructor-declaration* is permitted (but not required) in a derived class. Likewise for traits.
 
@@ -553,12 +553,12 @@ The *pattern-branch-list* in a *method-body* is referred to as an ***algebraic b
 
 **Defined elsewhere**
 
-* [*from-clause*](#sec-Constants)
-* [*generic-type-parameter-list*](#sec-Type-Parameters)
-* [*generic-type-parameters*](#sec-Type-Parameters)
-* [*parameters-specifier*](#sec-Function-Declarations)
-* [*pattern-branch-list*](#sec-Pattern-Branch-List)
-* [*type-specifier*](#sec-Types.General)
+* [*from-clause*](Classes.md#constants)
+* [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*generic-type-parameters*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*parameters-specifier*](Functions.md#function-declarations)
+* [*pattern-branch-list*](Expressions.md#pattern-branch-lists)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -576,7 +576,7 @@ An overriding method must have the same signature and a compatible return type a
 
 The `deferred` modifier can only be present on a static method in a base class.
 
-If the modifier `async` is present, *return-type* must be a [reactive type](#sec-Reactive-Types). Conversely,
+If the modifier `async` is present, *return-type* must be a [reactive type](Types.md#reactive-types). Conversely,
 if *return-type* is a reactive type, the modifier `async` must be present.
 
 The modifier `untracked` … **UNDER CONSTRUCTION**
@@ -607,11 +607,11 @@ A *method-definition* declares a method called *method-name*.
 
 If *function-body* is `;` and no `native` modifier is present in *method-declaration*, the declared method is abstract; otherwise, it is concrete.
 
-The modifier `async` declares the function to be [asynchronous](#sec-Asynchronous-Functions). For an async function, control may be transferred back to the caller before the function terminates normally. In such a case, the awaitable object that will be returned to the caller later on acts like a placeholder that will eventually be filled with the return result.
+The modifier `async` declares the function to be [asynchronous](Expressions.md#async-operator). For an async function, control may be transferred back to the caller before the function terminates normally. In such a case, the awaitable object that will be returned to the caller later on acts like a placeholder that will eventually be filled with the return result.
 
 The modifier `capture` is needed if the class is mutable and the method uses `this` in any context than `this.`*memberName*. In such contexts, `capture` means that the object is being treated as immutable. When a method is called on a mutable instance of a class, it is necessary to ensure that the method is not used in a way that could be unsound for a mutable object.
 
-Ordinarily, the method being called by a [function-call](#sec-Function-Call-Operator) expression is named explicitly. However, inside a static method having the modifier `deferred`, the determination of the actual method can be delayed by using `static`, allowing the calling context to be that of a derived type. Consider the following:
+Ordinarily, the method being called by a [function-call](Expressions.md#function-call-operator) expression is named explicitly. However, inside a static method having the modifier `deferred`, the determination of the actual method can be delayed by using `static`, allowing the calling context to be that of a derived type. Consider the following:
 
 ```
 base class Foo { x: String } {
@@ -630,12 +630,12 @@ A base class cannot be instantiated, so `create` cannot contain `Foo{…}`. Howe
 
 The modifier `memoized` … **UNDER CONSTRUCTION**
 
-The modifier `mutable` indicates a [mutable](#sec-Mutability) method.
+The modifier `mutable` indicates a [mutable](Basic-Concepts.md#mutability) method.
 
-The modifier `native` declares the function to be a [native](#sec-Native-Support) function. A native function has no implementation.
+The modifier `native` declares the function to be a [native](Basic-Concepts.md#native-support) function. A native function has no implementation.
 
 The modifier `overridable` allows (but does not require) a replacement implementation of that method to be provided in a derived class.
-The modifiers `private` and `protected` declare the method to have private and protected [accessibility](#sec-Accessibility), respectively. In the absence of both, the method has public accessibility.
+The modifiers `private` and `protected` declare the method to have private and protected [accessibility](Basic-Concepts.md#accessibility), respectively. In the absence of both, the method has public accessibility.
 
 The modifier `react` … **UNDER CONSTRUCTION**
 
@@ -645,13 +645,13 @@ A *method-declaration* having a *from-clause* is used to disambiguate between mu
 
 A method has access to its own class’s members and to accessible members of its base classes, via `this`.
 
-Parameters are declared and handled in the same manner as with [functions](#sec-Function-Declarations). After all parameters have been bound, *method-body* is executed.
+Parameters are declared and handled in the same manner as with [functions](Functions.md#function-declarations). After all parameters have been bound, *method-body* is executed.
 
 A parameter named `_` causes the value of the corresponding argument to be ignored.
 
 Each *type-identifier* in *when-params* is constrained by its corresponding *type-constraint*.
 
-A *method-return-type* of *type-specifier* is handled just like a *type-specifier* in a [function](#sec-Function-Declarations), except that in a method, the return type is *method-return-type*.
+A *method-return-type* of *type-specifier* is handled just like a *type-specifier* in a [function](Functions.md#function-declarations), except that in a method, the return type is *method-return-type*.
 
 Regarding algebraic functions, for simple cases, the algebraic notation is equivalent to having a brace-delimited function body containing a `this match {` *pattern-branch-list* `}`. However, the two approaches are not always equivalent. Consider the following example:
 
@@ -808,12 +808,12 @@ Note: The reason *const-name* can be *type-identifier* is to support [constant p
 
 **Defined elsewhere**
 
-* [*accessibility*](#sec-Methods)
-* [*const-name*](#sec-Global-Constants)
-* [*initializer*](#sec-Expressions.General)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*type-identifier*](#sec-Identifiers)
-* [*type-specifier*](#sec-Types.General)
+* [*accessibility*](Classes.md#methods)
+* [*const-name*](Constants-and-Variables.md#global-constants)
+* [*initializer*](Expressions.md#general)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -883,12 +883,12 @@ class D1 extends B1, B2 {
 
 **Defined elsewhere**
 
-* [*accessibility*](#sec-Methods)
-* [*generic-type-parameter-list*](#sec-Type-Parameters)
-* [*type-identifier*](#sec-Identifiers)
-* [*type-initializer*](#sec-Types.Type-Constants)
-* [*type-specification*](#sec-Types.General)
-* [*type-specifier*](#sec-Types.General)
+* [*accessibility*](Classes.md#methods)
+* [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*type-initializer*](Types.md#type-constants)
+* [*type-specification*](Types.md#general)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -967,7 +967,7 @@ base class Foo {
 
 ***Indexing*** involves using an index value to designate a corresponding element in a collection of elements.
 
-An ***indexable collection*** is an instance of a (possibly generic) class type that supports the notion of indexing, by way of the `[`*index-expression*`]` and `[]` notations used with the [simple-mutation operator, `=`](#sec-Simple-Mutation), and with the [indexing operator, `[]`](#sec-Indexing-Operator).
+An ***indexable collection*** is an instance of a (possibly generic) class type that supports the notion of indexing, by way of the `[`*index-expression*`]` and `[]` notations used with the [simple-mutation operator, `=`](Expressions.md#simple-mutation), and with the [indexing operator, `[]`](Expressions.md#indexing-operator).
 
 There are two kinds of indexing operations: read and write. An indexable collection can provide either or both.
 
