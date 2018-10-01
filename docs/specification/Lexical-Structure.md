@@ -2,7 +2,7 @@
 
 ## Source Unit
 
-A ***source unit*** is an ordered sequence of characters. Typically, a source unit has a one-to-one correspondence with a file in a file system, but this correspondence is not required. (See [program structure](#sec-Program-Structure).)
+A ***source unit*** is an ordered sequence of characters. Typically, a source unit has a one-to-one correspondence with a file in a file system, but this correspondence is not required. (See [program structure](Basic-Concepts.md#program-structure).)
 
 Conceptually, a source unit is translated using the following steps:
 
@@ -59,15 +59,15 @@ The production *input-file* is the root of the lexical structure for a source un
 
 **Defined elsewhere**
 
-* [*comment*](#sec-Comments)
-* [*token*](#sec-Tokens.General)
-* [*white-space*](#sec-White-Space)
+* [*comment*](Lexical-Structure.md#comments)
+* [*token*](Lexical-Structure.md#general-1)
+* [*white-space*](Lexical-Structure.md#white-space)
 
 **Semantics:**
 
 The basic elements of an *input-file* are comments, white space, and tokens.
 
-The lexical processing of an *input-file* involves the reduction of that source unit into a sequence of [tokens](#sec-Tokens) that becomes the input to the syntactic analysis. Tokens can be separated by [white space](#sec-White-Space) and [delimited comments](#sec-Comments).
+The lexical processing of an *input-file* involves the reduction of that source unit into a sequence of [tokens](Lexical-Structure.md#general-1) that becomes the input to the syntactic analysis. Tokens can be separated by [white space](Lexical-Structure.md#white-space) and [delimited comments](Lexical-Structure.md#comments).
 
 Lexical processing always results in the creation of the longest possible lexical element.
 
@@ -105,7 +105,7 @@ Two forms of comments are supported: ***delimited comments*** and ***single-line
 
 Except within a string-literal or a comment, the characters `/*` start a delimited comment, which ends with the characters `*/`. Except within a string literal or a comment, the characters `//` start a single-line comment, which ends with a new line. That new line is not part of the comment.
 
-A delimited comment can occur in any place in a source unit in which [white space](#sec-White-Space) can occur. For example;
+A delimited comment can occur in any place in a source unit in which [white space](Lexical-Structure.md#white-space) can occur. For example;
 
 ```
 /*…*/b/*…*/=/*…*/200/*…*/;/*…*/
@@ -137,7 +137,7 @@ b=200;
 
 **Defined elsewhere**
 
-* [*new-line*](#sec-Comments)
+* [*new-line*](Lexical-Structure.md#comments)
 
 **Semantics**
 
@@ -161,10 +161,10 @@ There are several kinds of source tokens:
 
 **Defined elsewhere**
 
-* [*identifier*](#sec-Identifiers)
-* [*keyword*](#sec-Keywords)
-* [*literal*](#sec-Literals.General)
-* [*operator-or-punctuator*](#sec-Operators-and-Punctuators)
+* [*identifier*](Lexical-Structure.md#identifiers)
+* [*keyword*](Lexical-Structure.md#keywords)
+* [*literal*](Lexical-Structure.md#literals.General)
+* [*operator-or-punctuator*](Lexical-Structure.md#operators-and-punctuators)
 
 #### Identifiers
 
@@ -211,25 +211,25 @@ There are several kinds of source tokens:
 
 **Defined elsewhere**
 
-* [*digit*](#sec-Integer-Literals)
+* [*digit*](Lexical-Structure.md#integer-literals)
 
 **Semantics:**
 
-*type-identifier*s other than `_` are used to name the following: [classes](#sec-Class-Declarations), [type constants](#sec-Types.Type-Constants), [type parameters](#sec-Type-Parameters), and [modules](#sec-Modules). [Note that a constant name can also be *type-identifier*, to support [constant patterns](#sec-Constant-Patterns).]
+*type-identifier*s other than `_` are used to name the following: [classes](Classes.md#class-declarations), [type constants](Types.md#type-constants), [type parameters](Generic-Types-Methods-and-Functions.md#type-parameters), and [modules]Modules.md#modules). [Note that a constant name can also be *type-identifier*, to support [constant patterns](Expressions.md#constant-patterns).]
 
-*nontype-identifier*s are used to name the following: [constants](#sec-Constants-and-Variables.General), [variables](#sec-Constants-and-Variables.General), [functions](#sec-Function-Declarations), and [methods](#sec-Methods).
+*nontype-identifier*s are used to name the following: [constants](Constants-and-Variables.md#constants-and-variables.General), [variables](Constants-and-Variables.md#constants-and-variables.General), [functions](Functions.md#function-declarations), and [methods](Classes.md#methods).
 
 *identifier*s are case-sensitive, and every character is significant.
 
-In certain contexts, some identifiers behave as keywords. See [conditional keywords](#sec-Keywords).
+In certain contexts, some identifiers behave as keywords. See [conditional keywords](Lexical-Structure.md#keywords).
 
 The *nontype-identifier* `_` is reserved for use by the language; it is used in the following contexts:
 
-* a [wildcard-pattern](#sec-Wildcard-Pattern)
-* a [bind mutation target](#sec-Simple-Mutation)
-* name of a [lambda parameter](#sec-Lambda-Creation)
-* name of a [function parameter](#sec-Function-Declarations)
-* name of a [constructor parameter](#sec-Constructors)
+* a [wildcard-pattern](Expressions.md#wildcard-pattern)
+* a [bind mutation target](Expressions.md#simple-mutation)
+* name of a [lambda parameter](Expressions.md#lambda-creation)
+* name of a [function parameter](Functions.md#function-declarations)
+* name of a [constructor parameter](Classes.md#constructors)
 
 If more than one declaration of a particular identifier is visible at any point in a source unit, the syntactic context disambiguates uses that refer to different entities. Thus, there are separate ***name spaces*** for various categories of identifiers, as follows:
 
@@ -264,18 +264,18 @@ A ***keyword*** is an identifier-like sequence of characters that is reserved, a
   <i>keyword::</i> one of
     alias  as  async  await  catch  children  class  const  else  extends
     final  from  fun  if  match  module  mutable  native  private
-    protected  uses static  this  throw  trait  try  type  void 
+    protected  uses static  this  throw  trait  try  type  void
     watch  when  with
 </pre>
 
-The following are conditional keywords: [`base`](#sec-Class-Declarations), [`capture`](#sec-Methods), [`default`](#sec-Classes.Type-Constants), [`deferred`](#sec-Methods), [`inst`](#sec-The-inst-Type), [`nonNullable`](#sec-Type-Parameters), [`this`](#sec-Primary-Expressions.General), [`untracked`](#sec-Methods), and [`value`](#sec-Class-Declarations).
+The following are conditional keywords: [`base`](Classes.md#class-declarations), [`capture`](Classes.md#methods), [`default`](Classes.md#type-constants), [`deferred`](Classes.md#methods), [`inst`](Types.md#the-inst-type), [`nonNullable`](Generic-Types-Methods-and-Functions.md#type-parameters), [`this`](Expressions.md#primary-expressions), [`untracked`](Classes.md#methods), and [`value`](Classes.md#class-declarations).
 
 #### Literals
 
 ##### General
 
 The source code representation of a value is called a *literal*.
-
+ 
 **Syntax**
 
 <pre>
@@ -290,12 +290,12 @@ The source code representation of a value is called a *literal*.
 
 **Defined elsewhere**
 
-* [*boolean-literal*](#sec-Boolean-Literals)
-* [*character-literal*](#sec-Character-Literals)
-* [*floating-literal*](#sec-Floating-Point-Literals)
-* [*integer-literal*](#sec-Integer-Literals)
-* [*string-literal*](#sec-String-Literals)
-* [*void-literal*](#sec-Void-Literal)
+* [*boolean-literal*](Lexical-Structure.md#boolean-literals)
+* [*character-literal*](Lexical-Structure.md#character-literals)
+* [*floating-literal*](Lexical-Structure.md#floating-point-literals)
+* [*integer-literal*](Lexical-Structure.md#integer-literals)
+* [*string-literal*](Lexical-Structure.md#string-literals)
+* [*void-literal*](Lexical-Structure.md#void-literal)
 
 ##### Boolean Literals
 
@@ -339,7 +339,7 @@ class C {private field: Bool = true} {
 
 **Defined elsewhere**
 
-* [*escape-sequence*](#sec-String-Literals)
+* [*escape-sequence*](Lexical-Structure.md#string-literals)
 
 **Semantics**
 
@@ -402,7 +402,7 @@ The value of a *decimal-literal* is computed using base 10; that of a *hexadecim
 
 The type of an *integer-literal* is `Int`.
 
-For an implementation using twos-complement integer representation for negative numbers, in which the smallest representable integer value is -9223372036854775808, when a *decimal-literal* representing the value 9223372036854775808 (2^63) appears as the token immediately following a [unary minus operator](#sec-Unary-Arithmetic-Operators) token, the result (of both tokens) is a literal of type `Int` with the value −9223372036854775808 (−2^63). Similarly, if the smallest representable integer value is -2147483648, when a *decimal-literal* representing the value 2147483648 (2^31) appears as the token immediately following a unary minus operator token, the result (of both tokens) is a literal of type `Int` with the value −2147483648 (−2^31).
+For an implementation using twos-complement integer representation for negative numbers, in which the smallest representable integer value is -9223372036854775808, when a *decimal-literal* representing the value 9223372036854775808 (2^63) appears as the token immediately following a [unary minus operator](Expressions.md#unary-arithmetic-operators) token, the result (of both tokens) is a literal of type `Int` with the value −9223372036854775808 (−2^63). Similarly, if the smallest representable integer value is -2147483648, when a *decimal-literal* representing the value 2147483648 (2^31) appears as the token immediately following a unary minus operator token, the result (of both tokens) is a literal of type `Int` with the value −2147483648 (−2^31).
 
 **Examples**
 
@@ -437,7 +437,7 @@ For an implementation using twos-complement integer representation for negative 
 
 **Defined elsewhere**
 
-* [*digit*](#sec-Integer-Literals)
+* [*digit*](Lexical-Structure.md#integer-literals)
 
 **Constraints**
 
@@ -490,7 +490,7 @@ The type of a *floating-literal* is `Float`.
 
 **Defined elsewhere**
 
-* [*hex-digit*](#sec-Integer-Literals)
+* [*hex-digit*](Lexical-Structure.md#integer-literals)
 
 **Constraints**
 

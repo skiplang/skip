@@ -1,6 +1,6 @@
 # Generic Types, Methods, and Functions
 
-##General
+## General
 
 Classes, their methods, and functions can be ***parameterized***; that is, their declarations can have one or more placeholder names—called ***type parameters***—that are associated with types via ***type arguments*** when a class is instantiated, or a method or function is called. A type, method, or function having such placeholder names is called a *generic type*, a *generic method*, or a *generic function*, respectively.
 
@@ -55,7 +55,7 @@ In the case of the type parameter `T`, its corresponding type argument is constr
 
 The *arity* of a generic type, method, or function is the number of type parameters declared for that type, method, or function. As such, class `Ref` and function `min` have arity 1, and function `fst` has arity 2.
 
-Type parameters and type constraints are discussed further in [§§](#sec-Type-Parameters), and type arguments are discussed further in [§§](#sec-Type-Arguments).
+Type parameters and type constraints are discussed further in [§§](Generic-Types-Methods-and-Functions.md#type-parameters), and type arguments are discussed further in [§§](Generic-Types-Methods-and-Functions.md#type-arguments).
 
 ## Type Parameters
 
@@ -94,19 +94,19 @@ Type parameters and type constraints are discussed further in [§§](#sec-Type-P
 
 **Defined elsewhere**
 
-* [*type-identifier*](#sec-Identifiers)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
 
 **Constraints**
 
 The *generic-type-parameter-name*s within a *generic-type-parameter-list* must be distinct.
 
-Each *type-identifier* in *type-constraint* must designate a [trait](#sec-Class-Declarations).
+Each *type-identifier* in *type-constraint* must designate a [trait](Classes.md#class-declarations).
 
 **Semantics**
 
 A type parameter is a placeholder for a type that is supplied when the generic type is instantiated or the generic method or function is invoked.
 
-A type parameter is a compile-time construct. At run-time, each type parameter is matched to a run-time type that was specified by a type argument. Therefore, a type declared with a type parameter will, at run-time, be a closed generic type ([§§](#sec-Open-and-Closed-Generic-Types)), and execution involving a type parameter uses the actual type that was supplied as the type argument for that type parameter.
+A type parameter is a compile-time construct. At run-time, each type parameter is matched to a run-time type that was specified by a type argument. Therefore, a type declared with a type parameter will, at run-time, be a closed generic type ([§§](Generic-Types-Methods-and-Functions.md#open-and-closed-generic-types)), and execution involving a type parameter uses the actual type that was supplied as the type argument for that type parameter.
 
 The *type-identifier* of a type parameter is visible from its point of definition through the end of the type, method, or function declaration on which it is defined.
 
@@ -118,7 +118,7 @@ The conditional keyword `nonNullable` designates a trait that is built into the 
 
 Multiple constraints can be specified by combining them using `&`.
 
-A *generic-type-parameter* of the form `_` is described in [§§](#sec-The-Underscore-Type).
+A *generic-type-parameter* of the form `_` is described in [§§](Types.md#the-underscore-type).
 
 **Examples**
 
@@ -172,16 +172,16 @@ fun print_eq<T: Equality & Show>(x: T, y: T): void { … }
 
 **Defined elsewhere**
 
-* [*qualified-type-name*](#sec-Identifiers)
-* [*type-specifier*](#sec-Types.General)
+* [*qualified-type-name*](Lexical-Structure.md#identifiers)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
-Each *generic-type-argument* must satisfy any [constraint](#sec-Type-Parameters) on the corresponding type parameter.
+Each *generic-type-argument* must satisfy any [constraint](Generic-Types-Methods-and-Functions.md#type-parameters) on the corresponding type parameter.
 
 **Semantics**
 
-At runtime, a *generic-type-argument* is used in place of the corresponding type parameter. A *generic-type-argument* can either be [open or closed](#sec-Open-and-Closed-Generic-Types).
+At runtime, a *generic-type-argument* is used in place of the corresponding type parameter. A *generic-type-argument* can either be [open or closed](Generic-Types-Methods-and-Functions.md#open-and-closed-generic-types).
 
 **Examples**
 
@@ -209,7 +209,7 @@ class Array<Tk: ArrayKey, Tv>(private x: Dict<Tk, Tv>) {
 
 ## Open and Closed Generic Types
 
-A type parameter is introduced in the corresponding class, method, or function declaration. All other uses of that type parameter occur in [*type-specifier*s](#sec-Types.General) for the declaration of fields, function parameters, function returns, local variables, and so on. Each such use can be classified as follows: An *open generic type* is a generic type that contains one or more type parameters; a *closed generic type* is a generic type that is not an open generic type.
+A type parameter is introduced in the corresponding class, method, or function declaration. All other uses of that type parameter occur in [*type-specifier*s](Types.md#general) for the declaration of fields, function parameters, function returns, local variables, and so on. Each such use can be classified as follows: An *open generic type* is a generic type that contains one or more type parameters; a *closed generic type* is a generic type that is not an open generic type.
 
 At run-time, all of the code within a generic class, method, or function declaration is executed in the context of the closed generic type that was created by applying type arguments to that generic declaration. Each type parameter within the generic class, method, or function is associated with a particular run-time type. The run-time processing of all expressions always occurs with closed generic types, and open generic types occur only during compile-time processing.
 

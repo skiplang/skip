@@ -44,30 +44,30 @@ The meaning of a value is decided by its *type*.
 
 **Defined elsewhere**
 
-* [*generic-type-argument-list*](#sec-Type-Arguments)
-* [*generic-type-parameter-name*](#sec-Type-Parameters)
-* [*global-type-constant-declaration*](#sec-Types.Type-Constants)
-* [`inst`](#sec-The-inst-Type)
-* [*lambda-type-specifier*](#sec-Lambda-Types)
-* [*mutable-type-specifier*](#sec-Mutable-Types)
-* [*nullable-type-specifier*](#sec-Nullable-Types)
-* [`this`](#sec-The-this-Type)
-* [*reactive-type-specifier*](#sec-Reactive-Types)
-* [*tuple-type-specifier*](#sec-Tuple-Types)
-* [*type-identifier*](#sec-Identifiers)
-* [*underscore-type*](#sec-The-Underscore-Type)
+* [*generic-type-argument-list*](Generic-Types-Methods-and-Functions.md#type-arguments)
+* [*generic-type-parameter-name*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*global-type-constant-declaration*](Types.md#type-constants)
+* [`inst`](Types.md#the-inst-type)
+* [*lambda-type-specifier*](Types.md#lambda-types)
+* [*mutable-type-specifier*](Types.md#mutable-types)
+* [*nullable-type-specifier*](Types.md#nullable-types)
+* [`this`](Types.md#the-this-type)
+* [*reactive-type-specifier*](Types.md#reactive-types)
+* [*tuple-type-specifier*](Types.md#tuple-types)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*underscore-type*](Types.md#the-underscore-type)
 
 **Constraints**
 
-If *qualified-type-name* consists solely of *type-identifier*, and *type-identifier* designates a [module](#sec-Modules-General), that module must contain a [class called `.`](#sec-Class-Declarations).
+If *qualified-type-name* consists solely of *type-identifier*, and *type-identifier* designates a [module](Modules.md#general), that module must contain a [class called `.`](Classes.md#class-declarations).
 
-For the *qualified-type-name* form `.`*type-identifier*, the [global module](#sec-Modules.General) must contain a declaration for *type-identifier*.
+For the *qualified-type-name* form `.`*type-identifier*, the [global module](Modules.md#general) must contain a declaration for *type-identifier*.
 
-For the *qualified-type-name* form *type-identifier*`.`*type-identifier*, the left-hand *type-identifier* must name a [module](#sec-Modules.General) that contains a declaration for the right-hand *type-identifier*.
+For the *qualified-type-name* form *type-identifier*`.`*type-identifier*, the left-hand *type-identifier* must name a [module](Modules.md#general) that contains a declaration for the right-hand *type-identifier*.
 
 **Semantics**
 
-The *qualified-type-name* form `.`*type-identifier* designates the *type-identifier* in the [global module](#sec-Modules.General). The *qualified-type-name* form *type-identifier*`.`*type-identifier* designates the right-hand *type-identifier* in the module named the left-hand *type-identifier*.
+The *qualified-type-name* form `.`*type-identifier* designates the *type-identifier* in the [global module](Modules.md#general). The *qualified-type-name* form *type-identifier*`.`*type-identifier* designates the right-hand *type-identifier* in the module named the left-hand *type-identifier*.
 
 If *qualified-type-name* consists solely of *type-identifier*, and *type-identifier* designates a module, *qualified-type-name* designates the class called `.` in that module; otherwise, *type-identifier* designates a class having that name.
 
@@ -121,7 +121,7 @@ As to how the `Char`s in a `String` translate into Unicode code points is unspec
 
 Conceptually, the type `void` indicates the absence of a value, and is used primarily as the return type of a function. However, the type has exactly one value, `void`. The representation of this type and its value is unspecified.
 
-An important use of this type and its value is as a marker/placeholder when using generic functions and classes. See [example](#sec-Void-Literal).
+An important use of this type and its value is as a marker/placeholder when using generic functions and classes. See [example](Lexical-Structure.md#void-literal).
 
 Note: Even though one can use `void` in the general type sense, such as defining a local variable of type `void` and passing and/or returning a value of that type to and/or from a function, the use of `void` as a general-purpose *type-specifier* is discouraged, as it can lead to obfuscated code.
 
@@ -136,7 +136,7 @@ Note: Even though one can use `void` in the general type sense, such as defining
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -146,7 +146,7 @@ Note: Even though one can use `void` in the general type sense, such as defining
 
 The *reactive-type-specifier* `^`*T* is shorthand for [`Awaitable<`*T*`>`](RTL).
 
-An instance of a reactive type is created by the compiler when an [async function](#sec-Asynchronous-Functions) returns normally.
+An instance of a reactive type is created by the compiler when an [async function](Functions.md#asynchronous-functions) returns normally.
 
 **Examples**
 
@@ -170,7 +170,7 @@ When the function terminates normally, the String `"Hello"` is wrapped in an ins
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -206,7 +206,7 @@ fun main(): void {
 
 ## Class Types and Subtypes
 
-Class types are described in [§§](#sec-Classes.General).
+Class types are described in [§§](Classes.md#general).
 
 When class type *T2* is derived directly or indirectly from class type *T1*, *T2* is said to be a ***subtype*** of *T1*, and *T1* is said to be a ***supertype*** of *T2*. A supertype can have one or more subtypes, and a subtype can have one or more supertypes. A supertype can be a subtype of some other supertype, and a subtype can be a supertype of some other subtype.
 
@@ -218,7 +218,7 @@ A type is a subtype of itself.
 
 One type is *type compatible* with another if it a subtype of that other type.
 
-Every base and ordinary class type is a subtype of type [`this`](#sec-The-this-Type).
+Every base and ordinary class type is a subtype of type [`this`](#the-this-type).
 
 ## Tuple Types
 
@@ -231,15 +231,15 @@ Every base and ordinary class type is a subtype of type [`this`](#sec-The-this-T
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
-* [*type-specifier-list*](#sec-Types.General)
+* [*type-specifier*](#general)
+* [*type-specifier-list*](#general)
 
 **Semantics**
 
-A ***tuple*** is a sequence of two or more elements, the number, type, and value of which are fixed at the time of [tuple creation](#sec-Tuple-Creation).
+A ***tuple*** is a sequence of two or more elements, the number, type, and value of which are fixed at the time of [tuple creation](Expressions.md#tuple-creation).
 
 Each element can have any type, and each unique, lexically ordered combination of element types designates a distinct tuple type.
-The elements in a tuple can be accessed using a [tuple pattern](#sec-Tuple-Pattern).
+The elements in a tuple can be accessed using a [tuple pattern](#tuple-pattern).
 
 **Examples**
 
@@ -276,9 +276,9 @@ c1 = C((22, "text"));
 </pre>
 
 **Defined elsewhere**
-* [*pos-parameter*](#sec-Function-Declarations)
-* [*pos-parameter-list*](#sec-Function-Declarations)
-* [*return-type*](#sec-Function-Declarations)
+* [*pos-parameter*](Functions.md#function-declarations)
+* [*pos-parameter-list*](Functions.md#function-declarations)
+* [*return-type*](Functions.md#function-declarations)
 
 **Constraints**
 
@@ -290,7 +290,7 @@ A mutable form lambda’s value cannot be stored in a field, nor can it be retur
 
 **Semantics**
 
-A ***lambda*** is an object that encapsulates a function with a given signature and return type. The function can be called through that object by using the [function-call operator](#sec-Function-Call-Operator).
+A ***lambda*** is an object that encapsulates a function with a given signature and return type. The function can be called through that object by using the [function-call operator](Expressions.md#function-call-operator).
 
 The `~>` form of *lambda-arrow* results in an ***immutable lambda form*** of *lambda-type-specifier*, while the `->` form results in a ***mutable lambda form***.
 
@@ -357,11 +357,11 @@ The first is a lambda taking one `String` argument and returning a lambda taking
 
 **Constraints**
 
-This type can only be used in a [*method-return-type*](#sec-Methods).
+This type can only be used in a [*method-return-type*](Classes.md#methods).
 
 **Semantics**
 
-The type name `this` refers to "the current class type". (This use of `this` as a type should not be confused with the use of [`this` as an expression](#sec-Primary-Expressions.General).)
+The type name `this` refers to "the current class type". (This use of `this` as a type should not be confused with the use of [`this` as an expression](Expressions.md#primary-expressions).)
 
 `this` can be thought of as an implicit type constant in any class hierarchy.
 
@@ -390,7 +390,7 @@ class IntKey(value: Int) extends ArrayKey {
 
 **Constraints**
 
-The type name `inst` can only appear inside a [trait declaration](#sec-Class-Declarations).
+The type name `inst` can only appear inside a [trait declaration](Classes.md#class-declaration).
 
 **Semantics**
 
@@ -437,7 +437,7 @@ native value class Int uses Number, … {
 
 **Defined elsewhere**
 
-* [*type-specifier*](#sec-Types.General)
+* [*type-specifier*](#general)
 
 **Constraints**
 
@@ -449,7 +449,7 @@ A ***nullable*** type can represent all of the values of its ***underlying type*
 
 ***Boxing*** is the process of making a value of type `?`*T* from a value of type *T*. This is achieved via the constructor for class [`Box`](RTL-type-xxx). Specifically, `Box(`*value-of-type-T*`)` constructs the corresponding value of type `?`*T*.
 
-***Unboxing*** is the process of extracting a value of type *T* from a value of type `?`*T*, provided the nullable value is not null. This is achieved via [pattern matching](#sec-Patterns-and-Pattern-Matching), as follows:
+***Unboxing*** is the process of extracting a value of type *T* from a value of type `?`*T*, provided the nullable value is not null. This is achieved via [pattern matching](Expressions.md#patterns-and-pattern-matching), as follows:
 
 ```
 nullable_type_value match {
@@ -458,7 +458,7 @@ nullable_type_value match {
   }
 ```
 
-A null type is a specialization of the generic type [`Nullable`](classes.md#Nullable).
+A null type is a specialization of the generic type [`Nullable`](Types.md#nullable-types).
 
 **Examples**
 
@@ -480,7 +480,7 @@ print_string("Int boxed inside v1 is " + v1.getx().toString());
 
 ## Generic Types
 
-Skip contains a mechanism to define generic (that is, type-less) classes and functions, and to create type-specific instances of them via parameters. See [§§](#sec-Generic-Types-Methods-and-Functions.General).
+Skip contains a mechanism to define generic (that is, type-less) classes and functions, and to create type-specific instances of them via parameters. See [§§](Generic-Types-Methods-and-Functions.md).
 
 ## The Underscore Type
 
@@ -493,13 +493,13 @@ Skip contains a mechanism to define generic (that is, type-less) classes and fun
 
 **Constraints**
 
-This type can only be used as the [type of a function parameter or return value](#sec-Function-Declarations), or as a [*generic-type-parameter*](#sec-Type-Parameters) in the [*type-specifier*](#sec-Types.General) of a function parameter or return value.
+This type can only be used as the [type of a function parameter or return value](Functions.md#function-declarations), or as a [*generic-type-parameter*](Generic-Types-Methods-and-Functions.md#type-parameters) in the [*type-specifier*](#general) of a function parameter or return value.
 
 **Semantics**
 
 This type is for notation convenience.
 
-The presence of the type `_` in a *function-declaration-header* makes that function generic (if it isn’t already). Each type `_` in that *function-declaration-header* represents a placeholder for a distinct type parameter for that function. The set of placeholders becomes the set of type parameters for that function, in lexical order, after any explicit type parameters that function already has.
+The presence of the type `_` in a *function-declaration-header* makes that function generic (if it isn’t already). Each type `_` in that *function-declaration-header* represents a placeholder for a distinct type parameter for that function. The set of placeholders becomes the set of type parameters for that function, in lexical order, after any explicit type parameters that function already has. 
 
 **Examples**
 
@@ -538,14 +538,14 @@ fun f(): void {
 ```
 
 In Line #1, `v1` is explicitly typed as being `Int`, whereas, in Line #2, `v2`’s type is inferred from its initializer.
-Types are also inferred when calling generic methods and functions. See [§§](#sec-Generic-Types-Methods-and-Functions.General).
+Types are also inferred when calling generic methods and functions. See [§§](Generic-Types-Methods-and-Functions.md#general).
 
 ## Type Constants
 
 There are two kinds of type constants:
 
 * global type constants, which are discussed below
-* [class type constants](#sec-Classes.Type-Constants)
+* [class type constants](Classes.md#type-constants)
 
 **Syntax**
 
@@ -558,9 +558,9 @@ There are two kinds of type constants:
 
 **Defined elsewhere**
 
-* [*generic-type-parameter-list*](#sec-Type-Parameters)
-* [*type-identifier*](#sec-Identifiers)
-* [*type-specifier*](#sec-Types.General)
+* [*generic-type-parameter-list*](Generic-Types-Methods-and-Functions.md#type-parameters)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*type-specifier*](#general)
 
 **Constraints**
 

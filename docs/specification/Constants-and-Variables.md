@@ -4,17 +4,17 @@
 
 There are two kinds of constants:
 
-* [global constants](#sec-Global-Constants)
-* [class constants](#sec-Class-Constants)
+* [global constants](Constants-and-Variables.md#global-constants)
+* [class constants](Classes.md#constants)
 
 There are two kinds of variables:
 
-* [local variables](#sec-Local-Variables)
-* [class variables](#sec-Fields)
+* [local variables](Constants-and-Variables.md#local-variables)
+* [class variables](Classes.md#fields)
 
 ## Global Constants
 
-A ***global constant*** is a constant declared at [global scope](#sec-Scope).
+A ***global constant*** is a constant declared at [global scope](Basic-Concepts.md#scope).
 
 **Syntax**
 
@@ -36,14 +36,14 @@ A ***global constant*** is a constant declared at [global scope](#sec-Scope).
     <i>type-identifier</i>
 </pre>
 
-Note: The reason *const-name* can be *type-identifier* is to support [constant patterns](#sec-Constant-Patterns).
+Note: The reason *const-name* can be *type-identifier* is to support [constant patterns](Expressions.md#constant-patterns).
 
 **Defined elsewhere**
 
-* [*initializer*](#sec-Expressions.General)
-* [*nontype-identifier*](#sec-Identifiers)
-* [*type-identifier*](#sec-Identifiers)
-* [*type-specifier*](#sec-Types.General)
+* [*initializer*](Expressions.md#general)
+* [*nontype-identifier*](Lexical-Structure.md#identifiers)
+* [*type-identifier*](Lexical-Structure.md#identifiers)
+* [*type-specifier*](Types.md#general)
 
 **Constraints**
 
@@ -55,13 +55,13 @@ A *global-constant-declaration* whose *nontype-identifier* has a `.` prefix must
 
 **Semantics**
 
-A global constant is bound to its initial value at [program start-up](#sec-Program-Start-Up); as such, *initializer* need not be a compile-time constant.
+A global constant is bound to its initial value at [program start-up](Basic-Concepts.md#program-start-up); as such, *initializer* need not be a compile-time constant.
 
-A *global-constant-declaration* whose *nontype-identifier* has a `.` prefix is promoted to the global module. 
+A *global-constant-declaration* whose *nontype-identifier* has a `.` prefix is promoted to the global module.
 
-The modifier `native` declares the constant to be a [native](#sec-Native-Support) constant. As such, it and its initial value are defined by the environment.
+The modifier `native` declares the constant to be a [native](Basic-Concepts.md#native-support) constant. As such, it and its initial value are defined by the environment.
 
-The modifier `private` is described in [§§](#sec-Accessibility).
+The modifier `private` is described in [§§](Basic-Concepts.md#accessibility).
 
 **Examples**
 
@@ -80,11 +80,11 @@ class C1(parm: Int) {
 
 ## Class Constants
 
-A class or trait may contain constant members. See [class constant](#sec-Constants)
+A class or trait may contain constant members. See [class constant](Classes.md#constants)
 
 ## Local Variables
 
-A ***local variable*** is a variable declared at [block scope](#sec-Scope).
+A ***local variable*** is a variable declared at [block scope](Basic-Concepts.md#scope).
 
 **Constraints**
 
@@ -92,9 +92,9 @@ If the name of a local variable that is not a function parameter begins with a l
 
 **Semantics**
 
-A local variable is declared using the [simple mutation operator](#sec-Simple-Mutation)
+A local variable is declared using the [simple mutation operator](Expressions.md#simple-mutation)
 
-A [function parameter](#sec-Function-Declarations) is a local variable.
+A [function parameter](Functions.md#function-declarations) is a local variable.
 
 Consider the case in which a local variable that is not a function parameter, has a name beginning with `_`. The value of that variable cannot be used later in that function. That variable name can be re-bound, however, using `!`.
 
@@ -113,4 +113,4 @@ fun f(p1: Int, _p2: Int): void {	// parameter names exempt from usage check
 
 ## Class Variables
 
-A class may contain data members. See [fields](#sec-Fields).
+A class may contain data members. See [fields](Classes.md#fields).
