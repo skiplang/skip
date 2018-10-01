@@ -46,7 +46,7 @@ Set `python` to default to Python 2
 
 ```
 ln -s /usr/bin/python2 $SOME_DIR/python
-export PATH=$SOME_DIR/python:$PATH
+export PATH=$SOME_DIR:$PATH
 ```
 
 Disable warnings as errors by running `git apply` on the following patch
