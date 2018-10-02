@@ -58,7 +58,10 @@ module.exports = function(sk) {
     function pow(val, power) {
       return sk.__.floatToFloat(Math.pow(val.__value, power.__value));
     }
-
+    function abs(val) {
+      return sk.__.floatToFloat(Math.abs(val.__value));
+    }
+    
     // attach global functions directly to sk object
     sk.__.defineGlobalFunction('Math.sin', sin);
     sk.__.defineGlobalFunction('Math.cos', cos);
@@ -69,4 +72,5 @@ module.exports = function(sk) {
     sk.__.defineGlobalFunction('Math.round', round);
     sk.__.defineGlobalFunction('Math.sqrt', sqrt);
     sk.__.defineGlobalFunction('Math.pow', pow);
+    sk.__.defineGlobalFunction('Math.abs', abs);
 }
