@@ -61,6 +61,7 @@ module.exports = function(sk) {
     function abs(val) {
       return sk.__.floatToFloat(Math.abs(val.__value));
     }
+    
     // attach global functions directly to sk object
     sk.__.defineGlobalFunction('Math.sin', sin);
     sk.__.defineGlobalFunction('Math.cos', cos);
