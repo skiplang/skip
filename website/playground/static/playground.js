@@ -183,11 +183,7 @@ window.setupEditor = function(elements, options = {}, basePath = '', hiddenCode 
     var marks = [];
     var scrollTo = false;
     class Node extends React.Component {
-      constructor(props) {
-        super(props);
-        this.toggle = this.toggle.bind(this);
-      }
-      toggle() {
+      toggle = () => {
         this.props.node.__isToggled = !this.props.node.__isToggled;
         this.forceUpdate();
       }
