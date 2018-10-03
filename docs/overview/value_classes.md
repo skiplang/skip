@@ -13,4 +13,4 @@ When creating a `Vector<Pair>`, both the fields of the object are going to be fl
 
 **Note:** *value classes cannot define mutable fields, which is why the difference with a normal class cannot be observed at runtime.*
 
-**Note2:** *value classes cannot extend a a base class.*
+**Note2:** *value classes cannot extend a base class.*
