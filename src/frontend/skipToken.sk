@@ -9,11 +9,11 @@ module Token;
 
 extension class Token{} {
   fun stringLiteralValue(): String {
-    accumulateStringValue("", this.value.sub(1, this.value.length() - 2), 0)
+    stringValue(this.value.sub(1, this.value.length() - 2))
   }
 
   fun templateStringLiteralValue(): String {
-    accumulateStringValue("", this.value, 0)
+    stringValue(this.value)
   }
 
   fun charLiteralValue(): Char {
@@ -103,19 +103,6 @@ fun charLiteral(value: String): Char {
   Char::fromCode(charLiteralCode(value))
 }
 
-fun charLiteralLength(value: String, index: Int): Int {
-  if (value[index] != '\\') {
-    1
-  } else {
-    value[index + 1] match {
-    | 'x' -> 4
-    | 'u' -> 6
-    | 'U' -> 10
-    | _ -> 2
-    }
-  }
-}
-
 // Note this does not include quotes around the result.
 fun escapeCharLiteralValue(ch: Char): String {
   ch match {
@@ -151,15 +138,29 @@ fun escapeStringLiteralValue(s: String): String {
   s.chars().map(escapeCharLiteralValue).join("")
 }
 
-fun accumulateStringValue(acc: String, value: String, index: Int): String {
-  if (index == value.length()) {
-    acc
-  } else {
-    length = charLiteralLength(value, index);
-    accumulateStringValue(
-      acc + charLiteral(value.sub(index, length)),
-      value,
-      index + length,
-    )
-  }
+fun stringValue(value: String): String {
+  chars = value.chars();
+  acc = mutable Vector[];
+  i = 0;
+  while (i < chars.size()) {
+    literal = mutable Vector[];
+    literalSize = chars[i] match {
+    | '\\' ->
+      chars[i + 1] match {
+      | 'x' -> 4
+      | 'u' -> 6
+      | 'U' -> 10
+      | _ -> 2
+      }
+    | _ -> 1
+    };
+    for (j in Range(0, literalSize)) {
+      if (i + j < chars.size()) {
+        literal.push(chars[i + j])
+      }
+    };
+    !i = i + literalSize;
+    acc.push(charLiteral(String::fromChars(freeze(literal).toArray())))
+  };
+  String::fromChars(freeze(acc).toArray())
 }
