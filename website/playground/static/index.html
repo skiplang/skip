@@ -22,6 +22,7 @@
 <script src="third-party/lint.js"></script>
 <script src="third-party/hardwrap.js"></script>
 <script src="third-party/sublime.js"></script>
+<script async src="third-party/rx.min.js"></script>
 
 <script src="codemirror-skip.js"></script>
 <script src="playground.js"></script>
@@ -128,7 +129,8 @@ var codeEditor = setupEditor({
   search: document.getElementById('search'),
 }, {lineNumbers: true});
 
-codeEditor.on('change', function() {
+const watch = Rx.Observable.fromEvent(codeEditor, 'change'); 
+watch.debounceTime(1000).subscribe(e => { 
   location.hash = btoa(codeEditor.getValue());
 });
 
