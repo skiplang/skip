@@ -75,7 +75,7 @@ A full example session using the docker image:
 # your shell
 cd /tmp
 mkdir skip
-docker run -it --user skip --mount type=bind,source=skip,target=/home/skip/app verlaguet/skip
+docker run -it --user skip --mount type=bind,source=skip,target=/home/skip/apps verlaguet/skip
 # now in the docker shell
 cd /home/skip
 ./install.sh
