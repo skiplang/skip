@@ -132,8 +132,10 @@ codeEditor.on('change', function() {
   location.hash = btoa(codeEditor.getValue());
 });
 
-if (location.hash) {
+window.onhashchange = function(event) {
+  var cursorPosition = codeEditor.getCursor();
   codeEditor.setValue(atob(location.hash.slice(1)));
+  codeEditor.setCursor(cursorPosition);
 }
 </script>
 </body>
