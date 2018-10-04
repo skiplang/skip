@@ -9,11 +9,11 @@ module Token;
 
 extension class Token{} {
   fun stringLiteralValue(): String {
-    accumulateStringValue("", this.value.sub(1, this.value.length() - 2), 0)
+    stringValue(this.value.sub(1, this.value.length() - 2))
   }
 
   fun templateStringLiteralValue(): String {
-    accumulateStringValue("", this.value, 0)
+    stringValue(this.value)
   }
 
   fun charLiteralValue(): Char {
@@ -103,19 +103,6 @@ fun charLiteral(value: String): Char {
   Char::fromCode(charLiteralCode(value))
 }
 
-fun charLiteralLength(value: String, index: Int): Int {
-  if (value[index] != '\\') {
-    1
-  } else {
-    value[index + 1] match {
-    | 'x' -> 4
-    | 'u' -> 6
-    | 'U' -> 10
-    | _ -> 2
-    }
-  }
-}
-
 // Note this does not include quotes around the result.
 fun escapeCharLiteralValue(ch: Char): String {
   ch match {
@@ -151,15 +138,31 @@ fun escapeStringLiteralValue(s: String): String {
   s.chars().map(escapeCharLiteralValue).join("")
 }
 
-fun accumulateStringValue(acc: String, value: String, index: Int): String {
-  if (index == value.length()) {
-    acc
-  } else {
-    length = charLiteralLength(value, index);
-    accumulateStringValue(
-      acc + charLiteral(value.sub(index, length)),
-      value,
-      index + length,
-    )
+// advance iter past a single literal char
+// iter must be at a valid literal char
+fun skipLiteralChar(iter: mutable String.StringIterator): void {
+  if (iter.next().fromSome() == '\\') {
+    length = iter.next().fromSome() match {
+    | 'x' -> 2
+    | 'u' -> 4
+    | 'U' -> 8
+    | _ -> 0
+    };
+    _ = iter.drop(length);
   }
+}
+
+fun stringValue(value: String): String {
+  // shortcut the common case
+  if (!value.contains("\\")) return value;
+
+  chars = mutable Vector[];
+  iter = value.getIter();
+  do {
+    charStart = iter.clone();
+    skipLiteralChar(iter);
+    chars.push(charLiteral(charStart.substring(iter)));
+  } while (!iter.atEnd());
+
+  String::fromChars(chars.toArray())
 }

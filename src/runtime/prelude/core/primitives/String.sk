@@ -14,6 +14,8 @@ native class .String uses Hashable, Show, Orderable {
   @cpp_runtime
   @may_alloc
   native static fun fromUtf8(bytes: readonly Array<UInt8>): String;
+
+  // Careful, this is O(n) (because of utf8)
   @cpp_runtime
   native private fun unsafe_get(x: Int): Char;
 
@@ -35,8 +37,13 @@ native class .String uses Hashable, Show, Orderable {
         throwOutOfBounds()
       };
 
-      v = Array::fillBy(len, i -> this.unsafe_get(start + i));
-      static::fromChars(v)
+      // We don't want to use unsafe_get because it is O(n)
+      subString = mutable Vector[];
+      iter = this.getIter().drop(start);
+      for (_ in Range(0, len)) {
+        subString.push(iter.next().fromSome())
+      };
+      static::fromChars(freeze(subString.toArray()))
     }
   }
 
