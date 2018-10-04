@@ -129,7 +129,9 @@ var codeEditor = setupEditor({
   search: document.getElementById('search'),
 }, {lineNumbers: true});
 
-codeEditor.setValue(atob(location.hash.slice(1)));
+if (location.hash) {
+  codeEditor.setValue(atob(location.hash.slice(1)));  
+}
 
 var watch = debounce(function() {
   location.hash = btoa(codeEditor.getValue());
