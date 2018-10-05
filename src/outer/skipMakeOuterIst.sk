@@ -61,8 +61,7 @@ fun program_phase(prog: TAst.Program): O.Program {
   const_defs = prog.const_defs.map(const_def);
   class_defs = prog.class_defs.map(class_def);
   fun_defs = prog.fun_defs.map(fun_def);
-  tya_defs = prog.tya_defs.map(tya_def);
-  O.Program{const_defs, class_defs, fun_defs, tya_defs}
+  O.Program{const_defs, class_defs, fun_defs}
 }
 
 fun program(prog: TAst.Program): O.Program {

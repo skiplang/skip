@@ -47,7 +47,6 @@ class Program{
   class_defs: UMap<ClassDef>,
   fun_defs: UMap<FunDef>,
   const_defs: UMap<ConstDef>,
-  tya_defs: UMap<TypeAliasDef>,
 }
 
 class TypeAliasDef{

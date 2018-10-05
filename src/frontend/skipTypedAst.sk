@@ -23,7 +23,6 @@ class Program{
   class_defs: UMap<Class_def>,
   fun_defs: UMap<Fun_def>,
   const_defs: UMap<Const_def>,
-  tya_defs: UMap<Type_alias_def>,
 }
 
 class Const_def{

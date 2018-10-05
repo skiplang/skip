@@ -900,14 +900,12 @@ fun map_program(
   map_class_def: O.ClassDef -> O.ClassDef,
   map_const_def: O.ConstDef -> O.ConstDef,
   map_fun_def: O.FunDef -> O.FunDef,
-  map_type_alias_def: O.TypeAliasDef -> O.TypeAliasDef,
   prog: O.Program,
 ): O.Program {
   O.Program{
     class_defs => prog.class_defs.map((_, x) -> map_class_def(x)),
     const_defs => prog.const_defs.map((_, x) -> map_const_def(x)),
     fun_defs => prog.fun_defs.map((_, x) -> map_fun_def(x)),
-    tya_defs => prog.tya_defs.map((_, x) -> map_type_alias_def(x)),
   }
 }
 
@@ -1226,7 +1224,6 @@ fun map_program_stmts(
     p -> stmt_map_to_class_map(map_stmt, p),
     p -> stmt_map_to_const_map(map_stmt, p),
     p -> stmt_map_to_fun_map(map_stmt, p),
-    id,
     prog,
   )
 }

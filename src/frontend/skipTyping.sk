@@ -236,7 +236,6 @@ fun program(prog: SkipAst.Program): SkipTypedAst.Program {
   for (ta in prog.type_defs) {
     SkipNaming.check_type_alias(ta)
   };
-  tya_defs = prog.type_defs.map((_, ta) -> SkipNaming.type_alias(ta));
   defs = programToDefinitions(prog.class_defs, prog.const_defs, prog.fun_defs);
   defsOrErrors = defs.parallelMap(def ~> {
     SkipError.doWithError(() -> {
@@ -283,7 +282,7 @@ fun program(prog: SkipAst.Program): SkipTypedAst.Program {
   });
 
   if (errors.size() == 0) {
-    TAst.Program{fun_defs, const_defs, class_defs, tya_defs}
+    TAst.Program{fun_defs, const_defs, class_defs}
   } else {
     throw SkipError.SkipErrorException{errors => freeze(errors).flatten()}
   }
