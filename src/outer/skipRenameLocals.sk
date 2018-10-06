@@ -253,7 +253,6 @@ fun rename_locals(prog: O.Program): O.Program {
     rename_class_locals,
     rename_const_locals,
     rename_function_locals,
-    id,
     prog,
   )
 }
