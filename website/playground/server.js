@@ -45,9 +45,9 @@ var execFile = require('child_process').execFile;
 var glob = require('glob');
 var cors = require('cors');
 
+app.use(compression());
 app.use(express.static('static'));
 app.use(express.static('tmp'));
-app.use(compression());
 app.use(bodyParser.text());
 app.use(cors());
 

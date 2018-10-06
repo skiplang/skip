@@ -22,6 +22,7 @@
 <script src="third-party/lint.js"></script>
 <script src="third-party/hardwrap.js"></script>
 <script src="third-party/sublime.js"></script>
+<script src="third-party/debounce.js"></script>
 
 <script src="codemirror-skip.js"></script>
 <script src="playground.js"></script>
@@ -128,12 +129,20 @@ var codeEditor = setupEditor({
   search: document.getElementById('search'),
 }, {lineNumbers: true});
 
-codeEditor.on('change', function() {
-  location.hash = btoa(codeEditor.getValue());
-});
-
 if (location.hash) {
+  codeEditor.setValue(atob(location.hash.slice(1)));  
+}
+
+var watch = debounce(function() {
+  location.hash = btoa(codeEditor.getValue());
+}, 1000);
+
+codeEditor.on('change', watch);
+
+window.onhashchange = function(event) {
+  var cursorPosition = codeEditor.getCursor();
   codeEditor.setValue(atob(location.hash.slice(1)));
+  codeEditor.setCursor(cursorPosition);
 }
 </script>
 </body>
