@@ -1,0 +1,180 @@
+command="$1"
+
+if ! [ $command == "start" -o $command == "stop" -o $command == "status" \
+       -o $command == "build" -o $command == "check" -o $command == "help" \
+       -o "run" ]; then
+    >&2 echo "*********************************************"
+    >&2 echo "ERROR: invalid arguments!"
+    >&2 echo "*********************************************"
+    command="help"
+fi
+
+if [ $command == "help" ]; then
+    >&2 echo "Usage:"
+    >&2 echo "\$ sk (start|stop|status|build|check) dirname";
+    exit 1
+fi
+
+root=`realpath "$2"`
+project="$root/skip.project.json"
+skdir_escape_z="${root//z/zZ}"
+tmpdir=$(dirname $(mktemp -u))
+skdir="$tmpdir/.skserver_${skdir_escape_z//\//z}"
+errfile="$skdir/errors"
+
+if ! [ -d "$root" ]; then
+    >&2 echo "*********************************************"
+    >&2 echo "ERROR: '$2' is not a valid directory name!"
+    >&2 echo "*********************************************"
+    exit 1
+fi
+
+if [ $command == "init" ]; then
+    echo "{" > "$project"
+    echo "  \"skipVersion\": \"1.0\"," >> "$project"
+    echo "  \"programUnits\": {" >> "$project"
+    echo "    \"a.out\": {" >> "$project"
+    echo "      \"kind\": \"Program\"," >> "$project"
+    echo "      \"sources\": [\".\"]," >> "$project"
+    echo "      \"references\": [{ \"path\": \"$prelude\" }]" >> "$project"
+    echo "    }" >> "$project"
+    echo "  }" >> "$project"
+    echo "}" >> "$project"
+    exit 0
+fi
+
+if [ $command == "run" ]; then
+    if ! [ -f "$skdir/bin.out" ]; then
+	>&2 echo "*********************************************"
+	>&2 echo "ERROR: could not find any binary file!"
+	>&2 echo "*********************************************"
+	>&2 echo "Did you run?: $ sk build \"$root\""
+	exit 8
+    fi
+    exec "$skdir/bin.out" "${@:2}"
+fi
+
+if ! [ -f "$project" ]; then
+    >&2 echo "*********************************************"
+    >&2 echo "ERROR: $project doesn't exist!"
+    >&2 echo "*********************************************"
+    >&2 echo "You can create a default project file with:"
+    >&2 echo "\$ sk init $root"
+    exit 7
+fi
+
+server_pid=`ps xa | grep skserver | grep "$root" | awk '{ print $1 }'`
+if [ $command == "stop" ]; then
+    if [ -z "$server_pid" ]; then
+	>&2 echo "Error: could not stop server, no server found"
+	exit 3
+    else
+	kill $server_pid
+	exit 0
+    fi
+fi
+
+if [ $command == "start" ]; then
+    if [ -f "$skdir/lock" ]; then
+	>&2 echo "*********************************************"
+	>&2 echo "Error: cannot start server."
+	>&2 echo "Another server is already running."
+	>&2 echo "*********************************************"
+	>&2 echo "If you don't think that should be the case run:"
+        >&2 echo "\$ rm -Rf \"$skdir\""
+	exit 4
+    else
+	"$skserver" "$root" &
+	echo "Server started for: $root"
+	exit 0
+    fi
+fi
+
+if ! [ $command == "start" ]; then
+
+    # The skserver is not running.
+    if ! [ -f "$skdir/lock" ]; then
+	>&2 echo "*********************************************"
+	>&2 echo "No skserver is running for $root"
+	>&2 echo "Run: sk start $root"
+	>&2 echo "*********************************************"
+	exit 5
+    fi
+
+    # The skserver is running, but skip_server died
+    skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+    if [ -z "$skip_server_pid" ]; then
+	>&2 echo "Skip_server died unexpectedly.";
+	>&2 echo "Re-run:"
+	>&2 echo "\$ sk start $root";
+	if [ "$server_pid" ]; then
+	    kill $server_pid
+	fi;
+	exit 6
+    fi
+fi
+
+if [ $command == "status" ]; then
+    if [ -f "$skdir/lock" ]; then
+	echo "Skip server is running"
+    else
+	echo "No server running"
+    fi;
+    exit 0
+fi
+
+rm -f "$errfile"
+rm -f "$skdir/out.ll"
+rm -f "$skdir/preamble_and_out.ll"
+rm -f "$skdir/out.o"
+rm -f "$skdir/bin.out"
+
+read < "$skdir/fifo_response" &
+
+echo $command > "$skdir/fifo_command"
+
+wait
+
+if cat "$errfile" | head -n 1 | grep --quiet "No error"; then
+    if [ $command == "check" ]; then
+	cat "$errfile";
+	exit 0
+    fi
+else
+    cat "$errfile" >&2;
+    exit 2
+fi
+
+if [ $command == "build" ]; then
+    # If built is called before the initialization of the server is over,
+    # we could be in a situation where the .ll file is not yet ready.
+    # This can also happen if another process was asking for a "check"
+    # and so the server was responding to that other process.
+    # These races are rare enough that we are just going to wait for
+    # the file to be written.
+    while [ ! -f "$skdir/out.ll" ];
+    do
+	sleep 1
+    done;
+
+    # Adding the preamble to the .ll file
+    cat "$preamble" "$skdir/out.ll" > "$skdir/preamble_and_out.ll"
+
+    # Linking it all together
+    "$clangpp" -s -o "$skdir/bin.out" -g \
+	     "$skdir/preamble_and_out.ll" "$standalone" \
+	     -L"$thirdPartyLibDir/" \
+	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     "$skipRuntimeLib" \
+	     -lfolly -lglog -lgflags -lunwind -ldouble-conversion \
+	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
+	     -lpcre -lboost_thread -lboost_system -lboost_context \
+	     -lboost_filesystem -lboost_chrono -lboost_date_time \
+	     -lboost_atomic -levent -ldl \
+	     -lpthread -lrt -Wl,--gc-sections
+
+    echo "Written: $skdir/bin.out"
+fi
