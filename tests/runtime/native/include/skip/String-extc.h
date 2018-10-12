@@ -46,6 +46,7 @@ extern SkipString SKIP_String_StringIterator__substring(
     SkipRObj* end);
 extern SkipInt SKIP_String_StringIterator__rawCurrent(SkipRObj* i);
 extern SkipInt SKIP_String_StringIterator__rawNext(SkipRObj* i);
+extern SkipInt SKIP_String_StringIterator__rawPrev(SkipRObj* i);
 extern void SKIP_String_StringIterator__rawDrop(SkipRObj* i, SkipInt n);
 extern SkipInt SKIP_String__length(SkipString s);
 

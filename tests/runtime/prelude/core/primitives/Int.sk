@@ -247,6 +247,12 @@ native value class Int uses Number, Integral {
     });
   }
 
+  fun toStringHex(): String {
+    String::tabulate(16, i ~> {
+      Chars.intToHexDigit(this.ushr((15 - i) * 4).and(0xF))
+    })
+  }
+
   fun toString(): String {
     this.toStringImpl()
   }

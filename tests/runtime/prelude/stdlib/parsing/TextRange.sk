@@ -59,26 +59,29 @@ fun empty(position: Position): TextRange {
 }
 
 fun contentFromLines(tr: TextRange, lines: Vector<String>): String {
-  result = "";
-  for (i in Range(0, tr.end.line() - tr.start.line() + 1)) {
-    index = tr.start.line() + i;
-    line = lines[index];
-    startColumn = if (index == tr.start.line()) {
-      tr.start.column();
-    } else {
-      0;
+  invariant(tr.end >= tr.start, "content end cannot be before content start");
+
+  if (tr.start.line() == tr.end.line()) {
+    line = lines[tr.start.line()];
+    line
+      .getIter()
+      .forward(tr.start.column())
+      .takeString(tr.end.column() - tr.start.column())
+  } else {
+    gen: () -> mutable Iterator<String> = () -> {
+      yield lines[tr.start.line()]
+        .getIter()
+        .forward(tr.start.column())
+        .takeString();
+
+      for (i in Range(tr.start.line() + 1, tr.end.line())) {
+        yield lines[i];
+      };
+
+      yield lines[tr.end.line()].take(tr.end.column());
     };
-    endColumn = if (index == tr.end.line()) {
-      tr.end.column();
-    } else {
-      line.length();
-    };
-    if (index > tr.start.line()) {
-      !result = result + Chars.lineFeed.toString();
-    };
-    !result = result + line.sub(startColumn, endColumn - startColumn);
-  };
-  result
+    gen().collect(Array).join(Chars.lineFeed.toString())
+  }
 }
 
 fun createEndOfLines(lines: Vector<String>): Position {

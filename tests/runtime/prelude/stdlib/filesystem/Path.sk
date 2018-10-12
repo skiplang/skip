@@ -43,12 +43,15 @@ fun isNormalized(path: String): Bool {
 // trimTrailingSeparators("") == ""
 fun trimTrailingSeparators(path: String): String {
   if (path == rootDirectory) {
-    path;
-  } else if (path.endsWith(separator)) {
-    trimTrailingSeparators(path.sub(0, path.length() - 1));
+    path
   } else {
-    path;
-  };
+    i = path.getEndIter();
+    while (i.prev() == Some('/')) {
+      void
+    };
+    _ = i.next();
+    path.getIter().substring(i)
+  }
 }
 
 // Returns the directory name of a path.

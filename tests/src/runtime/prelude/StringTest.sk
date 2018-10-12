@@ -22,6 +22,37 @@ fun testExampleSplit(): void {
 }
 
 @test
+fun testTakeString(): void {
+  s = "abcde";
+  assertEqual(s.getIter().takeString(1), "a");
+  assertEqual(s.getIter().takeString(2), "ab");
+  assertEqual(s.getIter().takeString(5), "abcde");
+  assertEqual(s.getIter().takeString(6), "abcde");
+
+  i = s.getIter();
+  assertEqual(i.takeString(2), "ab");
+  assertEqual(i.takeString(2), "cd");
+  assertEqual(i.takeString(2), "e");
+
+  assertEqual("abcde".getIter().forward(1).takeString(), "bcde");
+}
+
+fun subHelp(s: String, n: Int, len: Int): String {
+  i = s.getIter();
+  _ = i.drop(n);
+  s.sub(i, len)
+}
+
+@test
+fun testSub(): void {
+  assertEqual(subHelp("abcd", 0, 3), "abc");
+  assertEqual(subHelp("abcd", 1, 3), "bcd");
+  assertEqual(subHelp("abcd", 2, 3), "cd");
+  assertEqual(subHelp("abcd", 3, 3), "d");
+  assertEqual(subHelp("abcd", 4, 3), "");
+}
+
+@test
 fun testSplit(): void {
   str = "a,b,c,d,e";
   items = mutable Vector[];
@@ -55,6 +86,13 @@ fun testSplit2(): void {
   for (i in Range(0, items.size())) {
     assertEqual(items.get(i), expected.get(i))
   };
+}
+
+@test
+fun testSplit3(): void {
+  str = "a,b,c,d,e";
+  items = str.split(",", 2);
+  assertEqual(items, Vector["a", "b", "c,d,e"]);
 }
 
 @test
@@ -149,6 +187,28 @@ fun testSplitLast(): void {
   assertTrue("abcdefghi".splitLast("hi") == ("abcdefg", ""));
   assertTrue("abcdefghi".splitLast("ab") == ("", "cdefghi"));
   assertTrue("abcdefghi".splitLast("gf") == ("", "abcdefghi"));
+
+  assertTrue("a/b/c/d".splitLast("/") == ("a/b/c", "d"));
+}
+
+@test
+fun testSplitFirst(): void {
+  assertTrue("".splitFirst("") == ("", ""));
+  assertTrue("".splitFirst("x") == ("", ""));
+  assertTrue("".splitFirst("xy") == ("", ""));
+
+  assertTrue("abcdefghi".splitFirst("") == ("", "abcdefghi"));
+  assertTrue("abcdefghi".splitFirst("f") == ("abcde", "ghi"));
+  assertTrue("abcdefghi".splitFirst("i") == ("abcdefgh", ""));
+  assertTrue("abcdefghi".splitFirst("a") == ("", "bcdefghi"));
+  assertTrue("abcdefghi".splitFirst("z") == ("abcdefghi", ""));
+
+  assertTrue("abcdefghi".splitFirst("fg") == ("abcde", "hi"));
+  assertTrue("abcdefghi".splitFirst("hi") == ("abcdefg", ""));
+  assertTrue("abcdefghi".splitFirst("ab") == ("", "cdefghi"));
+  assertTrue("abcdefghi".splitFirst("gf") == ("abcdefghi", ""));
+
+  assertTrue("a/b/c/d".splitFirst("/") == ("a", "b/c/d"));
 }
 
 @test
@@ -282,9 +342,8 @@ fun testSubstringLarge(): void {
 @test
 fun testTrim(): void {
   assertEqual("".trim(), "");
-  assertEqual("a".trim(), "a");
+  assertEqual("a".trimRight(), "a");
   assertEqual("  a  ".trim(), "a");
-
   // All the special characters
   assertEqual("\u0020".trim(), "");
   assertEqual("\u00A0".trim(), "");
@@ -423,4 +482,75 @@ fun testToFromUtf8(): void {
     .map(UInt8::truncate);
   assertEqual(phrase.utf8().collect(Array), phraseBytes);
   assertEqual(String::fromUtf8(phraseBytes), phrase);
+}
+
+@test
+fun testIterSearch(): void {
+  expectFind = (str, pat, exp) -> {
+    i = str.getIter();
+    assertTrue(i.search(pat));
+    assertEqual(String::fromChars(i.collect(Array)), exp);
+  };
+
+  expectNotFind = (str, pat) -> {
+    i = str.getIter();
+    assertFalse(i.search(pat));
+    assertEqual(String::fromChars(i.collect(Array)), "");
+  };
+
+  expectFind("abcde", "a", "abcde");
+  expectFind("abcde", "b", "bcde");
+  expectFind("abcde", "c", "cde");
+  expectFind("abcde", "d", "de");
+  expectFind("abcde", "e", "e");
+  expectNotFind("abcde", "f");
+  expectFind("abcdeabcde", "c", "cdeabcde");
+
+  expectFind("abcde", "ab", "abcde");
+
+  expectFind("abcde", "bc", "bcde");
+  expectNotFind("abcde", "ef");
+  expectFind("abcdeabcde", "bc", "bcdeabcde");
+
+  expectNotFind("abcde", "abcdef");
+}
+
+@test
+fun testIterRSearch(): void {
+  expectFind = (str, pat, exp) -> {
+    i = str.getEndIter();
+    assertTrue(i.rsearch(pat));
+    assertEqual(String::fromChars(i.collect(Array)), exp);
+  };
+
+  expectNotFind = (str, pat) -> {
+    i = str.getEndIter();
+    assertFalse(i.rsearch(pat));
+    assertEqual(String::fromChars(i.collect(Array)), str);
+  };
+
+  expectFind("abcde", "a", "abcde");
+  expectFind("abcde", "b", "bcde");
+  expectFind("abcde", "c", "cde");
+  expectFind("abcde", "d", "de");
+  expectFind("abcde", "e", "e");
+  expectNotFind("abcde", "f");
+
+  expectFind("abcdeabcde", "c", "cde");
+
+  expectFind("abcde", "ab", "abcde");
+  expectFind("abcde", "bc", "bcde");
+  expectNotFind("abcde", "ef");
+  expectFind("abcdeabcde", "bc", "bcde");
+
+  expectNotFind("abcde", "abcdef");
+}
+
+@test
+fun testTakeUntil(): void {
+  x = "abcde";
+  assertEqual(
+    x.getIter().forward(1).takeUntil(x.getEndIter().rewind(1)),
+    "bcd",
+  );
 }

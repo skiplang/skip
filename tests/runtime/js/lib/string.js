@@ -225,17 +225,20 @@ module.exports = function(sk) {
         return this.__value;
       },
       'sub': function(start, len) {
-        start = sk.__.intToNumber(start);
-        len = sk.__.intToNumber(len);
+        start = sk.__.intToNumber(start.i);
+        var end = start + sk.__.intToNumber(len);
         const this_len = lengthOfString(this);
-        if(start < 0 || len < 0 || (start + len) > this_len) {
-          throwOutOfBounds(start + len);
+        if (start < 0) {
+          start = 0;
         }
-        if (start === 0 && len === this_len) {
+        if (end > this_len) {
+          end = this_len;
+        }
+        if (start === 0 && end === this_len) {
           return this;
         }
         const startIndex = indexOfChar(this.__value, getHasCombiningChars(this), start);
-        const endIndex = indexOfChar(this.__value, getHasCombiningChars(this), start + len);
+        const endIndex = indexOfChar(this.__value, getHasCombiningChars(this), end);
         return new String_(this.__value.substring(startIndex, endIndex), len !== (endIndex - startIndex));
       },
       'get': function(index) {
