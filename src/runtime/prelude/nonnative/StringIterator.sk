@@ -16,8 +16,21 @@ mutable class StringIterator private (
     mutable StringIterator(s, 0, s.length())
   }
 
+  static fun makeEnd(s: String): mutable StringIterator {
+    len = s.length();
+    mutable StringIterator(s, len, len)
+  }
+
   readonly fun clone(): mutable StringIterator {
     mutable StringIterator(this.s, this.i, this.length);
+  }
+
+  mutable fun assign(other: readonly StringIterator): void {
+    invariant(
+      this.s == other.s,
+      "Cannot assign from different string iterator",
+    );
+    this.!i = other.i;
   }
 
   mutable fun drop(n: Int): mutable StringIterator {
@@ -34,7 +47,7 @@ mutable class StringIterator private (
     if (this.atEnd()) {
       None()
     } else {
-      Some(this.s.get(this.i));
+      Some(this.s.unsafe_get(this.i));
     }
   }
 
@@ -47,10 +60,43 @@ mutable class StringIterator private (
     if (result.isSome()) {
       this.!i = this.i + 1;
     };
-    result;
+    result
+  }
+
+  mutable fun prev(): ?Char {
+    if (this.i == 0) {
+      None()
+    } else {
+      this.!i = this.i - 1;
+      this.current()
+    }
   }
 
   readonly fun substring(end: readonly StringIterator): String {
-    this.s.sub(this.i, end.i - this.i);
+    invariant(
+      end.i >= this.i,
+      "Called StringIterator::substring with end before start",
+    );
+    i = this.clone();
+    String::fromGenerator(() -> {
+      while (i.i != end.i) {
+        i.next() match {
+        | Some(ch) -> yield ch
+        | None() -> break void
+        }
+      }
+    })
+  }
+
+  readonly fun <(other: readonly StringIterator): Bool {
+    this.i < other.i
+  }
+
+  readonly fun >(other: readonly StringIterator): Bool {
+    this.i > other.i
+  }
+
+  readonly fun ==(other: readonly StringIterator): Bool {
+    this.i == other.i
   }
 }
