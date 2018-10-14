@@ -457,15 +457,13 @@ fun removeLeadingStar(line: String): String {
 }
 
 fun lowercaseFirst(str: String): String {
-  if (str == "") {
-    ""
-  } else {
-    first = str[0];
-    firstLowerCase = if (first >= 'A' || first <= 'Z') {
-      Char::fromCode(first.code() + 32)
-    } else {
-      first
+  String::fromGenerator(() -> {
+    i = str.getIter();
+    i.next() match {
+    | Some(c) ->
+      yield c.uncapitalize();
+      for (ch in i) yield ch
+    | None() -> void
     };
-    firstLowerCase.toString() + str.substring(1)
-  }
+  })
 }

@@ -37,7 +37,11 @@ untracked fun readMessage(log: String -> void): String {
   // Skip the extra \r\n
   extraLine = read_line();
   invariant(extraLine == "\r");
-  length = line.sub(contentLength, line.length() - contentLength - 1).toInt();
+  length = line
+    .getIter()
+    .forward(contentLength)
+    .takeUntil(line.getEndIter().rewind(1))
+    .toInt();
   read_stdin_bytes(length)
 }
 

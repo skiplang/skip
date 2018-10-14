@@ -9,7 +9,11 @@ module Token;
 
 extension class Token{} {
   fun stringLiteralValue(): String {
-    stringValue(this.value.sub(1, this.value.length() - 2))
+    stringValue(
+      this.value.getIter()
+        .forward(1)
+        .takeUntil(this.value.getEndIter().rewind(1)),
+    )
   }
 
   fun templateStringLiteralValue(): String {
@@ -17,7 +21,11 @@ extension class Token{} {
   }
 
   fun charLiteralValue(): Char {
-    charLiteral(this.value.sub(1, this.value.length() - 2))
+    charLiteral(
+      this.value.getIter()
+        .forward(1)
+        .takeUntil(this.value.getEndIter().rewind(1)),
+    )
   }
 
   fun isHexLiteralToken(): Bool {
@@ -36,7 +44,7 @@ extension class Token{} {
     if (isIntMinString(value)) {
       Int::min
     } else if (isHexLiteralString(value)) {
-      Chars.hexDigitsToInt(value.sub(2, value.length() - 2))
+      Chars.hexDigitsToInt(value.getIter().forward(2).takeString())
     } else {
       value.toInt()
     }
@@ -72,31 +80,37 @@ fun isHexLiteralString(value: String): Bool {
 }
 
 fun charLiteralCode(value: String): Int {
-  if (value[0] != '\\') {
-    value[0].code()
-  } else {
-    value[1] match {
-    | '0' -> 0x00
-    | 'a' -> 0x07
-    | 'b' -> 0x08
-    | 'e' -> 0x1B
-    | 'f' -> 0x0C
-    | 'n' -> 0x0A
-    | 'r' -> 0x0D
-    | 't' -> 0x09
-    | 'v' -> 0x0B
-    | '\\' -> 0x5C
-    | '\'' -> 0x27
-    | '"' -> 0x22
-    | '`' -> 0x60
-    | '$' -> 0x24
-    | '{' -> 0x7B
-    | 'x' -> Chars.hexDigitsToInt(value.sub(2, 2))
-    | 'u' -> Chars.hexDigitsToInt(value.sub(2, 4))
-    | 'U' -> Chars.hexDigitsToInt(value.sub(2, 8))
-    | _ -> invariant_violation("Unexpected simple char escape")
+  i = value.getIter();
+  i.next() match {
+  | Some(ch) if (ch != '\\') -> ch.code()
+  | Some _ ->
+    i.next() match {
+    | Some(ch) ->
+      ch match {
+      | '0' -> 0x00
+      | 'a' -> 0x07
+      | 'b' -> 0x08
+      | 'e' -> 0x1B
+      | 'f' -> 0x0C
+      | 'n' -> 0x0A
+      | 'r' -> 0x0D
+      | 't' -> 0x09
+      | 'v' -> 0x0B
+      | '\\' -> 0x5C
+      | '\'' -> 0x27
+      | '"' -> 0x22
+      | '`' -> 0x60
+      | '$' -> 0x24
+      | '{' -> 0x7B
+      | 'x' -> Chars.hexDigitsToInt(String::fromChars(i.take(2).collect(Array)))
+      | 'u' -> Chars.hexDigitsToInt(String::fromChars(i.take(4).collect(Array)))
+      | 'U' -> Chars.hexDigitsToInt(String::fromChars(i.take(8).collect(Array)))
+      | _ -> invariant_violation("Unexpected simple char escape")
+      }
+    | None() -> invariant_violation("Unexpected end of string after escape")
     }
-  }
+  | None() -> -1
+  };
 }
 
 fun charLiteral(value: String): Char {

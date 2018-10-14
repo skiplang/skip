@@ -383,7 +383,7 @@ class MainStringToVoidCodeMod() extends P.CodeMod {
               Array[
                 tokenTree with {
                   token => token with {
-                    value => value.sub(0, value.length() - 3) + "\"",
+                    value => value.take(value.length() - 3) + "\"",
                   },
                 },
               ],

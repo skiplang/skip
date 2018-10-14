@@ -1292,8 +1292,9 @@ private fun needsQuotes(s: String): Bool {
 // This needs to be made reversible and deal correctly with name clashes.
 // See T22100866
 private fun mangle(name: String): String {
-  String::tabulate(name.length(), i -> {
-    name[i] match {
+  i = name.getIter();
+  String::tabulate(name.length(), _ -> {
+    i.next().fromSome() match {
     | '+' | '-' | '.' | ':' -> '_'
     | '!' -> 'N'
     | '=' -> 'E'
@@ -1680,7 +1681,7 @@ fun prettyText(s: String): String {
     if (s.length() <= limit) {
       s
     } else {
-      s.sub(0, limit)
+      s.take(limit)
     },
   )
 }
@@ -4308,7 +4309,9 @@ fun llvmWriteFunctionDefinition(
   for (ref in asm.refs) {
     asm.declarationRefs.push((ref.i0 + refOffsetDelta, ref.i1))
   };
-  asm.declarationText.write(asm.text.toString().substring(defineEndOffset));
+  asm.declarationText.write(
+    asm.text.toString().getIter().forward(defineEndOffset).takeString(),
+  );
   asm.declarationText.writeChar('\n');
 
   asm.print(

@@ -24,7 +24,7 @@ fun main(): void {
 fun isRuleStart(comment: Comment): Bool {
   comment.kind == Token.LineComment() &&
     comment.value.endsWith(":\n") &&
-    comment.value.get(comment.value.length() - 3) != ' ' &&
+    !comment.value.endsWith(" :\n") &&
     comment.value.startsWith("// ")
 }
 
@@ -33,7 +33,7 @@ fun isRuleContinuation(comment: Comment): Bool {
 }
 
 fun printComment(comment: Comment): void {
-  print_raw(comment.value.substring(3))
+  print_raw(comment.value.getIter().forward(3).takeString())
 }
 
 fun reportError<T>(message: String): T {
@@ -80,7 +80,10 @@ mutable class Extractor{
   }
 
   mutable fun addRule(comment: Comment): mutable Rule {
-    ruleName = comment.value.sub(3, comment.value.length() - 5);
+    ruleName = comment.value
+      .getIter()
+      .forward(3)
+      .takeUntil(comment.value.getEndIter().rewind(2));
     printComment(comment);
     if (this.rules.containsKey(ruleName)) {
       reportError("Duplicate rule: " + ruleName)
@@ -93,7 +96,12 @@ mutable class Extractor{
 
   mutable fun continueRule(comment: Comment, rule: mutable Rule): void {
     printComment(comment);
-    rule.add(comment.value.sub(3, comment.value.length() - 4))
+    rule.add(
+      comment.value
+        .getIter()
+        .forward(3)
+        .takeUntil(comment.value.getEndIter().rewind(1)),
+    )
   }
 
   mutable fun endRule(rule: mutable Rule): void {

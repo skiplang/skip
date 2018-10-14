@@ -257,7 +257,7 @@ fun getContextOfRange(range: TextRange, fileContents: String): String {
       } else {
         // Do not display chevrons under leading spaces
         line_length = line_contents.length();
-        firstNonSpaceColumnOpt = line_contents.search(0, ch ~> ch != ' ');
+        firstNonSpaceColumnOpt = line_contents.search(ch ~> ch != ' ');
         chevron_start = firstNonSpaceColumnOpt match {
         | None() ->
           if (start.line() == end.line()) {
@@ -265,7 +265,11 @@ fun getContextOfRange(range: TextRange, fileContents: String): String {
           } else {
             line_length;
           }
-        | Some(firstNonSpaceColumn) -> max(start.column(), firstNonSpaceColumn)
+        | Some(firstNonSpaceColumn) ->
+          max(
+            start.column(),
+            line_contents.getIter().substring(firstNonSpaceColumn).length(),
+          )
         };
         chevron_length = if (start.line() == end.line()) {
           max(start.column() + 1, end.column()) - chevron_start;

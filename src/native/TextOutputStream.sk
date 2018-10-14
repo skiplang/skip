@@ -54,7 +54,7 @@ mutable base class .TextOutputStream {
   overridable mutable fun writeHex(n: Int, numDigits: Int): void {
     for (i in Range(0, numDigits)) {
       nibble = n.shr((numDigits - i - 1) * 4).and(0xF);
-      this.writeChar("0123456789abcdef"[nibble])
+      this.writeChar(Chars.intToHexDigit(nibble))
     }
   }
 

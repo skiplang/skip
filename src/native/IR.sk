@@ -144,7 +144,8 @@ base class UTF8String{
     backEndUsesUtf8 = ("\u1234".length() != 1);
 
     utf8 = if (backEndUsesUtf8) {
-      Array::fillBy(string.length(), i -> string[i].code())
+      i = string.getIter();
+      Array::fillBy(string.length(), _ -> i.next().fromSome().code())
     } else {
       // UCS4 code points.
       vector = mutable Vector<Int>[];
