@@ -3,7 +3,8 @@
 # This script "prepares" the binaries in the directory dist/
 
 pathToSkip=$(dirname "${BASH_SOURCE[0]}")
-installDir=$pathToSkip/dist/$(uname -s)
+distrib=$(uname -s)
+installDir="$pathToSkip/dist/$distrib"
 
 rm -Rf "$pathToSkip/dist"
 
@@ -14,7 +15,11 @@ mkdir "$installDir/lib"
 
 cp "$pathToSkip/sktools/skserver" "$installDir/bin"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
-strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
+if [ $distrib == Linux ]; then
+    strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
+else
+    cp "$pathToSkip/build/bin/skip_server" "$installDir/bin/skip_server"
+fi
 
 cp "$pathToSkip/build/src/runtime/native/lib/preamble.ll" "$installDir/lib"
 cp "$pathToSkip/build/src/runtime/native/libskip_runtime.a" "$installDir/lib"
