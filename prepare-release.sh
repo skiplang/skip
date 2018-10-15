@@ -17,7 +17,7 @@ cp "$pathToSkip/sktools/sk" "$installDir/bin"
 strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
 
 cp "$pathToSkip/build/src/runtime/native/lib/preamble.ll" "$installDir/lib"
-cp "$pathToSkip/build/tests/runtime/native/libskip_runtime.a" "$installDir/lib"
+cp "$pathToSkip/build/src/runtime/native/libskip_runtime.a" "$installDir/lib"
 cp "$pathToSkip/build/src/runtime/native/CMakeFiles/sk_standalone.src.dir/src/sk_standalone.cpp.o" "$installDir/lib"
 cp "$pathToSkip/build/third-party/install/lib/libfolly.a" "$installDir/lib"
 cp "$pathToSkip/build/third-party/install/lib/libunwind.a" "$installDir/lib"
