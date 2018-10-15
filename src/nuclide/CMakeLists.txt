@@ -1,7 +1,6 @@
 # ------------------------------------------------------------------------------
 # Nuclide Support
 add_skip_compiler_executable(skip_check ${CMAKE_CURRENT_SOURCE_DIR}:skip_check)
-add_skip_compiler_executable(skip_server ${CMAKE_CURRENT_SOURCE_DIR}:skip_server)
 add_skip_compiler_executable(skip_lsp ${CMAKE_CURRENT_SOURCE_DIR}:skip_lsp)
 add_skip_compiler_executable(skip_check_json ${CMAKE_CURRENT_SOURCE_DIR}:skip_check_json)
 add_skip_compiler_executable(skip_outline ${CMAKE_CURRENT_SOURCE_DIR}:skip_outline)

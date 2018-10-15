@@ -18,6 +18,7 @@ add_subdirectory(project)
 add_subdirectory(js)
 add_subdirectory(native)
 add_subdirectory(nuclide)
+add_subdirectory(server)
 
 set(PHASE)
 
