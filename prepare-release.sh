@@ -14,7 +14,7 @@ mkdir "$installDir/lib"
 
 cp "$pathToSkip/sktools/skserver" "$installDir/bin"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
-cp "$pathToSkip/build/bin/skip_server" "$installDir/bin"
+strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
 
 cp "$pathToSkip/build/src/runtime/native/lib/preamble.ll" "$installDir/lib"
 cp "$pathToSkip/build/tests/runtime/native/libskip_runtime.a" "$installDir/lib"
