@@ -21,18 +21,21 @@ else
     cp "$pathToSkip/build/bin/skip_server" "$installDir/bin/skip_server"
 fi
 
+cp -R src/runtime/prelude "$installDir/lib/prelude"
+
 cp "$pathToSkip/build/src/runtime/native/lib/preamble.ll" "$installDir/lib"
 cp "$pathToSkip/build/src/runtime/native/libskip_runtime.a" "$installDir/lib"
 cp "$pathToSkip/build/src/runtime/native/CMakeFiles/sk_standalone.src.dir/src/sk_standalone.cpp.o" "$installDir/lib"
 cp "$pathToSkip/build/third-party/install/lib/libfolly.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libunwind.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libdouble-conversion.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libicuuc.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libicui18n.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libicuio.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libicutu.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libicudata.a" "$installDir/lib"
-cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib"
 
+if [ $distrib == Linux ]; then
+    cp "$pathToSkip/build/third-party/install/lib/libunwind.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libdouble-conversion.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libicuuc.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libicui18n.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libicuio.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libicutu.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libicudata.a" "$installDir/lib"
+    cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib"
+fi
 
-cp -R src/runtime/prelude "$installDir/prelude"

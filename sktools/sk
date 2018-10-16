@@ -160,9 +160,13 @@ if [ $command == "build" ]; then
     # Adding the preamble to the .ll file
     cat "$preamble" "$skdir/out.ll" > "$skdir/preamble_and_out.ll"
 
-    # Linking it all together
-    "$clangpp" -s -o "$skdir/bin.out" -g \
-	     "$skdir/preamble_and_out.ll" "$standalone" \
+    system=$(uname -s)
+
+    if [ "$system" == "Linux" ]; then
+
+      # Linking it all together
+      "$clangpp" -s -o "$skdir/bin.out" -g \
+             "$skdir/preamble_and_out.ll" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
 	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
 	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
@@ -175,6 +179,36 @@ if [ $command == "build" ]; then
 	     -lboost_filesystem -lboost_chrono -lboost_date_time \
 	     -lboost_atomic -levent -ldl \
 	     -lpthread -lrt -Wl,--gc-sections
+    else
+	if [ "$system" == "Darwin" ]; then
+	  "$clangpp" -v -o "$skdir/bin.out" -g \
+            "$skdir/preamble_and_out.ll" "$standalone" \
+            -L"$thirdPartyLibDir/" \
+            -L/usr/lib/system/ \
+            -L/usr/local/lib/ \
+            -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+            -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+            -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+            -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+            "$skipRuntimeLib" \
+            /usr/local/Cellar/icu4c/61.1/lib/libicuuc.a \
+            /usr/local/Cellar/icu4c/61.1/lib/libicui18n.a \
+            /usr/local/Cellar/icu4c/61.1/lib/libicuio.a \
+            /usr/local/Cellar/icu4c/61.1/lib/libicutu.a \
+            /usr/local/Cellar/icu4c/61.1/lib/libicudata.a \
+            -framework System \
+            -lfolly -lglog -lgflags -ldouble-conversion -licucore \
+            -ljemalloc_pic \
+            -lpcre -lboost_thread-mt -lboost_system -lboost_context-mt \
+            -lboost_filesystem -lboost_chrono -lboost_date_time \
+            -lboost_atomic-mt -levent -ldl \
+            -lpthread
+	else
+	    2>&1 echo "Unknown system"
+	    exit 2
+	fi
+    fi
+
 
     echo "Written: $skdir/bin.out"
 fi
