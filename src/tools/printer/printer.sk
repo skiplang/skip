@@ -409,12 +409,12 @@ fun printComment(comment: Token.Comment): Doc {
             _ = pos.next();
             !starIndex = starIndex + 1
           | Some('*') ->
-            break " " + line.getIter().forward(starIndex).takeString()
-          | _ -> break line.getIter().forward(index).takeString()
+            break " " + line.getIter().forward(starIndex).collectString()
+          | _ -> break line.getIter().forward(index).collectString()
           }
         }
       } else {
-        line.getIter().forward(index).takeString()
+        line.getIter().forward(index).collectString()
       }
     } else {
       line

@@ -457,13 +457,15 @@ fun removeLeadingStar(line: String): String {
 }
 
 fun lowercaseFirst(str: String): String {
-  String::fromGenerator(() -> {
-    i = str.getIter();
-    i.next() match {
-    | Some(c) ->
-      yield c.uncapitalize();
-      for (ch in i) yield ch
-    | None() -> void
-    };
-  })
+  String::fromIterator(
+    (() -> {
+      i = str.getIter();
+      i.next() match {
+      | Some(c) ->
+        yield c.uncapitalize();
+        for (ch in i) yield ch
+      | None() -> void
+      };
+    })(),
+  )
 }

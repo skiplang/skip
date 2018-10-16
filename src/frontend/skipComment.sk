@@ -25,9 +25,9 @@ extension class Comment {
   fun contents(): String {
     v = this.value;
     this.kind match {
-    | LineComment() -> v.getIter().forward(2).takeString()
+    | LineComment() -> v.getIter().forward(2).collectString()
     | DelimitedComment() ->
-      v.getIter().forward(2).takeUntil(v.getEndIter().rewind(2))
+      v.getIter().forward(2).slice(v.getEndIter().rewind(2))
     }
   }
 }

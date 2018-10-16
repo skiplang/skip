@@ -78,14 +78,15 @@ mutable class StringIterator private (
       "Called StringIterator::substring with end before start",
     );
     i = this.clone();
-    String::fromGenerator(() -> {
+    gen: () -> mutable Iterator<Char> = () -> {
       while (i.i != end.i) {
         i.next() match {
         | Some(ch) -> yield ch
         | None() -> break void
         }
       }
-    })
+    };
+    String::fromChars(Array::createFromIterator(gen()))
   }
 
   readonly fun <(other: readonly StringIterator): Bool {

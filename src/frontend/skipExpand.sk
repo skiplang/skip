@@ -182,7 +182,7 @@ untracked fun populateCache(moduleDefs: SkipExpand.Module_map_t): void {
   pushDef = (prefix, fileName, moduleName, defName) -> {
     if (defName.startsWith(".")) {
       !moduleName = "U";
-      !defName = defName.getIter().forward(1).takeString();
+      !defName = defName.getIter().forward(1).collectString();
     };
     !defName = prefix + defName;
     fileDefs = fileMap.getOrAdd(fileName, () -> mutable Map[]);
@@ -373,7 +373,7 @@ fun module_map_fold(moduleMap: Module_map_t): A.Program {
           pos_opt match {
           | None() -> invariant_violation("ICE no pos for module_map_fold")
           | Some(pos) ->
-            Module((pos, moduleName.getIter().forward(1).takeString()))
+            Module((pos, moduleName.getIter().forward(1).collectString()))
           }
         }
       };
@@ -469,7 +469,7 @@ fun make_qualified_name(
   dotted_name = str.startsWith(".");
   (module_, name) match {
   | (Module((_, _)), _) if (dotted_name) ->
-    (pos, str.getIter().forward(1).takeString())
+    (pos, str.getIter().forward(1).collectString())
   | (Unqualified(), _) if (dotted_name) ->
     SkipError.error(
       pos,
@@ -634,7 +634,7 @@ fun current_defs_names(env: Env): DefNames {
 fun cstr_name(env: Env, name: (FileRange, String)): (FileRange, String) {
   if (name.i1.startsWith(".")) {
     (namePos, nameStr) = name;
-    !nameStr = nameStr.getIter().forward(1).takeString();
+    !nameStr = nameStr.getIter().forward(1).collectString();
     make_qualified_name(namePos, Unqualified(), (namePos, nameStr))
   } else {
     mdefs = current_defs_names(env);

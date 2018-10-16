@@ -11,16 +11,17 @@ extension mutable class StringIterator {
     this
   }
 
-  mutable fun takeString(n: Int = Int::max): String {
+  mutable fun collectString(n: Int = Int::max): String {
     String::fromChars(Array::createFromIterator(this.take(n)));
   }
 
-  mutable fun takeUntil(end: readonly StringIterator): String {
-    String::fromGenerator(() -> {
+  mutable fun slice(end: readonly StringIterator): String {
+    gen: () -> mutable Iterator<Char> = () -> {
       while (this < end) {
         yield this.next().fromSome()
       }
-    })
+    };
+    String::fromChars(Array::createFromIterator(gen()))
   }
 
   readonly fun compare(other: readonly StringIterator): Order {
@@ -68,7 +69,7 @@ extension mutable class StringIterator {
     }
   }
 
-  mutable fun rsearch(pattern: String): Bool {
+  mutable fun reverseSearch(pattern: String): Bool {
     if (pattern.isEmpty()) {
       true
     } else if (pattern.length() == 1) {

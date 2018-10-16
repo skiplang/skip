@@ -66,13 +66,13 @@ fun contentFromLines(tr: TextRange, lines: Vector<String>): String {
     line
       .getIter()
       .forward(tr.start.column())
-      .takeString(tr.end.column() - tr.start.column())
+      .collectString(tr.end.column() - tr.start.column())
   } else {
     gen: () -> mutable Iterator<String> = () -> {
       yield lines[tr.start.line()]
         .getIter()
         .forward(tr.start.column())
-        .takeString();
+        .collectString();
 
       for (i in Range(tr.start.line() + 1, tr.end.line())) {
         yield lines[i];

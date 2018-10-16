@@ -24,17 +24,17 @@ fun testExampleSplit(): void {
 @test
 fun testTakeString(): void {
   s = "abcde";
-  assertEqual(s.getIter().takeString(1), "a");
-  assertEqual(s.getIter().takeString(2), "ab");
-  assertEqual(s.getIter().takeString(5), "abcde");
-  assertEqual(s.getIter().takeString(6), "abcde");
+  assertEqual(s.getIter().collectString(1), "a");
+  assertEqual(s.getIter().collectString(2), "ab");
+  assertEqual(s.getIter().collectString(5), "abcde");
+  assertEqual(s.getIter().collectString(6), "abcde");
 
   i = s.getIter();
-  assertEqual(i.takeString(2), "ab");
-  assertEqual(i.takeString(2), "cd");
-  assertEqual(i.takeString(2), "e");
+  assertEqual(i.collectString(2), "ab");
+  assertEqual(i.collectString(2), "cd");
+  assertEqual(i.collectString(2), "e");
 
-  assertEqual("abcde".getIter().forward(1).takeString(), "bcde");
+  assertEqual("abcde".getIter().forward(1).collectString(), "bcde");
 }
 
 fun subHelp(s: String, n: Int, len: Int): String {
@@ -342,7 +342,7 @@ fun testSubstringLarge(): void {
 @test
 fun testTrim(): void {
   assertEqual("".trim(), "");
-  assertEqual("a".trimRight(), "a");
+  assertEqual("a".trim(), "a");
   assertEqual("  a  ".trim(), "a");
   // All the special characters
   assertEqual("\u0020".trim(), "");
@@ -519,13 +519,13 @@ fun testIterSearch(): void {
 fun testIterRSearch(): void {
   expectFind = (str, pat, exp) -> {
     i = str.getEndIter();
-    assertTrue(i.rsearch(pat));
+    assertTrue(i.reverseSearch(pat));
     assertEqual(String::fromChars(i.collect(Array)), exp);
   };
 
   expectNotFind = (str, pat) -> {
     i = str.getEndIter();
-    assertFalse(i.rsearch(pat));
+    assertFalse(i.reverseSearch(pat));
     assertEqual(String::fromChars(i.collect(Array)), str);
   };
 
@@ -549,8 +549,5 @@ fun testIterRSearch(): void {
 @test
 fun testTakeUntil(): void {
   x = "abcde";
-  assertEqual(
-    x.getIter().forward(1).takeUntil(x.getEndIter().rewind(1)),
-    "bcd",
-  );
+  assertEqual(x.getIter().forward(1).slice(x.getEndIter().rewind(1)), "bcd");
 }

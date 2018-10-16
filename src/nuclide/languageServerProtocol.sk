@@ -40,7 +40,7 @@ untracked fun readMessage(log: String -> void): String {
   length = line
     .getIter()
     .forward(contentLength)
-    .takeUntil(line.getEndIter().rewind(1))
+    .slice(line.getEndIter().rewind(1))
     .toInt();
   read_stdin_bytes(length)
 }

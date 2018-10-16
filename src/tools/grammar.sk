@@ -33,7 +33,7 @@ fun isRuleContinuation(comment: Comment): Bool {
 }
 
 fun printComment(comment: Comment): void {
-  print_raw(comment.value.getIter().forward(3).takeString())
+  print_raw(comment.value.getIter().forward(3).collectString())
 }
 
 fun reportError<T>(message: String): T {
@@ -83,7 +83,7 @@ mutable class Extractor{
     ruleName = comment.value
       .getIter()
       .forward(3)
-      .takeUntil(comment.value.getEndIter().rewind(2));
+      .slice(comment.value.getEndIter().rewind(2));
     printComment(comment);
     if (this.rules.containsKey(ruleName)) {
       reportError("Duplicate rule: " + ruleName)
@@ -100,7 +100,7 @@ mutable class Extractor{
       comment.value
         .getIter()
         .forward(3)
-        .takeUntil(comment.value.getEndIter().rewind(1)),
+        .slice(comment.value.getEndIter().rewind(1)),
     )
   }
 

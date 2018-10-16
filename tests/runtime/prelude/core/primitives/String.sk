@@ -15,7 +15,7 @@ native class .String uses Hashable, Show, Orderable {
   @may_alloc
   native static fun fromUtf8(bytes: readonly Array<UInt8>): String;
 
-  static fun fromGenerator(gen: () -> mutable Iterator<Char>): String {
+  private static fun fromGenerator(gen: () -> mutable Iterator<Char>): String {
     String::fromChars(Array::createFromIterator(gen()))
   }
 
@@ -29,11 +29,11 @@ native class .String uses Hashable, Show, Orderable {
   native private fun compare_raw(other: String): Int;
 
   fun take(len: Int): String {
-    this.getIter().takeString(len)
+    this.getIter().collectString(len)
   }
 
   fun sub(start: readonly StringIterator, len: Int): String {
-    start.clone().takeString(len)
+    start.clone().collectString(len)
   }
 
   fun inspect(): Inspect {
@@ -219,7 +219,7 @@ native class .String uses Hashable, Show, Orderable {
   }
 
   fun trimRight(): String {
-    this.rsearch(ch ~> !isWhitespace(ch)) match {
+    this.searchRight(ch ~> !isWhitespace(ch)) match {
     | Some(i) ->
       _ = i.next();
       this.getIter().substring(i)
@@ -240,7 +240,7 @@ native class .String uses Hashable, Show, Orderable {
     })
   }
 
-  fun rsearch(f: Char -> Bool): ?mutable StringIterator {
+  fun searchRight(f: Char -> Bool): ?mutable StringIterator {
     i = this.getEndIter();
     i.rfind(f).map(_ -> i)
   }
@@ -251,7 +251,7 @@ native class .String uses Hashable, Show, Orderable {
 
   fun splitLast(substring: String): (String, String) {
     i = this.getEndIter();
-    if (!i.rsearch(substring)) {
+    if (!i.reverseSearch(substring)) {
       ("", this)
     } else {
       a = this.getIter().substring(i);

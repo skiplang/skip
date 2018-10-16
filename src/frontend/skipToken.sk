@@ -10,9 +10,7 @@ module Token;
 extension class Token{} {
   fun stringLiteralValue(): String {
     stringValue(
-      this.value.getIter()
-        .forward(1)
-        .takeUntil(this.value.getEndIter().rewind(1)),
+      this.value.getIter().forward(1).slice(this.value.getEndIter().rewind(1)),
     )
   }
 
@@ -22,9 +20,7 @@ extension class Token{} {
 
   fun charLiteralValue(): Char {
     charLiteral(
-      this.value.getIter()
-        .forward(1)
-        .takeUntil(this.value.getEndIter().rewind(1)),
+      this.value.getIter().forward(1).slice(this.value.getEndIter().rewind(1)),
     )
   }
 
@@ -44,7 +40,7 @@ extension class Token{} {
     if (isIntMinString(value)) {
       Int::min
     } else if (isHexLiteralString(value)) {
-      Chars.hexDigitsToInt(value.getIter().forward(2).takeString())
+      Chars.hexDigitsToInt(value.getIter().forward(2).collectString())
     } else {
       value.toInt()
     }

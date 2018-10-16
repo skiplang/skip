@@ -4310,7 +4310,7 @@ fun llvmWriteFunctionDefinition(
     asm.declarationRefs.push((ref.i0 + refOffsetDelta, ref.i1))
   };
   asm.declarationText.write(
-    asm.text.toString().getIter().forward(defineEndOffset).takeString(),
+    asm.text.toString().getIter().forward(defineEndOffset).collectString(),
   );
   asm.declarationText.writeChar('\n');
 
