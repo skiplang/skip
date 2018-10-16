@@ -25,25 +25,27 @@ fun toInt31(i32: Int): Int {
   i32.shl(33).shr(1).ushr(32)
 }
 
-fun computeWasmStringHash(utf8: Array<Int>): Int {
-  toInt31(utf8.foldl((acc, ch) -> acc * 31 + ch, 0))
+fun computeWasmStringHash(utf8: Array<UInt8>): Int {
+  toInt31(utf8.foldl((acc, ch) -> acc * 31 + ch.toInt(), 0))
 }
 
-fun computeNativeStringHash(utf8: Array<Int>): Int {
+fun computeNativeStringHash(utf8: Array<UInt8>): Int {
   acc = 0xFFFFFFFF;
   rem = utf8.size() % 8;
   split = utf8.size() - rem;
-  for (idx in Range(0, split)) !acc = crc32_u8(acc, utf8[idx].and(0xdf));
+  for (idx in Range(0, split)) {
+    !acc = crc32_u8(acc, utf8[idx].toInt().and(0xdf))
+  };
   if (rem != 0) {
     for (_ in Range(0, 8 - rem)) !acc = crc32_u8(acc, 0);
     for (idx in Range(0, rem)) {
-      !acc = crc32_u8(acc, utf8[split + idx].and(0xdf))
+      !acc = crc32_u8(acc, utf8[split + idx].toInt().and(0xdf))
     };
   };
   acc.shr(1).or(0x80000000)
 }
 
-fun computeStringHash(utf8: Array<Int>): Int {
+fun computeStringHash(utf8: Array<UInt8>): Int {
   if (targetIsWasm()) {
     computeWasmStringHash(utf8)
   } else {

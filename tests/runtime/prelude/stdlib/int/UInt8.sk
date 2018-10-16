@@ -13,5 +13,6 @@ value class UInt8 private (private value: Int8) uses Integral {
     UInt8(Int8::truncate(n))
   }
   const min: UInt8 = UInt8::truncate(0);
+  const zero: UInt8 = UInt8::truncate(0);
   const max: UInt8 = UInt8::truncate(0xFF);
 }

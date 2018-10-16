@@ -101,7 +101,8 @@ extension class .String uses PrettyFormattable {
     | 's' -> text.writeString(this)
     | 'r' ->
       text.writeChar('\"');
-      for (b in UTF8String::make(this).utf8) {
+      for (b_ in UTF8String::make(this).utf8) {
+        b = b_.toInt();
         if (
           b >= 0x20 /* ' ' */ &&
           b < 0x7F &&

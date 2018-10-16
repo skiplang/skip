@@ -97,7 +97,8 @@ extension class .String uses AsmFormattable {
     | 'r' ->
       text.writeChar('\"');
 
-      for (b in UTF8String::make(this).utf8) {
+      for (b_ in UTF8String::make(this).utf8) {
+        b = b_.toInt();
         if (
           b >= 0x20 /* ' ' */ &&
           b < 0x7F &&
@@ -2131,7 +2132,9 @@ mutable class .AsmOutput{
                 // padded character data
                 utf8Index = n - 2;
                 StaticImageField(
-                  kByteConstants[str.utf8.maybeGet(utf8Index).default(0)],
+                  kByteConstants[
+                    str.utf8.maybeGet(utf8Index).default(UInt8::zero).toInt(),
+                  ],
                   64 + utf8Index * 8,
                 )
               },
@@ -2150,7 +2153,7 @@ mutable class .AsmOutput{
       createStaticImage{
         getField => i ~>
           s.utf8.maybeGet(i).map(n ->
-            StaticImageField(kByteConstants[n], i * 8)
+            StaticImageField(kByteConstants[n.toInt()], i * 8)
           ),
         common => this,
         symbolNameHint => ".cstr." + prettyText(s.string),
