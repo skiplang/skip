@@ -1,7 +1,15 @@
 fun searcher(find: Char): (String ~> Int) {
   s ~> {
-    maybeIdx = s.search(0, c ~> c == find);
-    maybeIdx.fromSome()
+    i = s.getIter();
+    count = 0;
+    loop {
+      i.next() match {
+      | Some(ch) if (ch == find) -> break count
+      | Some _ -> void
+      | None() -> break -1
+      };
+      !count = count + 1;
+    }
   }
 }
 

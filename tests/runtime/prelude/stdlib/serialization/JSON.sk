@@ -121,7 +121,7 @@ private fun charToString(ch: Char): .String {
 }
 
 private fun writeStringValue(write: .String -> void, s: .String): void {
-  target = (s.search(0, requiresEscape)) match {
+  target = (s.search(requiresEscape)) match {
   | None() -> s
   | Some _ ->
     strings = mutable Vector<.String>[];

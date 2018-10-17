@@ -101,7 +101,8 @@ extension class .String uses PrettyFormattable {
     | 's' -> text.writeString(this)
     | 'r' ->
       text.writeChar('\"');
-      for (b in UTF8String::make(this).utf8) {
+      for (b_ in UTF8String::make(this).utf8) {
+        b = b_.toInt();
         if (
           b >= 0x20 /* ' ' */ &&
           b < 0x7F &&
@@ -623,8 +624,9 @@ private fun needsQuotes(s: String): Bool {
 // This needs to be made reversible and deal correctly with name clashes.
 // See T22100866
 private fun mangle(name: String): String {
-  String::tabulate(name.length(), i -> {
-    name[i] match {
+  i = name.getIter();
+  String::tabulate(name.length(), _ -> {
+    i.next().fromSome() match {
     | '+' | '-' | '.' | ':' -> '_'
     | '!' -> 'N'
     | '=' -> 'E'
@@ -994,7 +996,7 @@ fun prettyText(s: String): String {
     if (s.length() <= limit) {
       s
     } else {
-      s.sub(0, limit)
+      s.take(limit)
     },
   )
 }

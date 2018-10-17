@@ -705,7 +705,7 @@ private fun createGCType(sc: SClass, env: GlobalEnv): ConstantStruct {
         sc.gclassName.id + "<...>"
       },
     );
-    for (c in name.utf8) pushField(kByteConstants[c]);
+    for (c in name.utf8) pushField(kByteConstants[c.toInt()]);
     pushField(kByteConstants[0]);
   };
 

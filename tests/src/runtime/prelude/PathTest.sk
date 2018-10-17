@@ -197,3 +197,12 @@ fun testResolve(): void {
     };
   });
 }
+
+@test
+fun testTrimTrailingSeparators(): void {
+  assertEqual(Path.trimTrailingSeparators("path/"), "path");
+  assertEqual(Path.trimTrailingSeparators("path///"), "path");
+  assertEqual(Path.trimTrailingSeparators("/"), "/");
+  assertEqual(Path.trimTrailingSeparators("///"), "/");
+  assertEqual(Path.trimTrailingSeparators(""), "");
+}

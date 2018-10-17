@@ -18,8 +18,20 @@ mutable class StringIterator private (
     mutable StringIterator(s, 0)
   }
 
+  static fun makeEnd(s: String): mutable StringIterator {
+    mutable StringIterator(s, s.utf8().size())
+  }
+
   readonly fun clone(): mutable StringIterator {
     mutable StringIterator(this.s, this.i);
+  }
+
+  mutable fun assign(other: readonly StringIterator): void {
+    invariant(
+      this.s == other.s,
+      "Cannot assign from different string iterator",
+    );
+    this.!i = other.i;
   }
 
   private static fun charFromCodeOpt(code: Int): ?Char {
@@ -46,6 +58,10 @@ mutable class StringIterator private (
     static::charFromCodeOpt(this.rawNext());
   }
 
+  mutable fun prev(): ?Char {
+    static::charFromCodeOpt(this.rawPrev());
+  }
+
   mutable fun drop(n: Int): mutable StringIterator {
     this.rawDrop(n);
     this
@@ -59,5 +75,19 @@ mutable class StringIterator private (
   @cpp_runtime
   private mutable native fun rawNext(): Int;
   @cpp_runtime
+  private mutable native fun rawPrev(): Int;
+  @cpp_runtime
   private mutable native fun rawDrop(n: Int): void;
+
+  readonly fun <(other: readonly StringIterator): Bool {
+    this.i < other.i
+  }
+
+  readonly fun >(other: readonly StringIterator): Bool {
+    this.i > other.i
+  }
+
+  readonly fun ==(other: readonly StringIterator): Bool {
+    this.i == other.i
+  }
 }

@@ -180,9 +180,9 @@ fun containsKey(key: String): Bool {
 untracked fun populateCache(moduleDefs: SkipExpand.Module_map_t): void {
   fileMap = mutable Map[];
   pushDef = (prefix, fileName, moduleName, defName) -> {
-    if (defName[0] == '.') {
+    if (defName.startsWith(".")) {
       !moduleName = "U";
-      !defName = defName.substring(1);
+      !defName = defName.getIter().forward(1).collectString();
     };
     !defName = prefix + defName;
     fileDefs = fileMap.getOrAdd(fileName, () -> mutable Map[]);
@@ -366,14 +366,14 @@ fun module_map_fold(moduleMap: Module_map_t): A.Program {
     .map((moduleName, posDefs) -> {
       (pos_opt, defs) = posDefs;
       module_name = {
-        kind = moduleName.sub(0, 1);
+        kind = moduleName.take(1);
         if (kind == "U") {
           Unqualified()
         } else {
           pos_opt match {
           | None() -> invariant_violation("ICE no pos for module_map_fold")
           | Some(pos) ->
-            Module((pos, moduleName.sub(1, moduleName.length() - 1)))
+            Module((pos, moduleName.getIter().forward(1).collectString()))
           }
         }
       };
@@ -442,16 +442,7 @@ class ExprState{
 /*****************************************************************************/
 fun is_uppercase(nm: A.Name): Bool {
   (_, name) = nm;
-  name.length() == 0 ||
-    ({
-      name[0] match {
-      | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L'
-      | 'M' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X'
-      | 'Y' | 'Z' ->
-        true
-      | _ -> false
-      }
-    })
+  name.isEmpty() || name.getIter().next().test(Chars.isUpperCaseLetter)
 }
 
 fun expand_module_name<Ta>(_env: Ta, mod_name: A.Name): Module_ {
@@ -475,9 +466,10 @@ fun make_qualified_name(
   name: (FileRange, String),
 ): (FileRange, String) {
   (_, str) = name;
-  dotted_name = str[0] == '.';
+  dotted_name = str.startsWith(".");
   (module_, name) match {
-  | (Module((_, _)), _) if (dotted_name) -> (pos, str.sub(1, str.length() - 1))
+  | (Module((_, _)), _) if (dotted_name) ->
+    (pos, str.getIter().forward(1).collectString())
   | (Unqualified(), _) if (dotted_name) ->
     SkipError.error(
       pos,
@@ -640,9 +632,9 @@ fun current_defs_names(env: Env): DefNames {
 /* Apply type names. */
 /*****************************************************************************/
 fun cstr_name(env: Env, name: (FileRange, String)): (FileRange, String) {
-  if (name.i1[0] == '.') {
+  if (name.i1.startsWith(".")) {
     (namePos, nameStr) = name;
-    !nameStr = nameStr.substring(1);
+    !nameStr = nameStr.getIter().forward(1).collectString();
     make_qualified_name(namePos, Unqualified(), (namePos, nameStr))
   } else {
     mdefs = current_defs_names(env);

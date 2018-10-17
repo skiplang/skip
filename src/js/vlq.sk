@@ -48,11 +48,18 @@ fun vlq_signed_of_int(value: Int): Int {
 }
 
 /* Base64 mapping */
-const base64: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+// printer-ignore
+const base64: Array<Char> = Array[
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O',
+  'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd',
+  'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+  't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
+  '8', '9', '+', '/',
+];
 
 /* Encode an integer in the range of 0 to 63 to a single base 64 digit */
 fun base64_char_of_int(number: Int): Char {
-  if ((0 <= number) && (number < base64.length())) {
+  if ((0 <= number) && (number < base64.size())) {
     base64[number]
   } else {
     invariant_violation("Must be between 0 and 63: " + number)

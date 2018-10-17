@@ -1,0 +1,101 @@
+module String;
+
+extension mutable class StringIterator {
+  mutable fun forward(n: Int): mutable StringIterator {
+    for (_ in Range(0, n)) _ = this.next();
+    this
+  }
+
+  mutable fun rewind(n: Int): mutable StringIterator {
+    for (_ in Range(0, n)) _ = this.prev();
+    this
+  }
+
+  mutable fun collectString(n: Int = Int::max): String {
+    String::fromChars(Array::createFromIterator(this.take(n)));
+  }
+
+  mutable fun slice(end: readonly StringIterator): String {
+    gen: () -> mutable Iterator<Char> = () -> {
+      while (this < end) {
+        yield this.next().fromSome()
+      }
+    };
+    String::fromChars(Array::createFromIterator(gen()))
+  }
+
+  readonly fun compare(other: readonly StringIterator): Order {
+    for (i in this.clone().zipLongest(other.clone())) {
+      cmp = i.i0.compare(i.i1);
+      if (!(cmp is EQ())) return cmp;
+    } else {
+      EQ()
+    }
+  }
+
+  // Returns true if the iterator starts with the given prefix.  If the prefix
+  // matches then the iterator is moved forward to the end of the match
+  // otherwise it is unchanged.
+  mutable fun startsWith(other: readonly StringIterator): Bool {
+    i = this.clone();
+    for (ch in other.clone()) {
+      i.next() match {
+      | Some(ch2) if (ch != ch2) -> return false
+      | Some _ -> void
+      | None() -> return return false
+      }
+    };
+    this.assign(i);
+    true
+  }
+
+  mutable fun search(pattern: String): Bool {
+    if (pattern.length() == 1) {
+      exp = pattern.getIter().next().fromSome();
+      loop {
+        this.current() match {
+        | None() -> break false
+        | Some(c) if (c == exp) -> break true
+        | Some(_) -> _ = this.next()
+        }
+      }
+    } else {
+      while (!this.atEnd()) {
+        if (this.clone().startsWith(pattern.getIter())) break true;
+        _ = this.next();
+      } else {
+        false
+      }
+    }
+  }
+
+  mutable fun reverseSearch(pattern: String): Bool {
+    if (pattern.isEmpty()) {
+      true
+    } else if (pattern.length() == 1) {
+      exp = pattern.getIter().next().fromSome();
+      loop {
+        this.prev() match {
+        | None() -> break false
+        | Some(c) if (c == exp) -> break true
+        | Some(_) -> void
+        }
+      }
+    } else {
+      while (this.prev().isSome()) {
+        if (this.clone().startsWith(pattern.getIter())) break true
+      } else {
+        false
+      }
+    }
+  }
+
+  mutable fun rfind(p: Char -> Bool): ?Char {
+    loop {
+      this.prev() match {
+      | Some(x) -> if (p(x)) break Some(x)
+      | None() -> break None()
+      }
+    }
+  }
+}

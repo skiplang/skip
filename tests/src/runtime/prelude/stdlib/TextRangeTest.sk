@@ -1,0 +1,47 @@
+@test
+fun testContentFromLines(): void {
+  text = Vector[
+    "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse",
+    "imperdiet diam id velit interdum, ac ultrices metus fermentum.",
+    "Suspendisse vehicula vestibulum ipsum eget tempus. Pellentesque sagittis",
+    "nisl vitae nunc blandit, auctor accumsan nibh porta. Vivamus ipsum",
+    "risus, viverra ut pellentesque vitae, accumsan quis mauris. Duis felis",
+    "tortor interdum at quam eget, auctor suscipit turpis. Duis imperdiet",
+    "tincidunt iaculis. Vestibulum id neque nunc. Aliquam vel facilisis orci,",
+    "lacinia sollicitudin purus. Sed sed sem lacus. Morbi magna ligula,",
+  ];
+
+  assertEqual(
+    TextRange.contentFromLines(
+      TextRange{
+        start => Position::create(1, 20),
+        end => Position::create(3, 20),
+      },
+      text,
+    ),
+    "lit interdum, ac ultrices metus fermentum.\nSuspendisse vehicula " +
+      "vestibulum ipsum eget tempus. Pellentesque sagittis\nnisl vitae nunc " +
+      "blan",
+  );
+
+  assertEqual(
+    TextRange.contentFromLines(
+      TextRange{
+        start => Position::create(0, 5),
+        end => Position::create(0, 30),
+      },
+      text,
+    ),
+    " ipsum dolor sit amet, co",
+  );
+
+  assertThrows(() -> {
+    TextRange.contentFromLines(
+      TextRange{
+        start => Position::create(7, 5),
+        end => Position::create(8, 30),
+      },
+      text,
+    )
+  });
+}

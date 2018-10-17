@@ -132,7 +132,7 @@ class GlobalEnv{
 // A UTF8-encoded string that knows its Skip checksum.
 base class UTF8String{
   // Although this says Int, they are guaranteed to be bytes [0, 255].
-  utf8: Array<Int>,
+  utf8: Array<UInt8>,
   string: String,
 } uses Hashable, Orderable, Show {
   static fun useShortStrings(): Bool {
@@ -140,19 +140,7 @@ base class UTF8String{
   }
 
   static fun make(string: String): UTF8String {
-    // Some of our back ends already expose utf8 from the string, some don't.
-    backEndUsesUtf8 = ("\u1234".length() != 1);
-
-    utf8 = if (backEndUsesUtf8) {
-      Array::fillBy(string.length(), i -> string[i].code())
-    } else {
-      // UCS4 code points.
-      vector = mutable Vector<Int>[];
-      vector.ensureCapacity(string.length());
-      for (c in string) c.utf8Encode().each(vector.push);
-      vector.toArray()
-    };
-
+    utf8 = string.utf8().collect(Array);
     if (utf8.size() < ptrByteSize && static::useShortStrings()) {
       ShortUTF8String{utf8, string}
     } else {
@@ -217,7 +205,7 @@ class ShortUTF8String extends UTF8String {
 }
 
 class LongUTF8String{runtimeHash: Int} extends UTF8String {
-  static fun makeLong(utf8: Array<Int>, string: String): LongUTF8String {
+  static fun makeLong(utf8: Array<UInt8>, string: String): LongUTF8String {
     invariant(
       utf8.size() >= 8 || !UTF8String::useShortStrings(),
       "This is not a long string.",

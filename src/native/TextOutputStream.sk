@@ -54,7 +54,7 @@ mutable base class .TextOutputStream {
   overridable mutable fun writeHex(n: Int, numDigits: Int): void {
     for (i in Range(0, numDigits)) {
       nibble = n.shr((numDigits - i - 1) * 4).and(0xF);
-      this.writeChar("0123456789abcdef"[nibble])
+      this.writeChar(Chars.intToHexDigit(nibble))
     }
   }
 
@@ -75,16 +75,14 @@ mutable base class .TextOutputStream {
   }
 
   // Write a string to out, escaping unprintable or non-ASCII characters.
-  mutable fun writeEscapedBytes<T: Sequence<Int>>(bytes: T): void {
+  mutable fun writeEscapedBytes<T: Sequence<UInt8>>(bytes: T): void {
     for (b in bytes) {
-      invariant(b >= 0 && b <= 0xff, "Expected byte values.");
-
-      c = Char::fromCode(b);
+      c = Char::fromCode(b.toInt());
       if (c >= ' ' && c < '\x7F' && c != '\"' && c != '\\') {
         this.writeChar(c)
       } else {
         this.write("\\x");
-        this.writeHex(b, 2)
+        this.writeHex(b.toInt(), 2)
       }
     }
   }

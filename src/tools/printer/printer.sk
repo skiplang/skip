@@ -408,12 +408,13 @@ fun printComment(comment: Token.Comment): Doc {
           | Some('\t') ->
             _ = pos.next();
             !starIndex = starIndex + 1
-          | Some('*') -> break " " + line.substring(starIndex)
-          | _ -> break line.substring(index)
+          | Some('*') ->
+            break " " + line.getIter().forward(starIndex).collectString()
+          | _ -> break line.getIter().forward(index).collectString()
           }
         }
       } else {
-        line.substring(index)
+        line.getIter().forward(index).collectString()
       }
     } else {
       line

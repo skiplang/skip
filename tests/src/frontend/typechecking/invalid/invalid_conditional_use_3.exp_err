@@ -14,10 +14,10 @@ The type: C
    |           ^
 12 |   "" + c
 
-File "../../runtime/prelude/core/primitives/String.sk", line 113, characters 12-24:
+File "../../runtime/prelude/core/primitives/String.sk", line 89, characters 12-24:
 Is not a subtype of: readonly Show
-111 |   }
-112 |
-113 |   fun +<T: readonly Show>(s: T): String {
-    |            ^^^^^^^^^^^^^
-114 |     this.concat(s.toString())
+87 |   }
+88 |
+89 |   fun +<T: readonly Show>(s: T): String {
+   |            ^^^^^^^^^^^^^
+90 |     this.concat(s.toString())

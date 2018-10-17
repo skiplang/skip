@@ -9,6 +9,9 @@ module String;
 
 extension class .String {
   native fun utf8(): IndexedSequence<UInt8>;
+
+  // This function is only defined for the non-native backend.  Don't use it.
+  native fun unsafe_get(x: Int): Char;
 }
 
 // This is only parameterized on T because changing that to UInt8 causes a

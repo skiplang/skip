@@ -22,8 +22,7 @@ mutable class MatchData{
   mutable fun transformTree(tree: P.ParseTree): ?P.ParseTree {
     tree match {
     | a @ P.TokenTree _ if (a.token.value.endsWith(kVarTokenPrefix)) ->
-      var = a.token.value.sub(
-        0,
+      var = a.token.value.take(
         a.token.value.length() - kVarTokenPrefix.length(),
       );
       Some(this.vars[var])
@@ -52,7 +51,7 @@ mutable class MatchData{
         name => P.TokenTree{token => tok @ Token.Token{value}},
       } if (value.endsWith(kVarTokenPrefix)) ->
         !replacedOne = true;
-        var = value.sub(0, value.length() - kVarTokenPrefix.length());
+        var = value.take(value.length() - kVarTokenPrefix.length());
         for (f in this.nameListVars[var].values()) {
           if (!args.isEmpty()) {
             seps.push(
@@ -200,7 +199,7 @@ class ParseTreeTemplate private {tree: P.ParseTree} {
       | P.NamedArgumentTree{
         name => P.TokenTree{token => Token.Token{value}},
       } if (value.endsWith(kVarTokenPrefix)) ->
-        !var = value.sub(0, value.length() - kVarTokenPrefix.length());
+        !var = value.take(value.length() - kVarTokenPrefix.length());
         true
       | _ -> false
       }
@@ -239,8 +238,7 @@ class ParseTreeTemplate private {tree: P.ParseTree} {
   ): Bool {
     (template, code) match {
     | (a @ P.TokenTree _, b @ _) if (a.token.value.endsWith(kVarTokenPrefix)) ->
-      var = a.token.value.sub(
-        0,
+      var = a.token.value.take(
         a.token.value.length() - kVarTokenPrefix.length(),
       );
       if (m.vars.maybeSet(var, b)) {

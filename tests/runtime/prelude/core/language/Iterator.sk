@@ -131,6 +131,20 @@ mutable base class .Iterator<+T> {
     mutable ZipIterator(this, other)
   }
 
+  // Returns a new iterator representing the tuples of the ith elements of this
+  // and the other iterator.  Unlike zip(), zipLongest() continues until both
+  // iterators are exhausted.
+  overridable mutable fun zipLongest<U>(
+    other: mutable Iterator<U>,
+  ): mutable Iterator<(?T, ?U)> {
+    loop {
+      (this.next(), other.next()) match {
+      | (None(), None()) -> break void
+      | i @ _ -> yield i
+      }
+    }
+  }
+
   // Returns a new iterator representing the results of calling the selection
   // function with tuples of the ith elements of this and the other iterator.
   overridable mutable fun zipWith<U, V>(
@@ -183,14 +197,11 @@ mutable base class .Iterator<+T> {
   // Returns Some(x) for the first item in this iterator that matches
   // the predicate, or None() if no items match.
   overridable mutable fun find(p: T -> Bool): ?T {
-    flag = true;
-    do
+    loop {
       this.next() match {
       | Some(x) -> if (p(x)) break Some(x)
-      | None() -> !flag = false
+      | None() -> break None()
       }
-     while (flag) else {
-      None()
     }
   }
 
@@ -290,7 +301,7 @@ mutable class TakeIterator<+T>(
   private mutable n: Int,
 ) extends Iterator<T> {
   readonly fun sizeHint(): ?Int {
-    this.base.sizeHint().map(sizeHint -> min(0, sizeHint - this.n))
+    this.base.sizeHint().map(sizeHint -> max(0, sizeHint - this.n))
   }
 
   mutable fun next(): ?T {

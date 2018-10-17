@@ -97,7 +97,8 @@ extension class .String uses AsmFormattable {
     | 'r' ->
       text.writeChar('\"');
 
-      for (b in UTF8String::make(this).utf8) {
+      for (b_ in UTF8String::make(this).utf8) {
+        b = b_.toInt();
         if (
           b >= 0x20 /* ' ' */ &&
           b < 0x7F &&
@@ -1292,8 +1293,9 @@ private fun needsQuotes(s: String): Bool {
 // This needs to be made reversible and deal correctly with name clashes.
 // See T22100866
 private fun mangle(name: String): String {
-  String::tabulate(name.length(), i -> {
-    name[i] match {
+  i = name.getIter();
+  String::tabulate(name.length(), _ -> {
+    i.next().fromSome() match {
     | '+' | '-' | '.' | ':' -> '_'
     | '!' -> 'N'
     | '=' -> 'E'
@@ -1680,7 +1682,7 @@ fun prettyText(s: String): String {
     if (s.length() <= limit) {
       s
     } else {
-      s.sub(0, limit)
+      s.take(limit)
     },
   )
 }
@@ -2130,7 +2132,9 @@ mutable class .AsmOutput{
                 // padded character data
                 utf8Index = n - 2;
                 StaticImageField(
-                  kByteConstants[str.utf8.maybeGet(utf8Index).default(0)],
+                  kByteConstants[
+                    str.utf8.maybeGet(utf8Index).default(UInt8::zero).toInt(),
+                  ],
                   64 + utf8Index * 8,
                 )
               },
@@ -2149,7 +2153,7 @@ mutable class .AsmOutput{
       createStaticImage{
         getField => i ~>
           s.utf8.maybeGet(i).map(n ->
-            StaticImageField(kByteConstants[n], i * 8)
+            StaticImageField(kByteConstants[n.toInt()], i * 8)
           ),
         common => this,
         symbolNameHint => ".cstr." + prettyText(s.string),
@@ -4308,7 +4312,9 @@ fun llvmWriteFunctionDefinition(
   for (ref in asm.refs) {
     asm.declarationRefs.push((ref.i0 + refOffsetDelta, ref.i1))
   };
-  asm.declarationText.write(asm.text.toString().substring(defineEndOffset));
+  asm.declarationText.write(
+    asm.text.toString().getIter().forward(defineEndOffset).collectString(),
+  );
   asm.declarationText.writeChar('\n');
 
   asm.print(

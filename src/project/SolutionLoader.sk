@@ -670,7 +670,7 @@ mutable class SolutionLoader{
       directoryFilter = excludes.default(_ ~> true);
       files = if (resolvedPath.endsWith("**")) {
         recursiveDir = Path.normalize(
-          resolvedPath.sub(0, resolvedPath.length() - 2),
+          resolvedPath.take(resolvedPath.length() - 2),
         );
         if (!FileSystem.isDirectory(recursiveDir)) {
           this.addError(
