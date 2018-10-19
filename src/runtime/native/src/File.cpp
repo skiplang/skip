@@ -46,6 +46,9 @@ String SKIP_read_stdin_bytes(SkipInt bytes) {
 String SKIP_read_line(void) {
   std::string line;
   std::getline(std::cin, line);
+  if (std::cin.fail()) {
+    throwRuntimeError("Error reading from stdin");
+  }
   return String{line};
 }
 

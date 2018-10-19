@@ -1,21 +1,50 @@
-command="$1"
+#
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+#
 
-if ! [ $command == "start" -o $command == "stop" -o $command == "status" \
-       -o $command == "build" -o $command == "check" -o $command == "help" \
-       -o "run" ]; then
-    >&2 echo "*********************************************"
-    >&2 echo "ERROR: invalid arguments!"
-    >&2 echo "*********************************************"
-    command="help"
+if [ -z "$1" ]; then
+    command="run"
+    root="$PWD"
+else
+    if [ "$1" == "--args" ]; then
+	command="run"
+	root="$PWD"
+	shift
+    else
+        command="$1"
+	shift
+
+	if [ -z "$1" ]; then
+	    root="$PWD"
+	else
+	    if [ "$1" == "--args" ]; then
+		root="$PWD"
+	    else
+		root=`realpath $1`
+	    fi
+	    shift
+	fi
+    fi
 fi
 
-if [ $command == "help" ]; then
-    >&2 echo "Usage:"
-    >&2 echo "\$ sk (start|stop|status|build|check) dirname";
-    exit 1
+if [ "$1" == "--args" ]; then
+    shift
 fi
 
-root=`realpath "$2"`
+case $command in
+    init|start|stop|status|build|check|run|restart)
+	;;
+    *)
+	>&2 echo "Usage:"
+	>&2 echo "\$ sk (init|start|stop|status|build|check|run|restart) dirname";
+	exit 1
+	;;
+
+esac
+
 project="$root/skip.project.json"
 skdir_escape_z="${root//z/zZ}"
 tmpdir=$(dirname $(mktemp -u))
@@ -24,7 +53,7 @@ errfile="$skdir/errors"
 
 if ! [ -d "$root" ]; then
     >&2 echo "*********************************************"
-    >&2 echo "ERROR: '$2' is not a valid directory name!"
+    >&2 echo "ERROR: '$root' is not a valid directory name!"
     >&2 echo "*********************************************"
     exit 1
 fi
@@ -40,18 +69,31 @@ if [ $command == "init" ]; then
     echo "    }" >> "$project"
     echo "  }" >> "$project"
     echo "}" >> "$project"
+
+
+    echo -n "-DUSE_JEMALLOC -msse4.2 -std=c++14 " > "$root/.ccopts"
+    echo -n "-O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer " >> "$root/.ccopts"
+    echo -n "-fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H " >> "$root/.ccopts"
+    echo -n "-lfolly -lglog -lgflags -lunwind -ldouble-conversion " >> "$root/.ccopts"
+    echo -n "-licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic " >> "$root/.ccopts"
+    echo -n "-lpcre -lboost_thread -lboost_system -lboost_context " >> "$root/.ccopts"
+    echo -n "-lboost_filesystem -lboost_chrono -lboost_date_time " >> "$root/.ccopts"
+    echo -n "-lboost_atomic -levent -ldl " >> "$root/.ccopts"
+    echo "-lpthread -lrt -Wl,--gc-sections" >> "$root/.ccopts"
+
     exit 0
 fi
 
+runAfterBuild=""
+
 if [ $command == "run" ]; then
-    if ! [ -f "$skdir/bin.out" ]; then
-	>&2 echo "*********************************************"
-	>&2 echo "ERROR: could not find any binary file!"
-	>&2 echo "*********************************************"
-	>&2 echo "Did you run?: $ sk build \"$root\""
-	exit 8
+    needRebuild=0
+    if [[ $(find -name "*.sk" -newer "$skdir/out.ll") ]]; then
+	runAfterBuild=1
+	command="build"
+    else
+	exec "$skdir/bin.out" "$@"
     fi
-    exec "$skdir/bin.out" "${@:2}"
 fi
 
 if ! [ -f "$project" ]; then
@@ -63,77 +105,138 @@ if ! [ -f "$project" ]; then
     exit 7
 fi
 
-server_pid=`ps xa | grep skserver | grep "$root" | awk '{ print $1 }'`
+stop() {
+    kill -9 `cat "$skdir/pids" 2> /dev/null` 2> /dev/null
+    rm -Rf "$skdir"
+}
+
 if [ $command == "stop" ]; then
-    if [ -z "$server_pid" ]; then
-	>&2 echo "Error: could not stop server, no server found"
-	exit 3
-    else
-	kill $server_pid
-	exit 0
-    fi
-fi
-
-if [ $command == "start" ]; then
-    if [ -f "$skdir/lock" ]; then
-	>&2 echo "*********************************************"
-	>&2 echo "Error: cannot start server."
-	>&2 echo "Another server is already running."
-	>&2 echo "*********************************************"
-	>&2 echo "If you don't think that should be the case run:"
-        >&2 echo "\$ rm -Rf \"$skdir\""
-	exit 4
-    else
-	"$skserver" "$root" &
-	echo "Server started for: $root"
-	exit 0
-    fi
-fi
-
-if ! [ $command == "start" ]; then
-
-    # The skserver is not running.
-    if ! [ -f "$skdir/lock" ]; then
-	>&2 echo "*********************************************"
-	>&2 echo "No skserver is running for $root"
-	>&2 echo "Run: sk start $root"
-	>&2 echo "*********************************************"
-	exit 5
-    fi
-
-    # The skserver is running, but skip_server died
-    skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
-    if [ -z "$skip_server_pid" ]; then
-	>&2 echo "Skip_server died unexpectedly.";
-	>&2 echo "Re-run:"
-	>&2 echo "\$ sk start $root";
-	if [ "$server_pid" ]; then
-	    kill $server_pid
-	fi;
-	exit 6
-    fi
-fi
-
-if [ $command == "status" ]; then
-    if [ -f "$skdir/lock" ]; then
-	echo "Skip server is running"
-    else
-	echo "No server running"
-    fi;
+    stop
+    echo "Server stopped"
     exit 0
 fi
 
-rm -f "$errfile"
-rm -f "$skdir/out.ll"
-rm -f "$skdir/preamble_and_out.ll"
-rm -f "$skdir/out.o"
-rm -f "$skdir/bin.out"
+start() {
+    fifo_command="$skdir/fifo_command"
+    fifo_response="$skdir/fifo_response"
+
+    if ! [ -e "$skdir" ] ; then
+	mkdir "$skdir"
+    fi
+
+    if ! [ -p "$fifo_command" ]; then
+	rm -f "$fifo_command"
+	mkfifo "$fifo_command"
+    fi
+
+    if ! [ -p "$fifo_response" ]; then
+	rm -f "$fifo_response"
+	mkfifo "$fifo_response"
+    fi
+
+    nohup sleep 86400 > "$fifo_command" < "$fifo_response" 2> /dev/null &
+    echo $! > "$skdir/pids"
+
+    if ! [ -d "$root" ] ; then
+	echo "$root is not a directory"
+	exit 1
+    fi
+
+    # This is a scheme to create a unique temporary file name derived
+    # from the directory named. We first replace the 'z' with "zZ" and
+    # then replace the '/' with z. This way, for example, the directory
+    # /tmp/myDirwithZinIt becomes ztmpzmyDirwithzZinIt.
+    # The idea is to create a valid filename given an absolute path.
+
+    skdir_escape_z="${root//z/zZ}"
+    tmpdir=$(dirname $(mktemp -u))
+    skdir="$tmpdir/.skserver_${skdir_escape_z//\//z}"
+
+    if ! [ -e "$skdir" ] ; then
+	>&2 echo "Missing directory $skdir"
+	exit 2
+    fi
+
+    # We use 2 fifos to talk to the skip_server.
+    fifo_command="$skdir/fifo_command"
+    fifo_response="$skdir/fifo_response"
+
+    if ! [ -p "$fifo_command" ]; then
+	>&2 echo "Missing: $fifo_command"
+	exit 2
+    fi
+
+    if ! [ -p "$fifo_response" ]; then
+	>&2 echo "Missing: $fifo_response"
+	exit 2
+    fi
+
+    find "$root" -name "*.sk" > "$skdir/skfiles"
+
+    read < "$fifo_response" &
+    readPid=$!
+    sync
+
+    nohup "$skip_server" "$root" --export-function-as main=skip_main \
+	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
+	  2> "$skdir/server_errors" &
+    echo $! >> "$skdir/pids"
+
+    echo "Server started for: $root"
+    wait $readPid
+    echo "Ready"
+}
+
+if [ $command == "start" ]; then
+    start
+    exit 0
+fi
+
+restart() {
+    stop
+    start
+    echo "Server restarted for: $root"
+}
+
+# Let's check if the ".sk" files changed, if it's the case,
+# restart the server.
+
+if [ -f "$skdir/skfiles" ]; then
+    find "$root" -name "*.sk" > "$skdir/skfiles_new"
+
+    if [ $(diff "$skdir/skfiles" "$skdir/skfiles_new") ]; then
+	echo "Detected a file configuration change"
+	restart
+    fi
+fi
+
+if [ $command == "restart" ]; then
+    restart
+    exit 0
+fi
+
+skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+if [ -z "$skip_server_pid" ]; then
+    if [ $command == "status" ]; then
+	echo "No server running"
+	exit 0
+    fi
+    echo "No server running, starting one now!"
+    start
+fi
+
+if [ $command == "status" ]; then
+    echo "The server is running"
+    exit 0
+fi
 
 read < "$skdir/fifo_response" &
+readPid=$!
 
 echo $command > "$skdir/fifo_command"
+sync
 
-wait
+wait $readPid
 
 if cat "$errfile" | head -n 1 | grep --quiet "No error"; then
     if [ $command == "check" ]; then
@@ -142,10 +245,13 @@ if cat "$errfile" | head -n 1 | grep --quiet "No error"; then
     fi
 else
     cat "$errfile" >&2;
+    rm -f "$skdir/bin.out"
     exit 2
 fi
 
 if [ $command == "build" ]; then
+    rm -f "$skdir/bin.out"
+
     # If built is called before the initialization of the server is over,
     # we could be in a situation where the .ll file is not yet ready.
     # This can also happen if another process was asking for a "check"
@@ -162,23 +268,22 @@ if [ $command == "build" ]; then
 
     system=$(uname -s)
 
+    if ! [ -f "$root/.ccopts" ]; then
+	>&2 echo "Could not find $root/.ccopts"
+	>&2 echo "You should run:"
+        >&2 echo "$ sk init"
+	exit 2
+    fi
+
     if [ "$system" == "Linux" ]; then
 
       # Linking it all together
       "$clangpp" -s -o "$skdir/bin.out" -g \
              "$skdir/preamble_and_out.ll" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
-	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
-	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
-	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
-	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
 	     "$skipRuntimeLib" \
-	     -lfolly -lglog -lgflags -lunwind -ldouble-conversion \
-	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
-	     -lpcre -lboost_thread -lboost_system -lboost_context \
-	     -lboost_filesystem -lboost_chrono -lboost_date_time \
-	     -lboost_atomic -levent -ldl \
-	     -lpthread -lrt -Wl,--gc-sections
+	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     `cat "$root/.ccopts"`
     else
 	if [ "$system" == "Darwin" ]; then
 	  "$clangpp" -v -o "$skdir/bin.out" -g \
@@ -211,4 +316,8 @@ if [ $command == "build" ]; then
 
 
     echo "Written: $skdir/bin.out"
+fi
+
+if [ $runAfterBuild ]; then
+    exec "$skdir/bin.out" "$@"
 fi

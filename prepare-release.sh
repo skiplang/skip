@@ -1,19 +1,29 @@
 #!/bin/bash
 
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+
 # This script "prepares" the binaries in the directory dist/
+
+if ! [ $1 ]; then
+    2>&1 echo "You must specify a release version"
+    exit 2
+fi
 
 pathToSkip=$(dirname "${BASH_SOURCE[0]}")
 distrib=$(uname -s)
-installDir="$pathToSkip/dist/$distrib"
+installDir="$PWD/skip-$distrib-$1"
 
-rm -Rf "$pathToSkip/dist"
+rm -Rf "$installDir"
 
-mkdir "$pathToSkip/dist"
 mkdir "$installDir"
 mkdir "$installDir/bin"
 mkdir "$installDir/lib"
 
-cp "$pathToSkip/sktools/skserver" "$installDir/bin"
+cp "$pathToSkip/sktools/install.sh" "$installDir/install.sh"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
 if [ $distrib == Linux ]; then
     strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
@@ -39,3 +49,4 @@ if [ $distrib == Linux ]; then
     cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib"
 fi
 
+cp "$pathToSkip/sktools/sk" "$installDir/bin/sk"
