@@ -90,7 +90,7 @@ runAfterBuild=""
 
 if [ $command == "run" ]; then
     needRebuild=0
-    if [[ $(find -name "*.sk" -newer "$skdir/out.ll") ]]; then
+    if [[ $(find "$root" -name "*.sk" -newer "$skdir/out.ll") ]]; then
 	runAfterBuild=1
 	command="build"
     else
