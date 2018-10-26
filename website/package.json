@@ -3,6 +3,7 @@
     "start": "docusaurus-start --port 8082"
   },
   "dependencies": {
+    "convert-source-map": "^1.6.0",
     "docusaurus": "^1.0.13",
     "express-http-proxy": "^1.0.6"
   }
