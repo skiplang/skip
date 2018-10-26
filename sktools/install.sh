@@ -196,7 +196,7 @@ echo "prelude=\"$dest/lib/skip/prelude\"" >> "$dest/bin/sk"
 echo "thirdPartyLibDir=\"$dest/lib/skip\"" >> "$dest/bin/sk"
 echo "linuxGnuLibDir=\"$dest/lib/x86_64-linux-gnu\"" >> "$dest/bin/sk"
 echo "skipRuntimeLib=\"$dest/lib/skip/libskip_runtime.a\"" >> "$dest/bin/sk"
-echo "skip_server=\"/home/ci/skip/build/bin/skip_server\"" >> "$dest/bin/sk"
+echo "skip_server=\"$dest/bin/skip_server\"" >> "$dest/bin/sk"
 
 cat "$root/bin/sk" >> "$dest/bin/sk"
 chmod 755 "$dest/bin/sk"
