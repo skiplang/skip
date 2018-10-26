@@ -23,12 +23,14 @@ else
 	    if [ "$1" == "--args" ]; then
 		root="$PWD"
 	    else
-		root=`realpath $1`
+		root="$1"
 	    fi
 	    shift
 	fi
     fi
 fi
+
+root=`realpath "$1"`
 
 if [ "$1" == "--args" ]; then
     shift
