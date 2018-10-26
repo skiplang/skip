@@ -30,7 +30,7 @@ else
     fi
 fi
 
-root=`realpath "$1"`
+root=`realpath "$root"`
 
 if [ "$1" == "--args" ]; then
     shift
@@ -76,12 +76,12 @@ if [ $command == "init" ]; then
     echo -n "-DUSE_JEMALLOC -msse4.2 -std=c++14 " > "$root/.ccopts"
     echo -n "-O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer " >> "$root/.ccopts"
     echo -n "-fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H " >> "$root/.ccopts"
-    echo -n "-lfolly -lglog -lgflags -lunwind -ldouble-conversion " >> "$root/.ccopts"
+    echo -n "-lfolly -lglog -lgflags -ldouble-conversion " >> "$root/.ccopts"
     echo -n "-licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic " >> "$root/.ccopts"
-    echo -n "-lpcre -lboost_thread -lboost_system -lboost_context " >> "$root/.ccopts"
+    echo -n "-lpcre -lboost_system " >> "$root/.ccopts"
     echo -n "-lboost_filesystem -lboost_chrono -lboost_date_time " >> "$root/.ccopts"
     echo -n "-lboost_atomic -levent -ldl " >> "$root/.ccopts"
-    echo "-lpthread -lrt -Wl,--gc-sections" >> "$root/.ccopts"
+    echo "-lpthread -Wl,--gc-sections" >> "$root/.ccopts"
 
     exit 0
 fi
@@ -277,39 +277,33 @@ if [ $command == "build" ]; then
 	exit 2
     fi
 
+    "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
+
     if [ "$system" == "Linux" ]; then
 
       # Linking it all together
       "$clangpp" -s -o "$skdir/bin.out" -g \
-             "$skdir/preamble_and_out.ll" "$standalone" \
+             "$skdir/preamble_and_out.o" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
 	     "$skipRuntimeLib" \
 	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     -lboost_thread \
+	     -lboost_context \
+	     -lboost_atomic \
+	     -lrt \
+	     -lunwind \
 	     `cat "$root/.ccopts"`
     else
 	if [ "$system" == "Darwin" ]; then
-	  "$clangpp" -v -o "$skdir/bin.out" -g \
-            "$skdir/preamble_and_out.ll" "$standalone" \
-            -L"$thirdPartyLibDir/" \
-            -L/usr/lib/system/ \
-            -L/usr/local/lib/ \
-            -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
-            -DUSE_JEMALLOC -msse4.2 -std=c++14 \
-            -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
-            -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
-            "$skipRuntimeLib" \
-            /usr/local/Cellar/icu4c/61.1/lib/libicuuc.a \
-            /usr/local/Cellar/icu4c/61.1/lib/libicui18n.a \
-            /usr/local/Cellar/icu4c/61.1/lib/libicuio.a \
-            /usr/local/Cellar/icu4c/61.1/lib/libicutu.a \
-            /usr/local/Cellar/icu4c/61.1/lib/libicudata.a \
-            -framework System \
-            -lfolly -lglog -lgflags -ldouble-conversion -licucore \
-            -ljemalloc_pic \
-            -lpcre -lboost_thread-mt -lboost_system -lboost_context-mt \
-            -lboost_filesystem -lboost_chrono -lboost_date_time \
-            -lboost_atomic-mt -levent -ldl \
-            -lpthread
+          "$clangpp" -o "$skdir/bin.out" -g \
+	     "$skdir/preamble_and_out.o" "$standalone" \
+	     -L"$thirdPartyLibDir/" \
+	     "$skipRuntimeLib" \
+	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     -lboost_thread-mt \
+	     -lboost_context-mt \
+	     -lboost_atomic-mt \
+	     `cat "$root/.ccopts"`
 	else
 	    2>&1 echo "Unknown system"
 	    exit 2
