@@ -304,6 +304,7 @@ if [ $command == "build" ]; then
           "$clangpp" -o "$skdir/bin.out" -g \
 	     "$skdir/preamble_and_out.o" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
+	     -L"$icuDir" \
 	     "$skipRuntimeLib" \
 	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
 	     -lboost_thread-mt \
