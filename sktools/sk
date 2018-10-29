@@ -72,17 +72,6 @@ if [ $command == "init" ]; then
     echo "  }" >> "$project"
     echo "}" >> "$project"
 
-
-    echo -n "-DUSE_JEMALLOC -msse4.2 -std=c++14 " > "$root/.ccopts"
-    echo -n "-O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer " >> "$root/.ccopts"
-    echo -n "-fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H " >> "$root/.ccopts"
-    echo -n "-lfolly -lglog -lgflags -ldouble-conversion " >> "$root/.ccopts"
-    echo -n "-licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic " >> "$root/.ccopts"
-    echo -n "-lpcre -lboost_system " >> "$root/.ccopts"
-    echo -n "-lboost_filesystem -lboost_chrono -lboost_date_time " >> "$root/.ccopts"
-    echo -n "-levent -ldl " >> "$root/.ccopts"
-    echo "-lpthread " >> "$root/.ccopts"
-
     exit 0
 fi
 
@@ -90,8 +79,8 @@ runAfterBuild=""
 
 if [ $command == "run" ]; then
 
-    if [ -f "$skdir/out.ll" ]; then
-	if [[ $(find "$root" -name "*.sk" -newer "$skdir/out.ll") ]]; then
+    if [ -f "$skdir/bin.out" ]; then
+	if [[ $(find "$root" -name "*.sk" -newer "$skdir/bin.out") ]]; then
 	    runAfterBuild=1
 	    command="build"
 	else
@@ -294,8 +283,17 @@ if [ $command == "build" ]; then
 	     -lboost_context \
 	     -lboost_atomic \
 	     -lrt \
-	     -lunwind \
 	     -Wl,--gc-sections \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
+	     -lpcre -lboost_system \
+	     -lboost_filesystem -lboost_chrono -lboost_date_time \
+	     -levent -ldl \
+	     -lpthread \
+	     -lunwind \
 	     `cat "$root/.ccopts"`
     else
 	if [ "$system" == "Darwin" ]; then
@@ -308,6 +306,15 @@ if [ $command == "build" ]; then
 	     -lboost_thread-mt \
 	     -lboost_context-mt \
 	     -lboost_atomic-mt \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
+	     -lpcre -lboost_system \
+	     -lboost_filesystem -lboost_chrono -lboost_date_time \
+	     -levent -ldl \
+	     -lpthread \
 	     `cat "$root/.ccopts"`
 	else
 	    2>&1 echo "Unknown system"
