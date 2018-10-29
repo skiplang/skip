@@ -80,8 +80,8 @@ if [ $command == "init" ]; then
     echo -n "-licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic " >> "$root/.ccopts"
     echo -n "-lpcre -lboost_system " >> "$root/.ccopts"
     echo -n "-lboost_filesystem -lboost_chrono -lboost_date_time " >> "$root/.ccopts"
-    echo -n "-lboost_atomic -levent -ldl " >> "$root/.ccopts"
-    echo "-lpthread -Wl,--gc-sections" >> "$root/.ccopts"
+    echo -n "-levent -ldl " >> "$root/.ccopts"
+    echo "-lpthread " >> "$root/.ccopts"
 
     exit 0
 fi
@@ -89,12 +89,17 @@ fi
 runAfterBuild=""
 
 if [ $command == "run" ]; then
-    needRebuild=0
-    if [[ $(find "$root" -name "*.sk" -newer "$skdir/out.ll") ]]; then
+
+    if [ -f "$skdir/out.ll" ]; then
+	if [[ $(find "$root" -name "*.sk" -newer "$skdir/out.ll") ]]; then
+	    runAfterBuild=1
+	    command="build"
+	else
+	    exec "$skdir/bin.out" "$@"
+	fi
+    else
 	runAfterBuild=1
 	command="build"
-    else
-	exec "$skdir/bin.out" "$@"
     fi
 fi
 
@@ -292,6 +297,7 @@ if [ $command == "build" ]; then
 	     -lboost_atomic \
 	     -lrt \
 	     -lunwind \
+	     -Wl,--gc-sections \
 	     `cat "$root/.ccopts"`
     else
 	if [ "$system" == "Darwin" ]; then

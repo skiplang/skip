@@ -160,8 +160,14 @@ if [ $system == "Darwin" ]; then
       exit 8
   fi
 
-fi
+  icuLib=`find /usr -name "libicuuc.a"`
+  icuLibDir=$(dirname "$icuLib")
 
+  if ! [ -f $icuLib ]; then
+      >&2 echo "Could not find libicuuc.a"
+      exit 8
+  fi
+fi
 
 
 if [ -z "$1" ]; then
@@ -197,6 +203,7 @@ echo "thirdPartyLibDir=\"$dest/lib/skip\"" >> "$dest/bin/sk"
 echo "linuxGnuLibDir=\"$dest/lib/x86_64-linux-gnu\"" >> "$dest/bin/sk"
 echo "skipRuntimeLib=\"$dest/lib/skip/libskip_runtime.a\"" >> "$dest/bin/sk"
 echo "skip_server=\"$dest/bin/skip_server\"" >> "$dest/bin/sk"
+echo "icuDir=\"$icuLibDir\""
 
 cat "$root/bin/sk" >> "$dest/bin/sk"
 chmod 755 "$dest/bin/sk"
