@@ -182,7 +182,6 @@ start() {
 
     read < "$fifo_response" &
     readPid=$!
-    sync
 
     nohup "$skip_server" "$root" --export-function-as main=skip_main \
 	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
@@ -241,7 +240,6 @@ read < "$skdir/fifo_response" &
 readPid=$!
 
 echo $command > "$skdir/fifo_command"
-sync
 
 wait $readPid
 
