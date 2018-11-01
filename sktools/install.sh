@@ -169,9 +169,17 @@ if [ $system == "Darwin" ]; then
   fi
 fi
 
-
 if [ -z "$1" ]; then
-    dest="/usr"
+    if [ "Linux" == $system ]; then
+	dest="/usr"
+    else
+        if [ "Darwin" == $system ]; then
+            dest="/usr/local"
+        else
+            2>&1 echo "Unsupported system"
+            exit 2
+        fi
+    fi
 else
     dest="$1"
 fi
