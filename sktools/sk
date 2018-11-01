@@ -72,6 +72,8 @@ if [ $command == "init" ]; then
     echo "  }" >> "$project"
     echo "}" >> "$project"
 
+    touch "$root/.ccopts"
+
     exit 0
 fi
 
@@ -263,10 +265,9 @@ if [ $command == "build" ]; then
     system=$(uname -s)
 
     if ! [ -f "$root/.ccopts" ]; then
-	>&2 echo "Could not find $root/.ccopts"
-	>&2 echo "You should run:"
-        >&2 echo "$ sk init"
-	exit 2
+	ccopts=""
+    else
+	`cat "$root/.ccopts"`
     fi
 
     "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
@@ -294,7 +295,7 @@ if [ $command == "build" ]; then
 	     -levent -ldl \
 	     -lpthread \
 	     -lunwind \
-	     `cat "$root/.ccopts"`
+	     $ccopts
     else
 	if [ "$system" == "Darwin" ]; then
           "$clangpp" -o "$skdir/bin.out" -g \
@@ -315,7 +316,7 @@ if [ $command == "build" ]; then
 	     -lboost_filesystem -lboost_chrono -lboost_date_time \
 	     -levent -ldl \
 	     -lpthread \
-	     `cat "$root/.ccopts"`
+	     $ccopts
 	else
 	    2>&1 echo "Unknown system"
 	    exit 2
