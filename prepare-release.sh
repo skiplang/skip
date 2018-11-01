@@ -27,8 +27,10 @@ cp "$pathToSkip/sktools/install.sh" "$installDir/install.sh"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
 if [ $distrib == Linux ]; then
     strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
+    strip --strip-unneeded "$pathToSkip/build/bin/skip_printer" -o "$installDir/bin/skip_printer"
 else
     cp "$pathToSkip/build/bin/skip_server" "$installDir/bin/skip_server"
+    cp "$pathToSkip/build/bin/skip_printer" "$installDir/bin/skip_printer"
 fi
 
 cp -R src/runtime/prelude "$installDir/lib/prelude"

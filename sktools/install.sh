@@ -192,6 +192,7 @@ rm -Rf "$dest/lib/skip"
 cp -R "$root/lib/" "$dest/lib/skip"
 
 cp "$root/bin/skip_server" "$dest/bin/skip_server"
+cp "$root/bin/skip_printer" "$dest/bin/skip_printer"
 
 echo "#!/bin/bash" > "$dest/bin/sk"
 

@@ -130,16 +130,6 @@ fi
 # Stop the server
 "$bin/sk" stop "$dir" > /dev/null
 
-# Run from start, make sure it doesn't start a new server
-"$bin/sk" run "$dir" > /dev/null
-
-pids=`ps xa | grep skip_server | grep -v "grep" | awk '{ print $1 }' 2> /dev/null`
-if [ -z pids ]; then
-    testFAILED "FAILURE: running an unmodified directory should not restart a server!"
-else
-    testOK "Test unmodified dir should run binary"
-fi
-
 # Cwd into the directory and make sure everything works with the defaults.
 cd "$dir"
 if "$bin/sk" | grep --quiet "Hello"; then
