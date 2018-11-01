@@ -1,0 +1,332 @@
+#
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+#
+
+if [ -z "$1" ]; then
+    command="run"
+    root="$PWD"
+else
+    if [ "$1" == "--args" ]; then
+	command="run"
+	root="$PWD"
+	shift
+    else
+        command="$1"
+	shift
+
+	if [ -z "$1" ]; then
+	    root="$PWD"
+	else
+	    if [ "$1" == "--args" ]; then
+		root="$PWD"
+	    else
+		root="$1"
+	    fi
+	    shift
+	fi
+    fi
+fi
+
+root=`realpath "$root"`
+
+if [ "$1" == "--args" ]; then
+    shift
+fi
+
+case $command in
+    init|start|stop|status|build|check|run|restart)
+	;;
+    *)
+	>&2 echo "Usage:"
+	>&2 echo "\$ sk (init|start|stop|status|build|check|run|restart) dirname";
+	exit 1
+	;;
+
+esac
+
+project="$root/skip.project.json"
+skdir_escape_z="${root//z/zZ}"
+tmpdir=$(dirname $(mktemp -u))
+skdir="$tmpdir/.skserver_${skdir_escape_z//\//z}"
+errfile="$skdir/errors"
+
+if ! [ -d "$root" ]; then
+    >&2 echo "*********************************************"
+    >&2 echo "ERROR: '$root' is not a valid directory name!"
+    >&2 echo "*********************************************"
+    exit 1
+fi
+
+if [ $command == "init" ]; then
+    echo "{" > "$project"
+    echo "  \"skipVersion\": \"1.0\"," >> "$project"
+    echo "  \"programUnits\": {" >> "$project"
+    echo "    \"a.out\": {" >> "$project"
+    echo "      \"kind\": \"Program\"," >> "$project"
+    echo "      \"sources\": [\".\"]," >> "$project"
+    echo "      \"references\": [{ \"path\": \"$prelude\" }]" >> "$project"
+    echo "    }" >> "$project"
+    echo "  }" >> "$project"
+    echo "}" >> "$project"
+
+    touch "$root/.ccopts"
+
+    exit 0
+fi
+
+runAfterBuild=""
+
+if [ $command == "run" ]; then
+
+    if [ -f "$skdir/bin.out" ]; then
+	if [[ $(find "$root" -name "*.sk" -newer "$skdir/bin.out") ]]; then
+	    runAfterBuild=1
+	    command="build"
+	else
+	    exec "$skdir/bin.out" "$@"
+	fi
+    else
+	runAfterBuild=1
+	command="build"
+    fi
+fi
+
+if ! [ -f "$project" ]; then
+    >&2 echo "*********************************************"
+    >&2 echo "ERROR: $project doesn't exist!"
+    >&2 echo "*********************************************"
+    >&2 echo "You can create a default project file with:"
+    >&2 echo "\$ sk init $root"
+    exit 7
+fi
+
+stop() {
+    kill -9 `cat "$skdir/pids" 2> /dev/null` 2> /dev/null
+    rm -Rf "$skdir"
+}
+
+if [ $command == "stop" ]; then
+    stop
+    echo "Server stopped"
+    exit 0
+fi
+
+start() {
+    fifo_command="$skdir/fifo_command"
+    fifo_response="$skdir/fifo_response"
+
+    if ! [ -e "$skdir" ] ; then
+	mkdir "$skdir"
+    fi
+
+    if ! [ -p "$fifo_command" ]; then
+	rm -f "$fifo_command"
+	mkfifo "$fifo_command"
+    fi
+
+    if ! [ -p "$fifo_response" ]; then
+	rm -f "$fifo_response"
+	mkfifo "$fifo_response"
+    fi
+
+    nohup sleep 86400 > "$fifo_command" < "$fifo_response" 2> /dev/null &
+    echo $! > "$skdir/pids"
+
+    if ! [ -d "$root" ] ; then
+	echo "$root is not a directory"
+	exit 1
+    fi
+
+    # This is a scheme to create a unique temporary file name derived
+    # from the directory named. We first replace the 'z' with "zZ" and
+    # then replace the '/' with z. This way, for example, the directory
+    # /tmp/myDirwithZinIt becomes ztmpzmyDirwithzZinIt.
+    # The idea is to create a valid filename given an absolute path.
+
+    skdir_escape_z="${root//z/zZ}"
+    tmpdir=$(dirname $(mktemp -u))
+    skdir="$tmpdir/.skserver_${skdir_escape_z//\//z}"
+
+    if ! [ -e "$skdir" ] ; then
+	>&2 echo "Missing directory $skdir"
+	exit 2
+    fi
+
+    # We use 2 fifos to talk to the skip_server.
+    fifo_command="$skdir/fifo_command"
+    fifo_response="$skdir/fifo_response"
+
+    if ! [ -p "$fifo_command" ]; then
+	>&2 echo "Missing: $fifo_command"
+	exit 2
+    fi
+
+    if ! [ -p "$fifo_response" ]; then
+	>&2 echo "Missing: $fifo_response"
+	exit 2
+    fi
+
+    find "$root" -name "*.sk" > "$skdir/skfiles"
+
+    read < "$fifo_response" &
+    readPid=$!
+
+    nohup "$skip_server" "$root" --export-function-as main=skip_main \
+	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
+	  2> "$skdir/server_errors" &
+    echo $! >> "$skdir/pids"
+
+    echo "Server started for: $root"
+    wait $readPid
+    echo "Ready"
+}
+
+if [ $command == "start" ]; then
+    start
+    exit 0
+fi
+
+restart() {
+    stop
+    start
+    echo "Server restarted for: $root"
+}
+
+# Let's check if the ".sk" files changed, if it's the case,
+# restart the server.
+
+if [ -f "$skdir/skfiles" ]; then
+    find "$root" -name "*.sk" > "$skdir/skfiles_new"
+
+    if [ $(diff "$skdir/skfiles" "$skdir/skfiles_new") ]; then
+	echo "Detected a file configuration change"
+	restart
+    fi
+fi
+
+if [ $command == "restart" ]; then
+    restart
+    exit 0
+fi
+
+skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+if [ -z "$skip_server_pid" ]; then
+    if [ $command == "status" ]; then
+	echo "No server running"
+	exit 0
+    fi
+    echo "No server running, starting one now!"
+    start
+fi
+
+if [ $command == "status" ]; then
+    echo "The server is running"
+    exit 0
+fi
+
+read < "$skdir/fifo_response" &
+readPid=$!
+
+echo $command > "$skdir/fifo_command"
+
+wait $readPid
+
+if cat "$errfile" | head -n 1 | grep --quiet "No error"; then
+    if [ $command == "check" ]; then
+	cat "$errfile";
+	exit 0
+    fi
+else
+    cat "$errfile" >&2;
+    rm -f "$skdir/bin.out"
+    exit 2
+fi
+
+if [ $command == "build" ]; then
+    rm -f "$skdir/bin.out"
+
+    # If built is called before the initialization of the server is over,
+    # we could be in a situation where the .ll file is not yet ready.
+    # This can also happen if another process was asking for a "check"
+    # and so the server was responding to that other process.
+    # These races are rare enough that we are just going to wait for
+    # the file to be written.
+    while [ ! -f "$skdir/out.ll" ];
+    do
+	sleep 1
+    done;
+
+    # Adding the preamble to the .ll file
+    cat "$preamble" "$skdir/out.ll" > "$skdir/preamble_and_out.ll"
+
+    system=$(uname -s)
+
+    if ! [ -f "$root/.ccopts" ]; then
+	ccopts=""
+    else
+	`cat "$root/.ccopts"`
+    fi
+
+    "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
+
+    if [ "$system" == "Linux" ]; then
+
+      # Linking it all together
+      "$clangpp" -s -o "$skdir/bin.out" -g \
+             "$skdir/preamble_and_out.o" "$standalone" \
+	     -L"$thirdPartyLibDir/" \
+	     "$skipRuntimeLib" \
+	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     -lboost_thread \
+	     -lboost_context \
+	     -lboost_atomic \
+	     -lrt \
+	     -Wl,--gc-sections \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
+	     -lpcre -lboost_system \
+	     -lboost_filesystem -lboost_chrono -lboost_date_time \
+	     -levent -ldl \
+	     -lpthread \
+	     -lunwind \
+	     $ccopts
+    else
+	if [ "$system" == "Darwin" ]; then
+          "$clangpp" -o "$skdir/bin.out" -g \
+	     "$skdir/preamble_and_out.o" "$standalone" \
+	     -L"$thirdPartyLibDir/" \
+	     -L"$icuDir" \
+	     "$skipRuntimeLib" \
+	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
+	     -lboost_thread-mt \
+	     -lboost_context-mt \
+	     -lboost_atomic-mt \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
+	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
+	     -lpcre -lboost_system \
+	     -lboost_filesystem -lboost_chrono -lboost_date_time \
+	     -levent -ldl \
+	     -lpthread \
+	     $ccopts
+	else
+	    2>&1 echo "Unknown system"
+	    exit 2
+	fi
+    fi
+
+
+    echo "Written: $skdir/bin.out"
+fi
+
+if [ $runAfterBuild ]; then
+    exec "$skdir/bin.out" "$@"
+fi
