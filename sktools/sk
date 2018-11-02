@@ -178,6 +178,16 @@ start() {
 	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
 	  2> "$skdir/server_errors" &
     echo $! >> "$skdir/pids"
+    
+    sleep 1
+
+    skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+    if [ -z "$skip_server_pid" ]; then
+        >&2 echo "Could not start the server"
+        cat "$skdir/server_errors" 1>&2
+	kill -9 `cat "$skdir/pids" 2> /dev/null` 2> /dev/null
+        exit 9
+    fi
 
     echo "Server started for: $root"
     wait $readPid
