@@ -15,42 +15,56 @@
  */
 /*****************************************************************************/
 
+untracked fun build(target: String): void {
+  compile(Array[target])
+}
+
+untracked fun writeFile(filename: String, content: String): void {
+  FileSystem.writeTextFile(filename, content)
+}
+
+untracked fun writeStatus(status: String): void {
+  print_string(status)
+}
+
 untracked fun compileLoop(target: String): void {
+  outputs = kConfig.mainConfig.outputFiles;
+  if (outputs.size() != 1) {
+    invariant_violation("skip_server expects exactly one output file");
+  };
+  skdir = Path.dirname(outputs[0]);
   command = "";
   errors = Vector[];
   files = SkipProject.getFilesToAnalyze(target).flatMap(x -> Success(x)) match {
-  | Success(x) -> x
+  | Success(x) -> List::createFromItems(x)
   | Failure(errorl) ->
     debug(errorl);
-    invariant_violation("Oops")
+    invariant_violation("Error: could not find target")
   };
   loop {
-    print_string("SkipCheck running");
-    !errors = SkipMain.compileWithErrors(List::createFromItems(files))
+    !errors = SkipMain.compileWithErrors(files)
       .maybeFailure()
       .default(Vector[])
       .take(100);
-    if (errors.isEmpty()) {
-      print_string(command);
-      if (command == "build") {
-        print_string("BUILDING!");
-        compile(files.collect(Array));
-        print_string("DONE!");
-      } else {
-        print_string("No errors!");
-        FileSystem.writeTextFile("/tmp/errors.txt", "No errors!")
-      }
+    errorStr = if (errors.isEmpty()) {
+      "No errors!\n"
     } else {
-      errorStr = errors.join("\n");
-      print_raw(errorStr);
-      FileSystem.writeTextFile("/tmp/errors.txt", errorStr)
+      errors.join("\n")
     };
-    print_string("Ready");
-    !command = read_line();
-    print_string("Command received: " + command);
+    writeFile(skdir + "/errors", errorStr);
+    if (command == "build" && errors.isEmpty()) {
+      build(target)
+    };
+    status = if (errors.isEmpty()) "OK" else "Error";
+    writeStatus(status);
+    !command = read_line()
   }
 }
 
 untracked fun main(): void {
-  compileLoop(SkipAnalyze.pathOfArguments());
+  args = arguments();
+  if (args.size() < 1) {
+    invariant_violation("Usage: skip_server path");
+  };
+  compileLoop(args[0]);
 }
