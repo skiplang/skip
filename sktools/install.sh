@@ -22,9 +22,17 @@ $ sudo apt-get install clang-6.0 libgoogle-glog-dev libpcre++-dev libboost-all-d
 
 root=$(get_script_dir)
 
-if ! [ -f "/usr/bin/clang++" ]; then
-    >&2 echo "Error: could not find clang++"
-    exit 8
+# If we have the exact version we want, pick that.
+if [ -f "/usr/bin/clang++-6.0" ]; then
+    clangpp="/usr/bin/clang++-6.0"
+else
+    # Otherwise, fall back on whatever is there.
+    if [ -f "/usr/bin/clang++" ]; then
+        clangpp="/usr/bin/clang++"
+    else
+        >&2 echo "Error: could not find clang++"
+        exit 8
+    fi
 fi
 
 # Checking that we have everything
