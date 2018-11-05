@@ -24,6 +24,7 @@ mkdir "$installDir/bin"
 mkdir "$installDir/lib"
 
 cp "$pathToSkip/sktools/install.sh" "$installDir/install.sh"
+cp "$pathToSkip/sktools/INSTALL.md" "$installDir/INSTALL.md"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
 if [ $distrib == Linux ]; then
     strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
