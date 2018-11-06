@@ -110,6 +110,26 @@ else
     testFAILED "The server should NOT have reported an error"
 fi
 
+# Link with a C file (using ccopts) make sure it works.
+
+echo "@cpp_extern native fun hello(): void;" > "$dir/test.sk"
+echo "fun main(): void { hello() }" >> "$dir/test.sk"
+echo "#include<stdio.h>" > "$dir/hello.c"
+echo "void SKIP_hello() { printf(\"Hello from C!\"); }" >> "$dir/hello.c"
+echo "$dir/hello.o" > "$dir/.ccopts"
+sync
+
+gcc -c "$dir/hello.c" -o "$dir/hello.o"
+
+"$bin/sk" build "$dir" > /dev/null
+
+if "$bin/sk" run "$dir" | grep --quiet "Hello" 2> /dev/null > /dev/null; then
+    testOK "C binding worked"
+else
+    testFAILED "failed to say hello from C"
+fi
+
+
 # Stop the server, make sure it stops
 "$bin/sk" stop "$dir" > /dev/null
 
