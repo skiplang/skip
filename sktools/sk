@@ -113,6 +113,12 @@ if [ $command == "stop" ]; then
 fi
 
 start() {
+    skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+    if [ "$skip_server_pid" ]; then
+        >&2 echo "Another server is already running"
+        exit 2
+    fi
+
     fifo_command="$skdir/fifo_command"
     fifo_response="$skdir/fifo_response"
 
@@ -279,7 +285,6 @@ if [ $command == "build" ]; then
     fi
 
     "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
-
     if [ "$system" == "Linux" ]; then
 
       # Linking it all together
@@ -287,10 +292,7 @@ if [ $command == "build" ]; then
              "$skdir/preamble_and_out.o" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
 	     "$skipRuntimeLib" \
-	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
-	     -lboost_thread \
-	     -lboost_context \
-	     -lboost_atomic \
+	     -fPIC -DPIC \
 	     -lrt \
 	     -Wl,--gc-sections \
 	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
@@ -300,9 +302,13 @@ if [ $command == "build" ]; then
 	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
 	     -lpcre -lboost_system \
 	     -lboost_filesystem -lboost_chrono -lboost_date_time \
-	     -levent -ldl \
+	     -levent \
 	     -lpthread \
 	     -lunwind \
+	     -lboost_thread \
+	     -lboost_context \
+	     -lboost_atomic \
+	     -ldl \
 	     $ccopts
     else
 	if [ "$system" == "Darwin" ]; then
