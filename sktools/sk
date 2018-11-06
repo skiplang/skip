@@ -72,8 +72,6 @@ if [ $command == "init" ]; then
     echo "  }" >> "$project"
     echo "}" >> "$project"
 
-    touch "$root/.ccopts"
-
     exit 0
 fi
 
@@ -178,7 +176,7 @@ start() {
 	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
 	  2> "$skdir/server_errors" &
     echo $! >> "$skdir/pids"
-    
+
     sleep 1
 
     skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
@@ -277,7 +275,7 @@ if [ $command == "build" ]; then
     if ! [ -f "$root/.ccopts" ]; then
 	ccopts=""
     else
-	`cat "$root/.ccopts"`
+	ccopts=`cat "$root/.ccopts"`
     fi
 
     "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
