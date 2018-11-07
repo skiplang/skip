@@ -23,6 +23,10 @@ const siteConfig = {
   ],
   customDocsPath: "/docs/overview",
   blogSidebarCount: 20,
+  algolia: {
+    apiKey: '7d79ea7bb5fdb8d123b2ed2c40d781a5',
+    indexName: 'skiplang',
+  },
   stylesheets: [
     '/playground/third-party/codemirror.css',
     '/playground/third-party/neat.css',
