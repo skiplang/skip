@@ -179,7 +179,7 @@ start() {
 
     sleep 1
 
-    skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+    skip_server_pid=`ps xawww | grep skip_server | grep "$root" | awk '{ print $1 }'`
     if [ -z "$skip_server_pid" ]; then
         >&2 echo "Could not start the server"
         cat "$skdir/server_errors" 1>&2
@@ -209,7 +209,8 @@ restart() {
 if [ -f "$skdir/skfiles" ]; then
     find "$root" -name "*.sk" > "$skdir/skfiles_new"
 
-    if [ $(diff "$skdir/skfiles" "$skdir/skfiles_new") ]; then
+    diff -q "$skdir/skfiles" "$skdir/skfiles_new" > /dev/null
+    if [ $? -ne 0 ]; then
 	echo "Detected a file configuration change"
 	restart
     fi
@@ -220,7 +221,7 @@ if [ $command == "restart" ]; then
     exit 0
 fi
 
-skip_server_pid=`ps xa | grep skip_server | grep "$root" | awk '{ print $1 }'`
+skip_server_pid=`ps xawww | grep skip_server | grep "$root" | awk '{ print $1 }'`
 if [ -z "$skip_server_pid" ]; then
     if [ $command == "status" ]; then
 	echo "No server running"
