@@ -17,91 +17,50 @@ get_script_dir () {
      echo "$DIR"
 }
 
-aptSuggest="If you are running ubuntu, try running: \
-$ sudo apt-get install clang-6.0 libgoogle-glog-dev libpcre++-dev libboost-all-dev libevent-dev"
-
 root=$(get_script_dir)
+system=$(uname -s)
 
 # If we have the exact version we want, pick that.
 if [ -f "/usr/bin/clang++-6.0" ]; then
     clangpp="/usr/bin/clang++-6.0"
 else
-    # Otherwise, fall back on whatever is there.
-    if [ -f "/usr/bin/clang++" ]; then
-        clangpp="/usr/bin/clang++"
+    # Otherwise, error.
+    2>&1 echo "Skip needs clang++ version 6 (clang++-6.0)"
+    exit 2
+fi
+
+if [ -z "$1" ]; then
+    if [ "Linux" == $system ]; then
+	dest="/usr"
     else
-        >&2 echo "Error: could not find clang++"
-        exit 8
+        if [ "Darwin" == $system ]; then
+            dest="/usr/local"
+        else
+            2>&1 echo "Unsupported system"
+            exit 2
+        fi
     fi
+else
+    dest="$1"
 fi
 
-# Checking that we have everything
-system=$(uname -s)
+if ! [ -d "$dest" ]; then
+    mkdir "$dest"
+fi;
 
-if [ "Linux" == $system ]; then
-    linuxGnuLibDir="/usr/lib/x86_64-linux-gnu"
+if ! [ -d "$dest/lib" ]; then
+    mkdir "$dest/lib"
+fi;
 
-    if ! [ -f "$linuxGnuLibDir/libglog.so" ]; then
-	>&2 echo "Error: could not find libglog.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libgflags.a" ]; then
-	>&2 echo "Error: could not find libgflags.a"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libpcre.a" ]; then
-	>&2 echo "Error: could not find libpcre.a"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_thread.so" ]; then
-	>&2 echo "Error: could not find libboost_thread.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_system.so" ]; then
-	>&2 echo "Error: could not find libboost_system.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_context.so" ]; then
-	>&2 echo "Error: could not find libboost_context.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_filesystem.so" ]; then
-	>&2 echo "Error: could not find libboost_filesystem.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_chrono.so" ]; then
-	>&2 echo "Error: could not find libboost_chrono.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_date_time.so" ]; then
-	>&2 echo "Error: could not find libboost_date_time.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libboost_atomic.so" ]; then
-	>&2 echo "Error: could not find libboost_atomic.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libevent.so" ]; then
-	>&2 echo "Error: could not find libevent.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-    if ! [ -f "$linuxGnuLibDir/libdl.so" ]; then
-	>&2 echo "Error: could not find libdl.so"
-	>&2 echo "$aptSuggest"
-	exit 8
-    fi
-fi
+if ! [ -d "$dest/bin" ]; then
+    mkdir "$dest/bin"
+fi;
+
+rm -Rf "$dest/lib/skip"
+cp -R "$root/lib/" "$dest/lib/skip"
+
+cp "$root/bin/skip_server" "$dest/bin/skip_server"
+cp "$root/bin/skip_printer" "$dest/bin/skip_printer"
 
 if [ $system == "Darwin" ]; then
 
@@ -177,42 +136,9 @@ if [ $system == "Darwin" ]; then
   fi
 fi
 
-if [ -z "$1" ]; then
-    if [ "Linux" == $system ]; then
-	dest="/usr"
-    else
-        if [ "Darwin" == $system ]; then
-            dest="/usr/local"
-        else
-            2>&1 echo "Unsupported system"
-            exit 2
-        fi
-    fi
-else
-    dest="$1"
-fi
-
-if ! [ -d "$dest" ]; then
-    mkdir "$dest"
-fi;
-
-if ! [ -d "$dest/lib" ]; then
-    mkdir "$dest/lib"
-fi;
-
-if ! [ -d "$dest/bin" ]; then
-    mkdir "$dest/bin"
-fi;
-
-rm -Rf "$dest/lib/skip"
-cp -R "$root/lib/" "$dest/lib/skip"
-
-cp "$root/bin/skip_server" "$dest/bin/skip_server"
-cp "$root/bin/skip_printer" "$dest/bin/skip_printer"
-
 echo "#!/bin/bash" > "$dest/bin/sk"
 
-echo "clangpp=\"/usr/bin/clang++\"" >> "$dest/bin/sk"
+echo "clangpp=\"$clangpp\"" >> "$dest/bin/sk"
 echo "preamble=\"$dest/lib/skip/preamble.ll\"" >> "$dest/bin/sk"
 echo "standalone=\"$dest/lib/skip/sk_standalone.cpp.o\"" >> "$dest/bin/sk"
 echo "prelude=\"$dest/lib/skip/prelude\"" >> "$dest/bin/sk"

@@ -26,13 +26,18 @@ mkdir "$installDir/lib"
 cp "$pathToSkip/sktools/install.sh" "$installDir/install.sh"
 cp "$pathToSkip/sktools/INSTALL.md" "$installDir/INSTALL.md"
 cp "$pathToSkip/sktools/sk" "$installDir/bin"
-if [ $distrib == Linux ]; then
-    strip --strip-unneeded "$pathToSkip/build/bin/skip_server" -o "$installDir/bin/skip_server"
-    strip --strip-unneeded "$pathToSkip/build/bin/skip_printer" -o "$installDir/bin/skip_printer"
-else
-    cp "$pathToSkip/build/bin/skip_server" "$installDir/bin/skip_server"
-    cp "$pathToSkip/build/bin/skip_printer" "$installDir/bin/skip_printer"
+
+if ! [ -f "$pathToSkip/build/bin/static_skip_server" ]; then
+    2>&1 echo "Missing static_skip_server. Did you run build-static-binaries.sh?"
 fi
+
+if ! [ -f "$pathToSkip/build/bin/static_skip_printer" ]; then
+    2>&1 echo "Missing static_skip_printer. Did you run build-static-binaries.sh?"
+fi
+
+# We want to build a version of the skip_server with everything linked statically
+cp "$pathToSkip/build/bin/static_skip_server" "$installDir/bin/skip_server"
+cp "$pathToSkip/build/bin/static_skip_printer" "$installDir/bin/skip_printer"
 
 cp -R src/runtime/prelude "$installDir/lib/prelude"
 
@@ -50,6 +55,21 @@ if [ $distrib == Linux ]; then
     cp "$pathToSkip/build/third-party/install/lib/libicutu.a" "$installDir/lib"
     cp "$pathToSkip/build/third-party/install/lib/libicudata.a" "$installDir/lib"
     cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib"
+
+    linuxGnuLibDir="/usr/lib/x86_64-linux-gnu"
+
+    cp "$linuxGnuLibDir/libglog.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libgflags.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libpcre.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_thread.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_system.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_context.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_filesystem.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_chrono.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_date_time.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libboost_atomic.a" "$installDir/lib"
+    cp "$linuxGnuLibDir/libevent.a" "$installDir/lib"
 fi
 
 cp "$pathToSkip/sktools/sk" "$installDir/bin/sk"
+cp -R "$pathToSkip/ide" "$installDir/ide"
