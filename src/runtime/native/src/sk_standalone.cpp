@@ -37,9 +37,8 @@ void osxTerminate() {
       std::rethrow_exception(eptr);
     }
   } catch (std::exception& e) {
-    std::cerr << "*** Uncaught exception of type "
-              << typeid(e).name() << ": " << e.what()
-              << std::endl;
+    std::cerr << "*** Uncaught exception of type " << typeid(e).name() << ": "
+              << e.what() << std::endl;
   }
   std::cerr << "*** Stack trace:" << std::endl;
   skip::printStackTrace();
@@ -92,7 +91,6 @@ size_t WEAK_LINKAGE SKIPC_buildHash(void) {
 } // extern "C"
 
 int main(int argc, char** argv) {
-
 #ifdef __APPLE__
   std::set_terminate(osxTerminate);
 #endif

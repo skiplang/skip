@@ -11,15 +11,13 @@
 
 #include <iostream>
 #include <fstream>
-
-#include <folly/Format.h>
-
-#include <boost/filesystem.hpp>
-#include <boost/system/error_code.hpp>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <dirent.h>
 
 using namespace skip;
-
-namespace fs = boost::filesystem;
 
 // TODO: T30343087 - validate all bytes read and converted to string data
 // are valid utf8. This includes read_line, read_stdin and read_btyes.
@@ -46,6 +44,9 @@ String SKIP_read_stdin_bytes(SkipInt bytes) {
 String SKIP_read_line(void) {
   std::string line;
   std::getline(std::cin, line);
+  if (std::cin.fail()) {
+    throwRuntimeError("Error reading from stdin");
+  }
   return String{line};
 }
 
@@ -56,7 +57,7 @@ String SKIP_open_file(String path) {
     throwRuntimeError(
         "Error opening '%s': %s",
         path.c_str(buf),
-        folly::errnoStr(errno).c_str());
+         std::strerror(errno));
   }
 
   return read_stream_to_string(file);
@@ -76,19 +77,19 @@ write_text_file_with_mode(String content, String path, const char* mode) {
     if (fclose(f)) {
       throwRuntimeError(
           "Error %s closing file '%s'",
-          folly::errnoStr(errno).c_str(),
+           std::strerror(errno),
           path.c_str(buf));
     }
     if (res != data.size()) {
       throwRuntimeError(
           "Error %s writing to file '%s'",
-          folly::errnoStr(err).c_str(),
+           std::strerror(err),
           path.c_str(buf));
     }
   } else {
     throwRuntimeError(
         "Error %s opening file '%s'",
-        folly::errnoStr(errno).c_str(),
+         std::strerror(errno),
         path.c_str(buf));
   }
 }
@@ -102,34 +103,52 @@ void SKIP_FileSystem_appendTextFile(String path, String content) {
 }
 
 void SKIP_FileSystem_ensure_directory(String path) {
-  boost::system::error_code ec;
-  fs::create_directory(path.toCppString());
+  int ec;
+  ec = mkdir(path.toCppString().c_str(), 0777);
   if (ec)
-    SKIP_throwRuntimeError(String{ec.message()});
+    SKIP_throwRuntimeError(String{std::strerror(ec)});
 }
 
-bool SKIP_FileSystem_exists(String path) {
-  boost::system::error_code ec;
-  return fs::exists(path.toCppString(), ec);
+bool SKIP_FileSystem_exists(String name) {
+  return (access(name.toCppString().c_str(), F_OK ) != -1);
 }
 
 bool SKIP_FileSystem_is_directory(String path) {
-  boost::system::error_code ec;
-  return fs::is_directory(path.toCppString(), ec);
+  struct stat path_stat;
+  stat(path.toCppString().c_str(), &path_stat);
+  return S_ISDIR(path_stat.st_mode);
 }
 
 RObj* SKIP_FileSystem_readdir(String path) {
-  boost::system::error_code ec;
-  std::vector<fs::directory_entry> listdir;
-  std::copy(
-      fs::directory_iterator(path.toCppString(), ec),
-      fs::directory_iterator(),
-      std::back_inserter(listdir));
-  auto res = createStringVector(listdir.size());
+  DIR *dir;
+  struct dirent *ent;
+  std::vector<String> listdir;
 
+  if ((dir = opendir(path.toCppString().c_str())) != NULL) {
+    /* print all the files and directories within directory */
+    while ((ent = readdir(dir)) != NULL) {
+      if(ent->d_name[0] == '.') {
+	if(ent->d_name[1] == 0) {
+	  continue;
+	}
+	if(ent->d_name[1] == '.') {
+	  if(ent->d_name[2] == 0) {
+	    continue;
+	  }
+	}
+      }
+      listdir.push_back(String{ent->d_name});
+    }
+    closedir (dir);
+  } else {
+    /* could not open directory */
+    SKIP_throwRuntimeError(String{"Could not open directory: " + path.toCppString()});
+  }
+
+  auto res = createStringVector(listdir.size());
   auto out = res->begin();
   for (auto i : listdir) {
-    *out++ = String{i.path().filename().string()};
+    *out++ = i;
   }
 
   return res;
