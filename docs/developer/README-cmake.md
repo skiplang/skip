@@ -5,6 +5,7 @@
 1. [Prerequisites](#install-prerequisites)
     1. [Centos](#fb-centos-facebook-only)
     1. [Ubuntu 14.04](#ubuntu-1404)
+    1. [Ubuntu 18.04](#ubuntu-1804)
     1. [Arch Linux](#arch-linux)
     1. [OS X](#os-x)
 1. [Configure And Build](#configure-and-build-the-repo)
@@ -34,6 +35,22 @@
     wget https://cmake.org/files/v3.11/cmake-3.11.3-Linux-x86_64.sh
     sh cmake-3.11.3-Linux-x86_64.sh --prefix=/usr/local
 
+### Ubuntu 18.04
+Run the following commands as root:
+
+    apt-get install autoconf ca-certificates clang clang-format emacs-nox g++ g++-aarch64-linux-gnu gcc-aarch64-linux-gnu gdb git gzip hhvm lcov libboost-all-dev libdwarf-dev libelf-dev libevent-dev libgflags-dev libgoogle-glog-dev libicu-dev libssl-dev libtool libtool-bin m4 make ninja-build nodejs pkg-config qemu qemu-user-static rsync software-properties-common ssh sudo tar time wget
+    (cd /tmp ; wget https://cmake.org/files/v3.11/cmake-3.11.1-Linux-x86_64.sh ; sh ./cmake-3.11.1-Linux-x86_64.sh --prefix=/usr/local --skip-license ; rm cmake-3.11.1-Linux-x86_64.sh)
+
+Assure that the cmake installed above is the first cmake in your path:
+
+    export PATH=/usr/local/bin:$PATH
+
+Use the third-party libunwind rather than the optional system package, e.g.:
+
+    mkdir build
+    cd build
+    cmake -DFORCE_TP_LIBUNWIND=ON ..
+    ninja
 
 ### Arch Linux
 Install packages
