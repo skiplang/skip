@@ -368,7 +368,7 @@ mutable class Specializer{
 
   hhvmTypeTable: HhvmTypeTable = HhvmTypeTable.empty(),
 
-  // Updated OBas we go to point to something related to what we are specializing.
+  // Updated as we go to point to something related to what we are specializing.
   mutable pos: Pos,
 } extends ClassLookupEnv {
   static fun make(
