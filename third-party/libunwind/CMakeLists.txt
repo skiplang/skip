@@ -3,7 +3,7 @@ if(APPLE)
   return()
 endif()
 
-if(NOT DEFINED LIBUNWIND_FOUND)
+if(NOT DEFINED LIBUNWIND_FOUND AND NOT FORCE_TP_LIBUNWIND)
   find_path(LIBUNWIND_INCLUDE NAMES libunwind.h)
   find_library(LIBUNWIND_LIB NAMES libunwind.a libunwind.dylib libunwind.so)
   if(LIBUNWIND_INCLUDE AND LIBUNWIND_LIB)
@@ -16,7 +16,7 @@ endif()
 
 add_library(libunwind INTERFACE)
 
-if(LIBUNWIND_FOUND)
+if(LIBUNWIND_FOUND AND NOT FORCE_TP_LIBUNWIND)
   message("Using built-in libunwind: ${LIBUNWIND_INCLUDE} ${LIBUNWIND_LIBRARIES}")
 
 else()
