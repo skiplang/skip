@@ -11,6 +11,7 @@
 #include "skip/memoize.h"
 
 #include <folly/experimental/FunctionScheduler.h>
+#include <folly/Synchronized.h>
 
 using namespace skip;
 

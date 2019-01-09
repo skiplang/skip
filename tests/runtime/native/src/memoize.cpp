@@ -1327,7 +1327,7 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
       String::CStrBuffer buf;
       auto msg =
           SKIP_getExceptionMessage(const_cast<MutableIObj*>(value.asIObj()));
-      promise.setException(std::runtime_error(msg.c_str(buf)));
+      promise.set_exception(make_exception_ptr(std::runtime_error(msg.c_str(buf))));
     } else {
       AsyncEvaluateResult result;
       result.m_value = std::move(value);
@@ -1336,12 +1336,12 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
         result.m_watcher = std::move(watcher);
       }
 
-      promise.setValue(std::move(result));
+      promise.set_value(std::move(result));
     }
   }
 
-  folly::Future<AsyncEvaluateResult> getFuture() {
-    return m_promise.getFuture();
+  std::future<AsyncEvaluateResult> getFuture() {
+    return m_promise.get_future();
   }
 
  private:
@@ -1352,10 +1352,10 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
   Invocation::Ptr m_invocation;
   const bool m_preserveException;
 
-  folly::Promise<AsyncEvaluateResult> m_promise;
+  std::promise<AsyncEvaluateResult> m_promise;
 };
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluate(
     bool preserveException,
     bool subscribeToInvalidations,
     MemoTask::Ptr memoTask) {
@@ -1385,11 +1385,11 @@ folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
   return future;
 }
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluateAndSubscribe() {
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluateAndSubscribe() {
   return asyncEvaluate(false, true, 0);
 }
 
-folly::Future<AsyncEvaluateResult> Invocation::asyncEvaluate(
+std::future<AsyncEvaluateResult> Invocation::asyncEvaluate(
     MemoTask::Ptr memoTask) {
   return asyncEvaluate(false, false, std::move(memoTask));
 }
@@ -4184,41 +4184,6 @@ void dumpRevisions(const Invocation& inv) {
   std::cerr << '\n';
 }
 
-void InvocationHelperBase::static_evaluate_helper(
-    folly::Future<MemoValue>&& future) {
-  auto ctx = Context::current();
-
-  std::move(future)
-      .then([ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
-      .onError([ctx](const std::exception& e) {
-        // To record an exception in the memoizer, we need to create an
-        // interned Exception object. Currently the only way to produce one
-        // is to allocate on the the obstack, then intern that.
-        //
-        // If we already have an Obstack (i.e. this thread has a Process),
-        // just use that one, but politely pop the PosScope. If we don't,
-        // create a throwaway Process and use its Obstack. That's pretty
-        // wasteful but this just the error case, which is hopefully uncommon.
-        //
-        // It might be better to intern from a non-obstack memory image
-        // of this Exception, but there's no super-easy way to form one.
-
-        auto report = [ctx, msg = std::string(e.what())]() {
-          MemoValue excVal;
-          {
-            Obstack::PosScope obstackScope;
-            auto& obstack = Obstack::cur();
-            auto ex = SKIP_makeRuntimeError(String(msg));
-            auto obj = obstack.intern(ex).asPtr();
-            excVal = MemoValue(obj, MemoValue::Type::kException, true);
-          }
-          ctx->evaluateDone(std::move(excVal));
-        };
-
-        report();
-      });
-}
-
 InvalidationWatcher::InvalidationWatcher(Refcount refcount)
     : m_refcount(refcount),
       m_revision(
@@ -4273,7 +4238,7 @@ void InvalidationWatcher::invalidate() {
   assert(!isSubscribed());
 #endif
 
-  m_promise.setValue(folly::Unit());
+  m_promise.set_value(folly::Unit());
 }
 
 bool InvalidationWatcher::isSubscribed() {
