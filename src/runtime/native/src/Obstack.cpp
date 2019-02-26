@@ -846,120 +846,8 @@ void ObstackDetail::stealIObj(IObj* iobj, Pos pos) {
   }
 }
 
-HhvmHandle* ObstackDetail::wrapHhvmObject(
-    HhvmObjectPtr obj,
-    Obstack& obstack,
-    bool incref) {
-  // We have to extract the ObjectData from the Object
-  auto objData = *reinterpret_cast<HhvmObjectDataPtr*>(obj);
-  return wrapHhvmHeapObject(objData, obstack, incref);
-}
-
-HhvmHandle*
-ObstackDetail::wrapHhvmArray(HhvmArrayPtr obj, Obstack& obstack, bool incref) {
-  // We have to extract the ArrayData from the Array
-  auto objData = *reinterpret_cast<HhvmArrayDataPtr*>(obj);
-  return wrapHhvmHeapObject(objData, obstack, incref);
-}
-
-HhvmHandle* ObstackDetail::wrapHhvmHeapObject(
-    HhvmHeapObjectPtr objData,
-    Obstack& obstack,
-    bool incref) {
-  updateHhvmHeapObjectMapping();
-  auto inserted =
-      m_hhvmHeapObjectMapping.insert(std::make_pair(objData, nullptr));
-  if (inserted.second) {
-    // didn't already exist
-    inserted.first->second = HhvmHandle::createNew(obstack, objData, incref);
-  } else {
-    assert(inserted.first->second->heapObject() == objData);
-    if (!incref) {
-      // because the caller is expecting us to take ownership of the object we
-      // need to decref it
-      SKIP_HHVM_decref(inserted.first->second);
-    }
-  }
-  return inserted.first->second;
-}
-
-HhvmHandle* Obstack::wrapHhvmHeapObject(
-    HhvmHeapObjectPtr objData,
-    bool incref) {
-  return m_detail->wrapHhvmHeapObject(objData, *this, incref);
-}
-
-void ObstackDetail::unregisterHhvmHandle(HhvmHandle* handle) {
-  updateHhvmHeapObjectMapping();
-  m_hhvmHeapObjectMapping.erase(handle->heapObject());
-}
-
-void ObstackDetail::markHhvmObjects(
-    std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback) {
-  if (m_hhvmHeapObjectMapping.empty())
-    return;
-
-  // We have to scan the values (rather than the keys) so if HHVM moves them
-  // Skip will immediately see the moved values.
-  std::vector<HhvmHeapObjectPtr*> ptrs(m_hhvmHeapObjectMapping.size(), nullptr);
-  size_t idx = 0;
-  for (auto it : m_hhvmHeapObjectMapping) {
-    ptrs[idx++] = &it.second->heapObjectRef();
-  }
-  m_hhvmHeapObjectMappingValid = false;
-  markCallback(ptrs.data(), idx);
-}
-
-void Obstack::markHhvmObjects(
-    std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback) {
-  m_detail->markHhvmObjects(markCallback);
-}
-
-void Obstack::updateHhvmHeapObject(HhvmHandle* handle, HhvmHeapObjectPtr obj) {
-  m_detail->updateHhvmHeapObject(handle, obj);
-}
-
-void ObstackDetail::updateHhvmHeapObject(
-    HhvmHandle* handle,
-    HhvmHeapObjectPtr obj) {
-  auto& ref = handle->heapObjectRef();
-  if (ref != obj) {
-    if (m_hhvmHeapObjectMappingValid) {
-      m_hhvmHeapObjectMapping.erase(ref);
-      m_hhvmHeapObjectMapping[obj] = handle;
-    }
-    ref = obj;
-  }
-}
-
 void ObstackDetail::setHeapObjectMappingInvalid() {
   m_hhvmHeapObjectMappingValid = false;
-}
-
-void ObstackDetail::updateHhvmHeapObjectMapping() {
-  if (m_hhvmHeapObjectMappingValid)
-    return;
-  m_hhvmHeapObjectMappingValid = true;
-
-  // After a GC it's possible that HHVM could have moved its objects so the
-  // mapping could now be incorrect.  We expect that few objects would have been
-  // moved.
-  std::vector<std::pair<HhvmHeapObjectPtr, HhvmHandle*>>
-      movedPointers;
-  for (auto i : m_hhvmHeapObjectMapping) {
-    if (i.first != i.second->heapObject()) {
-      movedPointers.push_back(i);
-    }
-  }
-  // Erase any pointers that have been moved.
-  for (auto i : movedPointers) {
-    m_hhvmHeapObjectMapping.erase(i.first);
-  }
-  // And add them back in.
-  for (auto i : movedPointers) {
-    m_hhvmHeapObjectMapping.insert(
-        std::make_pair(i.second->heapObject(), i.second));
-  }
 }
 
 void* Obstack::calloc(size_t sz) {
@@ -2397,17 +2285,6 @@ void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
       "Obstack Memory Usage: {0} ({1} peak)\n", PB(usage), PB(m_maxTotalSize));
 }
 
-HhvmHandle::HhvmHandle(HhvmHeapObjectPtr ptr, bool incref) : m_heapObject(ptr) {
-  if (incref) {
-    SKIP_HHVM_incref(this);
-  }
-}
-
-HhvmHandle::~HhvmHandle() {
-  Obstack::cur().m_detail->unregisterHhvmHandle(this);
-  SKIP_HHVM_decref(this);
-}
-
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)
     : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {
 }
@@ -2612,21 +2489,6 @@ void SKIP_Obstack_verifyStore(void* addr) {
 #else
   fatal("unimplemented");
 #endif
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmObject(HhvmObjectPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmObject(obj, obstack, true);
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmArray(HhvmArrayPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmArray(obj, obstack, true);
-}
-
-HhvmHandle* SKIP_Obstack_wrapHhvmHeapObject(HhvmHeapObjectPtr obj) {
-  auto& obstack = Obstack::cur();
-  return obstack.m_detail->wrapHhvmHeapObject(obj, obstack, true);
 }
 
 SkipInt SKIP_Obstack_usage(SkipObstackPos note) {
