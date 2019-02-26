@@ -34,7 +34,6 @@
 #include <vector>
 #include <array>
 
-#include <folly/small_vector.h>
 #include <folly/Format.h>
 #include <folly/ClockGettimeWrappers.h>
 
@@ -496,7 +495,7 @@ void ObstackDetail::printMemoryStatistics(Obstack& obstack) const {
 
 void ObstackDetail::printObjectSize(const RObj* o) const {
   size_t total = 0;
-  folly::small_vector<const RObj*, 8> pending;
+  std::vector<const RObj*> pending;
   skip::fast_set<const RObj*> seen;
   seen.insert(o);
   pending.push_back(o);
@@ -945,7 +944,7 @@ void ObstackDetail::updateHhvmHeapObjectMapping() {
   // After a GC it's possible that HHVM could have moved its objects so the
   // mapping could now be incorrect.  We expect that few objects would have been
   // moved.
-  folly::small_vector<std::pair<HhvmHeapObjectPtr, HhvmHandle*>, 8>
+  std::vector<std::pair<HhvmHeapObjectPtr, HhvmHandle*>>
       movedPointers;
   for (auto i : m_hhvmHeapObjectMapping) {
     if (i.first != i.second->heapObject()) {
@@ -1057,7 +1056,7 @@ void ObstackDetail::sweepIObjs(Obstack& obstack, Pos markPos, Pos collectNote) {
   // alive have had their m_position changed but were not moved in the chain.
 
   // list of IObj* we will decref after re-positioning marked refs.
-  folly::small_vector<IObj*, 4> pendingDecrefs;
+  std::vector<IObj*> pendingDecrefs;
 
   // We've been putting marked IObjs at markPos(). Once we see
   // anything older than that we can stop.
@@ -1216,9 +1215,7 @@ struct ObstackDetail::Collector {
     WorkItem(RObj* target, Type& type) : m_target(target), m_type(&type) {}
   };
 
-  // TODO do stats on this queue size justify small_vecotor? chunked list,
-  // dequeue, or plain vector might be better depending on size distribution.
-  folly::small_vector<WorkItem, 8> m_workQueue;
+  std::vector<WorkItem> m_workQueue;
 
   // When copying, this data is used instead of the actual chunk for
   // the first chunk (which is shared between old and young objects).
@@ -1727,7 +1724,7 @@ struct DelayedWorkQueue {
     WorkItem(RObj& target, Type& type) : m_target(&target), m_type(&type) {}
   };
 
-  folly::small_vector<WorkItem, 8> m_queue;
+  std::vector<WorkItem> m_queue;
 
   Derived& derived() {
     return *static_cast<Derived*>(this);
