@@ -13,10 +13,9 @@
 #include "Task.h"
 #include "detail/Refs.h"
 
-#include <folly/MicroLock.h>
-
 #include <functional>
 #include <memory>
+#include <mutex>
 
 namespace skip {
 
@@ -65,7 +64,7 @@ struct RObjHandle final : private boost::noncopyable {
   // with the lock state when updating that other pointer. Using an
   // atomic xor to change all but the low two bits owned by the mutex
   // is one possible answer.
-  folly::MicroLock m_ownerMutex;
+  std::mutex m_ownerMutex;
 };
 
 /*
