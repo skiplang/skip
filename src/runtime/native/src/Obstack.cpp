@@ -2286,8 +2286,7 @@ void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
 }
 
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)
-    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {
-}
+    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {}
 
 RObjHandle::~RObjHandle() {
   unlink();

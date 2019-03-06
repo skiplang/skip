@@ -1327,7 +1327,8 @@ struct FutureCaller final : GenericCaller, LeakChecker<FutureCaller> {
       String::CStrBuffer buf;
       auto msg =
           SKIP_getExceptionMessage(const_cast<MutableIObj*>(value.asIObj()));
-      promise.set_exception(make_exception_ptr(std::runtime_error(msg.c_str(buf))));
+      promise.set_exception(
+          make_exception_ptr(std::runtime_error(msg.c_str(buf))));
     } else {
       AsyncEvaluateResult result;
       result.m_value = std::move(value);
