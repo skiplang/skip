@@ -315,7 +315,7 @@ jobs:
           name: configure
           working_directory: ~/skip/build
           command: |
-            cmake ..
+            cmake .. -DICU_HINT=/usr/local/opt/icu4c  # Homebrew path for ICU.
       - run:
           name: compile runtimes
           working_directory: ~/skip/build
