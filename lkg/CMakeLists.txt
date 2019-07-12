@@ -27,6 +27,12 @@ set(PHASE lkg)
 add_subdirectory(runtime/native)
 set(PHASE)
 
+# This is needed for the cxx targets defined in this file.
+if(CMAKE_COMPILER_IS_GNUCXX AND
+    CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 7.0)
+  add_compile_options(-faligned-new)
+endif()
+
 recursiveGlobSources(EXTC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/*-extc.h
   ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/plugin/skip_plugin.h

@@ -42,6 +42,10 @@ def main(stack):
 
     if args.backend == 'native':
         common.buildNinjaTarget('skip_to_native')
+        sk_standalone_o = os.path.join(build_dir,
+           "src/runtime/native/CMakeFiles/sk_standalone.src.dir/src/sk_standalone.cpp.o")
+        if(os.path.exists(sk_standalone_o)):
+            args.sk_standalone = sk_standalone_o
         binFile = skip_native_compile.compile(stack, args)
         cmd = (binFile.name,)
         if args.watch:

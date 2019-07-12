@@ -4189,8 +4189,8 @@ void InvocationHelperBase::static_evaluate_helper(
   auto ctx = Context::current();
 
   std::move(future)
-      .then([ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
-      .onError([ctx](const std::exception& e) {
+      .thenValue([ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
+      .thenError(folly::tag_t<std::exception>{}, [ctx](const std::exception& e) {
         // To record an exception in the memoizer, we need to create an
         // interned Exception object. Currently the only way to produce one
         // is to allocate on the the obstack, then intern that.

@@ -55,9 +55,7 @@ String SKIP_open_file(String path) {
   std::ifstream file(String(path).c_str(buf), std::ios::binary);
   if (file.fail()) {
     throwRuntimeError(
-        "Error opening '%s': %s",
-        path.c_str(buf),
-         std::strerror(errno));
+        "Error opening '%s': %s", path.c_str(buf), std::strerror(errno));
   }
 
   return read_stream_to_string(file);
@@ -76,21 +74,15 @@ write_text_file_with_mode(String content, String path, const char* mode) {
 
     if (fclose(f)) {
       throwRuntimeError(
-          "Error %s closing file '%s'",
-           std::strerror(errno),
-          path.c_str(buf));
+          "Error %s closing file '%s'", std::strerror(errno), path.c_str(buf));
     }
     if (res != data.size()) {
       throwRuntimeError(
-          "Error %s writing to file '%s'",
-           std::strerror(err),
-          path.c_str(buf));
+          "Error %s writing to file '%s'", std::strerror(err), path.c_str(buf));
     }
   } else {
     throwRuntimeError(
-        "Error %s opening file '%s'",
-         std::strerror(errno),
-        path.c_str(buf));
+        "Error %s opening file '%s'", std::strerror(errno), path.c_str(buf));
   }
 }
 
@@ -110,7 +102,7 @@ void SKIP_FileSystem_ensure_directory(String path) {
 }
 
 bool SKIP_FileSystem_exists(String name) {
-  return (access(name.toCppString().c_str(), F_OK ) != -1);
+  return (access(name.toCppString().c_str(), F_OK) != -1);
 }
 
 bool SKIP_FileSystem_is_directory(String path) {
@@ -120,29 +112,30 @@ bool SKIP_FileSystem_is_directory(String path) {
 }
 
 RObj* SKIP_FileSystem_readdir(String path) {
-  DIR *dir;
-  struct dirent *ent;
+  DIR* dir;
+  struct dirent* ent;
   std::vector<String> listdir;
 
   if ((dir = opendir(path.toCppString().c_str())) != NULL) {
     /* print all the files and directories within directory */
     while ((ent = readdir(dir)) != NULL) {
-      if(ent->d_name[0] == '.') {
-	if(ent->d_name[1] == 0) {
-	  continue;
-	}
-	if(ent->d_name[1] == '.') {
-	  if(ent->d_name[2] == 0) {
-	    continue;
-	  }
-	}
+      if (ent->d_name[0] == '.') {
+        if (ent->d_name[1] == 0) {
+          continue;
+        }
+        if (ent->d_name[1] == '.') {
+          if (ent->d_name[2] == 0) {
+            continue;
+          }
+        }
       }
       listdir.push_back(String{ent->d_name});
     }
-    closedir (dir);
+    closedir(dir);
   } else {
     /* could not open directory */
-    SKIP_throwRuntimeError(String{"Could not open directory: " + path.toCppString()});
+    SKIP_throwRuntimeError(
+        String{"Could not open directory: " + path.toCppString()});
   }
 
   auto res = createStringVector(listdir.size());
