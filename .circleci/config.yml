@@ -310,6 +310,7 @@ jobs:
             for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc node autoconf automake pkg-config libtool; do
             brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
             done
+            brew reinstall node
       - run:
           name: configure
           working_directory: ~/skip/build
