@@ -78,6 +78,7 @@ else()
     CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} # Copy over the build type (debug, release)
       -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+      -DCMAKE_CXX_FLAGS="-msse4.2"
       -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
       -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> # Install locally
       -Wno-dev # Don't need to know about cmake warnings that we can't do anything about
