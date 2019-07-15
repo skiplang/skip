@@ -43,8 +43,6 @@ else()
     -DFOLLY_CXX_FLAGS=-Wno-error
     )
 
-  find_package(OpenSSL REQUIRED)
-
   if(APPLE)
     list(APPEND EXTRA_CMAKE_ARGS
       -DFOLLY_HAVE_PTHREAD_ATFORK=YES
@@ -65,6 +63,8 @@ else()
     list(APPEND DEPS libunwind)
     list(APPEND EXTRA_CMAKE_CACHE_ARGS -DFOLLY_USE_SYMBOLIZER:BOOL=ON)
   endif()
+
+  find_package(OpenSSL REQUIRED)
 
   ExternalProject_Add(
     folly_sub
@@ -87,8 +87,8 @@ else()
       -DLIBGFLAGS_INCLUDE_DIR=${GFLAGS_INCLUDE}
       -DLIBGFLAGS_LIBRARY_DEBUG=${GFLAGS_LIBRARY}
       -DLIBGFLAGS_LIBRARY_RELEASE=${GFLAGS_LIBRARY}
-#      -DOPENSSL_LIBRARIES=${OPENSSL_SSL_LIBRARY} ${OPENSSL_CRYPTO_LIBRARY}
-#      -DOPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}
+      -DOPENSSL_LIBRARIES=${OPENSSL_LIBRARIES}
+      -DOPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR}
       ${EXTRA_CMAKE_ARGS}
       BUILD_BYPRODUCTS
         ${FOLLY_LIBRARY}
@@ -99,11 +99,10 @@ else()
   add_dependencies(folly folly_sub icudata icutu icuio icui18n icuuc)
 endif()
 
-target_include_directories(folly INTERFACE ${FOLLY_INCLUDE} ${LIBEVENT_INCLUDE_DIR} ${LIBGLOG_INCLUDE_DIR})
-target_link_libraries(folly INTERFACE
-  ${FOLLY_LIBRARY} double-conversion gflags
+target_include_directories(folly INTERFACE ${FOLLY_INCLUDE})
+target_link_libraries(folly INTERFACE ${FOLLY_LIBRARY} double-conversion gflags
   ${LIBGLOG_LIBRARY} jemalloc ${CMAKE_DL_LIBS} ${LIBEVENT_LIBRARY}
-  boost ${LIBUNWIND_LIBRARIES} ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY}
-  ${EXTRA_INTERFACE_LIBS} pthread icudata icutu icuio icui18n icuuc)
+  boost ${LIBUNWIND_LIBRARIES} ${OPENSSL_LIBRARIES}
+  ${EXTRA_INTERFACE_LIBS} pthread)
 add_dependencies(folly folly_sub)
 target_compile_options(folly INTERFACE -Wno-vla)
