@@ -495,10 +495,13 @@ struct Child {
     void asyncEvaluate(Child& /*obj*/, folly::Promise<MemoValue>&& promise)
         const {
       s_childEvaluateCalled++;
+
       // Pretend to be driven by some external source by sleeping for 10
       // milliseconds and then returning our result.
       folly::futures::sleep(std::chrono::milliseconds(10))
-          .then([this, promise = std::move(promise)]() mutable {
+          .toUnsafeFuture() // TODO: Pass a meaningful executor through .via().
+          .thenValue([this, promise = std::move(promise)](
+                         folly::Unit /*unit*/) mutable {
             int64_t result = m_value + s_externalValue;
             promise.setValue(MemoValue(result));
           });
@@ -529,7 +532,7 @@ struct Parent {
       auto& childInv = Invocation::fromIObj(*m_child);
 
       // Our value is directly based on our child's value.
-      childInv.asyncEvaluate().then(
+      childInv.asyncEvaluate().thenValue(
           [this, promise = std::move(promise)](AsyncEvaluateResult v) mutable {
             int64_t result = v.m_value.asInt64() + m_value;
             promise.setValue(MemoValue(result));
@@ -556,7 +559,7 @@ static int64_t evaluateParent(
 
   // Asynchronously ask the parent for its value...
   parentInv.asyncEvaluate(true, watcher != nullptr)
-      .then([&](AsyncEvaluateResult value) {
+      .thenValue([&](AsyncEvaluateResult value) {
         std::unique_lock<std::mutex> lock(mutex);
         parentValue = value.m_value.asInt64();
         if (watcher != nullptr && value.m_watcher) {
@@ -610,7 +613,7 @@ static void testSimpleInvalidateHelper(bool subscribe, bool unsubscribe) {
       42 + 314 + 0);
 
   if (watcher) {
-    watcher->getFuture().then(
+    watcher->getFuture().thenValue(
         [&notifiedOfInvalidate](folly::Unit) { notifiedOfInvalidate = true; });
   }
 
@@ -847,7 +850,7 @@ struct SumInvocation : Base {
     auto future2 = Invocation::fromIObj(*args->m_arg2).asyncEvaluate();
 
     collect(future1, future2)
-        .then(
+        .thenValue(
             [ctx](
                 const std::tuple<AsyncEvaluateResult, AsyncEvaluateResult>& t) {
               SkipInt result =
@@ -1282,7 +1285,7 @@ TEST_F(MemoizeFixture, testThreads) {
     MemoValue value;
     UnownedProcess waiter{Process::cur()};
 
-    auto future = tree[index]->asyncEvaluate(task).then(
+    auto future = tree[index]->asyncEvaluate(task).thenValue(
         [&value, &waiter](AsyncEvaluateResult v) {
           waiter.schedule([&value, v = std::move(v.m_value)]() { value = v; });
         });
@@ -1769,17 +1772,18 @@ TEST_F(MemoizeFixture, testException) {
 
     Invocation::fromIObj(*node)
         .asyncEvaluate()
-        .then([&](AsyncEvaluateResult /*value*/) {
+        .thenValue([&](AsyncEvaluateResult /*value*/) {
           std::unique_lock<std::mutex> lock(mutex);
           ready = true;
           gotError = false;
         })
-        .onError([&](const std::exception& e) {
-          std::unique_lock<std::mutex> lock(mutex);
-          ready = true;
-          gotError = true;
-          what = e.what();
-        });
+        .thenError(
+            folly::tag_t<std::exception>{}, [&](const std::exception& e) {
+              std::unique_lock<std::mutex> lock(mutex);
+              ready = true;
+              gotError = true;
+              what = e.what();
+            });
 
     std::unique_lock<std::mutex> lock(mutex);
     cond.wait(lock, [&] { return ready; });
@@ -1797,17 +1801,18 @@ TEST_F(MemoizeFixture, testException) {
 
     Invocation::fromIObj(*node)
         .asyncEvaluate()
-        .then([&](AsyncEvaluateResult /*value*/) {
+        .thenValue([&](AsyncEvaluateResult /*value*/) {
           std::unique_lock<std::mutex> lock(mutex);
           ready = true;
           gotError = false;
         })
-        .onError([&](const std::exception& e) {
-          std::unique_lock<std::mutex> lock(mutex);
-          ready = true;
-          gotError = true;
-          what = e.what();
-        });
+        .thenError(
+            folly::tag_t<std::exception>{}, [&](const std::exception& e) {
+              std::unique_lock<std::mutex> lock(mutex);
+              ready = true;
+              gotError = true;
+              what = e.what();
+            });
 
     std::unique_lock<std::mutex> lock(mutex);
     cond.wait(lock, [&] { return ready; });
@@ -1837,39 +1842,41 @@ struct StringConcat {
       collect(
           Invocation::fromIObj(*m_lhs).asyncEvaluate(),
           Invocation::fromIObj(*m_rhs).asyncEvaluate())
-          .then([promise = std::move(promise)](
-                    const std::tuple<AsyncEvaluateResult, AsyncEvaluateResult>&
-                        t) mutable {
-            // Since we're allocating a temporary string (via String::concat2())
-            // we need to make sure to clear out the Obstack when we're done.
-            Obstack::PosScope obstackScope;
+          .thenValue(
+              [promise = std::move(promise)](
+                  const std::tuple<AsyncEvaluateResult, AsyncEvaluateResult>&
+                      t) mutable {
+                // Since we're allocating a temporary string (via
+                // String::concat2()) we need to make sure to clear out the
+                // Obstack when we're done.
+                Obstack::PosScope obstackScope;
 
-            const MemoValue& lhs = std::get<0>(t).m_value;
-            const MemoValue& rhs = std::get<1>(t).m_value;
+                const MemoValue& lhs = std::get<0>(t).m_value;
+                const MemoValue& rhs = std::get<1>(t).m_value;
 
-            String lhString;
-            if (lhs.isNull()) {
-              lhString = String("<null>");
-            } else if (lhs.isString()) {
-              lhString = *lhs.asString();
-            } else {
-              lhString = String("<invalid>");
-            }
+                String lhString;
+                if (lhs.isNull()) {
+                  lhString = String("<null>");
+                } else if (lhs.isString()) {
+                  lhString = *lhs.asString();
+                } else {
+                  lhString = String("<invalid>");
+                }
 
-            String rhString;
-            if (rhs.isNull()) {
-              rhString = String("<null>");
-            } else if (rhs.isString()) {
-              rhString = *rhs.asString();
-            } else {
-              rhString = String("<invalid>");
-            }
+                String rhString;
+                if (rhs.isNull()) {
+                  rhString = String("<null>");
+                } else if (rhs.isString()) {
+                  rhString = *rhs.asString();
+                } else {
+                  rhString = String("<invalid>");
+                }
 
-            String res = String::concat2(lhString, rhString);
-            auto i = intern(res);
+                String res = String::concat2(lhString, rhString);
+                auto i = intern(res);
 
-            promise.setValue(MemoValue(i));
-          });
+                promise.setValue(MemoValue(i));
+              });
     }
   };
 
@@ -1928,7 +1935,7 @@ TEST_F(MemoizeFixture, testStringConcat) {
     bool ready = false;
     StringPtr result;
 
-    Invocation::fromIObj(*concat).asyncEvaluate().then(
+    Invocation::fromIObj(*concat).asyncEvaluate().thenValue(
         [&](AsyncEvaluateResult value) {
           result = value.m_value.asString();
 

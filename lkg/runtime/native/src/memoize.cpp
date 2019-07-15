@@ -4189,34 +4189,37 @@ void InvocationHelperBase::static_evaluate_helper(
   auto ctx = Context::current();
 
   std::move(future)
-      .thenValue([ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
-      .thenError(folly::tag_t<std::exception>{}, [ctx](const std::exception& e) {
-        // To record an exception in the memoizer, we need to create an
-        // interned Exception object. Currently the only way to produce one
-        // is to allocate on the the obstack, then intern that.
-        //
-        // If we already have an Obstack (i.e. this thread has a Process),
-        // just use that one, but politely pop the PosScope. If we don't,
-        // create a throwaway Process and use its Obstack. That's pretty
-        // wasteful but this just the error case, which is hopefully uncommon.
-        //
-        // It might be better to intern from a non-obstack memory image
-        // of this Exception, but there's no super-easy way to form one.
+      .thenValue(
+          [ctx](MemoValue&& value) { ctx->evaluateDone(std::move(value)); })
+      .thenError(
+          folly::tag_t<std::exception>{}, [ctx](const std::exception& e) {
+            // To record an exception in the memoizer, we need to create an
+            // interned Exception object. Currently the only way to produce one
+            // is to allocate on the the obstack, then intern that.
+            //
+            // If we already have an Obstack (i.e. this thread has a Process),
+            // just use that one, but politely pop the PosScope. If we don't,
+            // create a throwaway Process and use its Obstack. That's pretty
+            // wasteful but this just the error case, which is hopefully
+            // uncommon.
+            //
+            // It might be better to intern from a non-obstack memory image
+            // of this Exception, but there's no super-easy way to form one.
 
-        auto report = [ctx, msg = std::string(e.what())]() {
-          MemoValue excVal;
-          {
-            Obstack::PosScope obstackScope;
-            auto& obstack = Obstack::cur();
-            auto ex = SKIP_makeRuntimeError(String(msg));
-            auto obj = obstack.intern(ex).asPtr();
-            excVal = MemoValue(obj, MemoValue::Type::kException, true);
-          }
-          ctx->evaluateDone(std::move(excVal));
-        };
+            auto report = [ctx, msg = std::string(e.what())]() {
+              MemoValue excVal;
+              {
+                Obstack::PosScope obstackScope;
+                auto& obstack = Obstack::cur();
+                auto ex = SKIP_makeRuntimeError(String(msg));
+                auto obj = obstack.intern(ex).asPtr();
+                excVal = MemoValue(obj, MemoValue::Type::kException, true);
+              }
+              ctx->evaluateDone(std::move(excVal));
+            };
 
-        report();
-      });
+            report();
+          });
 }
 
 InvalidationWatcher::InvalidationWatcher(Refcount refcount)
