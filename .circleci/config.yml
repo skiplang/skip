@@ -264,7 +264,7 @@ jobs:
   test_mac:
     working_directory: ~/skip
     macos:
-      xcode: "9.3.0"
+      xcode: "10.2.1"
     environment:
       TERM: dumb
       SKIP_TEST_LIMIT_OUTPUT: 1
