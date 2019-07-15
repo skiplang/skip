@@ -99,10 +99,10 @@ else()
   add_dependencies(folly folly_sub icudata icutu icuio icui18n icuuc)
 endif()
 
+add_dependencies(folly folly_sub)
 target_include_directories(folly INTERFACE ${FOLLY_INCLUDE})
 target_link_libraries(folly INTERFACE ${FOLLY_LIBRARY} double-conversion gflags
   ${LIBGLOG_LIBRARY} jemalloc ${CMAKE_DL_LIBS} ${LIBEVENT_LIBRARY}
   boost ${LIBUNWIND_LIBRARIES} ${OPENSSL_LIBRARIES}
   ${EXTRA_INTERFACE_LIBS} pthread)
-add_dependencies(folly folly_sub)
 target_compile_options(folly INTERFACE -Wno-vla)
