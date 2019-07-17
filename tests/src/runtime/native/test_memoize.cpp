@@ -12,6 +12,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include <folly/executors/GlobalExecutor.h>
 #include <folly/futures/Future.h>
 
 #include <gtest/gtest.h>
@@ -499,7 +500,7 @@ struct Child {
       // Pretend to be driven by some external source by sleeping for 10
       // milliseconds and then returning our result.
       folly::futures::sleep(std::chrono::milliseconds(10))
-          .toUnsafeFuture() // TODO: Pass a meaningful executor through .via().
+          .via(folly::getCPUExecutor().get())
           .thenValue([this, promise = std::move(promise)](
                          folly::Unit /*unit*/) mutable {
             int64_t result = m_value + s_externalValue;

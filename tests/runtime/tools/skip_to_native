@@ -336,7 +336,7 @@ def main(stack):
     def isClangArg(arg):
         return (
             arg.startswith(('-f', '-l', '-m', '-std=', '-stdlib=', '-D', '-I',
-                            '-O', '-W', '-isysroot')) or
+                            '-O', '-W')) or
             arg in ('-g',))
 
     argv = []
