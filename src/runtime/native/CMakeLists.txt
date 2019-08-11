@@ -36,6 +36,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
     CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" OR
     CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   add_compile_options(-Wmissing-declarations)
+
+  if(CMAKE_COMPILER_IS_GNUCXX AND
+      CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 7.0)
+    add_compile_options(-faligned-new)
+  endif()
 endif()
 
 set(SKIP_RUNTIME_SOURCES
@@ -187,6 +192,7 @@ list(REMOVE_ITEM cc_args ld_args -mcrc32)
 
 if(DARWIN)
   list(APPEND ld_args -dead_strip)
+  list(APPEND cc_args -isysroot ${CMAKE_OSX_SYSROOT})
 else()
   list(APPEND ld_args -Wl,--gc-sections)
   list(APPEND cc_args -Wno-vla)

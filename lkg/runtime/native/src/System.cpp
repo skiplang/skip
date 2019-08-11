@@ -84,7 +84,7 @@ struct LazyIOThreadPoolExecutor : folly::IOThreadPoolExecutor {
     abort();
   }
 
-  size_t getPendingTaskCountImpl() override {
+  size_t getPendingTaskCountImpl() const override {
     return m_executor.getPendingTaskCount();
   }
 
