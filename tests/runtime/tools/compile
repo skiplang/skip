@@ -40,9 +40,6 @@ def main():
     # build the appropriate backend
     cmd = ('ninja', '-C', build_dir) + {
         'native'    : ('skip_to_native', 'skip_to_llvm'),
-        'js'        : ('skip_to_js',),
-        'js_self'   : ('bin/skip_to_js.js',),
-        'wasm'      : ('skip_to_native', 'skip_to_llvm', 'preamble32.tests.dep')
     }[backend]
 
     common.callHelper(cmd)

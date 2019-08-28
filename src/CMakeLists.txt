@@ -15,7 +15,6 @@ set(UTILS_SOURCES ${UTILS_SOURCES} PARENT_SCOPE)
 add_subdirectory(frontend)
 add_subdirectory(tools)
 add_subdirectory(project)
-add_subdirectory(js)
 add_subdirectory(native)
 add_subdirectory(nuclide)
 add_subdirectory(server)
@@ -25,9 +24,6 @@ set(PHASE)
 # ------------------------------------------------------------------------------
 
 # Bootstrap takes the current src/ code and promotes it to lkg/
-
-set(stage_skip_depends_js ${SKIP_BIN_PATH}/skip_depends.js)
-set(lkg_skip_depends_js ${LKG_DIR}/skip_depends.js)
 
 set(CHECK_LKG_COMMANDS)
 set(UPDATE_LKG_COMMANDS)
@@ -53,10 +49,8 @@ add_custom_target(build_lkg
 
 add_custom_target(check_lkg
   COMMAND ${TOOLS_DIR}/check_lkg_file ${stage_ll} ${lkg_ll}
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${stage_skip_depends_js} ${lkg_skip_depends_js}
   COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/CMakeLists.txt ${LKG_RUNTIME}/CMakeLists.txt
   COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/native ${LKG_RUNTIME}/native
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/js ${LKG_RUNTIME}/js
   COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/tools ${LKG_RUNTIME}/tools
   DEPENDS stage_skip_to_llvm_ll
 )
@@ -70,15 +64,8 @@ add_custom_target(update_lkg_compiler
   DEPENDS stage_skip_to_llvm_ll
   )
 
-add_custom_target(update_lkg_depends
-  COMMAND rsync -rc ${stage_skip_depends_js} ${lkg_skip_depends_js}
-  # Using rsync like this copies only if changed
-  COMMAND rsync -rc --delete ${SRC_RUNTIME}/js/ ${LKG_RUNTIME}/js
-  DEPENDS skip_depends.js.dep
-  )
-
 add_custom_target(update_lkg
-  DEPENDS update_lkg_compiler update_lkg_depends
+  DEPENDS update_lkg_compiler
   )
 
 add_custom_target(check_runtimes

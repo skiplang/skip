@@ -48,7 +48,7 @@ set(ENABLE_MCROUTER OFF)
 set(ENABLE_GOOGLETEST ON)
 set(JEMALLOC_ENABLED ON)
 
-# In addition to running js tests we use node to build the parsetree.
+# We use node to build the parsetree.
 find_package(Node)
 
 # If we're not running tests then we don't need hhvm

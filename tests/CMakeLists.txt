@@ -32,8 +32,7 @@ add_dependencies(test skip_to_llvm.tests)
 
 set(PHASE)
 
-set(PRELUDE_JS_SOURCES ${PRELUDE_JS_SOURCES} PARENT_SCOPE)
-set(PRELUDE_NATIVE_SOURCES ${PRELUDE_NATIVE_SOURCES} PARENT_SCOPE)
+set(PRELUDE_SOURCES ${PRELUDE_SOURCES} PARENT_SCOPE)
 set(BUILD_TOOLS ${BUILD_TOOLS} PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
@@ -44,8 +43,6 @@ add_custom_target(test_compiler)
 add_dependencies(test test_compiler)
 
 add_custom_target(test_benchmark)
-add_custom_target(test_js)
-add_custom_target(test_js_self)
 add_custom_target(test_native)
 
 # Functions in this file which start with an underscore are intended
@@ -113,10 +110,7 @@ function(skip_add_to_test_dep_tree backend test_target)
 
 endfunction()
 
-add_dependencies(test_compiler test_js test_native)
-if(INCLUDE_JS_SELF)
-  add_dependencies(test_compiler test_js_self)
-endif()
+add_dependencies(test_compiler test_native)
 
 macro(_addIfExists VAR name)
   if(EXISTS ${name})
@@ -134,20 +128,8 @@ function(_addSkipTargetTest src backend_shortName backend_target exec test_targe
     CC=${CMAKE_CXX_COMPILER}
     CLANG=${CLANG_EXECUTABLE}
     )
-  set(PRELUDE)
-  if(backend_shortName STREQUAL js)
-    list(APPEND ENV NODE=${NODE})
-    set(PRELUDE ${PRELUDE_JS_SOURCES})
-  elseif(backend_shortName STREQUAL js_self)
-    list(APPEND ENV NODE=${NODE})
-    set(PRELUDE ${PRELUDE_JS_SOURCES})
-  elseif(backend_shortName STREQUAL native)
-    set(PRELUDE ${PRELUDE_NATIVE_SOURCES})
-    # Need the NODE env for native in case we are running the backend compiler on JS
-    if(NODE)
-      list(APPEND ENV NODE=${NODE})
-    endif()
-  endif()
+
+  set(PRELUDE ${PRELUDE_SOURCES})
 
   if(NOT RELATIVE)
     set(RELATIVE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -244,7 +226,7 @@ function(add_skip_test src)
   _parseArgs(BACKENDS RUNNER LIBS RELATIVE ARGN ${ARGN})
 
   if(NOT BACKENDS)
-    set(BACKENDS js js_self native)
+    set(BACKENDS native)
   endif()
 
   if(NOT RUNNER)
@@ -260,10 +242,6 @@ function(add_skip_test src)
   file(RELATIVE_PATH relpath ${CMAKE_SOURCE_DIR} ${relpath})
   string(REPLACE "/" "." relpath ${relpath})
 
-  if(BACKENDS MATCHES js)
-    _addSkipTargetTest(${src} js skip_to_js skip_js_exec ${relpath} ${RUNNER} ${LIBS})
-  endif()
-
   if(NOT src MATCHES "/invalid/")
     # Tests in src/tests/*/invalid/*.sk test compile errors.
     # Since backends can't produce compile errors, theres no need to run them
@@ -271,10 +249,6 @@ function(add_skip_test src)
 
     if(BACKENDS MATCHES native)
       _addSkipTargetTest(${src} native skip_to_native skip_native_exec ${relpath} ${RUNNER} ${LIBS})
-    endif()
-
-    if(BACKENDS MATCHES js_self)
-      _addSkipTargetTest(${src} js_self skip_to_js.js skip_js_self_exec ${relpath} ${RUNNER} ${LIBS})
     endif()
   endif()
 endfunction()

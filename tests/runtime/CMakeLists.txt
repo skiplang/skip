@@ -6,8 +6,7 @@ set(SKIP_VERSION_HASH "Unavailable")
 set(SKIP_VERSION_DATE "Unavailable")
 
 add_subdirectory(prelude)
-set(PRELUDE_JS_SOURCES ${PRELUDE_JS_SOURCES} PARENT_SCOPE)
-set(PRELUDE_NATIVE_SOURCES ${PRELUDE_NATIVE_SOURCES} PARENT_SCOPE)
+set(PRELUDE_SOURCES ${PRELUDE_SOURCES} PARENT_SCOPE)
 
 set(BUILD_TOOLS ${CMAKE_CURRENT_SOURCE_DIR}/tools PARENT_SCOPE)
 
@@ -22,9 +21,6 @@ set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/native/lib/preamble.ll)
 # (usually the previous phase's compiler).
 #
 # By default includes the resulting target in ALL.
-#
-# Also adds a ${name}.js build target from skip source using the Current compiler.
-# Does not add the ${name}.js target to ALL.
 #
 # skip_target is of the form 'directory:target_name'.
 # For example: src/tools:skip_printer
@@ -102,80 +98,11 @@ function(add_skip_executable name skip_target via_backend_path obj_path)
   target_include_directories(${name} PRIVATE ${RUNTIME_NATIVE_PATH}/include/skip/rvmi)
   set_target_properties(${name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${obj_path})
   set_target_properties(${name} PROPERTIES LLVM_OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/${name}.ll)
-
-  add_skip_js_executable(
-    "${name}.js"
-    ${skip_target}
-    DEPENDS ${DEPENDS}
-    EXCLUDE_FROM_ALL
-    )
-
-  add_built_from_js_executable(
-    ${name}
-    ${skip_target}
-    $<TARGET_FILE:preamble.${PHASE}>
-  )
-
 endfunction()
-
-# Convert skip source to llvm asm using the JS backend.
-# Useful for debugging the compiler as the JS backend can be coaxed into
-# printing stack traces with print_stack_trace.
-#
-# add_built_from_js_executable(name skip_target preamble
-#                     [DEPENDS dependencies...]
-#                     [EXCLUDE_FROM_ALL]
-# )
-#
-function(add_built_from_js_executable name skip_target preamble)
-  set(DEPENDS)
-  set(EXCLUDE_FROM_ALL)
-  _parseArgs(DEPENDS "=EXCLUDE_FROM_ALL" ARGN ${ARGN})
-
-  if(EXCLUDE_FROM_ALL)
-    set(all)
-  else()
-    set(all ALL)
-  endif()
-
-  fetch_depends(SKIP_TARGET_DEPENDS nonnative ${skip_target})
-
-  # TODO: SKIP_NBE_FLAGS
-  set(JS_FILE ${SKIP_BIN_PATH}/skip_to_llvm.js)
-  set(TARGET ${SKIP_BIN_PATH}/${name}__js.llvm)
-  add_custom_command(
-    OUTPUT ${TARGET}
-    DEPENDS
-      ${JS_FILE}
-      ${SKIP_TARGET_DEPENDS}
-      ${DEPENDS}
-    COMMAND
-      NODE=${NODE}
-      EXTRA_OLD_SPACE=1
-      ${TOOLS_DIR}/run_js_file
-      --no-unhandled-exception-stack
-      ${JS_FILE}
-      --preamble ${preamble}
-      --export-function-as
-      main=skip_main
-      --nogoto
-      ${skip_target}
-      > ${TARGET}
-    )
-  add_custom_target(
-    js__${name}
-    DEPENDS ${TARGET}
-  )
-
-endfunction()
-
 
 # ---------------------------------------------------------------------------
 # Compile an executable from skip source.
 # By default includes the resulting target in ALL.
-#
-# Also adds a ${name}.js build target from skip source using the Current compiler.
-# Does not add the ${name}.js target to ALL.
 #
 # skip_target is of the form 'directory:target_name'.
 # For example: src/tools:skip_printer
@@ -223,9 +150,6 @@ endfunction()
 # Compile an executable from skip source.
 # By default includes the resulting target in ALL.
 #
-# Also adds a ${name}.js build target from skip source using the Current compiler.
-# Does not add the ${name}.js target to ALL.
-#
 # Do not include prelude to SOURCES; prelude files are added automatically.
 #
 # skip_target is of the form 'directory:target_name'.
@@ -269,79 +193,4 @@ function(add_skip_compiler_executable name skip_target)
       ${DEPENDS}
     ${EXCLUDE_FROM_ALL}
   )
-endfunction()
-
-# ---------------------------------------------------------------------------
-# Compile skip to JS using the Current compiler.
-#
-# add_skip_js_executable(name skip_target
-#                        [DEPENDS dependencies...]
-#                        [EXCLUDE_FROM_ALL]
-# )
-#
-function(add_skip_js_executable name skip_target)
-  set(EXCLUDE_FROM_ALL)
-  set(DEPENDS)
-  _parseArgs(SOURCES DEPENDS "=EXCLUDE_FROM_ALL" ARGN ${ARGN})
-
-  if(EXCLUDE_FROM_ALL)
-    set(all)
-  else()
-    set(all ALL)
-  endif()
-
-  set(TARGET ${SKIP_BIN_PATH}/${name})
-
-  fetch_depends(SKIP_TARGET_DEPENDS nonnative ${skip_target})
-
-  add_command_target(
-    ${name}
-    ${all}
-    OUTPUT ${TARGET}
-    COMMAND ${SKIP_BIN_PATH}/skip_to_js --output ${TARGET} ${skip_target}
-    DEPENDS skip_to_js ${SKIP_BIN_PATH}/skip_to_js ${SKIP_TARGET_DEPENDS} ${DEPENDS}
-    )
-endfunction()
-
-# ---------------------------------------------------------------------------
-# Compile skip to JS using Current JS Transpiler
-#
-# Do not include prelude to SOURCES; prelude files are added automatically.
-#
-# add_skip_js_js_executable(name skip_target
-#                           [DEPENDS dependencies...]
-#                           [EXCLUDE_FROM_ALL]
-# )
-#
-function(add_skip_js_js_executable name skip_target)
-  set(EXCLUDE_FROM_ALL)
-  _parseArgs("=EXCLUDE_FROM_ALL" ARGN ${ARGN})
-
-  if(EXCLUDE_FROM_ALL)
-    set(all)
-  else()
-    set(all ALL)
-  endif()
-
-  set(TARGET ${SKIP_BIN_PATH}/${name})
-
-  fetch_depends(SKIP_TARGET_DEPENDS nonnative ${skip_target})
-
-  add_command_target(
-    ${name}
-    ${all}
-    OUTPUT ${TARGET}
-    DEPENDS
-      skip_to_js_js
-      ${SKIP_BIN_PATH}/skip_to_js.js
-      ${SKIP_TARGET_DEPENDS}
-    COMMAND
-      NODE=${NODE}
-      EXTRA_OLD_SPACE=1
-      ${TOOLS_DIR}/run_js_file
-      --no-unhandled-exception-stack
-      ${SKIP_BIN_PATH}/skip_to_js.js
-      --output ${TARGET}
-      ${skip_target}
-    )
 endfunction()

@@ -331,7 +331,7 @@ def main(stack):
     if not IN_PROD_TREE:
         parser.add_argument('--via-backend',
                             help='Choose a backend to run.  Should be either '
-                            + "'js', 'stage1' or 'native'")
+                            + "'stage1' or 'native'")
 
     def isClangArg(arg):
         return (

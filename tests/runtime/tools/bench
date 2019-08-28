@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-# Usage: run_benchmark [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native', 'js']] [...benchmark options]
+# Usage: run_benchmark [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native']] [...benchmark options]
 #
-# optional --backend arg is the backend used to compile the benchmark (native, js).
+# optional --backend arg is the backend used to compile the benchmark (native).
 #
 # The optional .sk files are library code to be compiled with the benchmark.
 #
@@ -35,7 +35,7 @@ def main(stack):
         description="Run skip benchmarks", parents=[common.commonArguments(needsBackend=False)]
     )
     parser.add_argument("srcs", nargs="+", help="the .sk files to benchmark")
-    parser.add_argument("--backend", choices=['native','js'], default='native', help="is one of native, js")
+    parser.add_argument("--backend", choices=['native'], default='native', help="is one of native")
     parser.add_argument("--display-output", action="store_true", help="print benchmark results to stdout")
     parser.add_argument("--keep-samples", action="store_true", help="store all gathered samples when writing to output file")
     parser.add_argument("--output", required=False, help="output file to store results in")
