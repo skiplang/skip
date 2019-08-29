@@ -1,7 +1,100 @@
-# These are all the prelude files - some are shadows for others so this list is
-# only valid for dependency testing.
-recursiveGlobSources(PRELUDE_ALL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.sk)
-
 # These are the prelude files specific to compiling with the native backend
-fetch_depends(PRELUDE_SOURCES native ${CMAKE_CURRENT_SOURCE_DIR})
+
+list(APPEND PRELUDE_SOURCES
+  core/Option.sk
+  core/Parallel.sk
+  core/Result.sk
+  core/Unsafe.sk
+  core/language/Class.sk
+  core/language/Exception.sk
+  core/language/FromIterator.sk
+  core/language/IntoIterator.sk
+  core/language/Iterator.sk
+  core/language/Sequence.sk
+  core/language/Tuples.sk
+  core/language/Void.sk
+  core/primitives/Array.sk
+  core/primitives/Bool.sk
+  core/primitives/Char.sk
+  core/primitives/Float.sk
+  core/primitives/Int.sk
+  core/primitives/String.sk
+  core/traits/Equality.sk
+  core/traits/HasClassName.sk
+  core/traits/Hashable.sk
+  core/traits/Integral.sk
+  core/traits/Number.sk
+  core/traits/Order.sk
+  core/traits/Orderable.sk
+  core/traits/Show.sk
+  php/HH.sk
+  php/HhvmInterop.sk
+  php/Nullable.sk
+  stdlib/benchmarking/Bencher.generated.sk
+  stdlib/benchmarking/Bencher.sk
+  stdlib/collections/interfaces/IndexedSequence.sk
+  stdlib/collections/interfaces/KeyedSequence.sk
+  stdlib/collections/interfaces/Sequence.generated.sk
+  stdlib/collections/interfaces/UniqueSequence.sk
+  stdlib/collections/mutable/Map.sk
+  stdlib/collections/mutable/Set.sk
+  stdlib/collections/mutable/UnorderedMap.sk
+  stdlib/collections/mutable/UnorderedSet.sk
+  stdlib/collections/mutable/Vector.sk
+  stdlib/collections/persistent/List.sk
+  stdlib/collections/persistent/PersistentRadixTreeVector.sk
+  stdlib/collections/persistent/SortedMap.sk
+  stdlib/collections/persistent/SortedSet.sk
+  stdlib/debug/Debug.sk
+  stdlib/debug/Doc.sk
+  stdlib/filesystem/FileSystem.sk
+  stdlib/filesystem/Glob.sk
+  stdlib/filesystem/Path.sk
+  stdlib/int/Int16.sk
+  stdlib/int/Int32.sk
+  stdlib/int/Int8.sk
+  stdlib/int/UInt16.sk
+  stdlib/int/UInt32.sk
+  stdlib/int/UInt8.sk
+  stdlib/other/ASIO.sk
+  stdlib/other/ArgumentParser.sk
+  stdlib/other/Chars.sk
+  stdlib/other/DirectedGraph.sk
+  stdlib/other/IndentedWriter.sk
+  stdlib/other/Math.sk
+  stdlib/other/Random.sk
+  stdlib/other/Range.sk
+  stdlib/other/Ref.sk
+  stdlib/other/Regex.sk
+  stdlib/other/Stats.sk
+  stdlib/other/StringIterator.sk
+  stdlib/other/Subprocess.sk
+  stdlib/other/System.sk
+  stdlib/other/Util.sk
+  stdlib/parsing/LexingPosition.sk
+  stdlib/parsing/Position.sk
+  stdlib/parsing/TextRange.sk
+  stdlib/serialization/JSON.sk
+  stdlib/serialization/JSONSerializer.sk
+  stdlib/serialization/Serialization.sk
+  stdlib/serialization/Serializers.sk
+  stdlib/testing/Assert.sk
+  stdlib/testing/GTest.sk
+  stdlib/testing/QuickCheck.sk
+  stdlib/testing/TestStringOrInt.sk
+  stdlib/testing/UnitTest.sk
+  native/Awaitable.sk
+  native/FastOption.sk
+  native/InteropInternal.sk
+  native/Reactive.sk
+  native/RegexImplementation.sk
+  native/Runtime.sk
+  native/String.sk
+  native/StringIterator.sk
+  native/Svmi.sk
+  )
+
+# Make paths absolute.
+prependEach(PRELUDE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/")
+
 set(PRELUDE_SOURCES ${PRELUDE_SOURCES} PARENT_SCOPE)

@@ -61,8 +61,6 @@ function(add_skip_executable name skip_target via_backend_path obj_path)
     set(llvm_temp_arg)
   endif()
 
-  fetch_depends(SKIP_NATIVE_TARGET_DEPENDS native ${skip_target})
-
   # Create an executable.
   # TODO: Add build/obj path.
   set(OBJECT ${obj_path}/${name}.o)
@@ -86,7 +84,6 @@ function(add_skip_executable name skip_target via_backend_path obj_path)
       ${via_backend_path}/skip_to_llvm
       preamble.${PHASE}
       native_cc.${PHASE}
-      ${SKIP_NATIVE_TARGET_DEPENDS}
       ${DEPENDS}
     )
 
@@ -97,6 +94,7 @@ function(add_skip_executable name skip_target via_backend_path obj_path)
   target_link_libraries(${name} sk_standalone.${PHASE} skip_runtime.${PHASE})
   target_include_directories(${name} PRIVATE ${RUNTIME_NATIVE_PATH}/include/skip/rvmi)
   set_target_properties(${name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${obj_path})
+  # NOTE: The following property is never used.
   set_target_properties(${name} PROPERTIES LLVM_OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/${name}.ll)
 endfunction()
 

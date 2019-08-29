@@ -4,20 +4,15 @@ set(RUNTIME_NATIVE_PATH ${RUNTIME_PATH}/native)
 set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/lib/preamble.ll)
 
 set(PHASE src)
-add_subdirectory(runtime)
 
-# ------------------------------------------------------------------------------
-add_subdirectory(utils)
-if (NOT UTILS_SOURCES)
-  message(FATAL_ERROR "UTILS_SOURCES not set")
-endif()
-set(UTILS_SOURCES ${UTILS_SOURCES} PARENT_SCOPE)
-add_subdirectory(frontend)
+add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.
+add_subdirectory(frontend) # Sets FRONTEND_SOURCES.
+add_subdirectory(utils)    # Sets UTILS_SOURCES.
+add_subdirectory(native)   # Sets COMPILER_SOURCES.
+add_subdirectory(server)
 add_subdirectory(tools)
 add_subdirectory(project)
-add_subdirectory(native)
 add_subdirectory(nuclide)
-add_subdirectory(server)
 
 set(PHASE)
 

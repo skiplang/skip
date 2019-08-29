@@ -1,6 +1,54 @@
 # ------------------------------------------------------------------------------
 # Front End Sources
 
+list(APPEND FRONTEND_SOURCES
+  IMap.sk
+  ISet.sk
+  Parameters.sk
+  SkipLexer.sk
+  SkipParseTree.sk
+  SkipParser.sk
+  TokenIterator.sk
+  UMap.sk
+  bufferedPrinter.sk
+  convertTree.sk
+  keywords.sk
+  parseTreeGenerated.sk
+  predefinedName.sk
+  sharedTuples.sk
+  skipArguments.sk
+  skipAst.sk
+  skipAstPp.sk
+  skipAstUtils.sk
+  skipCheckVariance.sk
+  skipComment.sk
+  skipDidYouMean.sk
+  skipExhaustivePatterns.sk
+  skipExpand.sk
+  skipInherit.sk
+  skipMain.sk
+  skipNamedAst.sk
+  skipNamedAstPp.sk
+  skipNaming.sk
+  skipParse.sk
+  skipSerGenPp.sk
+  skipToken.sk
+  skipTypedAst.sk
+  skipTypedAstExpand.sk
+  skipTypedAstPp.sk
+  skipTypedAstRename.sk
+  skipTypedAstUtils.sk
+  skipTypes.sk
+  skipTyping.sk
+  skipTypingUtils.sk
+  skipUtils.sk
+  tokenKind.sk
+  )
+
+# Make paths absolute.
+prependEach(FRONTEND_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/")
+set(FRONTEND_SOURCES ${FRONTEND_SOURCES} PARENT_SCOPE)
+
 # parseTreeGenerated.sk is generated from JSON.
 set(PARSE_TREE_SK ${CMAKE_CURRENT_SOURCE_DIR}/parseTreeGenerated.sk)
 set(BIN_PARSE_TREE_SK ${CMAKE_CURRENT_BINARY_DIR}/parseTreeGenerated.sk)
