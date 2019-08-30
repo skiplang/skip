@@ -48,9 +48,6 @@ set(ENABLE_MCROUTER OFF)
 set(ENABLE_GOOGLETEST ON)
 set(JEMALLOC_ENABLED ON)
 
-# We use node to build the parsetree.
-find_package(Node)
-
 # If we're not running tests then we don't need hhvm
 if(CONFIGURE_TESTS)
   find_package(HHVM)

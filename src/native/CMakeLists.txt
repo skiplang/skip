@@ -11,10 +11,7 @@ list(APPEND COMPILER_SOURCES
   ../outer/skipOuterIstUtils.sk
   ../outer/skipRenameLocals.sk
   ../outer/skipValidateOuterIst.sk
-  ../project/ProjectConfig.sk
-  ../project/SkipProject.sk
-  ../project/SolutionLoader.sk
-  ../project/ConfigSerialization.sk
+  ../outer/skip.project.json
   AsmOutput.sk
   Config.sk
   Emitter.sk
@@ -60,6 +57,7 @@ list(APPEND COMPILER_SOURCES
   hhvm/propertyGetHelper.sk
   hhvm/propertySetHelper.sk
   hhvm/typeTable.sk
+  skip.project.json
   )
 
 # Make paths absolute.
@@ -70,6 +68,7 @@ set(COMPILER_SOURCES ${COMPILER_SOURCES} PARENT_SCOPE)
 add_skip_compiler_executable(skip_to_llvm
   ${CMAKE_CURRENT_SOURCE_DIR}:skip_to_llvm
   DEPENDS
+  ${PROJECT_SOURCES}
   ${COMPILER_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
@@ -84,6 +83,7 @@ add_skip_compiler_executable(
   EXCLUDE_FROM_ALL
   LLVM_TEMP_PATH ${CMAKE_CURRENT_BINARY_DIR}/lkg_prep_skip_to_llvm.ll
   DEPENDS
+  ${PROJECT_SOURCES}
   ${COMPILER_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}

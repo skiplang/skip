@@ -43,6 +43,7 @@ list(APPEND FRONTEND_SOURCES
   skipTypingUtils.sk
   skipUtils.sk
   tokenKind.sk
+  skip.project.json
   )
 
 # Make paths absolute.
@@ -53,13 +54,20 @@ set(FRONTEND_SOURCES ${FRONTEND_SOURCES} PARENT_SCOPE)
 set(PARSE_TREE_SK ${CMAKE_CURRENT_SOURCE_DIR}/parseTreeGenerated.sk)
 set(BIN_PARSE_TREE_SK ${CMAKE_CURRENT_BINARY_DIR}/parseTreeGenerated.sk)
 
+add_skip_compiler_executable(skip_generate_parse_trees
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_generate_parse_trees
+  DEPENDS
+  skipGenerateParseTrees.sk
+  ${PRELUDE_SOURCES}
+  )
+
 add_custom_command(
   OUTPUT ${BIN_PARSE_TREE_SK}
   DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/trees.json
-    ${SKIP_TOOLS_PATH}/generate-parse-trees.js
+    skip_generate_parse_trees
     skip_printer
-  COMMAND ${NODE} ${SKIP_TOOLS_PATH}/generate-parse-trees.js ${CMAKE_CURRENT_SOURCE_DIR}/trees.json > ${BIN_PARSE_TREE_SK}
+  COMMAND $<TARGET_FILE:skip_generate_parse_trees> ${CMAKE_CURRENT_SOURCE_DIR}/trees.json > ${BIN_PARSE_TREE_SK}
   COMMAND ${SKIP_BIN_PATH}/skip_printer --write ${BIN_PARSE_TREE_SK}
 )
 

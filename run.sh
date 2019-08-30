@@ -20,13 +20,5 @@ TOOLS="$RUNTIME/tools"
 BUILD="$DIR/build"
 BIN="$BUILD/bin"
 
-if [ -z "${NODE}" ]; then
-    if [ -f "${DIR}/build/CMakeCache.txt" ]; then
-        export NODE=$(grep 'NODE:FILEPATH=' "${DIR}/build/CMakeCache.txt" | sed -e 's/NODE:FILEPATH=\(.*\)/\1/')
-    else
-        export NODE=node
-    fi
-fi
-
 VIA_BACKEND="${VIA_BACKEND:-"$BIN"}"
 exec "$RUNTIME/tools/run" --via-backend "$VIA_BACKEND" "$@"

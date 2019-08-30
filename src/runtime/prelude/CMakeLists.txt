@@ -92,6 +92,7 @@ list(APPEND PRELUDE_SOURCES
   native/String.sk
   native/StringIterator.sk
   native/Svmi.sk
+  skip.project.json
   )
 
 # Make paths absolute.

@@ -8,10 +8,10 @@ set(PHASE src)
 add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.
 add_subdirectory(frontend) # Sets FRONTEND_SOURCES.
 add_subdirectory(utils)    # Sets UTILS_SOURCES.
+add_subdirectory(project)  # Sets PROJECT_SOURCES.
 add_subdirectory(native)   # Sets COMPILER_SOURCES.
 add_subdirectory(server)
 add_subdirectory(tools)
-add_subdirectory(project)
 add_subdirectory(nuclide)
 
 set(PHASE)

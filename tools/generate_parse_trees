@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+DIR="$(dirname "$0")"
+ROOT_DIR="$DIR/../"
+
+PRELUDE="$ROOT_DIR/src/runtime/prelude" "$ROOT_DIR/run.sh" "$ROOT_DIR/src/frontend" "$DIR/generateParseTrees.sk" -- $@

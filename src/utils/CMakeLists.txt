@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Front End Sources
+# Utils Sources
 
 list(APPEND UTILS_SOURCES
   Assert.sk
@@ -17,6 +17,7 @@ list(APPEND UTILS_SOURCES
   arguments.sk
   skipError.sk
   syntaxError.sk
+  skip.project.json
   )
 
 # Make paths absolute.

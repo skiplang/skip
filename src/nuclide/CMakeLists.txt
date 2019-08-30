@@ -28,11 +28,7 @@ add_skip_compiler_executable(skip_lsp
   native/FastOption.sk
   ../tools/printer/ParseTreeFactory.sk
   ../tools/printer/printer.sk
-  ../project/ProjectConfig.sk
-  ../project/SkipProject.sk
-  ../project/SolutionLoader.sk
-  ../project/ConfigSerialization.sk
-  ../project/SkipAnalyze.sk
+  ${PROJECT_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
   ${PRELUDE_SOURCES}
