@@ -269,10 +269,6 @@ def findClang(args):
     return findProgram(args, 'clang++', 'CLANG', 'CLANG_EXECUTABLE')
 
 
-def findNode(args):
-    return findProgram(args, 'node', 'NODE', 'NODE')
-
-
 def main(stack):
     parser = argparse.ArgumentParser(
         description='Run the Skip compiler',
@@ -454,7 +450,6 @@ def main(stack):
         extraOpts += ['--preamble', args.preamble]
 
     CC = findClang(args)
-    NODE = findNode(args)
 
     LLC = os.environ.get('LLC', 'llc')
     if not os.path.isabs(LLC) or not os.path.isfile(LLC):
@@ -488,7 +483,7 @@ def main(stack):
         exit(0)
 
     with common.PerfTimer('skip_to_llvm.runtime'):
-        common.callHelper(cmd, env={'NODE': NODE})
+        common.callHelper(cmd)
 
     if emitLL:
         with common.PerfTimer('emitLL.runtime'):

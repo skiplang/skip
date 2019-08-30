@@ -8,7 +8,7 @@ add_skip_compiler_executable(skip_check
   ../project/SkipAnalyze.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
   )
 
 add_skip_compiler_executable(skip_lsp
@@ -31,7 +31,7 @@ add_skip_compiler_executable(skip_lsp
   ${PROJECT_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
 )
 
 add_skip_compiler_executable(skip_check_json
@@ -41,7 +41,7 @@ add_skip_compiler_executable(skip_check_json
   ../project/SkipAnalyze.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
 )
 
 add_skip_compiler_executable(skip_outline
@@ -50,7 +50,7 @@ add_skip_compiler_executable(skip_outline
   outline.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
 )
 
 add_skip_compiler_executable(skip_format
@@ -61,7 +61,7 @@ add_skip_compiler_executable(skip_format
   ../tools/printer/printer.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
 )
 
 add_skip_compiler_executable(skip_get_definition
@@ -72,7 +72,7 @@ add_skip_compiler_executable(skip_get_definition
   ../project/SkipAnalyze.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
 )
 
 set(

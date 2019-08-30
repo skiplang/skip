@@ -92,9 +92,10 @@ list(APPEND PRELUDE_SOURCES
   native/String.sk
   native/StringIterator.sk
   native/Svmi.sk
+  skip.project.json
   )
 
 # Make paths absolute.
 prependEach(PRELUDE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/")
 
-set(PRELUDE_SOURCES ${PRELUDE_SOURCES} PARENT_SCOPE)
+set(PRELUDE_SOURCES.${PHASE} ${PRELUDE_SOURCES} PARENT_SCOPE)

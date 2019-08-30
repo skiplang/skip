@@ -5,7 +5,7 @@ set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/lib/preamble.ll)
 
 set(PHASE src)
 
-add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.
+add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.${PHASE}.
 add_subdirectory(frontend) # Sets FRONTEND_SOURCES.
 add_subdirectory(utils)    # Sets UTILS_SOURCES.
 add_subdirectory(project)  # Sets PROJECT_SOURCES.
