@@ -44,11 +44,12 @@
                   "skipTypingUtils.sk",
                   "skipUtils.sk",
                   "tokenKind.sk"],
-      "references": [ { "path": "../utils" } ]
+      "references": [{ "path": "../utils" }]
     },
     "skip_generate_parse_trees": {
       "kind": "Program",
-      "sources": ["skipGenerateParseTrees.sk"]
+      "sources": ["skipGenerateParseTrees.sk"],
+      "references": [{ "path": "../runtime/prelude" }]
     }
   },
   "default": "frontend"
