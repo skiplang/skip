@@ -19,7 +19,7 @@ import sys
 
 common = imp.load_source(
     'common',
-    os.path.join(os.path.dirname(sys.argv[0]), './runtime/tools/common.py'))
+    os.path.join(os.path.dirname(sys.argv[0]), '../src/runtime/tools/common.py'))
 
 from common import RED, GREEN, NORMAL
 

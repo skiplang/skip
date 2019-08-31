@@ -14,7 +14,7 @@ import tempfile
 common = imp.load_source(
     'common',
     os.path.join(os.path.dirname(sys.argv[0]),
-                 '../../runtime/tools/common.py'))
+                 '../../../src/runtime/tools/common.py'))
 
 logger = logging.getLogger(os.path.basename(__file__))
 args = None

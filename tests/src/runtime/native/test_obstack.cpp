@@ -10,7 +10,7 @@
 #ifndef NDEBUG
 
 #include "skip/Obstack.h"
-#include "../../../runtime/native/src/ObstackDetail.h"
+#include "../../../../src/runtime/native/src/ObstackDetail.h"
 #include "skip/Obstack-extc.h"
 #include "skip/Finalized.h"
 #include "skip/Process.h"

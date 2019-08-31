@@ -58,7 +58,7 @@ add_skip_compiler_executable(skip_generate_parse_trees
   ${CMAKE_CURRENT_SOURCE_DIR}:skip_generate_parse_trees
   DEPENDS
   skipGenerateParseTrees.sk
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_custom_command(

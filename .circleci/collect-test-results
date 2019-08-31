@@ -13,7 +13,16 @@ import xml.etree.cElementTree as ET
 
 common = imp.load_source(
     'common',
-    os.path.join(os.path.dirname(sys.argv[0]), '../tests/runtime/tools/common.py'))
+    os.path.join(os.path.dirname(sys.argv[0]), '../src/runtime/tools/common.py'))
+
+common.source_dir = os.path.normpath(os.path.join(os.path.abspath(__file__), '../tests'))
+common.root_dir = os.path.normpath(os.path.join(common.source_dir, '..'))
+common.phase = 'tests'
+common.build_dir = os.path.normpath(os.path.join(common.source_dir, '../build'))
+common.binary_dir = os.path.normpath(os.path.join(common.build_dir, common.phase))
+common.runtime_dir = os.path.normpath(os.path.join(common.root_dir, 'src/runtime'))
+common.profile_dir = os.path.join(common.build_dir, 'profile')
+
 
 from common import RED, GREEN, NORMAL
 

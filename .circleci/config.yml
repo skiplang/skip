@@ -70,10 +70,6 @@ jobs:
           command: |
             cmake ..
 
-      - run:
-          name: Check Runtimes
-          command: ${HOME}/skip/tools/check_runtime_file ${HOME}/skip/src/runtime ${HOME}/skip/tests/runtime
-
       # Build the external dependencies separate from the rest of the
       # tests because they tend to spin up parallel jobs which cause
       # us to exceed the memory limit.
@@ -84,7 +80,7 @@ jobs:
       - run:
           name: compile runtimes
           working_directory: ~/skip/build
-          command: ${COMMAND_PREFIX} ninja -j 8 skip_runtime.lkg.dep skip_runtime.src.dep skip_runtime.tests.dep
+          command: ${COMMAND_PREFIX} ninja -j 8 skip_runtime.lkg.dep skip_runtime.src.dep
       - run:
           name: compile skip_to_llvm executables
           working_directory: ~/skip/build
@@ -291,7 +287,7 @@ jobs:
       - run:
           name: compile runtimes
           working_directory: ~/skip/build
-          command: ninja skip_runtime.lkg.dep skip_runtime.src.dep skip_runtime.tests.dep
+          command: ninja skip_runtime.lkg.dep skip_runtime.src.dep
       - run:
           name: smoke test
           command: |

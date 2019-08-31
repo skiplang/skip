@@ -18,7 +18,7 @@ import sys
 
 common = imp.load_source(
     'common',
-    os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py'))
+    os.path.join(os.path.dirname(sys.argv[0]), '../../../src/runtime/tools/common.py'))
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def runtest(args, test):
             suffix='.sk') as fout:
         fout.write(result)
         fout.flush()
-        backend_gen = "../../runtime/tools/skip_native_exec"
+        backend_gen = "../../../src/runtime/tools/skip_native_exec"
         cmd = [backend_gen, common.prelude(), test, fout.name, 'TestHelpers.sk']
         env = os.environ.copy()
         env['SKIP_DONT_REBUILD'] = '1'

@@ -1,4 +1,3 @@
-
 # ---------------------------------------------------------------------------
 # Test Nuclide Outline View Integration
 
@@ -37,7 +36,7 @@ add_custom_target(
 # ---------------------------------------------------------------------------
 # Test Nuclide skip_check integration, as well as mini-prelude.
 
-set(CHECK_TEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/mini-prelude/mini.sk)
+set(CHECK_TEST_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/runtime/mini-prelude/mini.sk)
 set(CHECK_EXP_FILE ${CMAKE_CURRENT_SOURCE_DIR}/check-test.exp)
 set(CHECK_BIN ${SKIP_BIN_PATH}/skip_check)
 set(CHECK_OUTPUT_FILE ${CMAKE_CURRENT_BINARY_DIR}/check-test.out)

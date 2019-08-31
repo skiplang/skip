@@ -4,7 +4,7 @@
     "frontend-tests": {
       "kind": "Library",
       "sources": [],
-      "references": [ { "path": "../../runtime/prelude" } ]
+      "references": [ { "path": "../../../src/runtime/prelude" } ]
     }
   }
 }

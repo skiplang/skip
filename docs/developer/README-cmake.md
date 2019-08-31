@@ -199,16 +199,15 @@ files also requires a 2 step LKG update process.
 
 Now all parts of the repo are using the new `skip.project.json` file format.
 
-# Runtime Development Workflow
+# Runtime Development Workflow (Stale)
 
-The source of truth for the runtimes is in the `tests/runtime/`
+The source of truth for the runtimes is in the `src/runtime/`
 directory but the compiler uses a copy of the runtime to build itself
 so editing code in the `tests/runtime/` directory requires an extra
 step.
 
 * The runtime in `lkg/runtime/` is used to compile the lkg (last known good) compiler.
 * The runtime in `src/runtime/` is used to compile the compiler.
-* The runtime in `tests/runtime/` is used to compile tests.
 
 
 The development process of `tests/runtime/` code is:
@@ -221,23 +220,7 @@ to the compiler source. (See Syncing Runtimes below)
 - `ninja check_runtimes` will tell you if your runtimes are out of sync.
 - `ninja test` will fail if your runtimes are out of sync.
 
-### Syncing Runtimes
-
-If you've only modified `tests/runtime` you can use rsync to copy
-(note that the '/' after the source filename is important):
-
-    $ rsync -a --delete tests/runtime/ src/runtime
-
-There's also a script in `tools/sync-runtime` but it's not very smart
- and will get either deleted or improved soon.
-
-Otherwise you'll need to ensure they match up by hand.  A recursive
-diff should show no difference between tests/runtime and src/runtime:
-
-    $ diff --brief -r -X .gitignore tests/runtime src/runtime && echo match || echo broken
-    match
-
-### Multiple Runtimes Are Confusing
+### Multiple Runtimes Are Confusing (Stale)
 
 Since we have multiple copies of the runtime it can be confusing to
 know which one you should be modifying.

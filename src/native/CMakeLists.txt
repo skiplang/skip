@@ -72,7 +72,7 @@ add_skip_compiler_executable(skip_to_llvm
   ${COMPILER_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 install(TARGETS skip_to_llvm RUNTIME DESTINATION bin)
 
@@ -87,7 +87,7 @@ add_skip_compiler_executable(
   ${COMPILER_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_subdirectory(tests)

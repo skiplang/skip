@@ -9,7 +9,7 @@ add_skip_compiler_executable(grammar
   grammar.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 set(PARSER_SK_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../frontend/SkipParser.sk)
@@ -32,7 +32,7 @@ add_skip_compiler_executable(skip_to_parsetree
   skipToParseTree.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_to_ast
@@ -41,7 +41,7 @@ add_skip_compiler_executable(skip_to_ast
   skipToAst.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_printer
@@ -52,7 +52,7 @@ add_skip_compiler_executable(skip_printer
   printer/printer.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_codemod
@@ -66,7 +66,7 @@ add_skip_compiler_executable(skip_codemod
   printer/printer.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_search
@@ -79,7 +79,7 @@ add_skip_compiler_executable(skip_search
   printer/printer.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_serialization_generator
@@ -90,7 +90,7 @@ add_skip_compiler_executable(skip_serialization_generator
   printer/printer.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_skip_compiler_executable(skip_collect_annotations
@@ -104,7 +104,7 @@ add_skip_compiler_executable(skip_collect_annotations
   ../project/ConfigSerialization.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 # ------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ add_skip_compiler_executable(skip_docgen
   ../project/ConfigSerialization.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 add_custom_target(

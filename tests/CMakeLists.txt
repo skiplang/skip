@@ -1,23 +1,11 @@
 # ---------------------------------------------------------------------------
 # Setup the tests runtime
-set(TESTS_PATH ${CMAKE_CURRENT_SOURCE_DIR})
-set(RUNTIME_PATH ${TESTS_PATH}/runtime)
-set(RUNTIME_TOOLS_PATH ${RUNTIME_PATH}/tools)
-set(RUNTIME_NATIVE_PATH ${RUNTIME_PATH}/native)
-set(RUNTIME_BIN_PATH ${CMAKE_CURRENT_BINARY_DIR}/runtime)
-set(RUNTIME_NATIVE_BIN_PATH ${RUNTIME_BIN_PATH}/native)
-set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/lib/preamble.ll)
 
-set(TESTS_PATH ${TESTS_PATH} PARENT_SCOPE)
-set(RUNTIME_PATH ${RUNTIME_PATH} PARENT_SCOPE)
-set(RUNTIME_TOOLS_PATH ${RUNTIME_TOOLS_PATH} PARENT_SCOPE)
-set(RUNTIME_NATIVE_PATH ${RUNTIME_NATIVE_PATH} PARENT_SCOPE)
-set(RUNTIME_BIN_PATH ${RUNTIME_BIN_PATH} PARENT_SCOPE)
-set(RUNTIME_NATIVE_BIN_PATH ${RUNTIME_NATIVE_BIN_PATH} PARENT_SCOPE)
-set(PREAMBLE ${PREAMBLE} PARENT_SCOPE)
+set(RUNTIME_TOOLS_PATH ${CMAKE_SOURCE_DIR}/src/runtime/tools)
+set(BUILD_TOOLS ${CMAKE_BINARY_DIR}/src/runtime/tools)
+set(PREAMBLE ${CMAKE_BINARY_DIR}/src/runtime/native/lib/preamble.ll)
 
-set(PHASE tests)
-add_subdirectory(runtime)
+set(PHASE src)
 
 # ---------------------------------------------------------------------------
 # Ensure that the compiler can build itself.
@@ -25,14 +13,12 @@ add_skip_compiler_executable_phase(
   skip_to_llvm.tests
   ${CMAKE_SOURCE_DIR}/src/native:skip_to_llvm
   ${SKIP_BIN_PATH}
-  ${CMAKE_BINARY_DIR}/${PHASE}/bin
+  ${CMAKE_BINARY_DIR}/tests/bin
   EXCLUDE_FROM_ALL
 )
 add_dependencies(test skip_to_llvm.tests)
 
 set(PHASE)
-
-set(BUILD_TOOLS ${BUILD_TOOLS} PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
 # Functions for adding test targets.
@@ -128,8 +114,6 @@ function(_addSkipTargetTest src backend_shortName backend_target exec test_targe
     CLANG=${CLANG_EXECUTABLE}
     )
 
-  set(PRELUDE ${PRELUDE_SOURCES.tests})
-
   if(NOT RELATIVE)
     set(RELATIVE ${CMAKE_CURRENT_SOURCE_DIR})
   endif()
@@ -146,7 +130,7 @@ function(_addSkipTargetTest src backend_shortName backend_target exec test_targe
 
   set(build_cmd ${ENV} ${runner} ${exec} --relative ${RELATIVE} ${ARGN} ${src} --profile ${CMAKE_BINARY_DIR}/profile/${test_target}.${backend_shortName})
 
-  set(depends ${ARGN} ${src} ${PRELUDE} skip_collect_annotations)
+  set(depends ${ARGN} ${src} ${PRELUDE_SOURCES} skip_collect_annotations)
   _addIfExists(depends ${srcPath_we}_testhelper.cpp)
   _addIfExists(depends ${srcPath_we}.exp)
   _addIfExists(depends ${srcPath_we}.expectregex)
@@ -159,13 +143,13 @@ function(_addSkipTargetTest src backend_shortName backend_target exec test_targe
     endif()
     list(APPEND depends
       ${BUILD_TOOLS}/${backend_target}
-      sk_standalone.tests
-      native_cc.tests
+      sk_standalone.src
+      native_cc.src
       skip_to_llvm
-      skip_runtime.tests
-      preamble.tests
+      skip_runtime.src
+      preamble.src
       )
-    list(APPEND build_cmd --sk-standalone $<TARGET_FILE:sk_standalone.tests>)
+    list(APPEND build_cmd --sk-standalone $<TARGET_FILE:sk_standalone.src>)
   else()
     list(APPEND depends ${backend_target} ${SKIP_BIN_PATH}/${backend_target})
   endif()
@@ -257,26 +241,26 @@ add_custom_target(
   skip_to_native
   DEPENDS
     skip_to_llvm
-    skip_runtime.tests
-    preamble.tests
+    skip_runtime.src
+    preamble.src
 )
 
 # ---------------------------------------------------------------------------
 # Turn skip_to_native into a stand-alone binary for install
 
-set(SKIP_TO_NATIVE ${CMAKE_CURRENT_BINARY_DIR}/runtime/tools/skip_to_native)
+set(SKIP_TO_NATIVE ${CMAKE_BINARY_DIR}/src/runtime/tools/skip_to_native)
 mkparents(${SKIP_TO_NATIVE}.tmp/skip_to_native)
 
 add_custom_command(
   OUTPUT ${SKIP_TO_NATIVE}.tmp/skip_to_native.py
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/skip_to_native
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/skip_to_native ${SKIP_TO_NATIVE}.tmp/skip_to_native.py
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/runtime/tools/skip_to_native
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/runtime/tools/skip_to_native ${SKIP_TO_NATIVE}.tmp/skip_to_native.py
   )
 
 add_custom_command(
   OUTPUT ${SKIP_TO_NATIVE}.tmp/common.py
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/common.py
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/common.py ${SKIP_TO_NATIVE}.tmp/common.py
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/runtime/tools/common.py
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/runtime/tools/common.py ${SKIP_TO_NATIVE}.tmp/common.py
   )
 
 add_custom_command(
@@ -311,7 +295,7 @@ add_command_target(
   )
 
 install(
-  FILES ${CMAKE_CURRENT_BINARY_DIR}/runtime/tools/skip_to_native
+  FILES ${CMAKE_BINARY_DIR}/src/runtime/tools/skip_to_native
   DESTINATION bin
   PERMISSIONS
   OWNER_READ OWNER_WRITE OWNER_EXECUTE
@@ -320,14 +304,14 @@ install(
   )
 
 # Install runtime/prelude
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/runtime/prelude/ DESTINATION lib/skip/prelude)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/runtime/prelude/ DESTINATION lib/skip/prelude)
 
 # Install runtime/native sources
 install(FILES ${PREAMBLE} DESTINATION lib/skip)
 # The trailing slash means we copy the contents of the directory rather than
 # the directory itself.
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/ DESTINATION include/skip)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/src/ DESTINATION lib/skip/runtime)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/runtime/native/include/skip/ DESTINATION include/skip)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/runtime/native/src/ DESTINATION lib/skip/runtime)
 
 # ---------------------------------------------------------------------------
 

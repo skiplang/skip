@@ -74,7 +74,3 @@ add_subdirectory(third-party)
 add_subdirectory(lkg)
 add_subdirectory(src)
 add_subdirectory(tests)
-
-if (NOT BUILD_TOOLS)
-  message(FATAL_ERROR "BUILD_TOOLS not set")
-endif()

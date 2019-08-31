@@ -8,5 +8,5 @@ add_skip_compiler_executable(skip_server
   ${COMPILER_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )

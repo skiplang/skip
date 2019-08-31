@@ -5,7 +5,7 @@ set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/lib/preamble.ll)
 
 set(PHASE src)
 
-add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.${PHASE}.
+add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.
 add_subdirectory(frontend) # Sets FRONTEND_SOURCES.
 add_subdirectory(utils)    # Sets UTILS_SOURCES.
 add_subdirectory(project)  # Sets PROJECT_SOURCES.
@@ -20,9 +20,6 @@ set(PHASE)
 
 # Bootstrap takes the current src/ code and promotes it to lkg/
 
-set(CHECK_LKG_COMMANDS)
-set(UPDATE_LKG_COMMANDS)
-
 set(src_ll ${CMAKE_CURRENT_BINARY_DIR}/native/lkg_prep_skip_to_llvm.ll)
 set(stage_ll ${CMAKE_CURRENT_BINARY_DIR}/skip_to_llvm.ll)
 set(lkg_ll ${LKG_DIR}/skip_to_llvm.ll.bz2)
@@ -35,7 +32,6 @@ add_command_target(
 )
 
 set(SRC_RUNTIME ${CMAKE_SOURCE_DIR}/src/runtime)
-set(TESTS_RUNTIME ${CMAKE_SOURCE_DIR}/tests/runtime)
 set(LKG_RUNTIME ${CMAKE_SOURCE_DIR}/lkg/runtime)
 
 add_custom_target(build_lkg
@@ -62,11 +58,6 @@ add_custom_target(update_lkg_compiler
 add_custom_target(update_lkg
   DEPENDS update_lkg_compiler
   )
-
-add_custom_target(check_runtimes
-  COMMAND ${TOOLS_DIR}/check_runtime_file ${SRC_RUNTIME} ${TESTS_RUNTIME}
-)
-add_dependencies(test check_runtimes)
 
 add_custom_target(check_pretty_printed
   COMMAND ${TOOLS_DIR}/check_pretty_printed ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/pretty_printed.testok

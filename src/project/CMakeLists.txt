@@ -22,7 +22,7 @@ add_skip_compiler_executable(skip_depends
   ${PROJECT_SOURCES}
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
 
 # ------------------------------------------------------------------------------
@@ -33,5 +33,5 @@ add_skip_compiler_executable(skip_test
   skipTest.sk
   ${FRONTEND_SOURCES}
   ${UTILS_SOURCES}
-  ${PRELUDE_SOURCES.${PHASE}}
+  ${PRELUDE_SOURCES}
   )
