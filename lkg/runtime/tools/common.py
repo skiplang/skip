@@ -84,8 +84,7 @@ def commonArguments(needsBackend=True, backend=None):
         help='Print full skip_to_llvm command then exit')
 
     if needsBackend:
-        parser.add_argument('backend_gen', help='is one of skip_js_exec, '
-                            'skip_native_exec')
+        parser.add_argument('backend_gen', help='is one of skip_native_exec')
 
     if backend:
         global _shortBackend
@@ -214,10 +213,7 @@ def getShortBackend():
         _shortBackend = None
         return None
     _shortBackend = {
-        'skip_js_exec': 'js',
-        'skip_js_self_exec': 'js_self',
         'skip_native_exec': 'native',
-        'skip_wasm_exec': 'wasm',
     }.get(os.path.basename(ARGS.backend_gen))
     if not _shortBackend:
         print('%sError: unknown backend_gen type (%r)%s'

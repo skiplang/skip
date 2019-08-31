@@ -192,6 +192,7 @@ list(REMOVE_ITEM cc_args ld_args -mcrc32)
 
 if(DARWIN)
   list(APPEND ld_args -dead_strip)
+  list(APPEND cc_args -isysroot ${CMAKE_OSX_SYSROOT})
 else()
   list(APPEND ld_args -Wl,--gc-sections)
   list(APPEND cc_args -Wno-vla)

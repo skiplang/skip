@@ -14,7 +14,6 @@ import sys
 
 import common
 import skip_native_compile
-import skip_js_compile
 
 logger = logging.getLogger(os.path.basename(__file__))
 
@@ -50,19 +49,6 @@ def main(stack):
         cmd = (binFile.name,)
         if args.watch:
             cmd += ('--watch',)
-    elif args.backend == 'js':
-        common.buildNinjaTarget('skip_to_js')
-        cmd = skip_js_compile.compile(stack, args)
-    elif args.backend == 'js_self':
-        common.buildNinjaTarget('bin/skip_to_js.js')
-        cmd = (os.path.join(common.runtime_dir, 'tools', 'skip_js_self_exec'),)
-        cmd += tuple(args.srcs)
-    elif args.backend == 'wasm':
-        common.buildNinjaTarget('skip_to_native')
-        common.buildNinjaTarget('skip_to_llvm')
-        common.buildNinjaTarget('preamble32.tests.dep')
-        cmd = (os.path.join(common.root_dir, 'experimental', 'wasm', 'tools', 'skip_wasm_exec'),)
-        cmd += tuple(args.srcs)
     else:
         print("Uknown backend %s" % (args.backend))
         exit(2)
