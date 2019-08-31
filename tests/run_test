@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Usage: run_test BACKEND_GEN <test>
-# BACKEND_GEN: is one of skip_js_exec
+# BACKEND_GEN: is one of skip_native_exec
 # test: is the .sk file in src/tests to test
 #
 # Environment Variables:
