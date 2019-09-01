@@ -32,7 +32,6 @@ add_dependencies(test skip_to_llvm.tests)
 
 set(PHASE)
 
-set(PRELUDE_SOURCES ${PRELUDE_SOURCES} PARENT_SCOPE)
 set(BUILD_TOOLS ${BUILD_TOOLS} PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
@@ -129,7 +128,7 @@ function(_addSkipTargetTest src backend_shortName backend_target exec test_targe
     CLANG=${CLANG_EXECUTABLE}
     )
 
-  set(PRELUDE ${PRELUDE_SOURCES})
+  set(PRELUDE ${PRELUDE_SOURCES.tests})
 
   if(NOT RELATIVE)
     set(RELATIVE ${CMAKE_CURRENT_SOURCE_DIR})
