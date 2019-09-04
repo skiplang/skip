@@ -269,10 +269,6 @@ def findClang(args):
     return findProgram(args, 'clang++', 'CLANG', 'CLANG_EXECUTABLE')
 
 
-def findNode(args):
-    return findProgram(args, 'node', 'NODE', 'NODE')
-
-
 def main(stack):
     parser = argparse.ArgumentParser(
         description='Run the Skip compiler',
@@ -331,17 +327,27 @@ def main(stack):
     if not IN_PROD_TREE:
         parser.add_argument('--via-backend',
                             help='Choose a backend to run.  Should be either '
-                            + "'js', 'stage1' or 'native'")
+                            + "'stage1' or 'native'")
 
     def isClangArg(arg):
         return (
-            arg.startswith(('-f', '-l', '-m', '-std=', '-stdlib=', '-D', '-I', '-O', '-W')) or
+            arg.startswith(('-f', '-l', '-m', '-std=', '-stdlib=', '-D', '-I',
+                            '-O', '-W')) or
             arg in ('-g',))
 
     argv = []
     CFLAGS = []
-    for arg in sys.argv[1:]:
+
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == '-isysroot':
+            CFLAGS.extend([arg, sys.argv[i + 1]])
+            i += 2
+            continue
+
         (argv, CFLAGS)[isClangArg(arg)].append(arg)
+        i += 1
 
     args = common.parse_args(parser, argv)
 
@@ -444,7 +450,6 @@ def main(stack):
         extraOpts += ['--preamble', args.preamble]
 
     CC = findClang(args)
-    NODE = findNode(args)
 
     LLC = os.environ.get('LLC', 'llc')
     if not os.path.isabs(LLC) or not os.path.isfile(LLC):
@@ -478,7 +483,7 @@ def main(stack):
         exit(0)
 
     with common.PerfTimer('skip_to_llvm.runtime'):
-        common.callHelper(cmd, env={'NODE': NODE})
+        common.callHelper(cmd)
 
     if emitLL:
         with common.PerfTimer('emitLL.runtime'):

@@ -3,8 +3,54 @@
   "programUnits": {
     "frontend": {
       "kind": "Library",
-      "sources": ["."],
-      "references": [ { "path": "../utils" } ]
+      "sources": ["IMap.sk",
+                  "ISet.sk",
+                  "Parameters.sk",
+                  "SkipLexer.sk",
+                  "SkipParseTree.sk",
+                  "SkipParser.sk",
+                  "TokenIterator.sk",
+                  "UMap.sk",
+                  "bufferedPrinter.sk",
+                  "convertTree.sk",
+                  "keywords.sk",
+                  "parseTreeGenerated.sk",
+                  "predefinedName.sk",
+                  "sharedTuples.sk",
+                  "skipArguments.sk",
+                  "skipAst.sk",
+                  "skipAstPp.sk",
+                  "skipAstUtils.sk",
+                  "skipCheckVariance.sk",
+                  "skipComment.sk",
+                  "skipDidYouMean.sk",
+                  "skipExhaustivePatterns.sk",
+                  "skipExpand.sk",
+                  "skipInherit.sk",
+                  "skipMain.sk",
+                  "skipNamedAst.sk",
+                  "skipNamedAstPp.sk",
+                  "skipNaming.sk",
+                  "skipParse.sk",
+                  "skipSerGenPp.sk",
+                  "skipToken.sk",
+                  "skipTypedAst.sk",
+                  "skipTypedAstExpand.sk",
+                  "skipTypedAstPp.sk",
+                  "skipTypedAstRename.sk",
+                  "skipTypedAstUtils.sk",
+                  "skipTypes.sk",
+                  "skipTyping.sk",
+                  "skipTypingUtils.sk",
+                  "skipUtils.sk",
+                  "tokenKind.sk"],
+      "references": [{ "path": "../utils" }]
+    },
+    "skip_generate_parse_trees": {
+      "kind": "Program",
+      "sources": ["skipGenerateParseTrees.sk"],
+      "references": [{ "path": "../runtime/prelude" }]
     }
-  }
+  },
+  "default": "frontend"
 }

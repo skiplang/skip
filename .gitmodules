@@ -4,12 +4,6 @@
 [submodule "third-party/folly/src"]
 	path = third-party/folly/src
 	url = https://github.com/facebook/folly.git
-[submodule "third-party/assemblyscript-runtime"]
-	path = third-party/assemblyscript-runtime
-	url = https://github.com/AssemblyScript/runtime.git
-[submodule "third-party/wabt"]
-	path = third-party/wabt
-	url = https://github.com/WebAssembly/wabt.git
 [submodule "third-party/gflags/src"]
 	path = third-party/gflags/src
 	url = https://github.com/gflags/gflags.git

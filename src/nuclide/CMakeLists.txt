@@ -1,11 +1,79 @@
 # ------------------------------------------------------------------------------
 # Nuclide Support
-add_skip_compiler_executable(skip_check ${CMAKE_CURRENT_SOURCE_DIR}:skip_check)
-add_skip_compiler_executable(skip_lsp ${CMAKE_CURRENT_SOURCE_DIR}:skip_lsp)
-add_skip_compiler_executable(skip_check_json ${CMAKE_CURRENT_SOURCE_DIR}:skip_check_json)
-add_skip_compiler_executable(skip_outline ${CMAKE_CURRENT_SOURCE_DIR}:skip_outline)
-add_skip_compiler_executable(skip_format ${CMAKE_CURRENT_SOURCE_DIR}:skip_format)
-add_skip_compiler_executable(skip_get_definition ${CMAKE_CURRENT_SOURCE_DIR}:skip_get_definition)
+
+add_skip_compiler_executable(skip_check
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_check
+  DEPENDS
+  skipCheck.sk
+  ../project/SkipAnalyze.sk
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+  )
+
+add_skip_compiler_executable(skip_lsp
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_lsp
+  DEPENDS
+  getDefinition.sk
+  convert.sk
+  logger.sk
+  OpenFiles.sk
+  LspServer.sk
+  skipLsp.sk
+  Jsonable.sk
+  jsonRpc.sk
+  languageServerProtocol.sk
+  lspOutline.sk
+  RingBuffer.sk
+  native/FastOption.sk
+  ../tools/printer/ParseTreeFactory.sk
+  ../tools/printer/printer.sk
+  ${PROJECT_SOURCES}
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+)
+
+add_skip_compiler_executable(skip_check_json
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_check_json
+  DEPENDS
+  skipCheckJson.sk
+  ../project/SkipAnalyze.sk
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+)
+
+add_skip_compiler_executable(skip_outline
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_outline
+  DEPENDS
+  outline.sk
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+)
+
+add_skip_compiler_executable(skip_format
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_format
+  DEPENDS
+  skipFormat.sk
+  ../tools/printer/ParseTreeFactory.sk
+  ../tools/printer/printer.sk
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+)
+
+add_skip_compiler_executable(skip_get_definition
+  ${CMAKE_CURRENT_SOURCE_DIR}:skip_get_definition
+  DEPENDS
+  getDefinition.sk
+  skipGetDefinition.sk
+  ../project/SkipAnalyze.sk
+  ${FRONTEND_SOURCES}
+  ${UTILS_SOURCES}
+  ${PRELUDE_SOURCES.${PHASE}}
+)
 
 set(
   NUCLIDE_TARGETS

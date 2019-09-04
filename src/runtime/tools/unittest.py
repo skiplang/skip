@@ -10,7 +10,6 @@ import subprocess
 import sys
 
 import common
-import skip_js_compile
 import skip_native_compile
 
 
@@ -100,8 +99,6 @@ def main(stack):
         cmd = (binFile.name,)
         if args.watch:
             cmd += ("--watch",)
-    elif args.backend == "js":
-        cmd = skip_js_compile.compile(stack, args)
     else:
         print("Uknown backend %s" % (args.backend))
         exit(2)

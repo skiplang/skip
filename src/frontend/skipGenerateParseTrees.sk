@@ -1,0 +1,118 @@
+/**
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+const getChildren: String = `
+  fun getChildren(): mutable Iterator<ParseTree.ParseTree> {`;
+
+const endClass: String = `}
+`;
+
+const endMethod: String = `  }`;
+
+const getNamedFields: String = `
+  fun getNamedFields(): List<(String, ParseTree.ParseTree)> {`;
+
+const getKind: String = `
+  fun getKind(): String {`;
+
+const transform: String = `
+  fun transform(
+    codemod: mutable CodeMod,
+  ): (ParseTree.ParseTree, Vector<Subst>) {`;
+
+untracked fun main(): void {
+  errorMessage = "Usage: gen_parse_trees trees.json\n";
+
+  if (arguments().size() != 1) {
+    print_error(errorMessage);
+    exit(1)
+  };
+
+  filename = arguments()[0];
+  contents = FileSystem.readTextFile(filename);
+  json = JSON.decode(contents).expectObject();
+  // NOTE: Is defaulting to ParseTree necessary?
+  mod = json.getString("module");
+  trees = json
+    .getArray("trees")
+    .value.map(t -> {
+      a = t.expectArray().value;
+      (
+        a[0].expectString(),
+        a[1].expectArray().value.map(x -> {
+          x.expectString()
+        }),
+      )
+    })
+    .sorted();
+
+  print_string(
+    `// DO NOT EDIT.
+// This file is generated from trees.json.
+// After editing trees.json you must 'ninja -C build update_parse_tree'
+// to update this file.
+
+module ${mod};
+
+extension base class ParseTree {}
+`,
+  );
+
+  trees.each(t -> {
+    (name, subclasses) = t;
+    print_string(`class ${name}Tree{`);
+    subclasses.each(child -> {
+      print_string(`  ${child}: ParseTree.ParseTree,`);
+    });
+    print_string(`} extends ${mod}.ParseTree {`);
+
+    print_string(getNamedFields);
+    print_string(`    List<(String, ParseTree.ParseTree)>[`);
+    subclasses.each(child -> {
+      print_string(`      ("${child}", this.${child}),`)
+    });
+    print_string(`    ];`);
+    print_string(endMethod);
+
+    print_string(getKind);
+    print_string(`    "${name}";`);
+    print_string(endMethod);
+
+    print_string(getChildren);
+    subclasses.each(child -> {
+      print_string(`    yield this.${child};`)
+    });
+    print_string(`    yield break;`);
+    print_string(endMethod);
+
+    print_string(transform);
+    if (subclasses.size() == 0) {
+      print_string(`_ = codemod;`)
+    } else {
+      subclasses.each(child -> {
+        print_string(`    tx_${child} = codemod.transform(this.${child});`);
+      })
+    };
+    print_string(`    (`);
+    print_string(`      ${name}Tree{`);
+    print_string(`        range => this.range,`);
+    subclasses.each(child -> {
+      print_string(`        ${child} => tx_${child}.i0,`);
+    });
+    print_string(`      },`);
+    print_string(`      Vector[`);
+    subclasses.each(child -> {
+      print_string(`        tx_${child}.i1,`);
+    });
+    print_string(`      ].flatten(),`);
+    print_string(`    );`);
+    print_string(endMethod);
+
+    print_string(endClass);
+  });
+  void
+}
