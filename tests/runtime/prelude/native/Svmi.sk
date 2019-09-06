@@ -11,10 +11,6 @@ module Svmi;
 // the corresponding values in runtime/native/include/skip/external.h
 // It would be nice to automate this: T21762773
 
-@intrinsic
-@cpp_export("SKIPC_hhvmTypeTable")
-native fun hhvmTypeTable(): TypeTable;
-
 base class ParamType {
   children =
   | ParamTypeVoid()
@@ -26,10 +22,6 @@ base class ParamType {
   | ParamTypeNullableFloat64()
   | ParamTypeString()
   | ParamTypeNullableString()
-  | ParamTypeHhvmObject()
-  | ParamTypeNullableHhvmObject()
-  | ParamTypeHhvmArray()
-  | ParamTypeNullableHhvmArray()
   | ParamTypeMixed()
 
   fun ==(other: ParamType): Bool {
@@ -39,24 +31,6 @@ base class ParamType {
   fun isNullable(): Bool {
     this.code() >= 64
   }
-
-  fun isScalarType(): Bool
-  | ParamTypeVoid()
-  | ParamTypeBool()
-  | ParamTypeNullableBool()
-  | ParamTypeInt64()
-  | ParamTypeNullableInt64()
-  | ParamTypeFloat64()
-  | ParamTypeNullableFloat64()
-  | ParamTypeString()
-  | ParamTypeNullableString()
-  | ParamTypeMixed() ->
-    true
-  | ParamTypeHhvmObject()
-  | ParamTypeNullableHhvmObject()
-  | ParamTypeHhvmArray()
-  | ParamTypeNullableHhvmArray() ->
-    false
 
   fun code(): Int
   | ParamTypeVoid _ -> 0
@@ -68,10 +42,6 @@ base class ParamType {
   | ParamTypeNullableFloat64 _ -> 64 + 3
   | ParamTypeString _ -> 4
   | ParamTypeNullableString _ -> 64 + 4
-  | ParamTypeHhvmObject _ -> 5
-  | ParamTypeNullableHhvmObject _ -> 64 + 5
-  | ParamTypeHhvmArray _ -> 6
-  | ParamTypeNullableHhvmArray _ -> 64 + 6
   | ParamTypeMixed _ -> 7
 
   static fun fromCode(i: Int): ParamType {
@@ -85,10 +55,6 @@ base class ParamType {
     | 67 -> ParamTypeNullableFloat64()
     | 4 -> ParamTypeString()
     | 68 -> ParamTypeNullableString()
-    | 5 -> ParamTypeHhvmObject()
-    | 69 -> ParamTypeNullableHhvmObject()
-    | 6 -> ParamTypeHhvmArray()
-    | 70 -> ParamTypeNullableHhvmArray()
     | 7 -> ParamTypeMixed()
     | _ -> invariant_violation("invalid code for ParamType")
     }
@@ -170,10 +136,4 @@ class Class private (
   name: String,
   kind: Int, // : ClassKind
   fields: Array<Field>,
-)
-
-// Describes all the hhvm-interop classes
-@cpp_export
-class TypeTable private (
-  classes: Array<Class>,
 )
