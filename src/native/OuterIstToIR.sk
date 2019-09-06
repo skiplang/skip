@@ -46,38 +46,10 @@ fun paramTypes(params: Parameters<I.Parameter>): Parameters<I.Type> {
 }
 
 // Return the fields for a class, if any.
-private fun getFields(cd: I.ClassDef, pos: FileRange): Parameters<I.Parameter> {
-  // For a class marked with @hhvm_import we replace any class fields with a
-  // single proxyPointer:Runtime.HhvmHandle.
-  if (
-    Hhvm.isImportAnnotation(cd.annotations, pos) ||
-    Hhvm.isArrayAnnotation(cd.annotations, pos) ||
-    Hhvm.isShapeAnnotation(cd.annotations, pos)
-  ) {
-    Named(
-      UMap[
-        (pos, "proxyPointer") => I.Parameter{
-          annotations => SSet[],
-          visibility => (pos, I.VProtected()),
-          name => I.Name(pos, "proxyPointer"),
-          type => I.Type(
-            pos,
-            I.Tmutable(
-              I.Type(pos, I.Tapply(I.Name(pos, "Runtime.HhvmHandle"), Array[])),
-            ),
-          ),
-          mutable_ => None(),
-          value => None(),
-          frozen_ => SkipOuterIstUtils.const_binding_info,
-          index => 0,
-        },
-      ],
-    )
-  } else {
-    cd.params match {
-    | Some(cp) -> cp.params
-    | None() -> Positional::create()
-    }
+private fun getFields(cd: I.ClassDef, _pos: FileRange): Parameters<I.Parameter> {
+  cd.params match {
+  | Some(cp) -> cp.params
+  | None() -> Positional::create()
   }
 }
 
@@ -2330,7 +2302,6 @@ value class Converter(program: I.Program) {
     | "Float" -> Some(ScalarType(64, 64, "double", FloatScalarKind()))
     | "Runtime.GCPointer" -> Some(ScalarType::gcPointer)
     | "Runtime.NonGCPointer" -> Some(ScalarType::nonGCPointer)
-    | "Runtime.HhvmHandle" -> Some(ScalarType::hhvmHandle)
     | "String" -> Some(ScalarType::gcPointer)
     | _ -> None()
     };
@@ -2370,10 +2341,6 @@ value class Converter(program: I.Program) {
     fieldParams = getFields(in_, pos);
     (fields, _, _) = flattenParams(fieldParams, paramTypes(fieldParams));
 
-    isHhvmImport = Hhvm.isImportAnnotation(in_.annotations, pos);
-    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
-    isHhvmShape = Hhvm.isShapeAnnotation(in_.annotations, pos);
-
     convertedFields = if (classname != "Unsafe.RawStorage") {
       this.convertFields(fields)
     } else {
@@ -2390,19 +2357,6 @@ value class Converter(program: I.Program) {
       ]
     };
 
-    origFields = if (isHhvmImport || isHhvmArray || isHhvmShape) {
-      // Compute the fields as if we hadn't replaced the fields with
-      // proxyPointer
-      origFieldParams = in_.params match {
-      | Some(cp) -> cp.params
-      | None() -> Positional::create()
-      };
-      (f, _, _) = flattenParams(origFieldParams, paramTypes(origFieldParams));
-      this.convertFields(f);
-    } else {
-      convertedFields
-    };
-
     methods = UnorderedMap::mcreate(nonStaticMethods.size());
     for (v in nonStaticMethods) {
       (mname, mf) = this.convertMethodDef(v, name, name, tparams);
@@ -2416,29 +2370,6 @@ value class Converter(program: I.Program) {
     methodSources = UnorderedMap::mcreate(methodFields.size());
     for (mname => f in methodFields) {
       methodSources.add(mname.i1, FrontEndLazyGClass(f.source.i1))
-    };
-
-    // For classes marked @hhvm_import add getters for each of
-    // the parameters specified in the original class.  Later on we'll
-    // convert field references into calls to these getters.
-    if (isHhvmImport || isHhvmShape) {
-      Hhvm.setUpStandardImportMethods(
-        this,
-        methods,
-        classID,
-        in_.params,
-        tparams,
-        pos,
-        isHhvmImport,
-      );
-    } else if (isHhvmArray) {
-      in_.params.each(cp -> {
-        pos.invariant(cp.params.isEmpty(), "Cannot have fields on @hhvm_array");
-      });
-    };
-
-    if ((isHhvmArray || isHhvmShape) && kind.isBaseClass()) {
-      pos.die("@hhvm_array cannot be used on base classes");
     };
 
     this.finishGClass(
@@ -2462,7 +2393,7 @@ value class Converter(program: I.Program) {
         methodSources => freeze(methodSources),
         annotations => in_.annotations,
         fields => convertedFields,
-        origFields,
+        origFields => convertedFields,
         scalarType,
       },
     )
@@ -2528,25 +2459,6 @@ value class Converter(program: I.Program) {
     }
   }
 
-  fun getHhvmExportName(fd: I.FunDef): ?String {
-    pos = fd.getPos();
-
-    Hhvm.exportAnnotationName(fd.annotations, pos).map(hhvmName -> {
-      if (hhvmName.isEmpty()) {
-        !hhvmName = fd.getName();
-      };
-
-      if (hhvmName.contains(".") || hhvmName.contains("\\")) {
-        pos.die(
-          "@hhvm_export functions must either be top-level or have a " +
-            "top-level exported name (without a dot or backslash)",
-        )
-      };
-
-      hhvmName
-    })
-  }
-
   fun convertFunDef(in_: I.FunDef): LazyGFun {
     (pos, name) = (in_.name.pos, in_.name.id);
 
@@ -2560,26 +2472,6 @@ value class Converter(program: I.Program) {
       isTracked => in_.untracked_.isNone(),
     };
 
-    hhvmImportName = Hhvm.importAnnotationName(in_.annotations, pos);
-    hhvmExportName = Hhvm.exportAnnotationName(in_.annotations, pos);
-    hhvmShapeName = Hhvm.shapeAnnotationName(in_.annotations, pos);
-    isHhvmExtern = Hhvm.isExternAnnotation(in_.annotations, pos);
-    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
-
-    if (isHhvmArray) {
-      pos.die("Functions cannot be specified as @hhvm_array");
-    };
-
-    if (
-      (hhvmImportName.maybe(0, _ -> 1) +
-        hhvmExportName.maybe(0, _ -> 1) +
-        hhvmShapeName.maybe(0, _ -> 1) +
-        (if (isHhvmExtern) 1 else 0) +
-        (if (isHhvmArray) 1 else 0)) > 1
-    ) {
-      pos.die("Functions cannot specify more than one @hhvm_* annotation")
-    };
-
     isNative = (
       (in_.native_.isSome() ||
         annotationsContainParam(in_.annotations, "@cpp_extern", pos).isSome() ||
@@ -2587,10 +2479,7 @@ value class Converter(program: I.Program) {
           in_.annotations,
           "@cpp_runtime",
           pos,
-        ).isSome()) &&
-      !hhvmImportName.isSome() &&
-      !hhvmShapeName.isSome() &&
-      !hhvmExportName.isSome()
+        ).isSome())
     );
 
     if (isNative) {
@@ -2598,10 +2487,9 @@ value class Converter(program: I.Program) {
       pos.invariant(
         annotationsContainParam(ann, "@cpp_extern", pos).isSome() ||
           annotationsContainParam(ann, "@cpp_runtime", pos).isSome() ||
-          isHhvmExtern ||
           annotationsContainParam(ann, "@intrinsic", pos).isSome(),
         "Native functions must be declared with @cpp_extern, @cpp_runtime, " +
-          "@hhvm_extern or @intrinsic",
+          "or @intrinsic",
       );
     };
 
@@ -2626,29 +2514,9 @@ value class Converter(program: I.Program) {
     params = insertOptionalFlags(flatParams, numOptional, useOptionalMask, pos);
 
     function = if (funInfo.isNative) {
-      Hhvm.convertIntrinsic(name, funInfo, params) match {
-      | Some(lazyFun) -> lazyFun
-      | None() ->
-        name match {
-        | "inspect" -> this.createInspect(funInfo, params, in_)
-        | _ ->
-          if (isHhvmExtern) {
-            Hhvm.HhvmRuntimeLazyGFun::make(funInfo, params)
-          } else {
-            NativeLazyGFun{funInfo, params}
-          }
-        }
-      }
-    } else if (hhvmImportName.isSome()) {
-      HhvmImportLazyGFun{
-        funInfo,
-        params,
-        useOptionalMask,
-        isStatic => false,
-        hhvmName => hhvmImportName match {
-        | Some(s) if (!s.isEmpty()) -> s
-        | _ -> funInfo.gfunction.id
-        },
+      name match {
+      | "inspect" -> this.createInspect(funInfo, params, in_)
+      | _ -> NativeLazyGFun{funInfo, params}
       }
     } else {
       in_.body match {
@@ -2715,28 +2583,6 @@ value class Converter(program: I.Program) {
     // are all the class tparams followed by all the method tparams.
     tparams = classTparams.concat(methodTparams);
 
-    hhvmImportName = Hhvm.importAnnotationName(in_.annotations, pos);
-    hhvmShapeName = Hhvm.shapeAnnotationName(in_.annotations, pos);
-    hhvmExportName = Hhvm.exportAnnotationName(in_.annotations, pos);
-    isHhvmExtern = Hhvm.isExternAnnotation(in_.annotations, pos);
-    isHhvmArray = Hhvm.isArrayAnnotation(in_.annotations, pos);
-
-    if (hhvmExportName.isSome()) {
-      pos.die("Methods cannot be specified as @hhvm_export");
-    };
-
-    if (isHhvmArray || hhvmShapeName.isSome()) {
-      pos.die("Methods cannot be specified as @hhvm_array");
-    };
-
-    if (
-      (hhvmImportName.maybe(0, _ -> 1) +
-        hhvmExportName.maybe(0, _ -> 1) +
-        (if (isHhvmExtern) 1 else 0)) > 1
-    ) {
-      pos.die("Methods cannot specify more than one @hhvm_* annotation")
-    };
-
     isCppExtern = annotationsContainParam(
       in_.annotations,
       "@cpp_extern",
@@ -2749,9 +2595,7 @@ value class Converter(program: I.Program) {
     ).isSome();
 
     isNative = (
-      (in_.native_.isSome() || isCppExtern || isCppRuntime) &&
-      !hhvmImportName.isSome() &&
-      !hhvmExportName.isSome()
+      (in_.native_.isSome() || isCppExtern || isCppRuntime)
     );
 
     if (isNative) {
@@ -2759,10 +2603,9 @@ value class Converter(program: I.Program) {
       pos.invariant(
         isCppExtern ||
           isCppRuntime ||
-          isHhvmExtern ||
           annotationsContainParam(ann, "@intrinsic", pos).isSome(),
         "Native methods must be declared with @cpp_extern, @cpp_runtime, " +
-          "@hhvm_extern or @intrinsic",
+          "or @intrinsic",
       );
     };
 
@@ -2783,33 +2626,9 @@ value class Converter(program: I.Program) {
     // Remember to compile this body once we have seen all the definitions.
     params = insertOptionalFlags(flatParams, numOptional, useOptionalMask, pos);
 
-    // If we're marked with hhvm_export then we mock up a new wrapper function
-    // which calls this function
-    if (hhvmExportName.isSome()) {
-      pos.die("@hhvm_export unimplemented on methods")
-    };
-
     methodFunction = if (funInfo.isNative) {
       // If a function (or method) is native then ignore any body it might have.
-      if (isHhvmExtern) {
-        Some(Hhvm.HhvmRuntimeLazyGFun::make(funInfo, params))
-      } else {
-        Some(NativeLazyGFun{funInfo, params})
-      }
-    } else if (hhvmImportName.isSome()) {
-      importName = hhvmImportName.fromSome();
-      hhvmName =
-        (if (isStatic) logicalClassName.id + "::" else "") +
-        (if (importName.isEmpty()) name else importName);
-      Some(
-        HhvmImportLazyGFun{
-          funInfo,
-          params,
-          useOptionalMask,
-          isStatic,
-          hhvmName,
-        },
-      )
+      Some(NativeLazyGFun{funInfo, params})
     } else if (in_.body is Some _) {
       Some(DefLazyGFun::make{funInfo, def => in_, params, useOptionalMask})
     } else {
@@ -4183,9 +4002,6 @@ mutable class OuterIstEmitter{
     | I.DynamicConstruction(expr, name, types, params) ->
       this.emitFactoryCall(expr, frontEndType, name, types, params, pos)
     | I.Object(name, types, params) ->
-      if (Hhvm.gIsHhvmProxy(this.converter, typ, pos)) {
-        pos.die(`Cannot directly construct a proxied pointer of type ${typ}`);
-      };
       if (hasDefaultArg(params)) {
         // Missing at least one constructor argument, so call the factory.
         meta = I.Expr(
@@ -4225,31 +4041,7 @@ mutable class OuterIstEmitter{
           pos.die("type parameters unexpected here.")
         };
 
-        // Convert hhvm proxy property accesses into getter/setter calls
-        maybeCls = obj.getType() match {
-        | gt @ GTapply(generic, _, _) ->
-          if (Hhvm.gIsHhvmProxy(this.converter, gt, pos)) {
-            Some(generic)
-          } else {
-            None()
-          }
-        | _ -> None()
-        };
-
-        maybeCls match {
-        | Some(cls) ->
-          this.emitInstr(
-            GCallMethod{
-              typ,
-              pos,
-              method => ".get." + info.field.id,
-              args => Array[obj],
-              source => cls,
-            },
-          )
-        | None() ->
-          this.emitInstr(GGetField{typ, pos, obj, field => info.field.id})
-        }
+        this.emitInstr(GGetField{typ, pos, obj, field => info.field.id})
       }
     | I.StaticDot(info) ->
       info.elt_kind match {
@@ -4980,30 +4772,7 @@ mutable class OuterIstEmitter{
       obj = this.emitExpr(I.Expr(varType, pos, I.Local(varName)));
       value = this.emitExpr(expr);
 
-      // Convert hhvm proxy property accesses into getter/setter calls
-      maybeCls = obj.getType() match {
-      | gt @ GTapply(generic, _, _) ->
-        if (Hhvm.gIsHhvmProxy(this.converter, gt, pos)) {
-          Some(generic)
-        } else {
-          None()
-        }
-      | _ -> None()
-      };
-
-      maybeCls match {
-      | Some(cls) ->
-        _ = this.emitInstr(
-          GCallMethod{
-            typ => gtVoid,
-            pos,
-            method => ".set." + field,
-            args => Array[obj, value],
-            source => cls,
-          },
-        )
-      | None() -> _ = this.emitInstr(GSetField{pos, obj, field, value})
-      }
+      _ = this.emitInstr(GSetField{pos, obj, field, value})
     | I.Seq(stmts) -> for (stmt2 in stmts) this.emitStmt(stmt2)
     | I.If(e, t, f) ->
       pos = e.pos;
@@ -5355,25 +5124,17 @@ untracked fun createIR(
   typesToSpecialize = mutable Vector[];
 
   for (key => classDef in converter.program.class_defs) {
-    (pos, name) = key;
+    (_, name) = key;
 
     if (!(classDef.kind is I.KTrait _)) {
-      isHhvm = (
-        Hhvm.isImportAnnotation(classDef.annotations, pos) ||
-        Hhvm.isCopyAnnotation(classDef.annotations, pos) ||
-        Hhvm.isShapeAnnotation(classDef.annotations, pos) ||
-        Hhvm.isShapeCopyAnnotation(classDef.annotations, pos)
-      );
-
       // TODO: Why is classDef.consts relevant to typesToSpecialize?
-      if (isHhvm || !classDef.consts.isEmpty()) {
-        if (isHhvm && classDef.tparams.isEmpty()) {
+      if (!classDef.consts.isEmpty()) {
+        if (classDef.tparams.isEmpty()) {
           typesToSpecialize.push(FrontEndLazyGClass(name))
         };
 
         // Right now we guarantee we run all const initializers at
-        // startup so create anything with consts now.  We also
-        // forcibly create any HHVM import classes.
+        // startup so create anything with consts now.
         for (constKey => constDef in classDef.consts) {
           (constPos, constName) = constKey;
 
@@ -5425,20 +5186,6 @@ untracked fun createIR(
       !force = Some(FrontEndLazyGFun{frontEndName => name})
     };
 
-    converter.getHhvmExportName(funDef) match {
-    | Some(hhvmName) ->
-      if (isParametric) {
-        pos.die(
-          `Cannot export function ${name} because it takes type parameters.`,
-        )
-      };
-
-      // Codegen a new wrapper function which calls this function.
-      wrapper = exportHhvmFunctionWrapper(converter, hhvmName, funDef);
-      !force = Some(wrapper)
-    | None() -> void
-    };
-
     if (
       (shouldRuntimeExport(funDef) &&
         annotationsContainParam(annotations, "@cpp_extern", pos).isNone() &&
@@ -5485,10 +5232,6 @@ untracked fun createIR(
     _ = specializer.requestFunction(gid, Array[])
   };
   reportMemoryStatistics("native/createIR after force compile constant inits");
-
-  !specializer = specializer with {
-    hhvmTypeTable => HhvmTypeTable.compute(specializer, typesToSpecialize),
-  };
 
   // Find every relevant type and function in the program.
   specializer.findAllFunctionsAndSClasses(typesToSpecialize);

@@ -143,8 +143,6 @@ private fun quasiJoinTypes(
     st1.kind match {
     | GCPointerScalarKind() ->
       tGCPointer with {mutability => t1.mutability.join(t2.mutability)}
-    | HhvmHandleScalarKind() ->
-      tHhvmHandle with {mutability => t1.mutability.join(t2.mutability)}
     | NonGCPointerScalarKind() -> tNonGCPointer
     | FloatScalarKind()
     | IntegerScalarKind() ->

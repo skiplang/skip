@@ -2342,20 +2342,7 @@ mutable class .AsmOutput{
   }
 
   private mutable fun writeExportsTable(): AsmDefID {
-    env = this.env;
-
-    exportedBuf = mutable Vector[];
-    for (f in env.sfuns) {
-      if (f.exportStyle.isExported()) {
-        exportedBuf.push(f)
-      }
-    };
-    exportedBuf.sortBy(x ~>
-      Orderable.create(x, (a, b) ~> (a.name, a.id).compare((b.name, b.id)))
-    );
-    exported = exportedBuf.toArray();
-
-    typeString = `[${exported.size() + 1} x %struct._FunctionSignature]`;
+    typeString = `[1 x %struct._FunctionSignature]`;
 
     asm = mutable StructAsmDefBuilder{
       id => this.defs.allocID(),
@@ -2369,56 +2356,6 @@ mutable class .AsmOutput{
     asm.print("%n = internal constant %s [" % asm % typeString);
 
     sep = "\n  ";
-    for (f in exported) {
-      pos = f.pos;
-      exportStyle = f.exportStyle match {
-      | e @ HhvmExport _ -> e
-      | _ -> invariant_violation("bad cast")
-      };
-
-      if (f.superpositions.size() != 1) {
-        pos.die(
-          "Cannot export function '" +
-            f +
-            "' because it does not " +
-            "have exactly one caller type (it has " +
-            f.superpositions.size() +
-            ")",
-        )
-      };
-
-      asm.print("%s%%struct._FunctionSignature { " % sep);
-      this.writeCStringRef(asm, UTF8String::make(exportStyle.name + "\0"));
-      !sep = ",\n  ";
-
-      // Write out the function pointer (possibly a type-converting wrapper).
-      asm.print(", void (...)* bitcast (%N to void (...)*)" % f);
-
-      // Write out the return type.
-      asm.print(", i8 ");
-      asm.print(exportStyle.wrapperReturnType.code());
-
-      // Write out the argument count.
-      asm.print(", i8 ");
-      if (exportStyle.wrapperParamTypes.size() > 255) {
-        pos.die(`Too many args for ${f}`)
-      };
-      asm.print(exportStyle.wrapperParamTypes.size());
-
-      // Write out a pointer to the argument types array (as a C string).
-      // Note that we don't actually want UTF8 encoding here, but all the
-      // parameter codes look like ASCII so it's harmless.
-      paramStr = String::fromChars(
-        exportStyle.wrapperParamTypes.map(p -> Char::fromCode(p.code())),
-      );
-
-      // We don't actually want to UTF8-encode raw param bytes, so we cheat
-      // just so we can reuse the cstring table mechanism.
-      asm.print(", ");
-      this.writeCStringRef(asm, UTF8String::make(paramStr));
-      asm.print(" }")
-    };
-
     asm.print(sep);
     asm.print("%struct._FunctionSignature zeroinitializer\n");
     asm.print("], align 8\n");
@@ -3157,9 +3094,7 @@ private fun llvmWriteStore(
     // Use value ScalarType as a proxy for field type, which was lowered away.
     (orig, t.kind, storeValue.isConstant()) match {
     | (ObstackStore _, GCPointerScalarKind _, false)
-    | (ObstackStore _, HhvmHandleScalarKind _, false)
-    | (ArrayUnsafeSet _, GCPointerScalarKind _, false)
-    | (ArrayUnsafeSet _, HhvmHandleScalarKind _, false) ->
+    | (ArrayUnsafeSet _, GCPointerScalarKind _, false) ->
       asm.print(
         "  call void @%s(%s* %%%s, %N), %D\n" %
           orig match {
@@ -4357,13 +4292,12 @@ fun llvmWriteFunctionDeclaration(
     };
     common.externs.set(symbol, asmDefID);
     if (
-      annotationsContainParam(f.annotations, "@cpp_extern", f.pos).isSome() ||
-      Hhvm.isExternAnnotation(f.annotations, f.pos)
+      annotationsContainParam(f.annotations, "@cpp_extern", f.pos).isSome()
     ) {
       // Assume that any function that isn't explicitly declared as
-      // @cpp_runtime or @hhvm_extern is declared in the preamble.
+      // @cpp_runtime is declared in the preamble.
       // OuterIstToIR checks that user-defined native functions have
-      // @cpp_extern, @cpp_runtime or @hhvm_extern.
+      // @cpp_extern or @cpp_runtime.
       asm.print("declare ");
       if (f.funType.returnType.size() == 1) {
         llvmWriteTypeCallAttribute(asm, f.funType.returnType[0], false, true)
@@ -4456,6 +4390,5 @@ fun cppIsExported(funName: String, annotations: SSet, pos: Pos): Bool {
 
 fun cppIsImported(funInfo: FunInfoCommon, pos: Pos): Bool {
   annotationsContainParam(funInfo.annotations, "@cpp_runtime", pos).isSome() ||
-    annotationsContainParam(funInfo.annotations, "@cpp_extern", pos).isSome() ||
-    Hhvm.isExternAnnotation(funInfo.annotations, pos)
+    annotationsContainParam(funInfo.annotations, "@cpp_extern", pos).isSome()
 }

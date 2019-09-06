@@ -46,16 +46,6 @@ const tConstSingleton: Tclass = Tclass(
 // This is a special type that has no instances.
 const tAny: Tclass = Tclass(SClassID("_"), DeepFrozen());
 
-// Synthetic type for an HHVM handle
-const tHhvmHandle: Tclass = Tclass(SClassID("Runtime.HhvmHandle"), Mutable());
-
-const tHhvmShapeHandle: Tclass = Tclass(
-  SClassID("Runtime.HhvmShapeHandle"),
-  Mutable(),
-);
-
-const tMixed: Tclass = Tclass(SClassID("HH.Mixed"), DeepFrozen());
-
 // () -> void
 const kVoidVoidFunType: Tfun = Tfun{
   isMutable => true,
@@ -71,7 +61,6 @@ base class ScalarKind uses Orderable {
   | IntegerScalarKind()
   | GCPointerScalarKind()
   | NonGCPointerScalarKind()
-  | HhvmHandleScalarKind()
 
   fun compare(other: ScalarKind): Order {
     compare(this.typeOrder(), other.typeOrder())
@@ -82,7 +71,6 @@ base class ScalarKind uses Orderable {
     this match {
     | GCPointerScalarKind _ -> 0
     | NonGCPointerScalarKind _ -> 1
-    | HhvmHandleScalarKind _ -> 2
     | IntegerScalarKind _ -> 3
     | FloatScalarKind _ -> 4
     }
@@ -108,24 +96,17 @@ class ScalarType(
   }
 
   fun isGCPointer(): Bool {
-    // HhvmHandles are basically GCPointers but we need to be able to identify
-    // them during the memoization check.
-    this.kind == GCPointerScalarKind() || this.kind == HhvmHandleScalarKind()
+    this.kind == GCPointerScalarKind()
   }
 
   fun isNonGCPointer(): Bool {
     this.kind == NonGCPointerScalarKind()
   }
 
-  fun isHhvmHandle(): Bool {
-    this.kind == HhvmHandleScalarKind()
-  }
-
   fun isLlvmPointer(): Bool {
     this.kind match {
     | GCPointerScalarKind _
-    | NonGCPointerScalarKind _
-    | HhvmHandleScalarKind _ ->
+    | NonGCPointerScalarKind _ ->
       true
     | _ -> false
     }
@@ -147,13 +128,6 @@ class ScalarType(
     ptrBitSize,
     "i8*",
     NonGCPointerScalarKind(),
-  );
-
-  const hhvmHandle: ScalarType = ScalarType(
-    ptrBitSize,
-    ptrBitSize,
-    "i8*",
-    HhvmHandleScalarKind(),
   );
 }
 
@@ -387,7 +361,7 @@ class Tclass(
   fun getField(name: String, env: GlobalEnv, pos: Pos): SField {
     sclass = this.sclass(env);
     field = sclass.getField(name, pos);
-    if (field.typ.mutability >= this.mutability || (field.typ == tHhvmHandle)) {
+    if (field.typ.mutability >= this.mutability) {
       field
     } else {
       // A mutable field on a frozen object gets promoted to frozen, etc.

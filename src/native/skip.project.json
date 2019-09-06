@@ -3,7 +3,7 @@
   "programUnits": {
     "skip_to_llvm": {
       "kind": "Program",
-      "sources": [".", "hhvm"],
+      "sources": ["."],
       "references": [
         { "path": "../outer" },
         { "path": "../project" }

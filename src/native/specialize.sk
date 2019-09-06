@@ -366,8 +366,6 @@ mutable class Specializer{
   // Once it's too late to make new SClasses we turn this off.
   mutable canCreateNewSClasses: Bool = true,
 
-  hhvmTypeTable: HhvmTypeTable = HhvmTypeTable.empty(),
-
   // Updated as we go to point to something related to what we are specializing.
   mutable pos: Pos,
 } extends ClassLookupEnv {
@@ -497,13 +495,10 @@ mutable class Specializer{
       (tException, gtException.generic),
       (tFloat, gtFloat.generic),
       (tGCPointer, gtGCPointer.generic),
-      (tHhvmHandle, gtHhvmHandle.generic),
-      (tHhvmShapeHandle, gtHhvmShapeHandle.generic),
       (tInt, gtInt.generic),
       (tInt16, FrontEndLazyGClass(tInt16.toString())),
       (tInt32, FrontEndLazyGClass(tInt32.toString())),
       (tInt8, FrontEndLazyGClass(tInt8.toString())),
-      (tMixed, FrontEndLazyGClass(tMixed.toString())),
       (tNonGCPointer, gtNonGCPointer.generic),
       (tString, gtString.generic),
       (tVoid, gtVoid.generic),
@@ -521,6 +516,7 @@ mutable class Specializer{
     // are processed before functions that might use them.  This is necessary
     // for @hhvm_copy where we need to find what types inherit from a base-class
     // during HhvmInterop.copyFromHhvm().
+    // NOTE: The above comment is stale as HHVM interop was removed.
     for (lazyGClass in typesToSpecialize) {
       _ = this.getSClass2(HalfClass(lazyGClass, Array[], DeepFrozen()))
     };
@@ -603,21 +599,6 @@ mutable class Specializer{
           noteType(instr.getType(), false);
 
           instr match {
-          | chf @ GCallHhvmFunction _ ->
-            EmitCallHhvmFunction::requestFunctions(
-              this,
-              chf,
-              tparamEnv,
-              this.pos,
-            )
-          | chf @ GCallHhvmWrappedFunction _ ->
-            EmitCallHhvmWrappedFunction::requestFunctions(
-              this,
-              chf,
-              targs,
-              tparamEnv,
-              this.pos,
-            )
           | GCallFunctionBase{name, targs => innerTargs} ->
             _ = this.requestFunction(
               name,
@@ -732,10 +713,7 @@ mutable class Specializer{
                 subinfo = this.sclasses[tc.sclassID];
                 field = subinfo.getUnscalarizedField(fname, pos);
 
-                fieldType = if (
-                  tc.isDeepFrozen() &&
-                  (field.typ != tHhvmHandle)
-                ) {
+                fieldType = if (tc.isDeepFrozen()) {
                   // If we have a frozen value class containing a field of
                   // mutable type, the field type needs ot be promoted to frozen.
                   field.typ.mapMutability(_ -> DeepFrozen())
@@ -1077,7 +1055,7 @@ mutable class Specializer{
     | None() ->
       // Option<T> where T is not itself an Option.
       sc = info.sclass;
-      if (!sc.kind.isValueClass() || Hhvm.isHhvmHandle(tc)) {
+      if (!sc.kind.isValueClass()) {
         // All KClass and KBase can just use a null pointer sentinel.
         SentinelOptionStyle("", 0)
       } else {
@@ -2646,8 +2624,6 @@ mutable class FunSpecializer{
           (rawPointer.id, "Awaitable.memoValueBoxObject")
         }
       | (_, NonGCPointerScalarKind())
-      | (_, HhvmHandleScalarKind()) ->
-        pos.die(`Unable to box ${typ0}`)
       | _ ->
         if ({
           totalBitfieldSize = 0;
@@ -2771,7 +2747,6 @@ mutable class FunSpecializer{
     result = (types.size(), this.getScalarType(types[0]).kind) match {
     | (1, FloatScalarKind())
     | (1, GCPointerScalarKind())
-    | (1, HhvmHandleScalarKind())
     | (1, NonGCPointerScalarKind()) ->
       InstrLeaf(load(types[0]))
     | _ ->
@@ -3478,13 +3453,6 @@ mutable class FunSpecializer{
           instr match {
           | r @ GAsyncReturn _ ->
             _ = this.emitAsyncReturn{pos, prettyName => r.prettyName}
-          | hc @ GCallHhvmWrappedFunction _ ->
-            this.setValue(
-              hc,
-              EmitCallHhvmWrappedFunction::emitIR(this, hc, pos),
-            )
-          | hc @ GCallHhvmFunction _ ->
-            this.setValue(hc, EmitCallHhvmFunction::emitIR(this, hc, pos))
           | call @ GInvokeFunction _ ->
             _ = this.emitGCallFunction(call, typ, pos, Some(call.successors))
           | call @ GCallFunctionBase _ ->

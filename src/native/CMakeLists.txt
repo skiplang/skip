@@ -26,7 +26,6 @@ list(APPEND COMPILER_SOURCES
   StmtPos.sk
   TextOutputStream.sk
   alloc.sk
-  callables.sk
   checksum.sk
   compile.sk
   const.sk
@@ -52,11 +51,6 @@ list(APPEND COMPILER_SOURCES
   util.sk
   verify.sk
   vtable.sk
-  hhvm/gather.sk
-  hhvm/hhvm.sk
-  hhvm/propertyGetHelper.sk
-  hhvm/propertySetHelper.sk
-  hhvm/typeTable.sk
   skip.project.json
   )
 
