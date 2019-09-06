@@ -22,23 +22,6 @@ struct SkipObstackPos {
 
 extern "C" {
 
-DEFINE_TYPE(SkipHhvmHandle, skip::HhvmHandle);
-
-struct HhvmHeapObject {
-  HhvmHeapObject() = delete;
-};
-using HhvmHeapObjectPtr = HhvmHeapObject*;
-
-struct HhvmObjectData : HhvmHeapObject {};
-using HhvmObjectDataPtr = HhvmObjectData*;
-DEFINE_TYPE(HhvmObject, skip::HhvmObject);
-using HhvmObjectPtr = HhvmObject*;
-
-struct HhvmArrayData : HhvmHeapObject {};
-using HhvmArrayDataPtr = HhvmArrayData*;
-DEFINE_TYPE(HhvmArray, skip::HhvmArray);
-using HhvmArrayPtr = HhvmArray*;
-
 extern SkipObstackPos SKIP_Obstack_note_inl(void);
 
 // manual collect
@@ -79,13 +62,6 @@ extern void* SKIP_Obstack_calloc_pinned(size_t sz);
 
 extern SkipRObj* SKIP_Obstack_shallowClone(const SkipRObj* obj);
 extern SkipRObjOrFakePtr SKIP_Obstack_freeze(SkipRObjOrFakePtr obj);
-
-// This is called by the compiler when we pass a Runtime.HhvmHandle to a
-// function.  HHVM passes us an Object& (which we see as an Object*) and this
-// function unwraps it and converts it into a HhvmHandle.
-extern SkipHhvmHandle* SKIP_Obstack_wrapHhvmObject(HhvmObjectPtr obj);
-extern SkipHhvmHandle* SKIP_Obstack_wrapHhvmArray(HhvmArrayPtr obj);
-extern SkipHhvmHandle* SKIP_Obstack_wrapHhvmHeapObject(HhvmHeapObjectPtr obj);
 
 // Return Obstack bytes used since the given note
 extern SkipInt SKIP_Obstack_usage(SkipObstackPos note);
