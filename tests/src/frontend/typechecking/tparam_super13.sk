@@ -1,9 +1,0 @@
-fun main(): void {
-  print_string("Pass")
-}
-
-class C<T>(x: T) {
-  fun foo<U: nonNullable>[T: U](): Nullable<T> {
-    Box(this.x)
-  }
-}

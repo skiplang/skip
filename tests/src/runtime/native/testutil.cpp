@@ -365,21 +365,6 @@ void SKIP_throwInvariantViolation(skip::String /*msg*/) {
   abort();
 }
 
-void SKIP_HHVM_incref(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-void SKIP_HHVM_decref(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-skip::String SKIP_HHVM_Object_getType(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-void SKIP_HHVM_throwException(skip::RObj* /*exc*/, SkipObstackPos /*note*/) {
-  abort();
-}
-
 skip::RObj* SKIP_createIntVector(int64_t /*size*/) {
   abort();
 }

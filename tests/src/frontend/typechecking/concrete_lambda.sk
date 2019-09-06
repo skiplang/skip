@@ -1,7 +1,0 @@
-fun nullable_void<T>(): Nullable<(T ~> T)> {
-  Box(x ~> x)
-}
-
-fun main(): void {
-  print_string("Pass")
-}

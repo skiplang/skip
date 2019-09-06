@@ -1,7 +1,0 @@
-fun test<T: nonNullable>(): Nullable<T> {
-  Null()
-}
-
-fun main(): void {
-  print_string("Pass")
-}

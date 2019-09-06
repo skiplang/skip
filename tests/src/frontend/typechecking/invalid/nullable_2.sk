@@ -1,3 +1,0 @@
-fun getBoxedNull<T: nonNullable>(): Nullable<T> {
-  Box(Null())
-}

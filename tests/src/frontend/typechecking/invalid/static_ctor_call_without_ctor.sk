@@ -1,5 +1,0 @@
-base class StaticClass {
-  static fun test(): Nullable<StaticClass> {
-    static(10)
-  }
-}

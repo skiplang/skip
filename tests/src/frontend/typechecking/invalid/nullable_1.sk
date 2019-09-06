@@ -1,3 +1,0 @@
-fun getDoubleBox(): Nullable<Nullable<Int>> {
-  Box(Box(42))
-}
