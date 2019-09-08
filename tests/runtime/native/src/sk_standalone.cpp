@@ -83,6 +83,11 @@ int main(int argc, char** argv) {
   int status = 0;
 
   try {
+    {
+      skip::Obstack::PosScope P;
+      SKIP_initializeSkip();
+    }
+
     skip::setNumThreads(skip::computeCpuCount());
 
     if (!watch) {

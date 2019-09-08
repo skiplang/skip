@@ -20,6 +20,8 @@ extern "C" {
 
 #define SKIP_NORETURN __attribute__((__noreturn__))
 
+extern void SKIP_initializeSkip(void);
+
 // T30334345: New symbols added to this file should be prefixed with 'SKIPC_'
 // NOT 'SKIP_'!
 

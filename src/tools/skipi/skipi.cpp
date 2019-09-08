@@ -140,18 +140,7 @@ FORWARD_NR(SKIP_throwRuntimeError, void, (SkipString message), (message))
 FORWARD(SKIP_createStringVector, SkipRObj*, (int64_t size), (size))
 FORWARD(SKIP_createIntVector, SkipRObj*, (int64_t size), (size))
 FORWARD_NR(SKIP_throwInvariantViolation, void, (SkipString msg), (msg))
-FORWARD(SKIP_createMixedBool, SkipRObj*, (bool value), (value))
-FORWARD(SKIP_createMixedFloat, SkipRObj*, (double value), (value))
-FORWARD(SKIP_createMixedInt, SkipRObj*, (int64_t value), (value))
-FORWARD(SKIP_createMixedNull, SkipRObj*, (void), ())
-FORWARD(SKIP_createMixedString, SkipRObj*, (SkipString value), (value))
-FORWARD(SKIP_createMixedDict, SkipRObj*, (int64_t capacity), (capacity))
-FORWARD(SKIP_MixedDict_set, void, (SkipRObj* obj, SkipString key, SkipRObj* value), (obj, key, value))
-FORWARD(SKIP_MixedDict_freeze, SkipRObj*, (SkipRObj* obj), (obj))
-FORWARD(SKIP_createMixedVec, SkipRObj*, (int64_t capacity), (capacity))
-FORWARD(SKIP_MixedVec_push, void, (SkipRObj* obj, SkipRObj* value), (obj, value))
-FORWARD(SKIP_MixedVec_freeze, SkipRObj*, (SkipRObj* obj), (obj))
-FORWARD(SKIP_initializeSkip, const svmi::FunctionSignature*, (void), ());
+FORWARD(SKIP_initializeSkip, void, (void), ());
 FORWARD(skip_main, SkipString, (void), ());
 
 #undef FORWARD
