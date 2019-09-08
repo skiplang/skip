@@ -34,7 +34,6 @@ namespace svmi {
 //   void myfn(HhvmStringRet ret, HhvmString param0) { *ret = ...; }
 //
 enum class ParamType : uint8_t {
-  nullableMask = 64,
   //                        parameter         return
   voidType = 0, // n/a               void
   boolean = 1, // bool              bool
@@ -43,13 +42,6 @@ enum class ParamType : uint8_t {
   string = 4, // HhvmString        HhvmStringRet(1)
   object = 5, // SkipHhvmHandle*   SkipHhvmHandle*
   array = 6, // SkipHhvmHandle*   SkipHhvmHandle*
-  mixed = 7, // SkipRetType   HhvmVariant(1)
-  nullable_boolean = 65, // HhvmVariant       HhvmVariant(1)
-  nullable_int64 = 66, // HhvmVariant       HhvmVariant(1)
-  nullable_float64 = 67, // HhvmVariant       HhvmVariant(1)
-  nullable_string = 68, // HhvmVariant       HhvmVariant(1)
-  nullable_object = 69, // HhvmVariant       HhvmVariant(1)
-  nullable_array = 70, // HhvmVariant       HhvmVariant(1)
 };
 
 using FunctionPtr = void (*)();
