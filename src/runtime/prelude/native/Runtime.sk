@@ -11,6 +11,16 @@
 
 module Runtime;
 
+// Dummy class indicating an opaque pointer analogous to "void*"
+// A real (untyped) skip object that the GC understands
+native value class GCPointer
+
+// A pointer to random non-GC'd memory
+native value class NonGCPointer {
+  @intrinsic
+  static native fun zero(): NonGCPointer;
+}
+
 // This is produced only internally by the compiler to hold updated local
 // variables. Typically they are optimized away, but when lambdas are
 // involved they may preserved so lambdas can point to them.
@@ -66,69 +76,6 @@ private fun throwInvariantViolation(msg: String): void {
 @cpp_export("SKIP_invokeMemoizeThunk")
 private fun invokeMemoizeThunk(func: () ~> void): void {
   func()
-}
-
-@cpp_export("SKIP_createMixedBool")
-private fun createMixedBool(value: Bool): HH.Mixed {
-  HH.Bool(value)
-}
-
-@cpp_export("SKIP_createMixedFloat")
-private fun createMixedFloat(value: Float): HH.Mixed {
-  HH.Float(value)
-}
-
-@cpp_export("SKIP_createMixedInt")
-private fun createMixedInt(value: Int): HH.Mixed {
-  HH.Int(value)
-}
-
-@cpp_export("SKIP_createMixedNull")
-private fun createMixedNull(): HH.Mixed {
-  HH.Null()
-}
-
-@cpp_export("SKIP_createMixedString")
-private fun createMixedString(value: String): HH.Mixed {
-  HH.String(value)
-}
-
-@cpp_export("SKIP_createMixedDict")
-private fun createMutableDict(
-  capacity: Int,
-): mutable Map<HH.Arraykey, HH.Mixed> {
-  Map::mcreate(capacity)
-}
-
-@cpp_export("SKIP_MixedDict_set")
-private fun mixedDictSet(
-  dict: mutable Map<HH.Arraykey, HH.Mixed>,
-  key: String,
-  value: HH.Mixed,
-): void {
-  dict.set(HH.String(key), value);
-}
-
-@cpp_export("SKIP_MixedDict_freeze")
-private fun mixedDictFreeze(
-  dict: mutable Map<HH.Arraykey, HH.Mixed>,
-): HH.Mixed {
-  HH.Dict(dict.chill())
-}
-
-@cpp_export("SKIP_createMixedVec")
-private fun createMutableVec(capacity: Int): mutable Vector<HH.Mixed> {
-  Vector::mcreate(capacity)
-}
-
-@cpp_export("SKIP_MixedVec_push")
-private fun mixedVecSet(vec: mutable Vector<HH.Mixed>, value: HH.Mixed): void {
-  vec.push(value);
-}
-
-@cpp_export("SKIP_MixedVec_freeze")
-private fun mixedVecFreeze(vec: mutable Vector<HH.Mixed>): HH.Mixed {
-  HH.Vec(vec.chill())
 }
 
 @cpp_runtime("SKIP_invocationOnStateChange")

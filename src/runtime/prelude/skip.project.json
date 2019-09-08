@@ -12,7 +12,6 @@
       "sources": [
         ".",
         "core/**",
-        "php",
         "stdlib/**"
       ],
       "parameters": {
