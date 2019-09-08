@@ -124,25 +124,6 @@ extern SkipRObj* SKIP_createStringVector(int64_t size);
 extern SkipRObj* SKIP_createIntVector(int64_t size);
 extern SKIP_NORETURN void SKIP_throwInvariantViolation(SkipString msg);
 extern SKIP_NORETURN void SKIP_throwOutOfBounds(void);
-extern SkipRObj* SKIP_createMixedBool(bool value);
-extern SkipRObj* SKIP_createMixedFloat(double value);
-extern SkipRObj* SKIP_createMixedInt(int64_t value);
-extern SkipRObj* SKIP_createMixedNull(void);
-extern SkipRObj* SKIP_createMixedString(SkipString value);
-
-extern SkipRObj* SKIP_createMixedDict(int64_t capacity);
-extern void SKIP_MixedDict_set(SkipRObj* obj, SkipString key, SkipRObj* value);
-extern SkipRObj* SKIP_MixedDict_freeze(SkipRObj* obj);
-
-extern SkipRObj* SKIP_createMixedVec(int64_t capacity);
-extern void SKIP_MixedVec_push(SkipRObj* obj, SkipRObj* value);
-extern SkipRObj* SKIP_MixedVec_freeze(SkipRObj* obj);
-
-extern SKIP_NORETURN void SKIP_throwHhvmException(SkipHhvmHandle* object);
-
-extern SkipHhvmHandle* SKIP_getHhvmException(
-    SkipRObj* exception,
-    SkipHhvmHandle* none);
 
 // Defined in prelude/native/Awaitable.sk
 extern void SKIP_awaitableResume(SkipRObj* awaitable);
@@ -153,9 +134,6 @@ extern void SKIP_awaitableToMemoValue(
     skip::MemoValue* mv,
     skip::Awaitable* awaitable);
 
-// Defined in prelude/HhvmInterop.sk
-extern SkipRetValue SKIP_createTupleFromMixed(SkipRObj* mixed);
-
 // Defined in prelude/Subprocess.sk
 extern SkipRObj* SKIP_unsafeCreateSubprocessOutput(
     int64_t returnCode,
@@ -164,8 +142,6 @@ extern SkipRObj* SKIP_unsafeCreateSubprocessOutput(
 extern SkipRObj* SKIP_UInt8Array_create(int64_t capacity);
 
 extern SkipRetValue SKIPC_iteratorNext(skip::RObj* iterator);
-
-extern svmi::TypeTable* SKIPC_hhvmTypeTable();
 
 // This value is a hash defined by the compiler and is based on the source code
 // used to build the memoization tables.  It's used when serializing (and
