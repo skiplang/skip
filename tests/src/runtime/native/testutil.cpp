@@ -369,48 +369,6 @@ skip::RObj* SKIP_createIntVector(int64_t /*size*/) {
   abort();
 }
 
-skip::RObj* SKIP_createMixedBool(bool /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedFloat(double /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedInt(int64_t /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedNull(void) {
-  abort();
-}
-skip::RObj* SKIP_createMixedString(skip::String /*value*/) {
-  abort();
-}
-
-skip::RObj* SKIP_createMixedDict(int64_t /*capacity*/) {
-  abort();
-}
-void SKIP_MixedDict_set(
-    skip::RObj* /*obj*/,
-    skip::String /*key*/,
-    skip::RObj* /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_MixedDict_freeze(skip::RObj* /*obj*/) {
-  abort();
-}
-
-skip::RObj* SKIP_createMixedVec(int64_t /*capacity*/) {
-  abort();
-}
-void SKIP_MixedVec_push(skip::RObj* /*obj*/, skip::RObj* /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_MixedVec_freeze(skip::RObj* /*obj*/) {
-  abort();
-}
-SkipRetValue SKIP_createTupleFromMixed(skip::RObj*) {
-  abort();
-}
-
 void SKIP_awaitableResume(SkipRObj* /*awaitable*/) {
   abort();
 }

@@ -44,20 +44,4 @@ struct SkipRetValue {
   RetType type;
 };
 
-struct SkipGatherData {
-  void* cleanupHandle;
-  void* data;
-};
-
 } // extern "C"
-
-namespace SKIP {
-
-namespace ArrayKey {
-struct ArrayKeyRep {
-  SkipString m_string;
-  SkipInt m_int;
-};
-} // namespace ArrayKey
-
-} // namespace SKIP
