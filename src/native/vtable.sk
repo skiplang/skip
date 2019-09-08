@@ -678,8 +678,7 @@ private fun createGCType(sc: SClass, env: GlobalEnv): ConstantStruct {
             bitOffset = slotInfo.bitOffsets[idx];
             setBit(
               (slotInfo.bitSize * i) + bitOffset,
-              !isAllDeepFrozen &&
-                !x.isDeepFrozen(),
+              !isAllDeepFrozen && !x.isDeepFrozen(),
             )
           }
         });

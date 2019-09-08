@@ -4291,9 +4291,7 @@ fun llvmWriteFunctionDeclaration(
       typeRef => None(),
     };
     common.externs.set(symbol, asmDefID);
-    if (
-      annotationsContainParam(f.annotations, "@cpp_extern", f.pos).isSome()
-    ) {
+    if (annotationsContainParam(f.annotations, "@cpp_extern", f.pos).isSome()) {
       // Assume that any function that isn't explicitly declared as
       // @cpp_runtime is declared in the preamble.
       // OuterIstToIR checks that user-defined native functions have

@@ -46,7 +46,10 @@ fun paramTypes(params: Parameters<I.Parameter>): Parameters<I.Type> {
 }
 
 // Return the fields for a class, if any.
-private fun getFields(cd: I.ClassDef, _pos: FileRange): Parameters<I.Parameter> {
+private fun getFields(
+  cd: I.ClassDef,
+  _pos: FileRange,
+): Parameters<I.Parameter> {
   cd.params match {
   | Some(cp) -> cp.params
   | None() -> Positional::create()
@@ -2475,11 +2478,7 @@ value class Converter(program: I.Program) {
     isNative = (
       (in_.native_.isSome() ||
         annotationsContainParam(in_.annotations, "@cpp_extern", pos).isSome() ||
-        annotationsContainParam(
-          in_.annotations,
-          "@cpp_runtime",
-          pos,
-        ).isSome())
+        annotationsContainParam(in_.annotations, "@cpp_runtime", pos).isSome())
     );
 
     if (isNative) {
@@ -2594,9 +2593,7 @@ value class Converter(program: I.Program) {
       pos,
     ).isSome();
 
-    isNative = (
-      (in_.native_.isSome() || isCppExtern || isCppRuntime)
-    );
+    isNative = ((in_.native_.isSome() || isCppExtern || isCppRuntime));
 
     if (isNative) {
       ann = in_.annotations;
