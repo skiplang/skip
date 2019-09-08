@@ -5123,16 +5123,10 @@ untracked fun createIR(
 
   typesToSpecialize = mutable Vector[];
 
-  for (key => classDef in converter.program.class_defs) {
-    (_, name) = key;
-
+  for (_key => classDef in converter.program.class_defs) {
     if (!(classDef.kind is I.KTrait _)) {
       // TODO: Why is classDef.consts relevant to typesToSpecialize?
       if (!classDef.consts.isEmpty()) {
-        if (classDef.tparams.isEmpty()) {
-          typesToSpecialize.push(FrontEndLazyGClass(name))
-        };
-
         // Right now we guarantee we run all const initializers at
         // startup so create anything with consts now.
         for (constKey => constDef in classDef.consts) {
