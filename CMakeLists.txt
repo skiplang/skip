@@ -48,11 +48,6 @@ set(ENABLE_MCROUTER OFF)
 set(ENABLE_GOOGLETEST ON)
 set(JEMALLOC_ENABLED ON)
 
-# If we're not running tests then we don't need hhvm
-if(CONFIGURE_TESTS)
-  find_package(HHVM)
-endif()
-
 find_package(Clang)
 
 # This allows us to strip unused code using -gc-sections
