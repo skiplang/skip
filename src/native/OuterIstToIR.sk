@@ -2396,7 +2396,6 @@ value class Converter(program: I.Program) {
         methodSources => freeze(methodSources),
         annotations => in_.annotations,
         fields => convertedFields,
-        origFields => convertedFields,
         scalarType,
       },
     )

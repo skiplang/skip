@@ -228,11 +228,6 @@ class GClass{
   methodSources: UnorderedMap<String, LazyGClass> = UnorderedMap[],
   annotations: SSet = SSet[],
   fields: Array<GField> = Array[],
-  // For imported classes we swap out the fields as specified by the user with a
-  // fake proxyPointer field.  origFields gives the original fields as if we
-  // hadn't done that.
-  // TODO: Simplify (this is not needed anymore as we dropped HHVM interop).
-  origFields: Array<GField> = Array[],
   canInstantiate: Bool = true,
   scalarType: ?ScalarType = None(),
 } extends HasFileRange {
