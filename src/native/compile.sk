@@ -212,7 +212,7 @@ fun createOptimizedFunctions(env: GlobalEnv): GlobalEnv {
         // need to emit.
         keep(env.initializeAllConstsID);
         for (f in env.sfuns) {
-          if (f.exportStyle.isExported() || f.isDisasm || f.isRuntimeExport) {
+          if (f.isDisasm || f.isRuntimeExport) {
             keep(f.id)
           }
         };

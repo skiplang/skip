@@ -22,7 +22,6 @@ mutable base class .RewriteBase{
   mutable blockChanged: Bool = false,
   mutable nextBlockID: BlockID = BlockID::none,
   mutable prettyBlockName: String = "",
-  mutable exportStyleReplacement: ?ExportStyle = None(),
   mutable blockParams: Array<BlockParam> = Array[],
   mutable positionRewriter: ?Pos ~> Pos = None(),
   mutable pos: Pos,
@@ -1527,7 +1526,6 @@ mutable base class .Rewrite{
       !(this.anyBlockChanged ||
         this.funParamsChanged ||
         this.funTypeChanged ||
-        this.exportStyleReplacement.isSome() ||
         (optinfo.constantsChanged &&
           this.createNewFunctionIfOnlyConstantsChanged()))
     ) {
@@ -1537,7 +1535,6 @@ mutable base class .Rewrite{
       f2 = f with {
         params => if (this.funParamsChanged) this.funParams else f.params,
         funType => if (this.funTypeChanged) this.funType else f.funType,
-        exportStyle => this.exportStyleReplacement.default(f.exportStyle),
         blocks => if (this.anyBlockChanged) {
           this.blockBuf.toArray()
         } else {

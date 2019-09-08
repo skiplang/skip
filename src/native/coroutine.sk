@@ -728,7 +728,6 @@ private mutable class .LowerCoroutine{
         isMemoized => orig.isMemoized,
         isDisasm => orig.isDisasm,
         isRuntimeExport => orig.isRuntimeExport,
-        exportStyle => orig.exportStyle,
         annotations => orig.annotations,
         gfunction => orig.gfunction,
         // Use a more specific return type than mutable Iterator<X>, now that

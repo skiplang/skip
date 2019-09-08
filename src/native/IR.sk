@@ -409,18 +409,9 @@ class SClass{
   }
 }
 
-base class ExportStyle{} {
-  children =
-  | NotExported{}
-
-  fun isExported(): Bool
-  | NotExported _ -> false
-}
-
 mutable base class FunInfoCommon{
   isNative: Bool = false,
   isMemoized: Bool = false,
-  exportStyle: ExportStyle = NotExported{},
   annotations: SSet = SSet[],
   gfunction: GFunctionName,
 }

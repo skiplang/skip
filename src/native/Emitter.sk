@@ -70,7 +70,6 @@ mutable class .Emitter{} extends Rewrite {
       isMemoized => funInfo.isMemoized,
       isNative => funInfo.isNative,
       isRuntimeExport => funInfo.isRuntimeExport,
-      exportStyle => funInfo.exportStyle,
       funType => funInfo.funType,
       annotations => funInfo.annotations,
       pos => funInfo.pos,

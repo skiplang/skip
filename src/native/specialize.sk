@@ -1867,7 +1867,6 @@ mutable class FunSpecializer{
       name,
       isNative => gfi.isNative,
       isMemoized => gfi.isMemoized,
-      exportStyle => gfi.exportStyle,
       annotations => gfi.annotations,
       pos => gfi.pos,
       funType => Tfun{
@@ -3416,7 +3415,6 @@ mutable class FunSpecializer{
     f with {
       params => this.funParams,
       funType => this.funType,
-      exportStyle => this.exportStyleReplacement.default(f.exportStyle),
       blocks => this.blockBuf.toArray(),
       constants => freeze(this.optinfo.getConstants()),
       coroutineInfo => this.coroutineInfo,
