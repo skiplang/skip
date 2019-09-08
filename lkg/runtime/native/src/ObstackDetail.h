@@ -123,18 +123,6 @@ struct ObstackDetail final : private boost::noncopyable {
   // Caller is responsible for allocating a placeholder if necessary.
   void stealIObj(IObj* obj, Pos pos);
 
-  // Return an HhvmHandle for the given object.
-  HhvmHandle* wrapHhvmObject(HhvmObjectPtr obj, Obstack&, bool incref);
-  HhvmHandle* wrapHhvmArray(HhvmArrayPtr obj, Obstack&, bool incref);
-  HhvmHandle* wrapHhvmHeapObject(HhvmHeapObjectPtr obj, Obstack&, bool incref);
-  // Remove the mapping for the given HhvmHandle
-  void unregisterHhvmHandle(HhvmHandle* handle);
-
-  // Mark the wrapped HhvmObjects known by this Obstack
-  void markHhvmObjects(
-      std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback);
-
-  void updateHhvmHeapObject(HhvmHandle* handle, HhvmHeapObjectPtr obj);
   void setHeapObjectMappingInvalid();
 
   // Return a frozen copy of the given object (and all its transitive
@@ -193,8 +181,6 @@ struct ObstackDetail final : private boost::noncopyable {
   sweepLargeObjects(Obstack&, Pos markPos, Pos note, SweepStats&);
   void sweepChunks(Chunk* collectChunk, void* oldNextAlloc);
   void sweepIObjs(Obstack&, Pos markPos, Pos note);
-
-  void updateHhvmHeapObjectMapping();
 
   // call fn(RObjHandle&) for the pointer within each handle
   template <class Fn>
@@ -360,13 +346,6 @@ struct ObstackDetail final : private boost::noncopyable {
   // This map is used to ensure that we don't inc/dec more than
   // once for each iobj.
   skip::fast_map<IObj*, IObjRef> m_iobjRefs;
-
-  // This mapping is used to track HhvmObjects and HhvmArrays
-  skip::fast_map<HhvmHeapObjectPtr, HhvmHandle*> m_hhvmHeapObjectMapping;
-
-  // If this is false then the mapping between keys and values of
-  // m_hhvmObjectMapping are potentially incorrect and need to be checked.
-  bool m_hhvmHeapObjectMappingValid = false;
 
   // This records the notes from the start of the obstack up to and including
   // the note most recently passed to collect().

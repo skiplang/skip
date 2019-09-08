@@ -63,28 +63,6 @@ extern void skip_main(void);
 // Link these stubs weakly so tests can override them.
 #define WEAK_LINKAGE __attribute__((weak))
 
-skip::String WEAK_LINKAGE SKIP_string_extractData(HhvmString /*handle*/) {
-  abort();
-}
-void WEAK_LINKAGE SKIP_HHVM_incref(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-void WEAK_LINKAGE SKIP_HHVM_decref(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-skip::String WEAK_LINKAGE
-SKIP_HHVM_Object_getType(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-SkipRetValue WEAK_LINKAGE SKIP_HHVM_callFunction(
-    skip::HhvmHandle* /*object*/,
-    skip::String /*function*/,
-    skip::String /*paramTypes*/,
-    ...) {
-  abort();
-}
-
 size_t WEAK_LINKAGE SKIPC_buildHash(void) {
   return 1;
 }

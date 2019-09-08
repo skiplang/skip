@@ -20,8 +20,6 @@
 
 namespace skip {
 
-struct HhvmHandle;
-
 /*
  * Holder for an RObj* that keeps it alive as a root, without preventing
  * the underlying object from being moved. Also encapsulates the owner
@@ -159,12 +157,6 @@ struct Obstack : ObstackBase {
   void verifyInvariants() const;
   void TEST_stealObjects(SkipObstackPos note, Obstack& source);
 #endif
-
-  // Used by facebook/extensions/skip/ext_skip.cpp
-  HhvmHandle* wrapHhvmHeapObject(HhvmHeapObjectPtr obj, bool incref = true);
-  void markHhvmObjects(
-      std::function<void(HhvmHeapObjectPtr** ptr, size_t count)> markCallback);
-  void updateHhvmHeapObject(HhvmHandle* handle, HhvmHeapObjectPtr obj);
 
   // Handles allow external code to safely reference an obstack object
   // that may move. Multiple handles for the same object are allowed.
