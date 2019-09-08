@@ -87,7 +87,6 @@ list(APPEND PRELUDE_SOURCES
   native/Runtime.sk
   native/String.sk
   native/StringIterator.sk
-  native/Svmi.sk
   skip.project.json
   )
 

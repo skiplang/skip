@@ -16,97 +16,12 @@
 // function here remember to add a stub to
 // tests/src/runtime/native/testutil.cpp.
 
-namespace svmi {
-
-// The parameter type of the arg.
-//
-// In the table below if the return is marked with (1) then the return is
-// actually a reference passed in the first parameter.
-//
-// For example - A function which takes and returns a ParamType::int64 would be
-// written as:
-//
-//   int64_t myfn(int64_t param0) { return ...; }
-//
-// But a function which takes and returns a ParamType::string would be written
-// as:
-//
-//   void myfn(HhvmStringRet ret, HhvmString param0) { *ret = ...; }
-//
-enum class ParamType : uint8_t {
-  //                        parameter         return
-  voidType = 0, // n/a               void
-  boolean = 1, // bool              bool
-  int64 = 2, // int64_t           int64_t
-  float64 = 3, // double            double
-  string = 4, // HhvmString        HhvmStringRet(1)
-  object = 5, // SkipHhvmHandle*   SkipHhvmHandle*
-  array = 6, // SkipHhvmHandle*   SkipHhvmHandle*
-};
-
-using FunctionPtr = void (*)();
-
-struct FunctionSignature {
-  const char* m_name; // name of the function
-
-  // Pointer to the function.
-  FunctionPtr m_fnptr;
-
-  ParamType m_retType;
-  uint8_t m_argCount;
-  const ParamType* m_argTypes;
-};
-
-struct Desc {
-  union {
-    svmi::ParamType paramType;
-    SkipInt _padding;
-  };
-  SkipInt classId; // when typ == Array or Object
-  skip::AObj<Desc*>* targs;
-};
-
-struct Field {
-  skip::String name;
-  Desc* typ;
-};
-
-enum class ClassKind : SkipInt {
-  base = 0,
-  proxyClass = 1,
-  copyClass = 2,
-  proxyShape = 3,
-  copyShape = 4,
-};
-
-// Magic class IDs for field types of 'array'
-enum class ClassIdMagic {
-  unknown = -1,
-  vec = -16,
-  dict = -17,
-  keyset = -18,
-  tuple = -19,
-};
-
-struct Class {
-  skip::String name;
-  ClassKind kind;
-  skip::AObj<Field*>* fields;
-};
-
-struct TypeTable {
-  skip::AObj<Class*>* classes;
-};
-} // namespace svmi
-
 extern "C" {
 
 #define SKIP_NORETURN __attribute__((__noreturn__))
 
 // T30334345: New symbols added to this file should be prefixed with 'SKIPC_'
 // NOT 'SKIP_'!
-
-extern const svmi::FunctionSignature* SKIP_initializeSkip(void);
 
 // Defined in prelude/native/Runtime.sk
 extern SkipString SKIP_getExceptionMessage(SkipRObj* skipException);

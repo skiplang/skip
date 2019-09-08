@@ -52,11 +52,6 @@ void osxTerminate() {
 } // namespace
 #endif // __APPLE__
 
-namespace skiptest {
-// Make these available to tests...
-const svmi::FunctionSignature* globals;
-} // namespace skiptest
-
 extern "C" {
 extern void skip_main(void);
 
@@ -88,12 +83,6 @@ int main(int argc, char** argv) {
   int status = 0;
 
   try {
-    {
-      skip::Obstack::PosScope P;
-      skiptest::globals = reinterpret_cast<const svmi::FunctionSignature*>(
-          SKIP_initializeSkip());
-    }
-
     skip::setNumThreads(skip::computeCpuCount());
 
     if (!watch) {
