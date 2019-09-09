@@ -632,9 +632,7 @@ fun isLegalToInline(f: Function): Bool {
   f.hasImplementation() &&
     !f.isMemoized &&
     !annotationsContain(f.annotations, "@no_inline", pos) &&
-    !annotationsContain(f.annotations, "@gc", pos) &&
-    !Hhvm.isExportAnnotation(f.annotations, pos) &&
-    !Hhvm.isImportAnnotation(f.annotations, pos)
+    !annotationsContain(f.annotations, "@gc", pos)
 }
 
 // Super-rough guess for how many machine instructions an Instr might

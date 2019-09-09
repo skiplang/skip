@@ -141,14 +141,6 @@ const gtFloat: GTapply = GTapply(
   FrontEndLazyGClass(tFloat.sclassID.id),
   DeepFrozen(),
 );
-const gtHhvmHandle: GTapply = GTapply(
-  FrontEndLazyGClass(tHhvmHandle.sclassID.id),
-  Mutable(),
-);
-const gtHhvmShapeHandle: GTapply = GTapply(
-  FrontEndLazyGClass(tHhvmShapeHandle.sclassID.id),
-  Mutable(),
-);
 const gtInspect: GTapply = GTapply(FrontEndLazyGClass("Inspect"), DeepFrozen());
 const gtInt: GTapply = GTapply(FrontEndLazyGClass("Int"), DeepFrozen());
 const gtGCPointer: GTapply = GTapply(
@@ -236,10 +228,6 @@ class GClass{
   methodSources: UnorderedMap<String, LazyGClass> = UnorderedMap[],
   annotations: SSet = SSet[],
   fields: Array<GField> = Array[],
-  // For imported classes we swap out the fields as specified by the user with a
-  // fake proxyPointer field.  origFields gives the original fields as if we
-  // hadn't done that.
-  origFields: Array<GField> = Array[],
   canInstantiate: Bool = true,
   scalarType: ?ScalarType = None(),
 } extends HasFileRange {
@@ -589,13 +577,6 @@ base class GCallMethodBase{
 
 class GCallFunction extends GCallFunctionBase
 class GCallMethod extends GCallMethodBase
-
-class GCallHhvmFunction{hhvmName: String, object: ?GInstr} extends GCallBase
-
-class GCallHhvmWrappedFunction{
-  targetParamTypes: Array<GType>,
-  targetReturnType: GType,
-} extends GCallFunctionBase
 
 // A "call" inside a "try". Ends a block, which has two successors:
 // where to go if no exception thrown, and where to go if exception thrown.

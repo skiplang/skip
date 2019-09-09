@@ -1,5 +1,0 @@
-fun no<V: Show>(x: V): Nullable<Int> {
-  x match {
-  | Int _ -> Null()
-  }
-}

@@ -27,9 +27,6 @@ list(APPEND PRELUDE_SOURCES
   core/traits/Order.sk
   core/traits/Orderable.sk
   core/traits/Show.sk
-  php/HH.sk
-  php/HhvmInterop.sk
-  php/Nullable.sk
   stdlib/benchmarking/Bencher.generated.sk
   stdlib/benchmarking/Bencher.sk
   stdlib/collections/interfaces/IndexedSequence.sk
@@ -85,13 +82,11 @@ list(APPEND PRELUDE_SOURCES
   stdlib/testing/UnitTest.sk
   native/Awaitable.sk
   native/FastOption.sk
-  native/InteropInternal.sk
   native/Reactive.sk
   native/RegexImplementation.sk
   native/Runtime.sk
   native/String.sk
   native/StringIterator.sk
-  native/Svmi.sk
   skip.project.json
   )
 

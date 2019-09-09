@@ -10,7 +10,6 @@
 #include "skip/Exception.h"
 #include "skip/external.h"
 #include "skip/map.h"
-#include "skip/plugin-extc.h"
 #include "skip/System.h"
 
 #include <gtest/gtest.h>
@@ -365,64 +364,7 @@ void SKIP_throwInvariantViolation(skip::String /*msg*/) {
   abort();
 }
 
-void SKIP_HHVM_incref(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-void SKIP_HHVM_decref(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-skip::String SKIP_HHVM_Object_getType(SkipHhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-void SKIP_HHVM_throwException(skip::RObj* /*exc*/, SkipObstackPos /*note*/) {
-  abort();
-}
-
 skip::RObj* SKIP_createIntVector(int64_t /*size*/) {
-  abort();
-}
-
-skip::RObj* SKIP_createMixedBool(bool /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedFloat(double /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedInt(int64_t /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_createMixedNull(void) {
-  abort();
-}
-skip::RObj* SKIP_createMixedString(skip::String /*value*/) {
-  abort();
-}
-
-skip::RObj* SKIP_createMixedDict(int64_t /*capacity*/) {
-  abort();
-}
-void SKIP_MixedDict_set(
-    skip::RObj* /*obj*/,
-    skip::String /*key*/,
-    skip::RObj* /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_MixedDict_freeze(skip::RObj* /*obj*/) {
-  abort();
-}
-
-skip::RObj* SKIP_createMixedVec(int64_t /*capacity*/) {
-  abort();
-}
-void SKIP_MixedVec_push(skip::RObj* /*obj*/, skip::RObj* /*value*/) {
-  abort();
-}
-skip::RObj* SKIP_MixedVec_freeze(skip::RObj* /*obj*/) {
-  abort();
-}
-SkipRetValue SKIP_createTupleFromMixed(skip::RObj*) {
   abort();
 }
 
@@ -439,10 +381,6 @@ void SKIP_awaitableFromMemoValue(
 void SKIP_awaitableToMemoValue(
     skip::MemoValue* /*mv*/,
     skip::Awaitable* /*awaitable*/) {
-  abort();
-}
-
-SkipRetValue SKIPC_iteratorNext(skip::RObj* /*iterator*/) {
   abort();
 }
 

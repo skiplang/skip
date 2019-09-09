@@ -73,8 +73,7 @@ extc-refs - Produces a C++ file with an array listing of all the public extern C
     files = {
         os.path.join(args.runtime_path, 'skip', f)
         for f in recursiveListDir(os.path.join(args.runtime_path, 'skip'))
-        if f.endswith('-extc.h') and not f.startswith('.#')} | {
-            os.path.join(args.runtime_path, 'skip/plugin-extc.h'),
+        if f.endswith('-extc.h') and not f.startswith('.#')
     }
 
     entrypoints = []

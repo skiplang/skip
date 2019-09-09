@@ -2687,7 +2687,10 @@ fun is_not_nullable(env: Env, ty_: N.Type_): Bool {
     invariant_violation("should already be handled")
   | N.TnonNullable _
   | N.Tawaitable _
-  | N.Tfun _ ->
+  | N.Tfun _
+  | N.Tset _
+  | N.Tpromoted _
+  | N.Tapply _ ->
     true
   | N.Tparam(_, _, id, _) ->
     tyl = env.tparam_constraints.findUppers(id).filter(ty ->
@@ -2697,23 +2700,7 @@ fun is_not_nullable(env: Env, ty_: N.Type_): Bool {
       }
     );
     !tyl.isEmpty() && tyl.all(ty -> is_not_nullable(env, ty))
-  | N.Tpromoted(_, _, _, _, n, _)
-  | N.Tapply(_, n, _) ->
-    is_not_nullable_class(n)
-  | N.Tset(_, _, _, elts) -> elts.all(p -> is_not_nullable_elt(p))
   | N.Tnamed(_, inner) -> is_not_nullable(env, inner)
-  }
-}
-
-fun is_not_nullable_elt(elt: N.InterElt): Bool {
-  is_not_nullable_class(elt.name)
-}
-
-fun is_not_nullable_class(p: N.Name): Bool {
-  (_, n) = p;
-  n match {
-  | "Box" | "Null" | "Nullable" -> false
-  | _ -> true
   }
 }
 

@@ -409,25 +409,9 @@ class SClass{
   }
 }
 
-base class ExportStyle{} {
-  children =
-  | NotExported{}
-  | HhvmExport{
-    stringReturn: Bool,
-    name: String,
-    wrapperParamTypes: Array<Svmi.ParamType> = Array[],
-    wrapperReturnType: Svmi.ParamType = Svmi.ParamTypeVoid(),
-  }
-
-  fun isExported(): Bool
-  | NotExported _ -> false
-  | HhvmExport _ -> true
-}
-
 mutable base class FunInfoCommon{
   isNative: Bool = false,
   isMemoized: Bool = false,
-  exportStyle: ExportStyle = NotExported{},
   annotations: SSet = SSet[],
   gfunction: GFunctionName,
 }

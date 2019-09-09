@@ -78,7 +78,6 @@
 #include "skip/SkipRegex-extc.h"
 #include "skip/intern-extc.h"
 #include "skip/stubs-extc.h"
-#include "skip/plugin-extc.h"
 
 #include <folly/init/Init.h>
 
@@ -140,25 +139,11 @@ FORWARD_NR(SKIP_throwRuntimeError, void, (SkipString message), (message))
 FORWARD(SKIP_createStringVector, SkipRObj*, (int64_t size), (size))
 FORWARD(SKIP_createIntVector, SkipRObj*, (int64_t size), (size))
 FORWARD_NR(SKIP_throwInvariantViolation, void, (SkipString msg), (msg))
-FORWARD(SKIP_createMixedBool, SkipRObj*, (bool value), (value))
-FORWARD(SKIP_createMixedFloat, SkipRObj*, (double value), (value))
-FORWARD(SKIP_createMixedInt, SkipRObj*, (int64_t value), (value))
-FORWARD(SKIP_createMixedNull, SkipRObj*, (void), ())
-FORWARD(SKIP_createMixedString, SkipRObj*, (SkipString value), (value))
-FORWARD(SKIP_createMixedDict, SkipRObj*, (int64_t capacity), (capacity))
-FORWARD(SKIP_MixedDict_set, void, (SkipRObj* obj, SkipString key, SkipRObj* value), (obj, key, value))
-FORWARD(SKIP_MixedDict_freeze, SkipRObj*, (SkipRObj* obj), (obj))
-FORWARD(SKIP_createMixedVec, SkipRObj*, (int64_t capacity), (capacity))
-FORWARD(SKIP_MixedVec_push, void, (SkipRObj* obj, SkipRObj* value), (obj, value))
-FORWARD(SKIP_MixedVec_freeze, SkipRObj*, (SkipRObj* obj), (obj))
-FORWARD(SKIP_initializeSkip, const svmi::FunctionSignature*, (void), ());
+FORWARD(SKIP_initializeSkip, void, (void), ());
 FORWARD(skip_main, SkipString, (void), ());
 
 #undef FORWARD
 #undef FORWARD_NR
-
-void SKIP_HHVM_incref(SkipHhvmHandle* wrapper) { abort(); }
-void SKIP_HHVM_decref(SkipHhvmHandle* wrapper) { abort(); }
 
 void* SKIP_lookup(const std::string& name) {
   //@_ZTIN4skip13SkipExceptionE = external constant { i8*, i8*, i8* }, align 8
@@ -176,21 +161,6 @@ void* SKIP_lookup(const std::string& name) {
   FORWARD(SKIP_Array_concatStringArray);
   FORWARD(SKIP_FlightTrackerTicket__toJsonString);
   FORWARD(SKIP_Float_toString);
-  //  FORWARD(SKIP_HHVM_Object_decref);
-  //  FORWARD(SKIP_HHVM_Object_getField_Bool);
-  //  FORWARD(SKIP_HHVM_Object_getField_Float);
-  //  FORWARD(SKIP_HHVM_Object_getField_Int);
-  //  FORWARD(SKIP_HHVM_Object_getField_Object);
-  //  FORWARD(SKIP_HHVM_Object_getField_String);
-  //  FORWARD(SKIP_HHVM_Object_incref);
-  //  FORWARD(SKIP_HHVM_Object_setField_Bool);
-  //  FORWARD(SKIP_HHVM_Object_setField_Float);
-  //  FORWARD(SKIP_HHVM_Object_setField_Int);
-  //  FORWARD(SKIP_HHVM_Object_setField_Object);
-  //  FORWARD(SKIP_HHVM_Object_setField_String);
-  //  FORWARD(SKIP_HHVM_callFunction);
-  //  FORWARD(SKIP_HHVM_throwException);
-  //  FORWARD(SKIP_HhvmStringRet_create);
   FORWARD(SKIP_Int_toString);
   FORWARD(SKIP_Math_acos);
   FORWARD(SKIP_Math_asin);
@@ -204,8 +174,6 @@ void* SKIP_lookup(const std::string& name) {
   FORWARD(SKIP_Obstack_shallowClone);
   FORWARD(SKIP_Obstack_usage);
   FORWARD(SKIP_Obstack_verifyStore);
-  FORWARD(SKIP_Obstack_wrapHhvmObject);
-  FORWARD(SKIP_Obstack_wrapHhvmObjectData);
   FORWARD(SKIP_Regex_initialize);
   FORWARD(SKIP_String_StringIterator__rawCurrent);
   FORWARD(SKIP_String_StringIterator__rawDrop);

@@ -5,7 +5,6 @@
       "kind": "Program",
       "sources": [
         "skipServer.sk",
-        "../native/hhvm",
         "../native/AsmOutput.sk",
         "../native/Config.sk",
         "../native/Emitter.sk",
@@ -20,7 +19,6 @@
         "../native/StmtPos.sk",
         "../native/TextOutputStream.sk",
         "../native/alloc.sk",
-        "../native/callables.sk",
         "../native/checksum.sk",
         "../native/compile.sk",
         "../native/const.sk",

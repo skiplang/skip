@@ -15,16 +15,6 @@ module NameMangler;
 const skipRObjPtr: TypeBase = Ptr{child => LiteralSeq["skip", "RObj"]};
 const skipOptRObjPtr: TypeBase = Ptr{child => LiteralSeq["skip", "OptRObj"]};
 
-// SkipHhvmHandle*
-const skipHhvmHandlePtr: TypeBase = Ptr{
-  child => LiteralSeq["skip", "HhvmHandle"],
-};
-// OptHhvmHandle = skip::detail::TOrFakePtr<skip::HhvmHandle>
-const skipOptHhvmHandlePtr: TypeBase = Template{
-  name => LiteralSeq["skip", "detail", "TOrFakePtr"],
-  params => Array[LiteralSeq["skip", "HhvmHandle"]],
-};
-
 // SkipString
 const skipString: TypeBase = LiteralSeq["skip", "String"];
 const skipOptString: TypeBase = LiteralSeq["skip", "OptString"];
@@ -53,42 +43,12 @@ base class TypeBase{} uses Hashable, Equality {
   static fun fromType(
     t: Type,
     fs: mutable O.FunSpecializer,
-    pos: Pos,
+    _pos: Pos,
   ): ?TypeBase {
-    s = fs.specializer;
-
     shape = fs.scalarize(t);
     flatShape = shape.flattened();
     if (t == tVoid || flatShape.size() == 0) {
       return None()
-    };
-
-    if (Hhvm.isOptionType(s, t)) {
-      return Some(
-        if (flatShape.size() == 1) {
-          // This must be a sentinel-based Option
-          targ = Hhvm.getOptionTarg(s, t, pos);
-          if (targ == tString) {
-            skipOptString
-          } else if (Hhvm.flattensToHhvmHandle(fs, targ)) {
-            skipOptHhvmHandlePtr
-          } else if (fs.maybeGetScalarType(t).isSome()) {
-            skipOptRObjPtr
-          } else {
-            name = fs.specializer.exampleSClass(t).toString();
-            NameMangler.LiteralSeq::fromQualifiedName(name)
-          }
-        } else {
-          // This must be a flag-based Option - flatten it and return the parts.
-          Seq::createFromItems(
-            flatShape.map(part -> fromType(part.i1, fs, pos)),
-          )
-        },
-      )
-    };
-
-    if (Hhvm.flattensToHhvmHandle(fs, t)) {
-      return Some(skipHhvmHandlePtr);
     };
 
     Some(
@@ -305,30 +265,6 @@ private class Seq{parts: Array<TypeBase>} extends TypeBase {
     | _ -> false
     }
   }
-}
-
-fun hhvmMangledName(
-  name: String,
-  returnType: TypeBase,
-  params: Array<TypeBase>,
-): String {
-  cache = mutable Cache{};
-
-  nameSeq = LiteralSeq::fromQualifiedName(name);
-
-  // add a "<>" template type so return type is expected
-  emptyTemplate = "IJEE";
-
-  mangledName =
-    "_Z" +
-    "N" +
-    nameSeq.toInnerString(cache) +
-    emptyTemplate +
-    "E" +
-    returnType.toString(cache) +
-    params.map(p -> p.toString(cache)).join("");
-
-  mangledName
 }
 
 fun toString(t: ?TypeBase): String {

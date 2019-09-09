@@ -1,7 +1,0 @@
-class C<T>(value: T)
-
-fun getMaxTimeFromFilter<V>(x: C<V>): Nullable<Int> {
-  x match {
-  | C(0) -> Null()
-  }
-}

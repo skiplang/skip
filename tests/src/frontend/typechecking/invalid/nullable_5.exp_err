@@ -1,4 +1,0 @@
-File "./typechecking/invalid/nullable_5.sk", line 1, characters 21-31:
-Class specifier expected
-1 | class Foo() extends nonNullable
-  |                     ^^^^^^^^^^^

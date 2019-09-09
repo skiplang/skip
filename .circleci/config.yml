@@ -286,8 +286,9 @@ jobs:
       - run:
           name: configure
           working_directory: ~/skip/build
-          command: |
-            cmake .. -DICU_HINT=/usr/local/opt/icu4c  # Homebrew path for ICU.
+          command: | # Fix for broken hombrew cmake 1.15.3  Homebrew path for ICU.
+            cmake .. -DBoost_NO_BOOST_CMAKE=ON              -DICU_HINT=/usr/local/opt/icu4c
+
       - run:
           name: compile runtimes
           working_directory: ~/skip/build

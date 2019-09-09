@@ -26,7 +26,6 @@
 #include "skip/leak.h"
 #include "skip/memoize.h"
 #include "skip/parallel.h"
-#include "skip/plugin-extc.h"
 
 #ifdef __APPLE__
 namespace {
@@ -52,38 +51,11 @@ void osxTerminate() {
 } // namespace
 #endif // __APPLE__
 
-namespace skiptest {
-// Make these available to tests...
-const svmi::FunctionSignature* globals;
-} // namespace skiptest
-
 extern "C" {
 extern void skip_main(void);
 
 // Link these stubs weakly so tests can override them.
 #define WEAK_LINKAGE __attribute__((weak))
-
-skip::String WEAK_LINKAGE SKIP_string_extractData(HhvmString /*handle*/) {
-  abort();
-}
-void WEAK_LINKAGE SKIP_HHVM_incref(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-void WEAK_LINKAGE SKIP_HHVM_decref(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-skip::String WEAK_LINKAGE
-SKIP_HHVM_Object_getType(skip::HhvmHandle* /*wrapper*/) {
-  abort();
-}
-
-SkipRetValue WEAK_LINKAGE SKIP_HHVM_callFunction(
-    skip::HhvmHandle* /*object*/,
-    skip::String /*function*/,
-    skip::String /*paramTypes*/,
-    ...) {
-  abort();
-}
 
 size_t WEAK_LINKAGE SKIPC_buildHash(void) {
   return 1;
@@ -112,8 +84,7 @@ int main(int argc, char** argv) {
   try {
     {
       skip::Obstack::PosScope P;
-      skiptest::globals = reinterpret_cast<const svmi::FunctionSignature*>(
-          SKIP_initializeSkip());
+      SKIP_initializeSkip();
     }
 
     skip::setNumThreads(skip::computeCpuCount());
