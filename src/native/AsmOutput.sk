@@ -2341,28 +2341,6 @@ mutable class .AsmOutput{
     image.writeGetPointer(asm, 0)
   }
 
-  private mutable fun writeExportsTable(): AsmDefID {
-    typeString = `[1 x %struct._FunctionSignature]`;
-
-    asm = mutable StructAsmDefBuilder{
-      id => this.defs.allocID(),
-      canShare => false,
-      symbol => ".plugin_exports",
-      common => this,
-      typeRef => None(),
-      typeString => Some(typeString),
-    };
-
-    asm.print("%n = internal constant %s [" % asm % typeString);
-
-    sep = "\n  ";
-    asm.print(sep);
-    asm.print("%struct._FunctionSignature zeroinitializer\n");
-    asm.print("], align 8\n");
-
-    asm.finish()
-  }
-
   // TODO: This should become part of an AsmDef...
   mutable fun llvmGlobalsType(): String {
     this.globalsType match {
@@ -2410,7 +2388,7 @@ mutable class .AsmOutput{
     _ = asm.finish()
   }
 
-  private mutable fun writeInitializer(exportsTable: AsmDefID): void {
+  private mutable fun writeInitializer(): void {
     asm = mutable StructAsmDefBuilder{
       id => this.defs.allocID(),
       canShare => false,
@@ -2429,22 +2407,14 @@ mutable class .AsmOutput{
       "  call void %n()\n" %
         this.env.getFunction(this.env.initializeAllConstsID, FileRange.builtin),
     );
-
-    asm.print(
-      ("  ret %%struct._FunctionSignature* getelementptr inbounds " +
-        "(%T, %N, i64 0, i64 0)") %
-        exportsTable %
-        exportsTable,
-    );
+    asm.print("  ret %struct._FunctionSignature* zeroinitializer\n");
     asm.print("}\n\n");
 
     _ = asm.finish()
   }
 
   mutable fun writeStaticData(): void {
-    exportsTable = this.writeExportsTable();
-
-    this.writeInitializer(exportsTable);
+    this.writeInitializer();
   }
 }
 
