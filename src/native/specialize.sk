@@ -482,9 +482,7 @@ mutable class Specializer{
 
   // Find the transitive closure of functions and classes
   // reachable from our original root set so we can compile them all.
-  mutable fun findAllFunctionsAndSClasses(
-    typesToSpecialize: readonly Vector<FrontEndLazyGClass>,
-  ): void {
+  mutable fun findAllFunctionsAndSClasses(): void {
     // Make sure our builtin types exist so we can spontaneously create
     // instances later, e.g. during lowering.
     builtinTypes = Array[
@@ -510,15 +508,6 @@ mutable class Specializer{
       if (sc.id != t.sclassID) {
         sc.pos.die(`sclass ID mismatch: ${sc.id} != ${t.sclassID}`)
       }
-    };
-
-    // Note - process the types first so that types that we explicitly request
-    // are processed before functions that might use them.  This is necessary
-    // for @hhvm_copy where we need to find what types inherit from a base-class
-    // during HhvmInterop.copyFromHhvm().
-    // NOTE: The above comment is stale as HHVM interop was removed.
-    for (lazyGClass in typesToSpecialize) {
-      _ = this.getSClass2(HalfClass(lazyGClass, Array[], DeepFrozen()))
     };
 
     // Keep specializing functions and types until we hit a fixed point.

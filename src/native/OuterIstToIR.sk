@@ -5117,11 +5117,8 @@ untracked fun createIR(
     constsVec.push(converter.convertConstDef(constDef));
   };
 
-  typesToSpecialize = mutable Vector[];
-
   for (_key => classDef in converter.program.class_defs) {
     if (!(classDef.kind is I.KTrait _)) {
-      // TODO: Why is classDef.consts relevant to typesToSpecialize?
       if (!classDef.consts.isEmpty()) {
         // Right now we guarantee we run all const initializers at
         // startup so create anything with consts now.
@@ -5224,7 +5221,7 @@ untracked fun createIR(
   reportMemoryStatistics("native/createIR after force compile constant inits");
 
   // Find every relevant type and function in the program.
-  specializer.findAllFunctionsAndSClasses(typesToSpecialize);
+  specializer.findAllFunctionsAndSClasses();
   reportMemoryStatistics("native/createIR after findAllFunctionsAndSClasses");
 
   // Latch the sub- and supertypes.
