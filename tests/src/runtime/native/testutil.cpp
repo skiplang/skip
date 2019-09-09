@@ -10,7 +10,6 @@
 #include "skip/Exception.h"
 #include "skip/external.h"
 #include "skip/map.h"
-#include "skip/plugin-extc.h"
 #include "skip/System.h"
 
 #include <gtest/gtest.h>
@@ -382,10 +381,6 @@ void SKIP_awaitableFromMemoValue(
 void SKIP_awaitableToMemoValue(
     skip::MemoValue* /*mv*/,
     skip::Awaitable* /*awaitable*/) {
-  abort();
-}
-
-SkipRetValue SKIPC_iteratorNext(skip::RObj* /*iterator*/) {
   abort();
 }
 

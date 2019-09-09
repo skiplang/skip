@@ -9,7 +9,6 @@
 
 #include "Obstack-extc.h"
 #include "String-extc.h"
-#include "plugin-extc.h"
 #include "VTable.h"
 
 // These are callback functions defined by the Skip compiler.  If you add a
@@ -49,8 +48,6 @@ extern SkipRObj* SKIP_unsafeCreateSubprocessOutput(
     SkipRObj* stdout,
     SkipRObj* stderr);
 extern SkipRObj* SKIP_UInt8Array_create(int64_t capacity);
-
-extern SkipRetValue SKIPC_iteratorNext(skip::RObj* iterator);
 
 // This value is a hash defined by the compiler and is based on the source code
 // used to build the memoization tables.  It's used when serializing (and

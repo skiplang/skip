@@ -7,7 +7,6 @@
 
 #include "skip/String.h"
 #include "skip/external.h"
-#include "skip/plugin-extc.h"
 #include "skip/objects.h"
 #include "skip/util.h"
 

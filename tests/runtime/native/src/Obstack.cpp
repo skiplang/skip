@@ -13,7 +13,6 @@
 #include "skip/intern.h"
 #include "skip/memory.h"
 #include "skip/objects.h"
-#include "skip/plugin-extc.h"
 #include "skip/Process.h"
 #include "skip/Refcount.h"
 #include "skip/set.h"

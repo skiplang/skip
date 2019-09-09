@@ -26,7 +26,6 @@
 #include "skip/leak.h"
 #include "skip/memoize.h"
 #include "skip/parallel.h"
-#include "skip/plugin-extc.h"
 
 #ifdef __APPLE__
 namespace {

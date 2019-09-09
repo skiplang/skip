@@ -78,7 +78,6 @@
 #include "skip/SkipRegex-extc.h"
 #include "skip/intern-extc.h"
 #include "skip/stubs-extc.h"
-#include "skip/plugin-extc.h"
 
 #include <folly/init/Init.h>
 
