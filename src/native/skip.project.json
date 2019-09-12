@@ -1,13 +1,60 @@
 {
   "skipVersion": "1.0",
   "programUnits": {
-    "skip_to_llvm": {
-      "kind": "Program",
-      "sources": ["."],
+    "native": {
+      "kind": "Library",
+      "sources": [
+        "AsmOutput.sk",
+        "Config.sk",
+        "Emitter.sk",
+        "FunctionTree.sk",
+        "GIR.sk",
+        "IR.sk",
+        "Layout.sk",
+        "NameMangler.sk",
+        "OuterIstToIR.sk",
+        "PrettyIR.sk",
+        "Rewrite.sk",
+        "StmtPos.sk",
+        "TextOutputStream.sk",
+        "alloc.sk",
+        "checksum.sk",
+        "compile.sk",
+        "const.sk",
+        "control.sk",
+        "coroutine.sk",
+        "deadcode.sk",
+        "dominator.sk",
+        "escape.sk",
+        "fundeps.sk",
+        "gc.sk",
+        "inline.sk",
+        "intrinsics.sk",
+        "ipa.sk",
+        "lower.sk",
+        "optimize.sk",
+        "optinfo.sk",
+        "peephole.sk",
+        "regpromote.sk",
+        "safepoint.sk",
+        "specialize.sk",
+        "types.sk",
+        "util.sk",
+        "verify.sk",
+        "vtable.sk"
+      ],
       "references": [
         { "path": "../outer" },
         { "path": "../project" }
       ]
+    },
+    "skip_to_llvm": {
+      "kind": "Program",
+      "sources": ["main.sk"],
+      "references": [
+        { "path": ".", "name": "native" }
+      ]
     }
-  }
+  },
+  "default": "native"
 }
