@@ -32,7 +32,6 @@ system_status: &system_status
     ulimit -a
     echo
     echo Versions
-    echo $(which node) - $(node --version | head -1)
     echo $(which gcc) - $(gcc --version | head -1)
     echo /usr/lib/llvm-6.0/bin/clang - $(/usr/lib/llvm-6.0/bin/clang --version | head -1)
     echo $(which cmake) - $(cmake --version | head -1)
@@ -259,7 +258,6 @@ jobs:
             ulimit -a
             echo
             echo Versions
-            echo $(which node) - $(node --version | head -1)
             echo $(which gcc) - $(gcc --version | head -1)
             echo $(which clang) - $(clang --version | head -1)
             echo $(which cmake) - $(cmake --version | head -1)
@@ -279,10 +277,9 @@ jobs:
       - run:
           name: install prerequisites
           command: |
-            for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc node autoconf automake pkg-config libtool; do
+            for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc autoconf automake pkg-config libtool; do
             brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
             done
-            brew reinstall node
       - run:
           name: configure
           working_directory: ~/skip/build
