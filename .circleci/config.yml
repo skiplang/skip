@@ -242,6 +242,7 @@ jobs:
       SKIP_TEST_TIMEOUT: 1800
       SKIP_NUM_THREADS: 4
       SKIP_LLVM_PARALLEL: 4
+      GIT_LFS_SKIP_SMUDGE: 1
     steps:
       - checkout
       - run:
