@@ -10,6 +10,7 @@ linux_defaults: &linux_defaults
         SKIP_NUM_THREADS: 4
         SKIP_LLVM_PARALLEL: 4
         COMMAND_PREFIX: /usr/bin/time --verbose
+        GIT_LFS_SKIP_SMUDGE: 1
   resource_class: xlarge
   shell: /bin/bash -l -eo pipefail
 
