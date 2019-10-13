@@ -700,7 +700,7 @@ class MutPreservationConstraint(
 }
 
 // Constraint for checking that checking mutable locals weren't captured
-class LocalMutableCosntraint(
+class LocalMutableConstraint(
   level: NoMutableFrozenLevel,
   fr: FileRange,
   ty: N.Type_,
@@ -763,7 +763,7 @@ fun check_mutable_error_msg(mutability: N.EffectiveNotFrozen): String {
 
 value class Constraints(
   private typing: List<TypingConstraint>,
-  private locals: List<LocalMutableCosntraint>,
+  private locals: List<LocalMutableConstraint>,
 ) {
   fun add(fr: FileRange, lty: N.Type_, rtys: Array<N.Type_>): this {
     !this.typing = List.Cons(RelationalConstraint(fr, lty, rtys), this.typing);
@@ -776,7 +776,7 @@ value class Constraints(
     ty: N.Type_,
   ): this {
     !this.locals = List.Cons(
-      LocalMutableCosntraint(level, fr, ty),
+      LocalMutableConstraint(level, fr, ty),
       this.locals,
     );
     this
@@ -801,7 +801,7 @@ value class Constraints(
     | t @ TypingConstraint _ ->
       !this.typing = List.Cons(t, this.typing);
       this
-    | l @ LocalMutableCosntraint _ ->
+    | l @ LocalMutableConstraint _ ->
       !this.locals = List.Cons(l, this.locals);
       this
     }
