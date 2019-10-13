@@ -2956,9 +2956,10 @@ private fun is_frozen_map(
 }
 
 fun is_frozen_tfun_modifiers(mods: N.Tfun_modifiers): Bool {
-  (purity, _) = mods;
-  invariant(!purity.isEmpty(), "impposible tfun");
-  purity[0] is N.Fpure()
+  (purity, tracking) = mods;
+  invariant(!purity.isEmpty(), "imposible tfun");
+  invariant(!tracking.isEmpty(), "imposible tfun");
+  purity[0] is N.Fpure() && tracking[0] is N.Ftracked()
 }
 
 private fun is_frozen_map_tparam(

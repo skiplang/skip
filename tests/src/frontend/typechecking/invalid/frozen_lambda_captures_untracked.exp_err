@@ -1,0 +1,24 @@
+File "./typechecking/invalid/frozen_lambda_captures_untracked.sk", line 6, characters 13-15:
+You cannot capture this variable
+4 |
+5 | untracked fun main(): void {
+6 |   _ = () ~> foo();
+  |             ^^^
+7 | }
+
+File "./typechecking/invalid/frozen_lambda_captures_untracked.sk", line 6, characters 13-15:
+Mutable because of this position
+4 |
+5 | untracked fun main(): void {
+6 |   _ = () ~> foo();
+  |             ^^^
+7 | }
+
+File "./typechecking/invalid/frozen_lambda_captures_untracked.sk", line 6, characters 7-17:
+Because this closure was declared as pure (~>)
+Try '->' instead
+4 |
+5 | untracked fun main(): void {
+6 |   _ = () ~> foo();
+  |       ^^^^^^^^^^^
+7 | }

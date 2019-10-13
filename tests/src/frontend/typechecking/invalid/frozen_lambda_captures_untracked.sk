@@ -1,0 +1,7 @@
+untracked fun foo(): Int {
+  0
+}
+
+untracked fun main(): void {
+  _ = () ~> foo();
+}

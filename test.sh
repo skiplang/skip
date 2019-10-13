@@ -8,7 +8,7 @@
 dir=$(dirname "$0")
 
 if [[ $BACKEND == "" ]]; then
-  BACKEND="js"
+  BACKEND="native"
 fi
 FILES=$(cd $dir; find . \! \( \( -path ./build -o -path ./native -o -path ./.git \) -prune \)  -not -name .#\* -name '*.sk')
 TARGETS=$(cd $dir/build; ninja -t targets | sed -e 's/:.*//')
