@@ -2392,7 +2392,7 @@ fun expr_(
       (acc, (vty_fixed, (pos1, TAst.Local(n))))
     | None() if (SkipNaming.maybeGetFun(n.i1).isSome()) ->
       fd = SkipNaming.getFun(n);
-      (acc1, subst, targs) = TUtils.mk_tparams(next_id, pos1, acc, fd.tparams);
+      (!acc, subst, targs) = TUtils.mk_tparams(next_id, pos1, acc, fd.tparams);
       tracking = SkipNaming.make_tfun_tracking(fd.untracked_);
       params_ty = TUtils.make_params_type(
         subst,
@@ -2400,7 +2400,7 @@ fun expr_(
         fd.params,
       );
       rty = TUtils.type_subst(subst, acc, fd.return_);
-      ty = (
+      origTy = (
         pos1,
         N.Tfun(
           Ast.Vnone(),
@@ -2410,8 +2410,10 @@ fun expr_(
           rty,
         ),
       );
+      level = -1;
+      (!acc, ty) = check_local_mutable(env, acc, pos1, level, origTy);
       e1 = (pos1, TAst.Fun(n, targs));
-      (acc1, (ty, e1))
+      (acc, (ty, e1))
     | None() if (SkipNaming.maybeGetConst(n.i1).isSome()) ->
       ty = SkipNaming.getConst(n).type;
       (acc, (ty, (pos1, TAst.Const(n))))
