@@ -31,3 +31,5 @@ extern SkipIObj* SKIP_Reactive_reactiveGlobalCacheGet(
 
 extern void SKIP_Reactive_withTransaction(SkipRObj* callback);
 }
+
+extern SkipInt SKIP_Reactive_unsafe(SkipRObj* value);

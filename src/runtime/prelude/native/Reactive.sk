@@ -36,6 +36,9 @@ private native fun reactiveGlobalCacheGetHelper<T>(
   key: String,
 ): ?Ref<T>;
 
+@cpp_runtime("SKIP_Reactive_unsafe")
+private native fun unsafe<T>(T): Int;
+
 private memoized fun reactiveGlobalCacheGet<T>(id: Int, key: String): ?Ref<T> {
   reactiveGlobalCacheGetHelper(id, key)
 }
@@ -61,21 +64,55 @@ class GlobalCache<T: frozen> private (id: Int) {
 @cpp_runtime
 native fun withTransaction(() -> void): void;
 
-private class RefCountedCache(cache: Reactive.GlobalCache<Map<String, Int>>) {
+base class Boxed<T>
+class Box<T: frozen> private (
+  value: T,
+) extends Boxed<T> uses Hashable, Equality, Orderable {
+  static fun create(originalValue: T): this {
+    intern(Box(originalValue))
+  }
+  fun hash(): Int {
+    unsafe(this)
+  }
+
+  fun ==(value2: Box<T>): Bool {
+    unsafe(this) == unsafe(value2)
+  }
+
+  fun compare(value2: Box<T>): Order {
+    unsafe(this).compare(unsafe(value2))
+  }
+}
+class Box2<T>(T, T) extends Boxed<T>
+
+native base class Pointer {
+  fun compare(): void;
+}
+
+private class RefCountedTable<T: frozen>(
+  cache: Reactive.GlobalCache<Map<Box<T>, Int>>,
+) {
   fun create(): this {
     static(Reactive.GlobalCache::make())
   }
 
-  untracked fun add(key: String, values: Vector<String>): void {
+  untracked fun add(key: String, values: Array<Box<T>>): void {
     newMap = this.cache.maybeGet(key) match {
     | None() ->
       newMap = mutable Map[];
-      values.each(value -> newMap![value] = 1);
+      values.each(value -> {
+        refCount = if (newMap.containsKey(value)) newMap[value] else {
+          0
+        };
+        newMap![value] = refCount + 1;
+      });
       newMap
     | Some(map) ->
       newMap = map.clone();
       values.each(value -> {
-        refCount = if (map.containsKey(value)) map[value] else 0;
+        refCount = if (newMap.containsKey(value)) newMap[value] else {
+          0
+        };
         newMap![value] = refCount + 1;
       });
       newMap
@@ -83,13 +120,15 @@ private class RefCountedCache(cache: Reactive.GlobalCache<Map<String, Int>>) {
     this.cache.set(key, unsafe_chill_trust_me(newMap));
   }
 
-  untracked fun remove(key: String, values: Vector<String>): void {
+  untracked fun remove(key: String, values: Array<Box<T>>): void {
     newMap = this.cache.maybeGet(key) match {
     | None() -> invariant_violation("Cannot remove a nonexistent entry")
     | Some(map) ->
       newMap = map.clone();
       values.each(value -> {
-        refCount = if (map.containsKey(value)) map[value] else 0;
+        refCount = if (newMap.containsKey(value)) newMap[value] else {
+          0
+        };
         !refCount = refCount - 1;
         if (refCount > 0) {
           newMap![value] = refCount;
@@ -102,26 +141,27 @@ private class RefCountedCache(cache: Reactive.GlobalCache<Map<String, Int>>) {
     this.cache.set(key, unsafe_chill_trust_me(newMap));
   }
 
-  memoized fun get(key: String): Vector<String> {
+  memoized fun get(key: String): Array<Box<T>> {
     result = mutable Vector[];
     this.cache.maybeGet(key).each(map ->
       map.each((key, refCount) -> {
         invariant(refCount > 0);
-        result.push(key)
+        for (_ in Range(0, refCount)) {
+          result.push(key)
+        }
       })
     );
     result.sort();
-    unsafe_chill_trust_me(result)
+    result.toArray()
   }
 }
 
-private mutable class VectorDiff{
-  oldValues: Vector<String>,
-  newValues: Vector<String>,
+private mutable class ArrayDiff<T: frozen>{
+  oldValues: Array<Box<T>>,
+  newValues: Array<Box<T>>,
   mutable index1: Int = 0,
   mutable index2: Int = 0,
-  toRemove: mutable Vector<String> = mutable Vector[],
-  toAdd: mutable Vector<String> = mutable Vector[],
+  toChange: mutable Vector<(Box<T>, Int)> = mutable Vector[],
 } {
   private mutable fun loopThis(): void {
     valueOpt1 = this.oldValues.maybeGet(this.index1);
@@ -129,20 +169,20 @@ private mutable class VectorDiff{
     (valueOpt1, valueOpt2) match {
     | (None(), None()) -> void
     | (None(), Some(value)) ->
-      this.toAdd.push(value);
+      this.toChange.push((value, 1));
       this.!index2 = this.index2 + 1;
       this.loopThis()
     | (Some(value), None()) ->
-      this.toRemove.push(value);
+      this.toChange.push((value, -1));
       this.!index1 = this.index1 + 1;
       this.loopThis()
     | (Some(value1), Some(value2)) ->
       compare(value1, value2) match {
       | LT() ->
-        this.toRemove.push(value1);
+        this.toChange.push((value1, -1));
         this.!index1 = this.index1 + 1
       | GT() ->
-        this.toAdd.push(value2);
+        this.toChange.push((value2, 1));
         this.!index2 = this.index2 + 1
       | EQ() ->
         this.!index1 = this.index1 + 1;
@@ -151,51 +191,139 @@ private mutable class VectorDiff{
       this.loopThis()
     }
   }
-  mutable fun getResult(): (Vector<String>, Vector<String>) {
+  mutable fun getResult(): (Array<(Box<T>, Int)>) {
     this.loopThis();
-    (this.toRemove.chill(), this.toAdd.chill())
+    this.toChange.toArray()
   }
 }
 
-private fun diffVectors(
-  oldValues: Vector<String>,
-  newValues: Vector<String>,
-): (Vector<String>, Vector<String>) {
-  vecDiff = mutable VectorDiff{oldValues, newValues};
-  vecDiff.getResult()
+private fun diffArrays<T: frozen>(
+  oldValues: Array<Box<T>>,
+  newValues: Array<Box<T>>,
+): (Array<Box<T>>, Array<Box<T>>) {
+  vecDiff = mutable ArrayDiff{oldValues, newValues};
+  toChange = vecDiff.getResult();
+  toAdd = mutable Vector[];
+  toRemove = mutable Vector[];
+  for (valueAndIncr in toChange) {
+    (value, incr) = valueAndIncr;
+    if (incr < 0) toRemove.push(value) else toAdd.push(value);
+  };
+  (toAdd.toArray(), toRemove.toArray())
 }
 
-class DiffCache private {
-  refCountedCache: RefCountedCache,
-  sourceCache: Reactive.GlobalCache<Vector<String>>,
+class Table<T: frozen & Orderable & Hashable & Equality> private {
+  refCountedTable: RefCountedTable<T>,
+  sourceTable: Reactive.GlobalCache<Array<Box<T>>>,
 } {
   static fun create(): this {
     static{
-      refCountedCache => RefCountedCache(Reactive.GlobalCache::make()),
-      sourceCache => Reactive.GlobalCache::make(),
+      refCountedTable => RefCountedTable(Reactive.GlobalCache::make()),
+      sourceTable => Reactive.GlobalCache::make(),
     }
   }
 
-  untracked fun set(source: String, key: String, values: Vector<String>): void {
+  untracked fun set(source: String, key: String, origValues: Array<T>): void {
+    values = origValues.map(x -> Box::create(x));
     sourceKey = source + ":" + key;
     newValues = {
-      x = values.clone();
+      x = Vector::mcreateFromItems(values);
       x.sort();
-      unsafe_chill_trust_me(x)
+      x.toArray()
     };
-    this.sourceCache.maybeGet(sourceKey) match {
+    this.sourceTable.maybeGet(sourceKey) match {
     | None() ->
-      this.sourceCache.set(sourceKey, newValues);
-      this.refCountedCache.add(key, newValues)
+      this.sourceTable.set(sourceKey, newValues);
+      this.refCountedTable.add(key, newValues)
     | Some(oldValues) ->
-      this.sourceCache.set(sourceKey, newValues);
-      (toRemove, toAdd) = diffVectors(oldValues, newValues);
-      if (toRemove.size() > 0) this.refCountedCache.remove(key, toRemove);
-      if (toAdd.size() > 0) this.refCountedCache.add(key, toAdd)
+      this.sourceTable.set(sourceKey, newValues);
+      (toAdd, toRemove) = diffArrays(oldValues, newValues);
+      if (toRemove.size() > 0) this.refCountedTable.remove(key, toRemove);
+      if (toAdd.size() > 0) this.refCountedTable.add(key, toAdd)
     }
   }
 
-  fun get(key: String): Vector<String> {
-    this.refCountedCache.get(key)
+  fun get(key: String): Array<T> {
+    this.refCountedTable.get(key).map(x -> x.value)
   }
 }
+
+module end;
+
+module TestReactive;
+
+class TestFailure() extends Exception
+
+fun testTable(
+  rtable: Reactive.Table<String>,
+  map: readonly Map<(String, String), Array<String>>,
+  keyRange: Int,
+): void {
+  for (keyNbr in Range(0, keyRange)) {
+    key = "" + keyNbr;
+    values = mutable Vector[];
+    for (sourceKey => array in map) {
+      (_, k) = sourceKey;
+      if (k == key) {
+        array.each(value -> values.push(value))
+      }
+    };
+    values.sort();
+    valuesMap = values.toArray().map(x -> x.toString());
+    valuesTable = rtable.get(key);
+    mvaluesTable = Array::mcreateFromItems(valuesTable);
+    mvaluesTable.sort();
+    !valuesTable = freeze(mvaluesTable);
+    if (valuesMap != valuesTable) {
+      debug(`Inconsistent result for key: ${key}`);
+      debug(`TestMap says: ${valuesMap}`);
+      debug(`Rtable says : ${valuesTable}`);
+      throw TestFailure();
+    }
+  }
+}
+
+untracked fun test(): void {
+  // Config
+  sourceRange = 8;
+  keyRange = 10;
+  valueSize = 8;
+  valueRange = 8;
+  iterations = 10000;
+  percentChancesOfRemoval = 10;
+  verbose = false;
+
+  debug("Reactive table Test: STARTING");
+  try {
+    r = Random::mcreate(23);
+    rtable = Reactive.Table::create();
+
+    map = mutable Map<(String, String), Array<String>>[];
+    for (_ in Range(0, iterations)) {
+      source = "" + r.random(0, sourceRange);
+      key = "" + r.random(0, keyRange);
+      if (r.random(0, 100) < percentChancesOfRemoval) {
+        rtable.set(source, key, Array[]);
+        map![(source, key)] = Array[];
+      } else {
+        values = mutable Vector[];
+        for (_ in Range(0, valueSize)) {
+          values.push("" + r.random(0, valueRange));
+        };
+        if (verbose) {
+          debug(`Adding: (${source}, ${key}) => ${values})`);
+        };
+        arr = values.toArray();
+        rtable.set(source, key, arr);
+        map![(source, key)] = arr;
+        rtable.set(source, key, arr);
+        testTable(rtable, map, keyRange);
+      }
+    };
+    debug("Reactive table test: OK");
+  } catch {
+  | TestFailure() -> debug("FAILED")
+  }
+}
+
+module end;

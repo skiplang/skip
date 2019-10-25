@@ -814,7 +814,8 @@ fun merge_extend(
 
 memoized fun fun_def(funName: SkipAst.Name): TAst.Fun_def {
   fd = SkipNaming.getFun(funName);
-  named_fun_def(fd)
+  result = named_fun_def(fd);
+  result
 }
 
 fun named_fun_def(fd: SkipNamedAst.Fun_def): TAst.Fun_def {

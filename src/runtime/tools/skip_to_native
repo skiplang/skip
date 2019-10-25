@@ -412,7 +412,7 @@ def main(stack):
     for f in llvmFiles:
         common.ensureDirPathExists(os.path.dirname(f))
 
-    extraOpts = ['--export-function-as', 'main=skip_main']
+    extraOpts = ['--no-inline', '--export-function-as', 'main=skip_main']
     # SKIP_NBE_FLAGS should be a comma-separated list (like gcc's -Wl,args)
     nbe_flags = os.environ.get('SKIP_NBE_FLAGS', '')
     if nbe_flags:
