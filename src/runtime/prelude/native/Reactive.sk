@@ -212,7 +212,7 @@ private fun diffArrays<T: frozen>(
   (toAdd.toArray(), toRemove.toArray())
 }
 
-class Table<T: frozen & Orderable & Hashable & Equality> private {
+class Table<T: frozen> private {
   refCountedTable: RefCountedTable<T>,
   sourceTable: Reactive.GlobalCache<Array<Box<T>>>,
 } {
