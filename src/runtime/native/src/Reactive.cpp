@@ -162,3 +162,7 @@ void SKIP_Reactive_withTransaction(RObj* callback) {
 void Reactive::shutdown() {
   getReactiveGlobalCache()->cleanup();
 }
+
+SkipInt SKIP_Reactive_unsafe(RObj* value) {
+  return (SkipInt)value;
+}

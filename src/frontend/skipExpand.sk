@@ -63,7 +63,7 @@ module alias A = SkipAst;
 /*****************************************************************************/
 module ChildMap;
 
-const childCache: Reactive.DiffCache = Reactive.DiffCache::create();
+const childCache: Reactive.Table<String> = Reactive.Table::create();
 
 memoized fun getChildren(className: String): SSet {
   childCache[className].foldl(
@@ -74,6 +74,13 @@ memoized fun getChildren(className: String): SSet {
 
 untracked fun populateCache(classDefs: UMap<A.Class_def>): void {
   fileMap = mutable Map[];
+  cacheMap = mutable Map[];
+  for (classDef in classDefs) {
+    (fileRange, className) = classDef.name;
+    fileName = fileRange.filename;
+    fileMap![fileName] = mutable Vector[];
+    cacheMap![(fileName, className)] = Array[];
+  };
   for (classDef in classDefs) addClass(fileMap, classDef);
   for (filename => assocs in fileMap) {
     defMap = mutable Map<String, mutable Vector<String>>[];
@@ -86,8 +93,12 @@ untracked fun populateCache(classDefs: UMap<A.Class_def>): void {
       };
     };
     for (parentName => childSet in defMap) {
-      childCache.set(filename, parentName, freeze(childSet))
-    }
+      cacheMap![(filename, parentName)] = childSet.toArray();
+    };
+  };
+  for (key => childSet in cacheMap) {
+    (fileName, parentName) = key;
+    childCache.set(fileName, parentName, childSet);
   }
 }
 
@@ -103,11 +114,8 @@ untracked private fun addClass(
     | A.Tclass((_, x)) -> x
     | _ -> invariant_violation("The name should have been expanded")
     };
-    if (map.containsKey(fileName)) {
-      map[fileName].push((parentStr, childStr))
-    } else {
-      map![fileName] = mutable Vector[(parentStr, childStr)];
-    }
+    invariant(map.containsKey(fileName));
+    map[fileName].push((parentStr, childStr));
   }
 }
 
@@ -171,7 +179,7 @@ module end;
 
 module ModuleMap;
 
-const moduleCache: Reactive.DiffCache = Reactive.DiffCache::create();
+const moduleCache: Reactive.Table<String> = Reactive.Table::create();
 
 fun containsKey(key: String): Bool {
   moduleCache.get(key).size() > 0
@@ -211,7 +219,7 @@ untracked fun populateCache(moduleDefs: SkipExpand.Module_map_t): void {
   };
   for (fileName => moduleDefs2 in fileMap) {
     for (moduleName => defs in moduleDefs2) {
-      moduleCache.set(fileName, moduleName, defs.chill())
+      moduleCache.set(fileName, moduleName, defs.toArray())
     }
   };
 }
@@ -221,7 +229,7 @@ module end;
 module GlobalEnv;
 
 private memoized fun getDefinitions(defName: String): A.Program {
-  files = SkipExpand.fileCache.get(defName);
+  files = SkipExpand.fileCache.get(defName).sorted().collect(Vector).unique();
   asts = SkipParse.parse_files(files, true);
   moduleDefsVector = asts.map(SkipExpand.definitions);
   module_defs = moduleDefsVector.foldl(SkipExpand.mergeModuleMap, SortedMap[]);
@@ -296,7 +304,7 @@ class Defs{
   type_defs: UMap<A.Type_alias_def>,
 }
 
-class DefNames(defs: Vector<String>) {
+class DefNames(defs: Array<String>) {
   private fun binarySearch(elt: String, i: Int, j: Int): Bool {
     if (i > j) return false;
     pivot = (i + j) / 2;
@@ -320,7 +328,7 @@ class DefNames(defs: Vector<String>) {
     this.binarySearch("type:" + typeName, 0, this.defs.size() - 1)
   }
 
-  fun names(): Vector<String> {
+  fun names(): Array<String> {
     this.defs.map(x -> x.split(":")[1])
   }
 }
@@ -336,7 +344,10 @@ fun name_of_module(x: Module_): String {
 
 fun module_names_find(x: Module_): ?DefNames {
   // TODO: this should return none when the module is not defined
-  Some(DefNames(ModuleMap.moduleCache.get(name_of_module(x))))
+  mresult = ModuleMap.moduleCache.get(name_of_module(x))
+    .sorted()
+    .collect(Vector);
+  Some(DefNames(mresult.unique().toArray()))
 }
 
 fun module_map_find(x: Module_, y: Module_map_t): ?Defs {
@@ -415,7 +426,7 @@ fun empty_defs(mod_name: Module_): Defs {
 }
 
 fun empty_defs_names(): DefNames {
-  DefNames(Vector[])
+  DefNames(Array[])
 }
 
 fun makeEnv(): Env {
@@ -744,7 +755,7 @@ fun malias_type_def_<Ta>(
  * file).
  */
 /*****************************************************************************/
-const fileCache: Reactive.DiffCache = Reactive.DiffCache::create();
+const fileCache: Reactive.Table<String> = Reactive.Table::create();
 
 mutable private class FileMapBuilder{private mutable currentModule: Module_} {
   static fun create(): mutable this {
@@ -759,7 +770,7 @@ mutable private class FileMapBuilder{private mutable currentModule: Module_} {
     (fileRange, _) = name;
     defName = make_qualified_name(fileRange, this.currentModule, name);
     filename = fileRange.filename;
-    fileCache.set(filename, defName.i1, Vector[filename])
+    fileCache.set(filename, defName.i1, Array[filename])
   }
 
   untracked private mutable fun file(defs: List<A.Definition>): void {
