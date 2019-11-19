@@ -16,5 +16,9 @@
 /*****************************************************************************/
 
 untracked fun main(): void {
-  print_raw(SkipAnalyze.analyzeFile(SkipAnalyze.pathOfArguments()).join("\n"))
+  print_raw(
+    SkipError.errorsToString(
+      SkipAnalyze.analyzeFile(SkipAnalyze.pathOfArguments()),
+    ),
+  )
 }
