@@ -123,7 +123,7 @@ mutable class SolutionLoader{
   fileToInfo: mutable Map<String, FileInfo> = mutable Map[],
   programUnits: mutable Map<ProgramUnitKey, ProgramUnit> = mutable Map[],
 } {
-  static fun load(
+  static untracked fun load(
     rootProjectPath: String,
   ): Result<Solution, Vector<SkipError.Error>> {
     invariant(
@@ -151,7 +151,7 @@ mutable class SolutionLoader{
     };
   }
 
-  mutable fun loadProjects(): void {
+  mutable untracked fun loadProjects(): void {
     log("loading projects");
     this.loadProject(this.rootProjectPath);
     if (this.hadErrors()) return void;
@@ -197,7 +197,7 @@ mutable class SolutionLoader{
     this.errors.push(createError(projectDir, message, relatedProjects));
   }
 
-  mutable fun loadProject(dirname: String): void {
+  mutable untracked fun loadProject(dirname: String): void {
     invariant(Path.isNormalized(dirname));
     if (this.projects.containsKey(dirname)) {
       return void;
@@ -287,10 +287,11 @@ mutable class SolutionLoader{
     };
   }
 
-  mutable fun loadReferencedProjects(project: Project): void {
+  mutable untracked fun loadReferencedProjects(project: Project): void {
     this.loadingPath.push(project);
-
-    project.allReferencedProjects().each(this.loadProject);
+    for (referencedProject in project.allReferencedProjects()) {
+      this.loadProject(referencedProject);
+    };
 
     poppedProject = this.loadingPath.pop();
     invariant(project == poppedProject);

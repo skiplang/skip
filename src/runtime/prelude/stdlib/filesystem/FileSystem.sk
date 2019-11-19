@@ -16,7 +16,7 @@ module FileSystem;
 
 // This is really broken - you can't read a file into a String without an
 // encoding!
-fun readTextFile(filename: String): String {
+untracked fun readTextFile(filename: String): String {
   open_file(filename);
 }
 
@@ -92,7 +92,7 @@ fun readFilesRecursive(
 // TODO: Rename the C++ entrypoints and merge these into the
 // public API above.
 @cpp_runtime
-private native fun .open_file(String): String;
+untracked private native fun .open_file(String): String;
 
 @debug
 @cpp_runtime

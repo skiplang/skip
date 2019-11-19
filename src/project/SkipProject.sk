@@ -410,7 +410,7 @@ class ProgramUnitArgument{
 
 // projectPath of "" uses the current directory.
 // programUnitName of "" means the default program unit in the project.
-fun loadProjectProgramUnit(
+untracked fun loadProjectProgramUnit(
   projectPath: String,
   programUnitName: String,
 ): Result<(Solution, ProgramUnitKey), Vector<SkipError.Error>> {
@@ -421,7 +421,7 @@ fun loadProjectProgramUnit(
   );
 }
 
-fun filesOfProjectProgramUnit(
+untracked fun filesOfProjectProgramUnit(
   bindings: Map<String, String>,
   projectPath: String,
   programUnitName: String,
@@ -432,7 +432,7 @@ fun filesOfProjectProgramUnit(
 }
 
 // Gets the set of files for a compilation target.
-fun getFilesForTarget(
+untracked fun getFilesForTarget(
   bindings: Map<String, String>,
   target: String,
 ): Result<Set<String>, Vector<SkipError.Error>> {
@@ -456,7 +456,7 @@ fun getFilesForTarget(
   };
 }
 
-fun getFilesForTargets(
+untracked fun getFilesForTargets(
   bindings: Map<String, String>,
   targets: Vector<String>,
 ): Set<String> {

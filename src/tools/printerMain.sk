@@ -43,10 +43,13 @@ fun prettyPrint(
   }
 }
 
-fun printToStdoutAndReportErrors(contents: String, filename: String): void {
+untracked fun printToStdoutAndReportErrors(
+  contents: String,
+  filename: String,
+): void {
   prettyPrint(contents, filename) match {
   | Failure(error) ->
-    print_error_ln(error.toString());
+    print_error_ln(SkipError.errorsToString(Vector[error]));
     exit(1)
   | Success(formattedContents) -> print_raw(formattedContents)
   }
@@ -110,7 +113,8 @@ untracked fun main(): void {
       try {
         contents = FileSystem.readTextFile(filename);
         prettyPrint(contents, filename) match {
-        | Failure(error) -> print_error_ln(error.toString())
+        | Failure(error) ->
+          print_error_ln(SkipError.errorsToString(Vector[error]))
         | Success(formattedContents) ->
           if (formattedContents != contents) {
             FileSystem.writeTextFile(filename, formattedContents)
