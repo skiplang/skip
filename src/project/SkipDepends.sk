@@ -82,7 +82,7 @@ fun parseArguments(): Arguments {
   args
 }
 
-fun processTarget(
+untracked fun processTarget(
   bindings: Map<String, String>,
   target: String,
   sourceOnly: Bool,
@@ -110,7 +110,7 @@ fun processTarget(
 
 module end;
 
-fun main(): void {
+untracked fun main(): void {
   args = SkipProject.parseArguments();
   for (target in args.targets) {
     SkipProject.processTarget(args.bindings, target, args.sourceOnly)

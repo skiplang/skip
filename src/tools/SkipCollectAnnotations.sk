@@ -132,7 +132,7 @@ fun parseArguments(): Arguments {
   args with {targets => rest.collect(Vector)}
 }
 
-fun main(): void {
+untracked fun main(): void {
   args = parseArguments();
   bindings = if (args.bindings.isEmpty()) {
     SkipProject.nativePreludeBindings
@@ -154,7 +154,7 @@ fun main(): void {
   printMainSource(annotationTargets, args.delegateFunction, print_raw);
 }
 
-fun getSourceFilesForTarget(
+untracked fun getSourceFilesForTarget(
   target: SkipProject.TargetArgument,
   bindings: Map<String, String>,
 ): Set<String> {
@@ -173,7 +173,7 @@ fun getSourceFilesForTarget(
   }
 }
 
-fun collectionAnnotationTargets(
+untracked fun collectionAnnotationTargets(
   sourceFiles: Sequence<String>,
   annotation: String,
 ): Array<SkipAnnotations.FunctionAnnotation> {
