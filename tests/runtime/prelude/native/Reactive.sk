@@ -83,11 +83,6 @@ class Box<T: frozen> private (
     unsafe(this).compare(unsafe(value2))
   }
 }
-class Box2<T>(T, T) extends Boxed<T>
-
-native base class Pointer {
-  fun compare(): void;
-}
 
 private class RefCountedTable<T: frozen>(
   cache: Reactive.GlobalCache<Map<Box<T>, Int>>,
@@ -212,9 +207,9 @@ private fun diffArrays<T: frozen>(
   (toAdd.toArray(), toRemove.toArray())
 }
 
-class Table<T: frozen> private {
-  refCountedTable: RefCountedTable<T>,
-  sourceTable: Reactive.GlobalCache<Array<Box<T>>>,
+class Table<Source: frozen, Key: frozen, Value: frozen> private {
+  refCountedTable: RefCountedTable<Value>,
+  sourceTable: Reactive.GlobalCache<Array<Box<Value>>>,
 } {
   static fun create(): this {
     static{
@@ -223,7 +218,17 @@ class Table<T: frozen> private {
     }
   }
 
-  untracked fun set(source: String, key: String, origValues: Array<T>): void {
+  private static fun frozenToString<T: frozen>(x: T): String {
+    unsafe(intern(x)).toString()
+  }
+
+  untracked fun set(
+    origSource: Source,
+    origKey: Key,
+    origValues: Array<Value>,
+  ): void {
+    source = static::frozenToString(origSource);
+    key = static::frozenToString(origKey);
     values = origValues.map(x -> Box::create(x));
     sourceKey = source + ":" + key;
     newValues = {
@@ -243,7 +248,8 @@ class Table<T: frozen> private {
     }
   }
 
-  fun get(key: String): Array<T> {
+  fun get(origKey: Key): Array<Value> {
+    key = static::frozenToString(origKey);
     this.refCountedTable.get(key).map(x -> x.value)
   }
 }
@@ -255,7 +261,7 @@ module TestReactive;
 class TestFailure() extends Exception
 
 fun testTable(
-  rtable: Reactive.Table<String>,
+  rtable: Reactive.Table<String, String, String>,
   map: readonly Map<(String, String), Array<String>>,
   keyRange: Int,
 ): void {

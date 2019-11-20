@@ -63,7 +63,11 @@ module alias A = SkipAst;
 /*****************************************************************************/
 module ChildMap;
 
-const childCache: Reactive.Table<String> = Reactive.Table::create();
+const childCache: Reactive.Table<
+  String,
+  String,
+  String,
+> = Reactive.Table::create();
 
 memoized fun getChildren(className: String): SSet {
   childCache[className].foldl(
@@ -179,7 +183,11 @@ module end;
 
 module ModuleMap;
 
-const moduleCache: Reactive.Table<String> = Reactive.Table::create();
+const moduleCache: Reactive.Table<
+  String,
+  String,
+  String,
+> = Reactive.Table::create();
 
 fun containsKey(key: String): Bool {
   moduleCache.get(key).size() > 0
@@ -755,7 +763,11 @@ fun malias_type_def_<Ta>(
  * file).
  */
 /*****************************************************************************/
-const fileCache: Reactive.Table<String> = Reactive.Table::create();
+const fileCache: Reactive.Table<
+  String,
+  String,
+  String,
+> = Reactive.Table::create();
 
 mutable private class FileMapBuilder{private mutable currentModule: Module_} {
   static fun create(): mutable this {
