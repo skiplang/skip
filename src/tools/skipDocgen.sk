@@ -8,7 +8,7 @@
 // Unfortunately, comments are discarded in later passes of the compiler, so
 // we first extract comments via just the AST and put them in a map of the form
 //   "String.trim" -> "Some comment"
-fun extractComments(codeFiles: List<String>): Map<String, String> {
+untracked fun extractComments(codeFiles: List<String>): Map<String, String> {
   comments = mutable Map[];
   for (filename in codeFiles) {
     file_content = FileSystem.readTextFile(filename);

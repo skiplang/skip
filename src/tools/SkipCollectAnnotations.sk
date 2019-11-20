@@ -239,6 +239,6 @@ fun printMainSource(
 
 module end;
 
-fun main(): void {
+untracked fun main(): void {
   SkipCollectAnnotations.main()
 }
