@@ -283,6 +283,8 @@ jobs:
             done
             brew install openssl
             brew link openssl --force
+            ln -s /usr/local/opt/openssl/lib/libcrypto.1.1.dylib /usr/local/lib/
+            ln -s /usr/local/opt/openssl/lib/libssl.1.1.dylib /usr/local/lib/
             brew uninstall python
             brew install python
       - run:
