@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test <test>
 # test: is the .sk file in src/tests to test
 #

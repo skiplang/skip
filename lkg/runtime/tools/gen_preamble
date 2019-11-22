@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # This tool performs various parsing operations on the skip *-extc.h files,
 # producing lists of runtime entrypoints.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_benchmark [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native']] [...benchmark options]
 #
 # optional --backend arg is the backend used to compile the benchmark (native).

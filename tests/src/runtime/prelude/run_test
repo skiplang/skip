@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test BACKEND_GEN [file1.sk file2.sk...] test.sk
 #
 # BACKEND_GEN is the command to run the test.

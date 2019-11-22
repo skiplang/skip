@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test BACKEND_GEN <test>
 # test: is the directory whose skip.project.json file to test.
 # if the test directory contains an 'options' file then those are appended.

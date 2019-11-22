@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test BACKEND_GEN <test>
 # BACKEND_GEN: is one of skip_js_exec
 # test: is the .sk file in src/tests to test
