@@ -278,9 +278,10 @@ jobs:
       - run:
           name: install prerequisites
           command: |
-            for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc autoconf automake pkg-config libtool openssl; do
+            for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc autoconf automake pkg-config libtool; do
             brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
             done
+	    echo 'export LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH' >> /home/ci/.bashrc
       - run:
           name: configure
           working_directory: ~/skip/build
