@@ -3,10 +3,10 @@
 # This tool performs various parsing operations on the skip *-extc.h files,
 # producing lists of runtime entrypoints.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import argparse
 import logging
@@ -18,7 +18,7 @@ import subprocess
 import sys
 import tempfile
 try:
-    from cStringIO import StringIO
+    from io import StringIO
 except ImportError:
     from io import StringIO
 
@@ -96,9 +96,9 @@ extc-refs - Produces a C++ file with an array listing of all the public extern C
             paramDecl = m.group(3).strip()
             return (fname, retDecl, funName, paramDecl)
 
-        lines = map(
+        lines = list(map(
             fixupLine,
-            re.findall(r"\bextern\s+[^\";]*?SKIPC?_.*?;", data, re.DOTALL))
+            re.findall(r"\bextern\s+[^\";]*?SKIPC?_.*?;", data, re.DOTALL)))
         # (fname, return type, function name, parameters)
         entrypoints.extend(lines)
 

@@ -6,7 +6,7 @@
 # VERBOSE - show diff in baseline or error output
 # UPDATE_BASELINE - update the baseline to the current output and pass the test
 
-from __future__ import print_function
+
 
 import argparse
 import imp

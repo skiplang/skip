@@ -54,11 +54,11 @@ def main():
     print("module Sequence;")
     print()
     for n in range(TUPLE_MIN, TUPLE_MAX + 1):
-        print(getZipClass(n))
+        print((getZipClass(n)))
         print()
     print("extension mutable base class .Sequence {")
     for n in range(TUPLE_MIN, TUPLE_MAX + 1):
-        print(getZipExtension(n))
+        print((getZipExtension(n)))
     print("}")
     print()
     print("module end;")

@@ -9,7 +9,7 @@
 # $ ./tools/check_newly_passing_tests
 #
 
-from __future__ import print_function
+
 
 import os
 import re
@@ -152,7 +152,7 @@ def main():
         print('Running tests...')
         p = subprocess.Popen(
             ('ninja', 'test', '-k', '0'),
-            env=dict(os.environ.items() +
+            env=dict(list(os.environ.items()) +
                      [('MAX_CPU_LIMIT', str(MAX_CPU_LIMIT))]),
             cwd=binary_dir,
             stdout=subprocess.PIPE)

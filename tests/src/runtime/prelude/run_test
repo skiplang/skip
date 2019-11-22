@@ -63,7 +63,7 @@ def main(stack):
     expect_error = "true" if expectError else "false"
     cmd = (
         [args.backend_gen, common.prelude()]
-        + map(common.computeRelativePath, args.srcs)
+        + list(map(common.computeRelativePath, args.srcs))
         + [sk_main, '--', '1', '2', '--', '3']
         + ['--backend-gen', backend_gen, '--test-file', test_file,
             '--expect-error', expect_error]

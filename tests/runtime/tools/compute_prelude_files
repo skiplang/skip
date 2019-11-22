@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 import argparse
 import imp
@@ -45,7 +45,7 @@ def main():
         excludeBackendDir = "native"
 
     _prelude = fetchNonTestFiles(common.prelude(), excludeBackendDir)
-    _prelude = map(common.computeRelativePath, _prelude)
+    _prelude = list(map(common.computeRelativePath, _prelude))
 
     files = frozenset(_prelude)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import httplib
+import http.client
 import json
 import os
 import subprocess
@@ -10,7 +10,7 @@ import time
 
 def circleci_command(method, url, body=None):
   token = os.environ['CIRCLE_TOKEN']
-  conn = httplib.HTTPSConnection('circleci.com')
+  conn = http.client.HTTPSConnection('circleci.com')
   conn.request(
     method,
     '/api/v1.1/project/github/skiplang/skip' + url+'?circle-token=' + token,
@@ -30,10 +30,10 @@ while 1:
       ['git', 'ls-remote', 'git@github.com:skiplang/skip.git', 'refs/' + branch + '/head']
     )
     rev = output.split()[0]
-    print(
+    print((
       "Found rev (%s) vs running rev (%s)" % (rev, os.environ['CIRCLE_SHA1'])
-    )
+    ))
     if rev != os.environ['CIRCLE_SHA1']:
-      print("Canceling myself (build: %s)" % os.environ['CIRCLE_BUILD_NUM'])
+      print(("Canceling myself (build: %s)" % os.environ['CIRCLE_BUILD_NUM']))
       circleci_command('POST', '/%s/cancel' % os.environ['CIRCLE_BUILD_NUM'])
     time.sleep(30)

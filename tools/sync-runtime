@@ -47,7 +47,7 @@ def backup(path):
         backupDir = src
         mkdir(backupDir)
 
-        print "(Original files backed up to %s)" % (pipes.quote(backupDir),)
+        print("(Original files backed up to %s)" % (pipes.quote(backupDir),))
 
     backupFile = os.path.join(backupDir, os.path.relpath(path, root))
     mkdir(os.path.dirname(backupFile))
@@ -78,7 +78,7 @@ def main():
             dst = os.path.join(target, f)
             backup(dst)
             os.unlink(dst)
-        print "Deleted %s" % (pipes.quote(f),)
+        print("Deleted %s" % (pipes.quote(f),))
 
     # Copy new files
     for f in sorted(srcs - dsts):
@@ -86,7 +86,7 @@ def main():
         dst = os.path.join(target, f)
         if not args.dry_run:
             shutil.copy(src, dst)
-        print "Copied %s" % (pipes.quote(f),)
+        print("Copied %s" % (pipes.quote(f),))
 
     # Diff everything else
     for f in sorted(srcs & dsts):
@@ -96,7 +96,7 @@ def main():
             if not args.dry_run:
                 backup(dst)
                 shutil.copy(src, dst)
-            print "Replaced %s" % (pipes.quote(f),)
+            print("Replaced %s" % (pipes.quote(f),))
 
 
 main()

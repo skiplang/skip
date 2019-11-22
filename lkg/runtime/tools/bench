@@ -69,7 +69,7 @@ def main(stack):
 
     cmd = (
         [backend_gen, common.prelude()]
-        + map(common.computeRelativePath, args.srcs)
+        + list(map(common.computeRelativePath, args.srcs))
         + [sk_main, '--']
     ) + displayOutput + output + minIterations + itersPerGc + keepSamples
 

@@ -48,7 +48,7 @@ def runTest(stack, nbeFlags, code):
     try:
         subprocess.check_call(cmd, stdout=res.stdout, stderr=res.stderr)
     except subprocess.CalledProcessError:
-        print >>sys.stderr, 'ERROR: Compile failed'
+        print('ERROR: Compile failed', file=sys.stderr)
         res.stderr.seek(0)
         shutil.copyfileobj(res.stderr, sys.stderr)
         sys.exit(1)
@@ -61,7 +61,7 @@ def runTest(stack, nbeFlags, code):
 
 
 def checkReach(name, prefix, code, expect):
-    print 'Running test', name
+    print('Running test', name)
     reach = {}
     with common.ExitStack() as stack:
         res = runTest(stack, ['--verbose', '--noinline'], code)
@@ -89,20 +89,18 @@ def checkReach(name, prefix, code, expect):
     if reach != expect:
         for k, v in sorted(reach.items()):
             if k not in expect:
-                print >>sys.stderr, \
-                    "Key %s generated (with value %r) but wasn't expected" % (
-                        k, v)
+                print("Key %s generated (with value %r) but wasn't expected" % (
+                        k, v), file=sys.stderr)
             else:
                 if expect[k] != v:
-                    print >>sys.stderr, 'Key %s expected %r but got %r' % (
+                    print('Key %s expected %r but got %r' % (
                         k,
                         sorted(expect[k]) if expect[k] else None,
-                        sorted(v) if v else None)
+                        sorted(v) if v else None), file=sys.stderr)
                 del expect[k]
 
         for k, v in sorted(expect.items()):
-            print >>sys.stderr, \
-                "Key %s was expected but wasn't generated" % (k,)
+            print("Key %s was expected but wasn't generated" % (k,), file=sys.stderr)
         sys.exit(1)
 
 

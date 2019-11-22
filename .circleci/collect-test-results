@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from __future__ import print_function
 
-import StringIO
+
+import io
 import argparse
 import imp
 import os
@@ -61,7 +61,7 @@ def printTestOutput(filename):
 def processTest(testsuites, filename):
 
     oldStdout = sys.stdout
-    output = StringIO.StringIO()
+    output = io.StringIO()
     try:
         sys.stdout = output
         result, passed = printTestOutput(filename)

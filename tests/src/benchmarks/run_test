@@ -7,7 +7,7 @@
 # VERBOSE - show diff in baseline or error output
 # UPDATE_BASELINE - update the baseline to the current output and pass the test
 
-from __future__ import print_function
+
 
 import argparse
 import imp
@@ -44,7 +44,7 @@ def runtest(args, test, libs):
 
     expectError = '/invalid/' in test
 
-    for i in xrange(4):
+    for i in range(4):
         with common.PerfTimer('run_test.RunCommand'):
             result = common.RunCommand(test, cmd, env=env, expectError=expectError)
 
