@@ -281,10 +281,10 @@ jobs:
             for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc autoconf automake pkg-config libtool; do
             brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
             done
-            echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.bash_profile
-            echo 'export LDFLAGS="-L/usr/local/opt/openssl@1.1/lib"' >> ~/.bash_profile
-            echo 'export CPPFLAGS="-I/usr/local/opt/openssl@1.1/include"' >> ~/.bash_profile
-            echo 'export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig"' >> ~/.bash_profile
+            brew install openssl
+            brew link openssl --force
+            brew uninstall python
+            brew install python
       - run:
           name: configure
           working_directory: ~/skip/build
