@@ -281,7 +281,10 @@ jobs:
             for item in ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc autoconf automake pkg-config libtool; do
             brew info "${item}" | grep -q 'Not installed' && brew install "${item}"
             done
-            echo 'export LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH' > /home/ci/.bashrc
+            echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.bash_profile
+            echo 'export LDFLAGS="-L/usr/local/opt/openssl@1.1/lib"' >> ~/.bash_profile
+            echo 'export CPPFLAGS="-I/usr/local/opt/openssl@1.1/include"' >> ~/.bash_profile
+            echo 'export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig"' >> ~/.bash_profile
       - run:
           name: configure
           working_directory: ~/skip/build
