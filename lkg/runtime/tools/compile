@@ -50,7 +50,7 @@ def main():
 
     cmd = (
         '/usr/bin/env',
-        'python',
+        'python3',
         os.path.join(dir, compile_target),
         '--output', os.path.abspath(args.output or args.skip_program_unit),
         '--via-backend', via_backend,
