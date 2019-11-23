@@ -1,8 +1,8 @@
-#!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+#!/usr/bin/env python3
+
+
+
+
 
 import argparse
 import logging
@@ -28,20 +28,16 @@ def compile(stack, args):
     CFLAGS = tuple(subprocess.check_output(
         ('pkg-config', '--cflags',
          os.path.join(binary_dir, 'runtime/native/native_cc.pc'))
-    ).strip().split(' '))
+    ).decode('utf8').strip().split(' '))
     LIBS = tuple(subprocess.check_output(
         ('pkg-config', '--libs',
          os.path.join(binary_dir, 'runtime/native/native_cc.pc'))
-    ).strip().split(' '))
+    ).decode('utf8').strip().split(' '))
 
     # Run skip_to_native to generate our .o file
     objFile = stack.enter_context(common.tmpfile('tmp.gen_object.', '.o'))
 
-    SKFLAGS = tuple(filter(
-        # Because for some reason gcc decided that linker flags should start
-        # with the same prefix as warnings.
-        lambda x: not x.startswith('-Wl,'),
-        filter(lambda x: x.startswith(('-m', '-f', '-W', '-g', '-O')), CFLAGS)))
+    SKFLAGS = tuple([x for x in [x for x in CFLAGS if x.startswith(('-m', '-f', '-W', '-g', '-O'))] if not x.startswith('-Wl,')])
 
     PROFILE_FLAGS = ('--profile', args.profile) if args.profile else ()
 
@@ -77,7 +73,7 @@ def compile(stack, args):
         else:
             return os.path.splitext(x)[0] + '_testhelper.cpp'
     cppSrcs = tuple(
-        filter(lambda x: os.path.isfile(x), map(testCpp, args.srcs)))
+        [x for x in map(testCpp, args.srcs) if os.path.isfile(x)])
     sk_standalone = (
         args.sk_standalone or
         os.path.join(source_dir, 'runtime/native/src/sk_standalone.cpp'))

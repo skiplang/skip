@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test BACKEND_GEN <test>
 # test: is the directory whose skip.project.json file to test.
 # if the test directory contains an 'options' file then those are appended.
@@ -7,19 +7,21 @@
 # VERBOSE - show diff in baseline or error output
 # UPDATE_BASELINE - update the baseline to the current output and pass the test
 
-from __future__ import print_function
+
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import shutil
 import subprocess
 import sys
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py'))
+from importlib.machinery import SourceFileLoader
+
+source = os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py')
+loader = SourceFileLoader('common', source);
+common = loader.load_module();
 
 logger = logging.getLogger(__name__)
 

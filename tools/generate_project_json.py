@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import os
@@ -16,7 +16,7 @@ def generate_project(dir, unit_name, sources, kind='Program', references=[prelud
     unit_body = {
         'kind': kind,
         'sources': sources,
-        'references': list(map(lambda ref: {'path': ref}, references))
+        'references': list([{'path': ref} for ref in references])
     }
     add_program_unit(project, unit_name, unit_body)
     write_project_file(dir, project)
@@ -88,14 +88,8 @@ def main():
 
     dir = os.path.abspath(args.dir or os.path.dirname(args.sources[0]))
     # adjust the source/reference names to be relative to our source directory
-    sources = list(map(
-        lambda src: os.path.relpath(src, dir),
-        args.sources
-    ))
-    references = list(map(
-        lambda ref: os.path.relpath(ref, dir),
-        args.references
-    ))
+    sources = list([os.path.relpath(src, dir) for src in args.sources])
+    references = list([os.path.relpath(ref, dir) for ref in args.references])
     name = args.name or os.path.splitext(os.path.basename(args.sources[0]))[0]
     generate_project(dir, name, sources, args.kind, references, version=args.version)
 

@@ -48,9 +48,9 @@ resource.setrlimit(resource.RLIMIT_CORE,
 
 
 try:
-    RED = subprocess.check_output(('tput', 'setaf', '1'))
-    GREEN = subprocess.check_output(('tput', 'setaf', '2'))
-    NORMAL = subprocess.check_output(('tput', 'sgr0'))
+    RED = subprocess.check_output(('tput', 'setaf', '1')).decode()
+    GREEN = subprocess.check_output(('tput', 'setaf', '2')).decode()
+    NORMAL = subprocess.check_output(('tput', 'sgr0')).decode()
 except subprocess.CalledProcessError:
     RED, GREEN, NORMAL = (str(''), str(''), str(''))
 

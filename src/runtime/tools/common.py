@@ -48,9 +48,9 @@ resource.setrlimit(resource.RLIMIT_CORE,
 
 
 try:
-    RED = subprocess.check_output(('tput', 'setaf', '1'))
-    GREEN = subprocess.check_output(('tput', 'setaf', '2'))
-    NORMAL = subprocess.check_output(('tput', 'sgr0'))
+    RED = subprocess.check_output(('tput', 'setaf', '1')).decode()
+    GREEN = subprocess.check_output(('tput', 'setaf', '2')).decode()
+    NORMAL = subprocess.check_output(('tput', 'sgr0')).decode()
 except subprocess.CalledProcessError:
     RED, GREEN, NORMAL = (str(''), str(''), str(''))
 
@@ -423,14 +423,14 @@ class RunCommand(object):
         if not cmd:
             return
 
-        logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+        logger.debug('running: %r', cmd)
 
         dst_we = RunCommand._computeDstWithoutExt(test)
         ensureDirPathExists(os.path.dirname(dst_we))
 
         with open(self.stdout_name, 'wb') as stdout, \
              open(self.stderr_name, 'wb') as stderr, \
-             open(self.res_name, 'wb') as resout, \
+             open(self.res_name, 'w') as resout, \
              open(os.devnull, 'rb') as stdin:
             start = time.time()
             p = subprocess.Popen(

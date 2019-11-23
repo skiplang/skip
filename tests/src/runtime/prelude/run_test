@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_test BACKEND_GEN [file1.sk file2.sk...] test.sk
 #
 # BACKEND_GEN is the command to run the test.
@@ -8,7 +8,7 @@
 # The final argument is the test file, described in UnitTest.sk.
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import pipes
@@ -63,7 +63,7 @@ def main(stack):
     expect_error = "true" if expectError else "false"
     cmd = (
         [args.backend_gen, common.prelude()]
-        + map(common.computeRelativePath, args.srcs)
+        + list(map(common.computeRelativePath, args.srcs))
         + [sk_main, '--', '1', '2', '--', '3']
         + ['--backend-gen', backend_gen, '--test-file', test_file,
             '--expect-error', expect_error]
@@ -74,7 +74,7 @@ def main(stack):
         cmd += ('--color-failure', RED)
     if (NORMAL != ''):
         cmd += ('--color-end', NORMAL)
-    logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+        logger.debug('running: %r', cmd)
     result = common.RunCommand(
         args.srcs[-1],
         cmd,

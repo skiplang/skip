@@ -1,8 +1,8 @@
-#!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+#!/usr/bin/env python3
+
+
+
+
 
 import argparse
 import contextlib
@@ -33,7 +33,7 @@ def callHelper(cmd, env=None, **args):
     dump the output to stderr instead.
     """
     if env:
-        env = dict(os.environ.items() + env.items())
+        env = dict(list(os.environ.items()) + list(env.items()))
     else:
         env = os.environ
 
@@ -91,7 +91,7 @@ def validate_sk_unit(unit_path):
     if (returncode != 0):
         if not isSkFile:
             exit('Please provide either a .sk file or a program unit included in your skip.project.json file.')
-        if raw_input("Would you like to generate a program unit? [y/n] ").strip().lower() == 'y':
+        if input("Would you like to generate a program unit? [y/n] ").strip().lower() == 'y':
             print('Generating skip.project.json')
             generate_project_json.generate_project(dir, unit_name, [source_path])
         else:

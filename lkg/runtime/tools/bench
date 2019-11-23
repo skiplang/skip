@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Usage: run_benchmark [src1.sk src2.sk...] path/to/benchmark_program_unit [--backend ['native']] [...benchmark options]
 #
 # optional --backend arg is the backend used to compile the benchmark (native).
@@ -15,7 +15,7 @@
 #                       forcing garbage collection
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import pipes
@@ -69,7 +69,7 @@ def main(stack):
 
     cmd = (
         [backend_gen, common.prelude()]
-        + map(common.computeRelativePath, args.srcs)
+        + list(map(common.computeRelativePath, args.srcs))
         + [sk_main, '--']
     ) + displayOutput + output + minIterations + itersPerGc + keepSamples
 

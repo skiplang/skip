@@ -1,14 +1,14 @@
-#!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+#!/usr/bin/env python3
+
+
+
+
 
 import argparse
 import ast
 import collections
 import distutils.spawn
-import imp
+import importlib
 import json
 import logging
 import os
@@ -35,10 +35,7 @@ symPrefix = '_' if sys.platform == 'darwin' else ''
 # Filter out any extracted disassembly that isn't found by searching through
 # all llvm function references made starting with the files in sources
 def filterDisassembly(disasm, sources):
-    referencedFuncs = set(filter(
-        lambda func: func[1][0][1] in sources,
-        disasm
-    ))
+    referencedFuncs = set([func for func in disasm if func[1][0][1] in sources])
     # queue of blocks to search through
     queue = collections.deque(referencedFuncs)
 
@@ -51,10 +48,10 @@ def filterDisassembly(disasm, sources):
         # get references used in first function on the queue
         symbols = symbolSet(queue.popleft()[2])
         # map those references to their functions in disasm
-        newFuncs = set(filter(lambda func: func[0] in symbols, disasm))
+        newFuncs = set([func for func in disasm if func[0] in symbols])
         referencedFuncs.update(newFuncs)
         # add non-repeated references to the queue
-        queue.extend(filter(lambda func: func not in referencedFuncs, newFuncs))
+        queue.extend([func for func in newFuncs if func not in referencedFuncs])
 
     return list(referencedFuncs)
 
@@ -194,7 +191,7 @@ def emitDisassembly(llvmFile, asmFile, output, useJSON, filterDisasm, cleanDisas
             if code is not None:
                 jsonFunctions = [
                     collections.OrderedDict(
-                        zip(('name', 'file', 'start', 'end'), f)
+                        list(zip(('name', 'file', 'start', 'end'), f))
                     ) for f in functions
                 ]
 
@@ -402,7 +399,7 @@ def main(stack):
         llvmFiles = [
             stack.enter_context(
                 tempfile.NamedTemporaryFile(prefix='tmp.gen.' + os.path.basename(args.output) + '.', suffix='.ll', delete=(not args.keep_temp))).name
-            for x in xrange(numFiles)
+            for x in range(numFiles)
         ]
 
     if args.keep_temp:

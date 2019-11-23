@@ -1,19 +1,18 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-from __future__ import print_function
-
-import StringIO
+import io
 import argparse
-import imp
+import importlib
 import os
 import shutil
 import sys
 import xml.etree.cElementTree as ET
 
+from importlib.machinery import SourceFileLoader
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]), '../tests/runtime/tools/common.py'))
+source = os.path.join(os.path.dirname(sys.argv[0]), '../tests/runtime/tools/common.py')
+loader = SourceFileLoader('common', source);
+common = loader.load_module();
 
 from common import RED, GREEN, NORMAL
 
@@ -61,7 +60,7 @@ def printTestOutput(filename):
 def processTest(testsuites, filename):
 
     oldStdout = sys.stdout
-    output = StringIO.StringIO()
+    output = io.StringIO()
     try:
         sys.stdout = output
         result, passed = printTestOutput(filename)

@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import argparse
 import collections
-import imp
+import importlib
 import logging
 import os
 import pipes
@@ -10,12 +10,11 @@ import subprocess
 import sys
 import tempfile
 
+from importlib.machinery import SourceFileLoader
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]),
-                 '../../runtime/tools/common.py'))
-
+source = os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py')
+loader = SourceFileLoader('common', source)
+common = loader.load_module()
 logger = logging.getLogger(os.path.basename(__file__))
 args = None
 
@@ -23,7 +22,7 @@ args = None
 def runTest(stack, nbeFlags, code):
     skcode = stack.enter_context(
         common.tmpfile(prefix='tmp.code.', suffix='.sk'))
-    skcode.write(code)
+    skcode.write(code.encode())
     skcode.flush()
 
     res = collections.namedtuple('res', ['output', 'stdout', 'stderr'])(
@@ -48,7 +47,7 @@ def runTest(stack, nbeFlags, code):
     try:
         subprocess.check_call(cmd, stdout=res.stdout, stderr=res.stderr)
     except subprocess.CalledProcessError:
-        print >>sys.stderr, 'ERROR: Compile failed'
+        print('ERROR: Compile failed', file=sys.stderr)
         res.stderr.seek(0)
         shutil.copyfileobj(res.stderr, sys.stderr)
         sys.exit(1)
@@ -61,11 +60,11 @@ def runTest(stack, nbeFlags, code):
 
 
 def checkReach(name, prefix, code, expect):
-    print 'Running test', name
+    print('Running test', name)
     reach = {}
     with common.ExitStack() as stack:
         res = runTest(stack, ['--verbose', '--noinline'], code)
-        for line in (x for x in res.stderr.read().split('\n')
+        for line in (x for x in res.stderr.read().decode().split('\n')
                      if x.startswith('reach[' + prefix)):
             name, body = line.split('=', 1)
             name = name.strip()
@@ -89,20 +88,18 @@ def checkReach(name, prefix, code, expect):
     if reach != expect:
         for k, v in sorted(reach.items()):
             if k not in expect:
-                print >>sys.stderr, \
-                    "Key %s generated (with value %r) but wasn't expected" % (
-                        k, v)
+                print("Key %s generated (with value %r) but wasn't expected" % (
+                        k, v), file=sys.stderr)
             else:
                 if expect[k] != v:
-                    print >>sys.stderr, 'Key %s expected %r but got %r' % (
+                    print('Key %s expected %r but got %r' % (
                         k,
                         sorted(expect[k]) if expect[k] else None,
-                        sorted(v) if v else None)
+                        sorted(v) if v else None), file=sys.stderr)
                 del expect[k]
 
         for k, v in sorted(expect.items()):
-            print >>sys.stderr, \
-                "Key %s was expected but wasn't generated" % (k,)
+            print("Key %s was expected but wasn't generated" % (k,), file=sys.stderr)
         sys.exit(1)
 
 
