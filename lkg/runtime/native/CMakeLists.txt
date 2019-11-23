@@ -68,7 +68,6 @@ set(SKIP_RUNTIME_SOURCES
   src/parallel.cpp
   src/Process.cpp
   src/stats.cpp
-  src/stubs.cpp
   src/util.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/src/version.cpp
   )
