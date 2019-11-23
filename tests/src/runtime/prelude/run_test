@@ -8,7 +8,7 @@
 # The final argument is the test file, described in UnitTest.sk.
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import pipes

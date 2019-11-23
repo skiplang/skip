@@ -2,7 +2,7 @@
 
 
 import argparse
-import imp
+import importlib
 import logging
 import os
 import pipes

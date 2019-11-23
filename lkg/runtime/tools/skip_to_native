@@ -8,7 +8,7 @@ import argparse
 import ast
 import collections
 import distutils.spawn
-import imp
+import importlib
 import json
 import logging
 import os
