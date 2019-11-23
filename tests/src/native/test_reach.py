@@ -10,12 +10,11 @@ import subprocess
 import sys
 import tempfile
 
+from importlib.machinery import SourceFileLoader
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]),
-                 '../../runtime/tools/common.py'))
-
+source = os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py')
+loader = SourceFileLoader('common', source)
+common = loader.load_module()
 logger = logging.getLogger(os.path.basename(__file__))
 args = None
 
@@ -23,7 +22,7 @@ args = None
 def runTest(stack, nbeFlags, code):
     skcode = stack.enter_context(
         common.tmpfile(prefix='tmp.code.', suffix='.sk'))
-    skcode.write(code)
+    skcode.write(code.encode())
     skcode.flush()
 
     res = collections.namedtuple('res', ['output', 'stdout', 'stderr'])(
@@ -65,7 +64,7 @@ def checkReach(name, prefix, code, expect):
     reach = {}
     with common.ExitStack() as stack:
         res = runTest(stack, ['--verbose', '--noinline'], code)
-        for line in (x for x in res.stderr.read().split('\n')
+        for line in (x for x in res.stderr.read().decode().split('\n')
                      if x.startswith('reach[' + prefix)):
             name, body = line.split('=', 1)
             name = name.strip()
