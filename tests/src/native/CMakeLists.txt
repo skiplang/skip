@@ -8,7 +8,7 @@ add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.testok
   COMMAND rm -f ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.testok
   COMMAND touch ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.testfail
-  COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/test_reach.py
+  COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test_reach.py
   COMMAND mv ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.testfail ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.testok
   COMMAND echo ${SIMPLE_PASSING_TESTRES} > ${CMAKE_CURRENT_BINARY_DIR}/test_reach.native.res
   DEPENDS skip_to_native native_cc.tests ${CMAKE_CURRENT_SOURCE_DIR}/test_reach.py

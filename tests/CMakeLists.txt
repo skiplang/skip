@@ -298,7 +298,7 @@ set -e
 TMP=\$(mktemp -d)
 trap \"{ rm -rf \$TMP; }\" EXIT
 tail -n +8 \$0 | base64 -d > \$TMP/skip_to_native.zip
-PYTHONPATH=\$TMP/skip_to_native.zip python -m skip_to_native --arg0 \"\$0\" \"\$@\"
+PYTHONPATH=\$TMP/skip_to_native.zip python3 -m skip_to_native --arg0 \"\$0\" \"\$@\"
 exit \$? # Can't use exec because then the trap won't fire
 ")
 

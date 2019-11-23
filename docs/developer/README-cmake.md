@@ -39,13 +39,13 @@
 Install packages
 
 ```
-pacman -S base-devel git cmake python2 ninja nodejs clang boost libevent google-glog
+pacman -S base-devel git cmake python3 ninja nodejs clang boost libevent google-glog
 ```
 
-Set `python` to default to Python 2
+Set `python` to default to Python 3
 
 ```
-ln -s /usr/bin/python2 $SOME_DIR/python
+ln -s /usr/bin/python3 $SOME_DIR/python
 export PATH=$SOME_DIR:$PATH
 ```
 
