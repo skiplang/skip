@@ -74,7 +74,7 @@ def main(stack):
         cmd += ('--color-failure', RED)
     if (NORMAL != ''):
         cmd += ('--color-end', NORMAL)
-    logger.debug('running: %r', ' '.join(map(pipes.quote, cmd)))
+        logger.debug('running: %r', cmd)
     result = common.RunCommand(
         args.srcs[-1],
         cmd,

@@ -28,11 +28,11 @@ def compile(stack, args):
     CFLAGS = tuple(subprocess.check_output(
         ('pkg-config', '--cflags',
          os.path.join(binary_dir, 'runtime/native/native_cc.pc'))
-    ).strip().split(' '))
+    ).decode('utf8').strip().split(' '))
     LIBS = tuple(subprocess.check_output(
         ('pkg-config', '--libs',
          os.path.join(binary_dir, 'runtime/native/native_cc.pc'))
-    ).strip().split(' '))
+    ).decode('utf8').strip().split(' '))
 
     # Run skip_to_native to generate our .o file
     objFile = stack.enter_context(common.tmpfile('tmp.gen_object.', '.o'))
