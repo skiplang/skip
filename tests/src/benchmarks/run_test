@@ -17,7 +17,7 @@ import sys
 
 from importlib.machinery import SourceFileLoader
 
-source = os.path.join(os.path.dirname(sys.argv[0]), './runtime/tools/common.py')
+source = os.path.join(os.path.dirname(sys.argv[0]), './../../runtime/tools/common.py')
 loader = SourceFileLoader('common', source);
 common = loader.load_module();
 
