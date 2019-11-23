@@ -16,10 +16,11 @@ import shutil
 import subprocess
 import sys
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]), '../../runtime/tools/common.py'))
+from importlib.machinery import SourceFileLoader
 
+source = os.path.join(os.path.dirname(sys.argv[0]), './runtime/tools/common.py')
+loader = SourceFileLoader('common', source);
+common = loader.load_module();
 logger = logging.getLogger(__name__)
 
 

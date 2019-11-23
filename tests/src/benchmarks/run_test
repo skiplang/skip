@@ -7,8 +7,6 @@
 # VERBOSE - show diff in baseline or error output
 # UPDATE_BASELINE - update the baseline to the current output and pass the test
 
-
-
 import argparse
 import importlib
 import logging
@@ -17,9 +15,11 @@ import shutil
 import subprocess
 import sys
 
-common = imp.load_source(
-    'common',
-    os.path.join(os.path.dirname(sys.argv[0]), './../../runtime/tools/common.py'))
+from importlib.machinery import SourceFileLoader
+
+source = os.path.join(os.path.dirname(sys.argv[0]), './runtime/tools/common.py')
+loader = SourceFileLoader('common', source);
+common = loader.load_module();
 
 from common import RED, GREEN, NORMAL
 
