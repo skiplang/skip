@@ -49,11 +49,6 @@ cp "$pathToSkip/build/third-party/install/lib/libfolly.a" "$installDir/lib"
 if [ $distrib == Linux ]; then
     cp "$pathToSkip/build/third-party/install/lib/libunwind.a" "$installDir/lib"
     cp "$pathToSkip/build/third-party/install/lib/libdouble-conversion.a" "$installDir/lib"
-    cp "$pathToSkip/build/third-party/install/lib/libicuuc.a" "$installDir/lib"
-    cp "$pathToSkip/build/third-party/install/lib/libicui18n.a" "$installDir/lib"
-    cp "$pathToSkip/build/third-party/install/lib/libicuio.a" "$installDir/lib"
-    cp "$pathToSkip/build/third-party/install/lib/libicutu.a" "$installDir/lib"
-    cp "$pathToSkip/build/third-party/install/lib/libicudata.a" "$installDir/lib"
     cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib"
 
     linuxGnuLibDir="/usr/lib/x86_64-linux-gnu"
