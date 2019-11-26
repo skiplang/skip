@@ -27,7 +27,7 @@
     "skip_server": {
       "kind": "Program",
       "sources": [
-        "skipServer.sk",
+        "../server/skipServer.sk",
         "../native/AsmOutput.sk",
         "../native/Config.sk",
         "../native/Emitter.sk",
