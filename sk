@@ -1,9 +1,21 @@
+#!/bin/bash
+
 #
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 #
+
+installDir=$(dirname "${BASH_SOURCE[0]}")
+clangpp=clang++-6.0
+preamble="$installDir/../lib/skip/preamble.ll"
+standalone="$installDir/../lib/skip/sk_standalone.cpp.o"
+prelude="$installDir/../lib/skip/prelude"
+thirdPartyLibDir="$installDir/../lib/skip"
+linuxGnuLibDir="$installDir/../lib/x86_64-linux-gnu"
+skipRuntimeLib="$installDir/../lib/skip/libskip_runtime.a"
+skip_server="$installDir/../bin/skip_server"
 
 if [ -z "$1" ]; then
     command="run"
@@ -285,7 +297,7 @@ if [ $command == "build" ]; then
 	ccopts=`cat "$root/.ccopts"`
     fi
 
-    "$clangpp" -O3 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
+    "$clangpp" -O2 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
     if [ "$system" == "Linux" ]; then
 
       # Linking it all together
@@ -316,7 +328,6 @@ if [ $command == "build" ]; then
           "$clangpp" -o "$skdir/bin.out" -g \
 	     "$skdir/preamble_and_out.o" "$standalone" \
 	     -L"$thirdPartyLibDir/" \
-	     -L"$icuDir" \
 	     "$skipRuntimeLib" \
 	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
 	     -lboost_thread-mt \

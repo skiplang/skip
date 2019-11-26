@@ -1,15 +1,5 @@
 [![CircleCI](https://circleci.com/gh/skiplang/skip.svg?style=svg)](https://circleci.com/gh/skiplang/skip)
 
-## Project Status
-
-Skip is an experimental programming language developed at Facebook from 2015-2018.
-
-Skip's primary goal as a research project was to explore language and runtime support for correct, efficient memoization-based caching and cache invalidation. Skip achieved this via a static type system that carefully tracks mutability, while also supporting modern language features such as traits, generics and subtyping.
-
-The Skip project concluded in 2018 and Skip is no longer under active development at Facebook.
-
-Facebook is making the implementation available under a permissive open source license to enable the programming language research community to study and build on the design and implementation of the language, compiler and libraries. The language, compiler and libraries are maintained as a side project by Julien Verlaguet, the main designer of the language.
-
 ## Skip Overview
 
 Skip is a general-purpose programming language that tracks side effects to provide caching with reactive invalidation, ergonomic and safe parallelism, and efficient garbage collection. Skip is statically typed and ahead-of-time compiled using LLVM to produce highly optimized executables.
