@@ -60,7 +60,6 @@ else()
   set(DEPS gflags double-conversion jemalloc boost)
 
   if(NOT APPLE)
-    list(APPEND DEPS libunwind)
     list(APPEND EXTRA_CMAKE_CACHE_ARGS -DFOLLY_USE_SYMBOLIZER:BOOL=ON)
   endif()
 
@@ -105,4 +104,9 @@ target_link_libraries(folly INTERFACE ${FOLLY_LIBRARY} double-conversion gflags
   ${LIBGLOG_LIBRARY} jemalloc ${CMAKE_DL_LIBS} ${LIBEVENT_LIBRARY}
   boost ${LIBUNWIND_LIBRARIES} ${OPENSSL_LIBRARIES}
   ${EXTRA_INTERFACE_LIBS} pthread)
+
+if(NOT APPLE)
+  target_link_libraries(folly INTERFACE unwind lzma iberty)
+endif()
+
 target_compile_options(folly INTERFACE -Wno-vla)
