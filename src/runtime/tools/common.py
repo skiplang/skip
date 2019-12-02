@@ -580,7 +580,6 @@ class RunCommand(object):
         data = data.strip()
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
-            data = data.decode('ascii', 'ignore')
             if limit:
                 lines = data.split('\n')
                 if len(lines) > limit[0]:
