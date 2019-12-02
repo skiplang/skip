@@ -21,10 +21,13 @@ RUN apt-get install -y \
   libevent-dev \
   libgflags-dev \
   libgoogle-glog-dev \
+  libiberty-dev \
   libicu-dev \
+  liblzma-dev \
   libssl-dev \
   libtool \
   libtool-bin \
+  libunwind-dev \
   m4 \
   make \
   ninja-build \
