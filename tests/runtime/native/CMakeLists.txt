@@ -178,6 +178,9 @@ set(ld_args
 
 if(NOT APPLE)
   list(APPEND ld_args -lrt)
+  list(APPEND ld_args -lunwind)
+  list(APPEND ld_args -llzma)
+  list(APPEND ld_args -liberty)
 endif()
 
 get_property(prop_defs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY COMPILE_DEFINITIONS)
@@ -253,3 +256,7 @@ add_library(
   src/sk_standalone.cpp
 )
 target_link_libraries(sk_standalone.${PHASE} folly skip_runtime.${PHASE})
+
+if(NOT APPLE)
+  target_link_libraries(sk_standalone.${PHASE} unwind lzma iberty)
+endif()

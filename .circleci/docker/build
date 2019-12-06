@@ -12,3 +12,4 @@ docker rmi ${IMAGE}:${VERSION} || true
 
 docker build -t ${IMAGE}:${VERSION} $(dirname "$0")/skip
 docker push ${IMAGE}:${VERSION}
+

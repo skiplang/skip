@@ -1,7 +1,7 @@
 add_library(native.runtime.testutil
   "testutil.cpp"
   )
-target_link_libraries(native.runtime.testutil skip_runtime.tests)
+target_link_libraries(native.runtime.testutil skip_runtime.tests -lboost_regex -lboost_program_options)
 target_link_libraries(native.runtime.testutil gtest_main)
 
 add_custom_target(test.native.runtime.tests)

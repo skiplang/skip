@@ -51,8 +51,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
   add_compile_options(
     $<$<CONFIG:Debug>:-g>
     $<$<CONFIG:Release>:-DNDEBUG>
-    -Wall
-    -Werror
     -msse4.2
     -Wno-sign-compare
     )
