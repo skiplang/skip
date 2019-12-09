@@ -11,7 +11,7 @@ endif()
 set(CLANG_FOUND FALSE CACHE BOOL "TRUE if CLANG was found")
 mark_as_advanced(CLANG_FOUND)
 
-find_program(CLANG_EXECUTABLE "clang++-6.0" HINTS ${HINT} /usr/lib/llvm-5.0/bin)
+find_program(CLANG_EXECUTABLE "clang++-6.0" HINTS ${HINT} /usr/lib/llvm-6.0/bin)
 if (NOT CLANG_EXECUTABLE)
   message(FATAL_ERROR "clang++-6.0 is required")
 endif()
