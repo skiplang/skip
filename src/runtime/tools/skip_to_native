@@ -263,7 +263,7 @@ def findProgram(args, name, env_var, cmake_var):
 
 
 def findClang(args):
-    return findProgram(args, 'clang++', 'CLANG', 'CLANG_EXECUTABLE')
+    return findProgram(args, 'clang++-6.0', 'CLANG', 'CLANG_EXECUTABLE')
 
 
 def main(stack):
