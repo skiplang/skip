@@ -13,7 +13,7 @@ untracked fun testNow(): void {
 }
 
 @test
-fun testOpenFile(): void {
+untracked fun testOpenFile(): void {
   x = FileSystem.readTextFile("tests/src/runtime/prelude/SystemTest.input");
   assertEqual(x, "This is a sample file.\n")
 }
