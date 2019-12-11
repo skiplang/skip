@@ -52,12 +52,18 @@ fun transformSource(_source: String): String {
   invariant_violation("nothing to do")
 }
 
-fun transformFile(filename: String, transFn: String -> String): String {
+untracked fun transformFile(
+  filename: String,
+  transFn: String -> String,
+): String {
   source = FileSystem.readTextFile(filename);
   transFn(source);
 }
 
-fun transformFileInPlace(filename: String, transFn: String -> String): void {
+untracked fun transformFileInPlace(
+  filename: String,
+  transFn: String -> String,
+): void {
   try {
     result = transformFile(filename, transFn);
     FileSystem.writeTextFile(filename, result);
@@ -110,7 +116,7 @@ untracked fun main(): void {
 
   if (args.write) {
     // 0 or more files in place
-    _ = args.files.parallelMap(filename ~> {
+    _ = args.files.map(filename -> {
       print_string(filename);
       transformFileInPlace(filename, transFn);
     });

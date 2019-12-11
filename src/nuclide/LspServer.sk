@@ -278,8 +278,11 @@ mutable class LspServer{
         this.consoleLog(`Type checking: ${filename}`);
 
         errors = SkipAnalyze.analyzeFile(filename);
+        errorsStr = SkipError.errorsToString(errors);
 
-        this.consoleLog(`Done type checking: ${filename}. ${errors} errors.`);
+        this.consoleLog(
+          `Done type checking: ${filename}. ${errorsStr} errors.`,
+        );
         this.logLeakCounters(Array["Invocation", "Revision"]);
 
         this.setTypeErrors(errorsToDiagnostics(errors));

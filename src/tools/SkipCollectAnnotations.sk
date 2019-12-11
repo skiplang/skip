@@ -140,7 +140,7 @@ untracked fun main(): void {
     args.bindings
   };
   sourceFiles = args.targets
-    .map(target ~> {
+    .map(target -> {
       SkipProject.TargetArgument::parse(target) match {
       | None() -> error(`Invalid target "${target}".\n`)
       | Some(targetArgument) ->
@@ -161,7 +161,7 @@ untracked fun getSourceFilesForTarget(
   target match {
   | SkipProject.SourceFileArgument{filename} -> Set[filename]
   | programUnit @ SkipProject.ProgramUnitArgument _ ->
-    SkipError.doAndReportErrors(() ~>
+    SkipError.doAndReportErrors(() ->
       SkipProject.loadProjectProgramUnit(
         programUnit.projectPath,
         programUnit.programUnit,
@@ -179,7 +179,7 @@ untracked fun collectionAnnotationTargets(
 ): Array<SkipAnnotations.FunctionAnnotation> {
   sourceFiles
     .collect(Array)
-    .parallelMap(sourceFile ~> {
+    .map(sourceFile -> {
       source = FileSystem.readTextFile(sourceFile);
       parseResults = SkipParser.parseSource(source, false);
       annotationTargets = mutable Vector[];

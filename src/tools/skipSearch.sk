@@ -43,7 +43,7 @@ mutable class SearchCodeMod{
   }
 }
 
-fun main(): void {
+untracked fun main(): void {
   args = arguments();
   if (args.size() < 2) {
     print_error_ln("Usage: skip_search pattern <list_of_sk_files>\n");
@@ -65,19 +65,22 @@ fun main(): void {
   };
   files = args.slice(1);
 
-  _ = files.collect(Vector).parallelMap(filename ~> {
-    source = FileSystem.readTextFile(filename);
-    results = SearchCodeMod::search(source, template);
-    if (results.size() > 0) {
-      lines = source.split("\n");
-      print_raw(
-        results
-          .map(x -> {
-            line = x.range.start.line();
-            filename + ":" + (line + 1) + " " + lines[line] + "\n"
-          })
-          .join(""),
-      )
-    }
-  })
+  _ = files
+    .collect(Vector)
+    .map(filename -> (filename, FileSystem.readTextFile(filename)))
+    .parallelMap(xy ~> {
+      (filename, source) = xy;
+      results = SearchCodeMod::search(source, template);
+      if (results.size() > 0) {
+        lines = source.split("\n");
+        print_raw(
+          results
+            .map(x -> {
+              line = x.range.start.line();
+              filename + ":" + (line + 1) + " " + lines[line] + "\n"
+            })
+            .join(""),
+        )
+      }
+    })
 }

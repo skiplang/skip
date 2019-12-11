@@ -92,7 +92,7 @@ untracked fun processTarget(
   | Some(SourceFileArgument{filename}) -> print_string(filename)
   | Some(ProgramUnitArgument{projectPath, programUnit}) ->
     print_string(
-      SkipError.doAndReportErrors(() ~>
+      SkipError.doAndReportErrors(() ->
         loadProjectProgramUnit(projectPath, programUnit).flatMap(solutionKey ~> {
           (solution, key) = solutionKey;
           solution.getAllSourceFilesFor(key, bindings).map(sourceFiles ~> {

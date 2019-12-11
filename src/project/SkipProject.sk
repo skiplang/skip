@@ -464,8 +464,8 @@ untracked fun getFilesForTargets(
   // Shouldn't be a significant issue in practice, as most of the time there
   // will be exactly one target.
   targets
-    .map(target ~>
-      SkipError.doAndReportErrors(() ~> getFilesForTarget(bindings, target))
+    .map(target ->
+      SkipError.doAndReportErrors(() -> getFilesForTarget(bindings, target))
     )
     .reduce((t1, t2) ~> t1.union(t2), Set[]);
 }

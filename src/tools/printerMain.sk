@@ -86,9 +86,13 @@ untracked fun main(): void {
     // Check if all the files passed are the same
     differents = files
       .collect(Vector)
-      .parallelMap(filename ~> {
+      .map(filename -> {
+        contents = FileSystem.readTextFile(filename);
+        (filename, contents)
+      })
+      .parallelMap(xy ~> {
+        (filename, contents) = xy;
         try {
-          contents = FileSystem.readTextFile(filename);
           prettyPrint(contents, filename).maybeSuccess().flatMap(formatted ~>
             if (formatted == contents) None() else Some(filename)
           )
@@ -108,7 +112,7 @@ untracked fun main(): void {
   } else if (args.write) {
     // 0 or more files in place
     // TODO: Should exit with an error code if unable to format all files?
-    _ = files.collect(Vector).parallelMap(filename ~> {
+    _ = files.collect(Vector).map(filename -> {
       print_raw(filename + "\n");
       try {
         contents = FileSystem.readTextFile(filename);
