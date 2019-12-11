@@ -49,7 +49,7 @@ untracked fun compileLoop(target: String): void {
     errorStr = if (errors.isEmpty()) {
       "No errors!\n"
     } else {
-      errors.join("\n")
+      SkipError.errorsToString(errors)
     };
     writeFile(skdir + "/errors", errorStr);
     if (command == "build" && errors.isEmpty()) {

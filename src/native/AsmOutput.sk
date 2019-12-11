@@ -1108,7 +1108,7 @@ private fun partitionOutputFiles(
   files.zip(isInternal)
 }
 
-fun writeOutputFiles(
+untracked fun writeOutputFiles(
   defs: readonly AsmOutput.AsmDefIDToAsmDef,
   inputFiles: Array<String>,
 ): void {

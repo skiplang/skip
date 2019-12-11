@@ -273,7 +273,7 @@ fun treeToJson(tree: ParseTree): JSON.Value {
   treeToOptionJson(tree).fromSome()
 }
 
-fun processFile(fileName: String): void {
+untracked fun processFile(fileName: String): void {
   outline(FileSystem.readTextFile(fileName))
 }
 
@@ -282,7 +282,9 @@ untracked fun main(): void {
   if (args.isEmpty()) {
     outline(read_stdin());
   } else {
-    args.each(processFile);
+    for (arg in args) {
+      processFile(arg);
+    }
   };
   void
 }

@@ -132,7 +132,7 @@ fun parseArguments(): Arguments {
   args with {targets => rest.collect(Vector)}
 }
 
-fun main(): void {
+untracked fun main(): void {
   args = parseArguments();
   bindings = if (args.bindings.isEmpty()) {
     SkipProject.nativePreludeBindings
@@ -140,7 +140,7 @@ fun main(): void {
     args.bindings
   };
   sourceFiles = args.targets
-    .map(target ~> {
+    .map(target -> {
       SkipProject.TargetArgument::parse(target) match {
       | None() -> error(`Invalid target "${target}".\n`)
       | Some(targetArgument) ->
@@ -154,14 +154,14 @@ fun main(): void {
   printMainSource(annotationTargets, args.delegateFunction, print_raw);
 }
 
-fun getSourceFilesForTarget(
+untracked fun getSourceFilesForTarget(
   target: SkipProject.TargetArgument,
   bindings: Map<String, String>,
 ): Set<String> {
   target match {
   | SkipProject.SourceFileArgument{filename} -> Set[filename]
   | programUnit @ SkipProject.ProgramUnitArgument _ ->
-    SkipError.doAndReportErrors(() ~>
+    SkipError.doAndReportErrors(() ->
       SkipProject.loadProjectProgramUnit(
         programUnit.projectPath,
         programUnit.programUnit,
@@ -173,13 +173,13 @@ fun getSourceFilesForTarget(
   }
 }
 
-fun collectionAnnotationTargets(
+untracked fun collectionAnnotationTargets(
   sourceFiles: Sequence<String>,
   annotation: String,
 ): Array<SkipAnnotations.FunctionAnnotation> {
   sourceFiles
     .collect(Array)
-    .parallelMap(sourceFile ~> {
+    .map(sourceFile -> {
       source = FileSystem.readTextFile(sourceFile);
       parseResults = SkipParser.parseSource(source, false);
       annotationTargets = mutable Vector[];
@@ -239,6 +239,6 @@ fun printMainSource(
 
 module end;
 
-fun main(): void {
+untracked fun main(): void {
   SkipCollectAnnotations.main()
 }

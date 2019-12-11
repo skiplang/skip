@@ -9,7 +9,7 @@
 
 type Comment = Token.Comment;
 
-fun main(): void {
+untracked fun main(): void {
   fileName: String = arguments()[0];
   contents = FileSystem.readTextFile(fileName);
   results = SkipParser.parseSource(contents, false);

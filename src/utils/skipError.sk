@@ -26,11 +26,7 @@ class Fix{
 class Error{
   traces: List<(FileRange, String)>,
   fix: ?Fix,
-} uses Show, Hashable, Equality {
-  fun toString(): String {
-    this.traces.map(traceToString).join("\n");
-  }
-
+} uses Hashable, Equality {
   fun filename(): String {
     this.traces.getHead().i0.filename;
   }
@@ -53,9 +49,25 @@ fun errorFromSyntaxError(error: SyntaxError, filename: String): Error {
   }
 }
 
+untracked fun errorsToString(errors: Vector<Error>): String {
+  strErrors = mutable Vector[];
+  for (error in errors) {
+    strTraces = mutable Vector[];
+    for (trace in error.traces) {
+      strTraces.push(traceToString(trace));
+    };
+    strErrors.push(strTraces.join("\n"));
+  };
+  strErrors.join("")
+}
+
+untracked fun printErrors(errors: Vector<Error>): void {
+  print_error(errorsToString(errors));
+}
+
 class SkipErrorException{errors: Vector<Error>} extends Exception {
   fun getMessage(): String {
-    this.errors.join("");
+    invariant_violation("Internal Error: should have used printErrors");
   }
 }
 
@@ -126,13 +138,13 @@ fun do4WithError<T1, T2, T3, T4>(
 }
 
 // Reports errors to stderr and exits if any errors are produced by operation.
-fun doAndReportErrors<T>(
+untracked fun doAndReportErrors<T>(
   operation: () -> Result<T, Vector<SkipError.Error>>,
 ): T {
   operation() match {
   | Success(result) -> result
   | Failure(errors) ->
-    print_error(errors.take(100).join("\n"));
+    printErrors(errors.take(100));
     exit(2)
   }
 }
@@ -158,11 +170,11 @@ private fun render_pos(pos: FileRange): String {
   file + position + "\n";
 }
 
-private fun traceToString(trace: Trace): String {
+private untracked fun traceToString(trace: Trace): String {
   render_pos(trace.i0) + trace.i1 + "\n" + get_context_of_pos(trace.i0);
 }
 
-private fun get_context_of_pos(
+private untracked fun get_context_of_pos(
   t: FileRange,
   fileContents: ?String = None(),
 ): String {
