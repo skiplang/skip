@@ -62,8 +62,8 @@ def main():
     args = parser.parse_args()
 
     root = os.path.realpath(os.path.join(__file__, '../..'))
-    source = os.path.join(root, 'tests/runtime')
-    target = os.path.join(root, 'src/runtime')
+    source = os.path.join(root, 'src/runtime')
+    target = os.path.join(root, 'tests/runtime')
 
     if args.reverse:
         source, target = target, source
