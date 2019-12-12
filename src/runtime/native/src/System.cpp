@@ -45,69 +45,6 @@ const size_t kSkipWorkerThreadStackSize = 8ULL * 1024 * 1024;
 std::string s_cppArgument0; // argv[0]
 std::vector<std::string> s_cppArguments; // argv[1..argc-1]
 
-// An IOThreadPoolExecutor which grows the number of workers as needed
-// until we reach the maximum number of workers desired.
-struct LazyIOThreadPoolExecutor : folly::IOThreadPoolExecutor {
-  explicit LazyIOThreadPoolExecutor(
-      size_t numThreads,
-      std::shared_ptr<folly::ThreadFactory> threadFactory)
-      : folly::IOThreadPoolExecutor(0, threadFactory),
-        m_maxThreads{numThreads},
-        m_executor{0, std::move(threadFactory)} {}
-
-  void add(folly::Func func) override {
-    maybeAddThread();
-    m_executor.add(std::move(func));
-  }
-
-  void add(
-      folly::Func func,
-      std::chrono::milliseconds expiration,
-      folly::Func expireCallback = nullptr) override {
-    maybeAddThread();
-    m_executor.add(std::move(func), expiration, std::move(expireCallback));
-  }
-
-  void addWithPriority(folly::Func func, int8_t priority) override {
-    maybeAddThread();
-    m_executor.addWithPriority(std::move(func), priority);
-  }
-
- protected:
-  // These functions are protected so we can't forward them to the
-  // realized executor - but that also means that nobody should be
-  // able to call them on us either.
-  void threadRun(ThreadPtr /*thread*/) override {
-    abort();
-  }
-  void stopThreads(size_t /*n*/) override {
-    abort();
-  }
-
-  size_t getPendingTaskCountImpl() const override {
-    return m_executor.getPendingTaskCount();
-  }
-
- private:
-  std::mutex m_mutex;
-  size_t m_maxThreads;
-  folly::IOThreadPoolExecutor m_executor;
-  size_t m_numThreads = 0;
-
-  folly::EventBase* getEventBase() override {
-    maybeAddThread();
-    return m_executor.getEventBase();
-  }
-
-  void maybeAddThread() {
-    std::lock_guard<std::mutex> lock{m_mutex};
-    if ((m_numThreads < m_maxThreads) &&
-        (m_executor.getPoolStats().idleThreadCount == 0)) {
-      m_executor.setNumThreads(++m_numThreads);
-    }
-  }
-};
-
 // A custom ThreadFactory that runs initializeThread() for each thread.
 struct SkipThreadFactory final : folly::ThreadFactory {
   std::thread newThread(folly::Func&& func) override {
@@ -405,22 +342,6 @@ std::shared_ptr<folly::ThreadPoolExecutor> skip::getCPUExecutor() {
         auto numThreads = std::max((size_t)1, getNumThreads() - 1);
         *executor = std::make_shared<folly::CPUThreadPoolExecutor>(
             numThreads, std::make_shared<SkipThreadFactory>());
-      },
-      &s_executor);
-  return s_executor;
-}
-
-std::shared_ptr<folly::IOThreadPoolExecutor> skip::getIOExecutor() {
-  static std::shared_ptr<folly::IOThreadPoolExecutor> s_executor;
-  static std::once_flag s_once;
-  call_once(
-      s_once,
-      [](std::shared_ptr<folly::IOThreadPoolExecutor>* executor) {
-        // What's the right number of IO executors?  One per core is probably
-        // way too small since they don't actually use much CPU.
-        auto executorCount = getNumThreads() * 2;
-        *executor = std::make_shared<LazyIOThreadPoolExecutor>(
-            executorCount * 2, std::make_shared<SkipThreadFactory>());
       },
       &s_executor);
   return s_executor;
