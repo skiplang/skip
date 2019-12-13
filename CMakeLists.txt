@@ -25,8 +25,8 @@ endif ()
 
 project(${PACKAGE_NAME} LANGUAGES C CXX ASM)
 
-# Force the use of c++14 without GNU extensions
-set(CMAKE_CXX_STANDARD 14)
+# Force the use of c++17 without GNU extensions
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
