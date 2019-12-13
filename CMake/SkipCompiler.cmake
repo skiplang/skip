@@ -56,7 +56,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
     )
 
   add_cxx_compile_options(
-    -std=c++14
+    -std=c++17
     )
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
