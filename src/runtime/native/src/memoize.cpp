@@ -26,7 +26,7 @@
 #include <boost/io/ios_state.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/version.hpp>
-#include <folly/SharedMutex.h>
+#include <shared_mutex>
 
 #include <exception>
 #include <fstream>
@@ -3396,7 +3396,7 @@ Refcount Revision::currentRefcount() const {
   return m_refcount.load(std::memory_order_relaxed);
 }
 
-static folly::SharedMutex s_cleanupListsMutex;
+static std::shared_mutex s_cleanupListsMutex;
 
 // Protected by cleanupsMutex().
 static std::map<TxnId, CleanupList> s_cleanupLists;
@@ -3412,9 +3412,9 @@ static std::map<TxnId, CleanupList> s_cleanupLists;
  * reader. In any case the txn actually selected in returned as the second
  * tuple member.
  */
-static std::tuple<CleanupList*, TxnId, folly::SharedMutex::ReadHolder>
+static std::tuple<CleanupList*, TxnId, std::unique_lock<std::shared_mutex>>
 findOrCreateLockedCleanupList(TxnId txn) {
-  folly::SharedMutex::ReadHolder rlock(s_cleanupListsMutex);
+  std::unique_lock lock(s_cleanupListsMutex);
 
   // If the user asked for TxnId zero, it means they want the latest one.
   // We can only properly compute that here after taking the lock.
@@ -3426,23 +3426,15 @@ findOrCreateLockedCleanupList(TxnId txn) {
   if (LIKELY(it != s_cleanupLists.end())) {
     cl = &it->second;
   } else {
-    // Take a write lock and insert the list (if it wasn't just created by
-    // some other thread).
-    rlock.unlock();
-    folly::SharedMutex::WriteHolder wlock(s_cleanupListsMutex);
 
     // We need to refresh queryTxn since we released the lock temporarily.
     queryTxn = txn ? txn : newestVisibleTxn();
 
     // Create this if it doesn't exist, or reuse it if it does.
     cl = &s_cleanupLists[queryTxn];
-
-    // Downgrade to a read lock.
-    // @lint-ignore HOWTOEVEN1
-    rlock = folly::SharedMutex::ReadHolder(std::move(wlock));
   }
 
-  return std::make_tuple(cl, queryTxn, std::move(rlock));
+  return std::make_tuple(cl, queryTxn, std::move(lock));
 }
 
 static void registerCleanup(Invocation& inv, TxnId txn) {
@@ -3496,7 +3488,7 @@ static void runReadyCleanups() {
   Invocation* tail = nullptr;
 
   // Quickly delete any old CleanupLists and chain their members into head+tail.
-  for (folly::SharedMutex::WriteHolder lock(s_cleanupListsMutex);;) {
+  for (std::unique_lock lock(s_cleanupListsMutex);;) {
     auto it = s_cleanupLists.begin();
 
     auto newestVisible = newestVisibleTxn();
@@ -3567,7 +3559,7 @@ void assertNoCleanups() {
   bool foundNonEmptyCleanupList = false;
 
   {
-    folly::SharedMutex::ReadHolder lock(s_cleanupListsMutex);
+    std::shared_lock lock(s_cleanupListsMutex);
 
     for (auto& vp : s_cleanupLists) {
       std::cerr << "Found non-empty cleanup list for txn " << vp.first << '\n';
@@ -3580,7 +3572,7 @@ void assertNoCleanups() {
   if (foundNonEmptyCleanupList) {
     runReadyCleanups();
 
-    folly::SharedMutex::ReadHolder lock(s_cleanupListsMutex);
+    std::shared_lock lock(s_cleanupListsMutex);
     std::cerr << "Re-ran cleanups, found " << s_cleanupLists.size() << '\n';
   }
 
@@ -3856,7 +3848,7 @@ std::unique_lock<std::mutex> Transaction::commitWithoutUnlock(
   }
 
   if (changed) {
-    folly::SharedMutex::WriteHolder lock(s_cleanupListsMutex);
+    std::unique_lock lock(s_cleanupListsMutex);
 
     // Steal the vector of watchers to notify, so we can notify them below.
     invalidationWatchersToNotify.swap(
