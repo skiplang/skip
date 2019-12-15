@@ -17,10 +17,7 @@
 
 namespace skip {
 
-extern void initializeSkip(int argc, char** argv, bool reactive);
-
-extern bool g_reactive;
-
+extern void initializeSkip(int argc, char** argv);
 extern void initializeNormalThread();
 extern void initializeThreadWithPermanentProcess();
 
