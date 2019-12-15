@@ -179,7 +179,6 @@ void skip::initializeThreadWithPermanentProcess() {
 }
 
 void skip::initializeSkip(int argc, char** argv) {
-
   // Run some initializers in the proper order
   // Catch-22 - We need to compute the args before calling
   // SKIP_initializeSkip because SKIP_initializeSkip can legally ask for
