@@ -32,9 +32,6 @@
 
 using namespace skip;
 
-// Is this process running in reactive mode?
-bool skip::g_reactive;
-
 namespace {
 
 #if __APPLE__
@@ -181,8 +178,7 @@ void skip::initializeThreadWithPermanentProcess() {
   Process::installPermanently();
 }
 
-void skip::initializeSkip(int argc, char** argv, bool reactive) {
-  g_reactive = reactive;
+void skip::initializeSkip(int argc, char** argv) {
 
   // Run some initializers in the proper order
   // Catch-22 - We need to compute the args before calling
