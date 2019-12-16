@@ -316,7 +316,7 @@ size_t purgeLruList() {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   folly::init(&argc, &argv, true);
-  skip::initializeSkip(argc, argv, false);
+  skip::initializeSkip(argc, argv);
   skip::initializeThreadWithPermanentProcess();
   return RUN_ALL_TESTS();
 }

@@ -67,14 +67,7 @@ int main(int argc, char** argv) {
   std::set_terminate(osxTerminate);
 #endif
 
-  const bool watch = (argc > 1 && strcmp(argv[1], "--watch") == 0);
-  if (watch) {
-    // Slide over arguments. Note that this slides over the final nullptr.
-    --argc;
-    memmove(&argv[1], &argv[2], argc * sizeof(argv[0]));
-  }
-
-  skip::initializeSkip(argc, argv, watch);
+  skip::initializeSkip(argc, argv);
 
   auto process = skip::Process::make();
   skip::ProcessContextSwitcher guard{process};
@@ -88,33 +81,10 @@ int main(int argc, char** argv) {
     }
 
     skip::setNumThreads(skip::computeCpuCount());
+    skip::Obstack::PosScope P;
+    skip_main();
+    process->drainEverythingSleepingIfNecessary();
 
-    if (!watch) {
-      skip::Obstack::PosScope P;
-      skip_main();
-      process->drainEverythingSleepingIfNecessary();
-
-    } else {
-      // TODO: Should we continue even in the face of uncaught exceptions?
-      while (true) {
-        skip::Obstack::PosScope p2;
-
-        // Invoke the Skip main() and collect any reactive dependencies.
-        auto watcher = skip::watchDependencies([]() { skip_main(); });
-
-        process->drainEverythingSleepingIfNecessary();
-
-        if (!watcher) {
-          // No reactive dependencies found.
-          fprintf(
-              stderr, "(Exiting watch mode: no reactive dependencies found)\n");
-          break;
-        }
-
-        // Wait for something relevant to change then re-run main.
-        watcher->getFuture().wait();
-      }
-    }
   } catch (skip::SkipExitException& e) {
     // Because we were handling an exception the PosScopes above didn't clear
     // the Obstack - so we need to force clear to ensure the Obstack is cleared
