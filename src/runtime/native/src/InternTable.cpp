@@ -87,11 +87,10 @@ struct Bucket : private boost::noncopyable {
   Bucket& operator=(const Bucket& other) = delete;
 
   void lock() {
-    try_again:
+  try_again:
     uint32_t oldlo = (uint32_t)m_bits & ~kHeld;
     const uintptr_t newBits = oldlo | kHeld;
     const auto newlo = (uint32_t)newBits;
-
 
     if (UNLIKELY(!m_atomic.lo.compare_exchange_weak(
             oldlo,
