@@ -24,10 +24,7 @@ InternTable& getInternTable() {
   return s_internTable;
 }
 
-// ??? Stolen from MicroLock.h heldBit and waitBit: TODO: Write a test
-// that guarantees these values match folly's.
-
-/// Tag bit in an InternPointer indicating its folly::MicroLock is held.
+/// Tag bit in an InternPointer indicating its lock is held.
 static constexpr uint32_t kHeld = 0x1;
 
 /// All lock bits ORed together.
@@ -96,7 +93,7 @@ struct Bucket : private boost::noncopyable {
     const auto newlo = (uint32_t)newBits;
 
 
-    if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
+    if (UNLIKELY(!m_atomic.lo.compare_exchange_weak(
             oldlo,
             newlo,
             std::memory_order_acquire,
@@ -116,11 +113,7 @@ struct Bucket : private boost::noncopyable {
             newlo,
             std::memory_order_release,
             std::memory_order_relaxed))) {
-      // There is lock contention.
-      assert((oldlo & kLockBitsMask) == kHeld);
-
-      // Let MicroLock do the hard unlocking + waking work.
-      m_lock.unlock();
+      assert(false);
     }
   }
 
@@ -234,9 +227,6 @@ struct Bucket : private boost::noncopyable {
 
       uint32_t hi;
     } m_atomic;
-
-    // NOTE: This placement assumes little-endian.
-    folly::MicroLock m_lock;
   };
 };
 
