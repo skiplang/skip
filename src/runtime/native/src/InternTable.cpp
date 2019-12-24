@@ -214,52 +214,12 @@ struct Bucket : private boost::noncopyable {
    *
    */
   void replaceHeadAndUnlock(Bucket oldv, InternPtr newv) {
-    // Some architectures claim you should not use differently-sized
-    // atomic operations for the same memory. Intel's docs say this:
-    //
-    //     A locked instruction is guaranteed to lock only the area
-    //     of memory defined by the destination operand, but may be
-    //     interpreted by the system as a lock for a larger memory area.
-    //
-    //     Software should access semaphores (shared memory used for
-    //     signalling between multiple processors) using identical
-    //     addresses and operand lengths. For example, if one processor
-    //     accesses a semaphore using a word access, other processors
-    //     should not access the semaphore using a byte access.
-    //
-    // Since the folly::MicroLock code uses 32-bit atomic operations
-    // (implied by its use of futex under the covers), we will too, even
-    // though we want to update all 64 bits. This probably is not needed.
-
-    // Write high 32 bits of the pointer non-atomically. They won't
-    // be used by other threads until we release the lock so it is
-    // OK that the low 32 bits do not correspond yet.
-    const uintptr_t newBits = newv.bits() & ~kLockBitsMask;
+    const uintptr_t newBits = newv.bits() | kHeld;
     m_atomic.hi = newBits >> 32;
-
-    // Both write out our new value and release the folly lock
-    // in a single atomic operation, if possible. We could write out just our
-    // bits using something like an atomic add that simultaneously subtracts out
-    // the non-lock low bits that were previously there and adds in the bits
-    // that we want, and then do a clean unlock(), but that would require
-    // two atomic ops instead of one.
-    uint32_t oldlo = ((uint32_t)oldv.m_bits) | kHeld;
     const auto newlo = (uint32_t)newBits;
+    m_atomic.lo = newlo;
 
-    if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
-            oldlo,
-            newlo,
-            std::memory_order_release,
-            std::memory_order_relaxed))) {
-      // There is lock contention.
-      assert((oldlo & kLockBitsMask) == kHeld);
-
-      // Set our pointer bits, leaving the lock bits alone (i.e. both set).
-      m_atomic.lo.store(newlo | kHeld, std::memory_order_relaxed);
-
-      // Let MicroLock do the hard unlocking + waking work.
-      unlock();
-    }
+    unlock();
   }
 
   union {
