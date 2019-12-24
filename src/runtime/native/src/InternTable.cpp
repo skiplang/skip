@@ -30,12 +30,8 @@ InternTable& getInternTable() {
 /// Tag bit in an InternPointer indicating its folly::MicroLock is held.
 static constexpr uint32_t kHeld = 0x1;
 
-/// Tag bit in an InternPointer indicating some thread is waiting for
-/// its folly::MicroLock.
-static constexpr uint32_t kWait = 0x2;
-
 /// All lock bits ORed together.
-static constexpr uintptr_t kLockBitsMask = kHeld | kWait;
+static constexpr uintptr_t kLockBitsMask = kHeld;
 
 /**
  * See if two objects are equal, where both o1 and o2 are known to
@@ -112,7 +108,7 @@ struct Bucket : private boost::noncopyable {
 
   void unlock() {
     const uintptr_t newBits = m_bits & ~kLockBitsMask;
-    uint32_t oldlo = ((uint32_t)m_bits & ~kWait) | kHeld;
+    uint32_t oldlo = ((uint32_t)m_bits) | kHeld;
     const auto newlo = (uint32_t)newBits;
 
     if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
@@ -121,7 +117,7 @@ struct Bucket : private boost::noncopyable {
             std::memory_order_release,
             std::memory_order_relaxed))) {
       // There is lock contention.
-      assert((oldlo & kLockBitsMask) == (kHeld | kWait));
+      assert((oldlo & kLockBitsMask) == kHeld);
 
       // Let MicroLock do the hard unlocking + waking work.
       m_lock.unlock();
@@ -216,10 +212,6 @@ struct Bucket : private boost::noncopyable {
    * Replace the head of a locked bucket list, known to equal oldv,
    * with newv.
    *
-   * This function atomically preserves whatever lock bits are there when
-   * the replacement happens. This needs to be done atomically even though
-   * we have the list locked, because the "kWait" waiter bit may get set
-   * at any time if there is lock contention.
    */
   void replaceHeadAndUnlock(Bucket oldv, InternPtr newv) {
     // Some architectures claim you should not use differently-sized
@@ -251,7 +243,7 @@ struct Bucket : private boost::noncopyable {
     // the non-lock low bits that were previously there and adds in the bits
     // that we want, and then do a clean unlock(), but that would require
     // two atomic ops instead of one.
-    uint32_t oldlo = ((uint32_t)oldv.m_bits & ~kWait) | kHeld;
+    uint32_t oldlo = ((uint32_t)oldv.m_bits) | kHeld;
     const auto newlo = (uint32_t)newBits;
 
     if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
@@ -260,10 +252,10 @@ struct Bucket : private boost::noncopyable {
             std::memory_order_release,
             std::memory_order_relaxed))) {
       // There is lock contention.
-      assert((oldlo & kLockBitsMask) == (kHeld | kWait));
+      assert((oldlo & kLockBitsMask) == kHeld);
 
       // Set our pointer bits, leaving the lock bits alone (i.e. both set).
-      m_atomic.lo.store(newlo | (kHeld | kWait), std::memory_order_relaxed);
+      m_atomic.lo.store(newlo | kHeld, std::memory_order_relaxed);
 
       // Let MicroLock do the hard unlocking + waking work.
       unlock();
@@ -417,18 +409,11 @@ static void initializeBucket(Bucket& bucket, InternPtr value) {
   const uintptr_t bits = value.bits();
   bucket.m_atomic.hi = (uint32_t)(bits >> 32);
 
-  // Atomically set the low bits without affecting the lock bits.
-  // This is a bit tricky since another thread might be trying to lock it
-  // at the same time, which will set the second bit (kWait).
-  //
   // We know the old bit pattern was zero for everything except
   // the lock bits, so we can set the other 30 bits atomically by simply
   // adding in the bit pattern we want.
   const uint32_t old ATTR_UNUSED = bucket.m_atomic.lo.fetch_add(
       (uint32_t)(bits & ~kLockBitsMask), std::memory_order_release);
-
-  // Ensure the bucket was as expected: 0, except kHeld and maybe kWait.
-  assert((old & ~kWait) == kHeld);
 }
 
 void InternTable::rehash(size_t slot) {
