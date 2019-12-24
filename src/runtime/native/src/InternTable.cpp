@@ -13,6 +13,7 @@
 #include "skip/Type.h"
 
 #include <sys/mman.h>
+#include <thread>
 
 #include <boost/noncopyable.hpp>
 
@@ -92,8 +93,39 @@ struct Bucket : private boost::noncopyable {
 
   Bucket& operator=(const Bucket& other) = delete;
 
+  void lock() {
+    try_again:
+    uint32_t oldlo = (uint32_t)m_bits & ~kHeld;
+    const uintptr_t newBits = oldlo | kHeld;
+    const auto newlo = (uint32_t)newBits;
+
+
+    if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
+            oldlo,
+            newlo,
+            std::memory_order_acquire,
+            std::memory_order_relaxed))) {
+      std::this_thread::yield();
+      goto try_again;
+    }
+  }
+
   void unlock() {
-    m_lock.unlock();
+    const uintptr_t newBits = m_bits & ~kLockBitsMask;
+    uint32_t oldlo = ((uint32_t)m_bits & ~kWait) | kHeld;
+    const auto newlo = (uint32_t)newBits;
+
+    if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
+            oldlo,
+            newlo,
+            std::memory_order_release,
+            std::memory_order_relaxed))) {
+      // There is lock contention.
+      assert((oldlo & kLockBitsMask) == (kHeld | kWait));
+
+      // Let MicroLock do the hard unlocking + waking work.
+      m_lock.unlock();
+    }
   }
 
   /**
@@ -314,7 +346,7 @@ InternTable::~InternTable() {
 
 Bucket& InternTable::lockBucketIndex(size_t slot) {
   Bucket& b = m_buckets[slot];
-  b.m_lock.lock();
+  b.lock();
 
   if (UNLIKELY(b.m_ptr.isLazyRehashSentinel())) {
     rehash(slot);
@@ -513,7 +545,7 @@ size_t InternTable::verifyInvariants() const {
       continue;
     }
 
-    b.m_lock.lock();
+    b.lock();
 
     // Figure out which bits of the hash we definitely know given that
     // objects are stored in this bucket.
@@ -549,7 +581,7 @@ size_t InternTable::verifyInvariants() const {
 
     longestCollisionList = std::max(longestCollisionList, listLength);
 
-    b.m_lock.unlock();
+    b.unlock();
   }
 
   return longestCollisionList;
