@@ -59,6 +59,13 @@ void osxPrintStackTrace() {
 
 namespace skip {
 
+template <class T>
+inline T loadUnaligned(const void* p) {
+  T value;
+  memcpy(&value, p, sizeof(T));
+  return value;
+}
+
 void printStackTrace() {
 #ifndef __APPLE__
 #if FOLLY_USE_SYMBOLIZER
@@ -93,11 +100,11 @@ size_t hashMemory(const void* p, size_t size, size_t seed) {
     tail = 0;
 
     if (sizeof(size_t) > 4 && (size & 4)) {
-      tail = folly::loadUnaligned<uint32_t>(m);
+      tail = loadUnaligned<uint32_t>(m);
       m += 4;
     }
     if (size & 2) {
-      tail = (tail << 16) | folly::loadUnaligned<uint16_t>(m);
+      tail = (tail << 16) | loadUnaligned<uint16_t>(m);
       m += 2;
     }
     if (size & 1) {
@@ -106,13 +113,13 @@ size_t hashMemory(const void* p, size_t size, size_t seed) {
   } else {
     // Hash a full word at a time.
     for (size_t i = 0; i < size - sizeof(size_t); i += sizeof(size_t)) {
-      h = hashCombine(h, folly::loadUnaligned<size_t>(m + i));
+      h = hashCombine(h, loadUnaligned<size_t>(m + i));
     }
 
     // Handle the last possibly full or possibly partial word by hashing
     // the last word, which perhaps overlaps some already hashed bytes,
     // but that is OK.
-    tail = folly::loadUnaligned<size_t>(m + size - sizeof(size_t));
+    tail = loadUnaligned<size_t>(m + size - sizeof(size_t));
   }
 
   return mungeBits(hashCombine(h, tail));
