@@ -1962,7 +1962,7 @@ void ObstackDetail::stealObjectsAndHandles(
     // do it while the lock is no longer held.
     Process::Ptr destOwner{&destProcess};
     {
-      std::lock_guard<folly::MicroLock> lock{h.m_ownerMutex};
+      std::lock_guard<std::mutex> lock{h.m_ownerMutex};
       destOwner.swap(h.m_owner);
     }
   });
@@ -2283,9 +2283,7 @@ void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
 }
 
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)
-    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {
-  m_ownerMutex.init();
-}
+    : m_robj(robj), m_next(this), m_prev(this), m_owner(std::move(owner)) {}
 
 RObjHandle::~RObjHandle() {
   unlink();
@@ -2304,7 +2302,7 @@ RObjOrFakePtr RObjHandle::get() const {
 
 bool RObjHandle::isOwnedByCurrentProcess() {
   // With a bit of hackery we could eliminate the lock here.
-  std::lock_guard<folly::MicroLock> lock{m_ownerMutex};
+  std::lock_guard<std::mutex> lock{m_ownerMutex};
   return m_owner == Process::cur();
 }
 
@@ -2313,7 +2311,7 @@ void RObjHandle::scheduleTask(std::unique_ptr<Task> task) {
     // Fetch the current owner.
     Process::Ptr owner;
     {
-      std::lock_guard<folly::MicroLock> lock(m_ownerMutex);
+      std::lock_guard<std::mutex> lock(m_ownerMutex);
       owner = m_owner;
     }
 
