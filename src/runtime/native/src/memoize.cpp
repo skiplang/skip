@@ -3427,7 +3427,7 @@ findOrCreateLockedCleanupList(TxnId txn) {
     cl = &it->second;
   } else {
 
-    // We need to refresh queryTxn since we released the lock temporarily.
+    // TODO: figure out if we still need this.
     queryTxn = txn ? txn : newestVisibleTxn();
 
     // Create this if it doesn't exist, or reuse it if it does.
