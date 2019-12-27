@@ -19,11 +19,10 @@
 #include "Process.h"
 
 #include <functional>
+#include <future>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/operators.hpp>
-
-#include <folly/futures/Future.h>
 
 namespace skip {
 
@@ -565,8 +564,8 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   void incref();
   void decref();
 
-  folly::Future<folly::Unit> getFuture() {
-    return m_promise.getFuture();
+  std::future<void> getFuture() {
+    return m_promise.get_future();
   }
 
   // This method is called during invalidation notify. The lock is not held
@@ -600,7 +599,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   // no longer points back, and uses m_revision's lock as its own lock.
   boost::intrusive_ptr<Revision> m_revision;
 
-  folly::Promise<folly::Unit> m_promise;
+  std::promise<void> m_promise;
 };
 
 // Execute the given code and collect any memoized dependencies it visited into
@@ -1299,12 +1298,12 @@ struct Invocation final : LeakChecker<Invocation> {
   template <typename FN>
   void asyncEvaluateWithCustomEval(Caller& caller, FN eval);
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluateAndSubscribe();
+  std::future<AsyncEvaluateResult> asyncEvaluateAndSubscribe();
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluate(
+  std::future<AsyncEvaluateResult> asyncEvaluate(
       MemoTask::Ptr memoTask = MemoTask::Ptr());
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluate(
+  std::future<AsyncEvaluateResult> asyncEvaluate(
       bool preserve,
       bool subscribeToInvalidations,
       MemoTask::Ptr memoTask = MemoTask::Ptr());
@@ -1584,7 +1583,7 @@ struct InvocationHelperBase : IObj {
   ~InvocationHelperBase() = default;
   InvocationHelperBase() = default;
 
-  static void static_evaluate_helper(folly::Future<MemoValue>&& future);
+  static void static_evaluate_helper(std::future<MemoValue>&& future);
 };
 
 /**
@@ -1612,7 +1611,7 @@ struct InvocationHelperBase : IObj {
     // asyncEvaluate() should eventually (either directly or indirectly) call
     // promise.setValue().
 
-    int64_t asyncEvaluate(folly::Promise<MemoValue>&& promise) const;
+    int64_t asyncEvaluate(std::promise<MemoValue>&& promise) const;
 
     // The static_offsets() function should return the offsets of any internal
     // pointers within ArgType.
@@ -1750,14 +1749,14 @@ struct InvocationHelper : InvocationHelperBase {
     auto& argType = iobjToArgType(*obj);
     auto& objType = iobjToObjType(*obj);
 
-    folly::Promise<MemoValue> promise;
-    static_evaluate_helper(promise.getFuture());
+    std::promise<MemoValue> promise;
+    static_evaluate_helper(promise.get_future());
     try {
       argType.asyncEvaluate(objType, std::move(promise));
     } catch (const std::exception& e) {
       // TODO: For some reason if I just pass 'e' then it just returns the
       // exception type instead of the exception message.
-      promise.setException(std::runtime_error(e.what()));
+      promise.set_exception(make_exception_ptr(std::runtime_error(e.what())));
     }
 
     return nullptr;
