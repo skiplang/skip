@@ -18,6 +18,8 @@
 #include <libunwind.h>
 #include <cxxabi.h>
 
+#include <folly/MicroLock.h>
+
 #include <folly/Demangle.h>
 #ifndef __APPLE__
 #if FOLLY_USE_SYMBOLIZER
@@ -209,15 +211,19 @@ void throwRuntimeError(const char* msg, ...) {
   throwRuntimeErrorV(msg, ap);
 }
 
+void SpinLock::init() {
+  const uint8_t newBits = m_bits & ~1;
+  m_bits = newBits;
+}
+
 void SpinLock::lock() {
 try_again:
-  uintptr_t oldlo = m_bits & ~1;
-  const uintptr_t newBits = oldlo | 1;
-  const auto newlo = newBits;
+  uint8_t oldBits = m_bits & ~1;
+  const uint8_t newBits = oldBits | 1;
 
   if (UNLIKELY(!m_bits.compare_exchange_weak(
-          oldlo,
-          newlo,
+          oldBits,
+          newBits,
           std::memory_order_acquire,
           std::memory_order_relaxed))) {
     std::this_thread::yield();
@@ -226,18 +232,21 @@ try_again:
 }
 
 void SpinLock::unlock() {
-  // We are masking the 2 lower bits, but really we could just mask the first
-  // one.
-  const uintptr_t newBits = m_bits & ~3;
-  uintptr_t oldlo = m_bits | 1;
-  const auto newlo = newBits;
+  uint8_t oldBits = m_bits;
+  const uint8_t newBits = oldBits & ~1;
+
+  if(oldBits & 1 == 0) {
+    fprintf(stderr, "Internal error: spinlock double unlock\n");
+    exit(70);
+  }
 
   if (UNLIKELY(!m_bits.compare_exchange_strong(
-          oldlo,
-          newlo,
+          oldBits,
+          newBits,
           std::memory_order_release,
           std::memory_order_relaxed))) {
-    assert(false);
+    fprintf(stderr, "Internal error: spinlock in an impossible state %d\n", (int)m_bits.load() & 2 != 0);
+    exit(70);
   }
 }
 } // namespace skip

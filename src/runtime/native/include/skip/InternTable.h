@@ -11,10 +11,11 @@
 
 #include "SmallTaggedPtr.h"
 
+#include <atomic>
+
 #include <boost/functional/hash.hpp>
 #include <boost/noncopyable.hpp>
 
-#include <folly/MicroLock.h>
 
 namespace skip {
 

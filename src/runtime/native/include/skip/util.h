@@ -18,6 +18,8 @@
 #include <folly/lang/Bits.h>
 #include <folly/Memory.h>
 
+#include <folly/MicroLock.h>
+
 // #define ENABLE_DEBUG_TRACE 1
 
 #if ENABLE_DEBUG_TRACE
@@ -188,8 +190,11 @@ void throwRuntimeErrorV(const char* msg, va_list ap)
 void throwRuntimeError(const char* msg, ...)
     __attribute__((__noreturn__, __format__(printf, 1, 2)));
 
+void mlock(folly::MicroLock*);
+
 struct SpinLock {
-  std::atomic<uintptr_t> m_bits;
+  std::atomic<uint8_t> m_bits;
+  void init();
   void lock();
   void unlock();
 };

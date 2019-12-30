@@ -831,8 +831,8 @@ void Invocation::decref() {
   safeDecref(*asIObj());
 }
 
-folly::MicroLock& Invocation::mutex() const {
-  return m_mutex;
+skip::SpinLock& Invocation::mutex() const {
+  return reinterpret_cast<skip::SpinLock&>(m_mutex);
 }
 
 bool Invocation::inList_lck() const {
@@ -3662,12 +3662,18 @@ void Context::addDependency(Revision& lockedInput) {
   assertLocked(lockedInput);
 
   if (!lockedInput.isPure_lck()) {
-    // No need for the 'lockify' overhead here.
-    std::lock_guard<folly::MicroLock> lock{m_mutex};
+    try {
+      // No need for the 'lockify' overhead here.
+      m_mutex.lock();
 
-    bool freshlyInserted = m_calls.emplace(&lockedInput, m_calls.size()).second;
-    if (freshlyInserted) {
-      lockedInput.incref();
+      bool freshlyInserted = m_calls.emplace(&lockedInput, m_calls.size()).second;
+      if (freshlyInserted) {
+        lockedInput.incref();
+      }
+      m_mutex.unlock();
+    } catch (const std::exception& ex) {
+      m_mutex.unlock();
+      throw(ex);
     }
   }
 }
@@ -3691,7 +3697,7 @@ std::vector<Revision::Ptr> Context::linearizeTrace() {
   return v;
 }
 
-folly::MicroLock& Context::mutex() const {
+SpinLock& Context::mutex() const {
   return m_mutex;
 }
 
@@ -3914,7 +3920,7 @@ Invocation::Ptr Cell::invocation() const {
   return m_invocation;
 }
 
-folly::MicroLock& Cell::mutex() const {
+SpinLock& Cell::mutex() const {
   return m_invocation->mutex();
 }
 
