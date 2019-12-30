@@ -208,4 +208,36 @@ void throwRuntimeError(const char* msg, ...) {
   va_start(ap, msg);
   throwRuntimeErrorV(msg, ap);
 }
+
+void SpinLock::lock() {
+try_again:
+  uintptr_t oldlo = m_bits & ~1;
+  const uintptr_t newBits = oldlo | 1;
+  const auto newlo = newBits;
+
+  if (UNLIKELY(!m_bits.compare_exchange_weak(
+          oldlo,
+          newlo,
+          std::memory_order_acquire,
+          std::memory_order_relaxed))) {
+    std::this_thread::yield();
+    goto try_again;
+  }
+}
+
+void SpinLock::unlock() {
+  // We are masking the 2 lower bits, but really we could just mask the first
+  // one.
+  const uintptr_t newBits = m_bits & ~3;
+  uintptr_t oldlo = m_bits | 1;
+  const auto newlo = newBits;
+
+  if (UNLIKELY(!m_bits.compare_exchange_strong(
+          oldlo,
+          newlo,
+          std::memory_order_release,
+          std::memory_order_relaxed))) {
+    assert(false);
+  }
+}
 } // namespace skip

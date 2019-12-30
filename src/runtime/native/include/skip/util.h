@@ -9,6 +9,7 @@
 
 #include "fwd.h"
 
+#include <atomic>
 #include <cstdint>
 #include <type_traits>
 
@@ -186,4 +187,10 @@ void throwRuntimeErrorV(const char* msg, va_list ap)
 
 void throwRuntimeError(const char* msg, ...)
     __attribute__((__noreturn__, __format__(printf, 1, 2)));
+
+struct SpinLock {
+  std::atomic<uintptr_t> m_bits;
+  void lock();
+  void unlock();
+};
 } // namespace skip
