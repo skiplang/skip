@@ -1252,7 +1252,8 @@ TEST(InternUtilTest, testExtIntern) {
     BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    } BOOST_SCOPE_EXIT_END;
+    }
+    BOOST_SCOPE_EXIT_END;
 
     auto s2 = String(res.bits());
     EXPECT_EQ(s, s2);
@@ -1269,7 +1270,8 @@ TEST(InternUtilTest, testExtIntern) {
     BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    } BOOST_SCOPE_EXIT_END;
+    }
+    BOOST_SCOPE_EXIT_END;
 
     auto s2 = String(res.bits());
     EXPECT_EQ(s, s2);
@@ -1287,7 +1289,8 @@ TEST(InternUtilTest, testExtIntern) {
     BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    } BOOST_SCOPE_EXIT_END;
+    }
+    BOOST_SCOPE_EXIT_END;
 
     EXPECT_TRUE(res->isInterned());
     ITest1* iobj = (ITest1*)res.asPtr();
