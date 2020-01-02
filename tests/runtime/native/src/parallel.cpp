@@ -269,20 +269,38 @@ struct Tabulate : private boost::noncopyable {
   void spawnWorkers() {
     summonAncestors();
 
-    try {
-      for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
-        if (allWorkTaken()) {
-          // Threads already grabbed all the work, don't spawn more threads.
-          break;
-        }
+    std::vector<std::thread> workers;
+    std::atomic<bool> hasException;
+    std::exception_ptr ep;
 
-        skip::getCPUExecutor()->add(
-            [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
+    for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
+      if (allWorkTaken()) {
+        // Threads already grabbed all the work, don't spawn more threads.
+        break;
       }
-    } catch (folly::QueueFullException&) {
-      // Folly supports 16K posted tasks by default. If even that fills up,
-      // just abandon posting any more.
+
+      workers.push_back(
+          std::thread([tab = Tabulate::Ptr{this}, &hasException, &ep]() {
+            try {
+              initializeNormalThread();
+              tab->runWorkerThread();
+            } catch (...) {
+              if (!hasException.exchange(true, std::memory_order_acquire)) {
+                ep = std::current_exception();
+              }
+            }
+          }));
     }
+    for (auto& worker : workers) {
+      worker.join();
+      if (hasException) {
+        std::rethrow_exception(ep);
+      }
+    }
+    /*
+            skip::getCPUExecutor()->add(
+                [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
+    */
   }
 
   // We might be in an arbitrarily nested parallelTabulate.

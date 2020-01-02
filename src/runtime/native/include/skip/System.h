@@ -11,10 +11,6 @@
 
 #include <stdexcept>
 
-#include <folly/executors/ThreadPoolExecutor.h>
-#include <folly/executors/CPUThreadPoolExecutor.h>
-#include <folly/executors/IOThreadPoolExecutor.h>
-
 namespace skip {
 
 extern void initializeSkip(int argc, char** argv);
@@ -32,9 +28,6 @@ struct SkipExitException : public std::exception {
   const char* what() const noexcept override;
   int m_status;
 };
-
-std::shared_ptr<folly::ThreadPoolExecutor> getCPUExecutor();
-std::shared_ptr<folly::IOThreadPoolExecutor> getIOExecutor();
 
 // get unique ID used to identify this process:
 ssize_t getSkid();

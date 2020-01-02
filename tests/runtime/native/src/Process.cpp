@@ -313,14 +313,6 @@ bool UnownedProcess::scheduleTaskIfNotDead(std::unique_ptr<Task>& task) {
       requested = true;
     }
 
-    // Ask a worker thread to help out, so it can actually do this work
-    // in parallel if the other threads are busy.
-    if (getNumThreads() > 1 && !arbiter->done()) {
-      getCPUExecutor()->add(
-          [arbiter = std::move(arbiter)]() { arbiter->runIfFirst(); });
-      requested = true;
-    }
-
     // Someone, somwehere must have been asked to run this...
     assert(requested);
   } else if (oldHead == kSleepingTag) {
