@@ -227,11 +227,10 @@ try_again:
   const uint8_t newBits = oldBits | 1;
   spin_count++;
 
-  if(bits & 1) {
-    if(spin_count % 16 == 0) {
+  if (bits & 1) {
+    if (spin_count % 16 == 0) {
       _mm_pause();
-    }
-    else {
+    } else {
       std::this_thread::yield();
     }
     goto try_again;
