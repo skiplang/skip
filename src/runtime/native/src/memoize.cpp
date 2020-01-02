@@ -3666,7 +3666,8 @@ void Context::addDependency(Revision& lockedInput) {
       // No need for the 'lockify' overhead here.
       m_mutex.lock();
 
-      bool freshlyInserted = m_calls.emplace(&lockedInput, m_calls.size()).second;
+      bool freshlyInserted =
+          m_calls.emplace(&lockedInput, m_calls.size()).second;
       if (freshlyInserted) {
         lockedInput.incref();
       }

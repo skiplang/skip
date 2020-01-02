@@ -16,7 +16,6 @@
 #include <boost/functional/hash.hpp>
 #include <boost/noncopyable.hpp>
 
-
 namespace skip {
 
 /**
