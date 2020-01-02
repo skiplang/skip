@@ -13,6 +13,7 @@
 #include <iostream>
 
 #include <boost/functional/hash.hpp>
+#include <boost/scope_exit.hpp>
 
 #include <folly/Hash.h>
 
@@ -1248,10 +1249,10 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_EQ(s.asLongString(), nullptr);
 
     auto res = SKIP_intern(RObjOrFakePtr(s.sbits()));
-    SCOPE_EXIT {
+    BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    };
+    } BOOST_SCOPE_EXIT_END;
 
     auto s2 = String(res.bits());
     EXPECT_EQ(s, s2);
@@ -1265,10 +1266,10 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_FALSE(s.asLongString()->isInterned());
 
     auto res = SKIP_intern(RObjOrFakePtr(s.sbits()));
-    SCOPE_EXIT {
+    BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    };
+    } BOOST_SCOPE_EXIT_END;
 
     auto s2 = String(res.bits());
     EXPECT_EQ(s, s2);
@@ -1283,10 +1284,10 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_FALSE(obj->isInterned());
 
     auto res = SKIP_intern(RObjOrFakePtr(obj.get()));
-    SCOPE_EXIT {
+    BOOST_SCOPE_EXIT(res) {
       if (auto p = res.asPtr())
         decref(p);
-    };
+    } BOOST_SCOPE_EXIT_END;
 
     EXPECT_TRUE(res->isInterned());
     ITest1* iobj = (ITest1*)res.asPtr();
