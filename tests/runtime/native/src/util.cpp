@@ -18,6 +18,8 @@
 #include <libunwind.h>
 #include <cxxabi.h>
 
+#include <xmmintrin.h>
+
 #include <folly/MicroLock.h>
 
 #include <folly/Demangle.h>
@@ -217,9 +219,23 @@ void SpinLock::init() {
 }
 
 void SpinLock::lock() {
+  auto spin_count = 0;
+
 try_again:
-  uint8_t oldBits = m_bits & ~1;
+  uint8_t bits = m_bits.load();
+  uint8_t oldBits = bits & ~1;
   const uint8_t newBits = oldBits | 1;
+  spin_count++;
+
+  if(bits & 1) {
+    if(spin_count % 16 == 0) {
+      _mm_pause();
+    }
+    else {
+      std::this_thread::yield();
+    }
+    goto try_again;
+  }
 
   if (UNLIKELY(!m_bits.compare_exchange_weak(
           oldBits,
@@ -232,7 +248,7 @@ try_again:
 }
 
 void SpinLock::unlock() {
-  uint8_t oldBits = m_bits;
+  uint8_t oldBits = m_bits.load();
   const uint8_t newBits = oldBits & ~1;
 
   if (oldBits & 1 == 0) {
