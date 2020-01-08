@@ -87,33 +87,11 @@ struct Bucket : private boost::noncopyable {
   Bucket& operator=(const Bucket& other) = delete;
 
   void lock() {
-  try_again:
-    uint32_t oldlo = (uint32_t)m_bits & ~kHeld;
-    const uintptr_t newBits = oldlo | kHeld;
-    const auto newlo = (uint32_t)newBits;
-
-    if (UNLIKELY(!m_atomic.lo.compare_exchange_weak(
-            oldlo,
-            newlo,
-            std::memory_order_acquire,
-            std::memory_order_relaxed))) {
-      std::this_thread::yield();
-      goto try_again;
-    }
+    m_lock.lock();
   }
 
   void unlock() {
-    const uintptr_t newBits = m_bits & ~kLockBitsMask;
-    uint32_t oldlo = ((uint32_t)m_bits) | kHeld;
-    const auto newlo = (uint32_t)newBits;
-
-    if (UNLIKELY(!m_atomic.lo.compare_exchange_strong(
-            oldlo,
-            newlo,
-            std::memory_order_release,
-            std::memory_order_relaxed))) {
-      assert(false);
-    }
+    m_lock.unlock();
   }
 
   /**
@@ -218,6 +196,8 @@ struct Bucket : private boost::noncopyable {
     uintptr_t m_bits;
 
     InternPtr m_ptr;
+
+    SpinLock m_lock;
 
     struct {
       // Technically this is not C++11-compliant, since atomic<uint32_t> need

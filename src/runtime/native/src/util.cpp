@@ -17,6 +17,11 @@
 #include <sys/uio.h>
 #include <libunwind.h>
 #include <cxxabi.h>
+#include <thread>
+
+#include <xmmintrin.h>
+
+#include <folly/MicroLock.h>
 
 #include <folly/Demangle.h>
 #ifndef __APPLE__
@@ -207,5 +212,60 @@ void throwRuntimeError(const char* msg, ...) {
   va_list ap;
   va_start(ap, msg);
   throwRuntimeErrorV(msg, ap);
+}
+
+void SpinLock::init() {
+  const uint8_t newBits = m_bits & ~1;
+  m_bits = newBits;
+}
+
+void SpinLock::lock() {
+  auto spin_count = 0;
+
+try_again:
+  uint8_t bits = m_bits.load();
+  uint8_t oldBits = bits & ~1;
+  const uint8_t newBits = oldBits | 1;
+  spin_count++;
+
+  if (bits & 1) {
+    if (spin_count % 16 == 0) {
+      _mm_pause();
+    } else {
+      std::this_thread::yield();
+    }
+    goto try_again;
+  }
+
+  if (UNLIKELY(!m_bits.compare_exchange_weak(
+          oldBits,
+          newBits,
+          std::memory_order_acquire,
+          std::memory_order_relaxed))) {
+    std::this_thread::yield();
+    goto try_again;
+  }
+}
+
+void SpinLock::unlock() {
+  uint8_t oldBits = m_bits.load();
+  const uint8_t newBits = oldBits & ~1;
+
+  if (oldBits & 1 == 0) {
+    fprintf(stderr, "Internal error: spinlock double unlock\n");
+    exit(70);
+  }
+
+  if (UNLIKELY(!m_bits.compare_exchange_strong(
+          oldBits,
+          newBits,
+          std::memory_order_release,
+          std::memory_order_relaxed))) {
+    fprintf(
+        stderr,
+        "Internal error: spinlock in an impossible state %d\n",
+        (int)m_bits.load() & 2 != 0);
+    exit(70);
+  }
 }
 } // namespace skip

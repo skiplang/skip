@@ -9,6 +9,7 @@
 
 #include "fwd.h"
 
+#include <atomic>
 #include <cstdint>
 #include <type_traits>
 
@@ -16,6 +17,8 @@
 
 #include <folly/lang/Bits.h>
 #include <folly/Memory.h>
+
+#include <folly/MicroLock.h>
 
 // #define ENABLE_DEBUG_TRACE 1
 
@@ -186,4 +189,13 @@ void throwRuntimeErrorV(const char* msg, va_list ap)
 
 void throwRuntimeError(const char* msg, ...)
     __attribute__((__noreturn__, __format__(printf, 1, 2)));
+
+void mlock(folly::MicroLock*);
+
+struct SpinLock {
+  std::atomic<uint8_t> m_bits;
+  void init();
+  void lock();
+  void unlock();
+};
 } // namespace skip

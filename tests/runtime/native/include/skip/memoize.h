@@ -808,7 +808,7 @@ class OwnerAndFlags {
     This object is logically the following 64-bit bitfield, but stored in an
     atomic so we don't literally implement it that way.
 
-    // A folly::MicroLock for this Revision. We only use this once m_owner
+    // A SpinLock for this Revision. We only use this once m_owner
     // becomes nullptr; until then, locking the Revision means locking
     // the owning Invocation, and therefore the entire Revision list.
     uintptr_t m_lock : 2;
@@ -944,7 +944,7 @@ class OwnerAndFlags {
 
   union {
     std::atomic<uintptr_t> m_bits;
-    folly::MicroLock m_mutex;
+    SpinLock m_mutex;
   };
 };
 
@@ -1330,11 +1330,11 @@ struct Invocation final : LeakChecker<Invocation> {
 
   bool inList_lck() const;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
   static const uint8_t kMetadataSize;
 
-  mutable folly::MicroLock m_mutex;
+  mutable SpinLock m_mutex;
   bool m_isNonMvccAware = false;
 
   // Which list is this in, if any? Protected by mutex().
@@ -1366,7 +1366,7 @@ struct Cell final : LeakChecker<Cell> {
 
   Invocation::Ptr invocation() const;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
  private:
   Invocation::Ptr m_invocation;
@@ -1437,7 +1437,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
   /// This is also the original "begin" for its placeholder.
   const TxnId m_queryTxn;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
  private:
   Invocation::Ptr m_owner;
@@ -1454,7 +1454,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
 
   // NOTE: This is separate from m_placeholder::mutex to simplify the lock
   // ordering rules. It only protects m_calls.
-  mutable folly::MicroLock m_mutex;
+  mutable SpinLock m_mutex;
 
  public:
   // This is the actual entry that shows up in the Invocation linked list.
