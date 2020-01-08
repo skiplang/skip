@@ -17,6 +17,7 @@
 #include <sys/uio.h>
 #include <libunwind.h>
 #include <cxxabi.h>
+#include <thread>
 
 #include <xmmintrin.h>
 

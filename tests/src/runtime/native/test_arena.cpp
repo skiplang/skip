@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <random>
 #include <vector>
 
 #include <boost/thread/barrier.hpp>
@@ -54,8 +55,11 @@ TEST(ArenaTest, testSimple) {
     p = Arena::alloc(512, Arena::Kind::iobj);
     EXPECT_EQ(Arena::Kind::iobj, Arena::rawMemoryKind(p));
   }
+  std::random_device rd;
+  std::mt19937 g(rd());
+
   // free in random order
-  std::random_shuffle(ptrs.begin(), ptrs.end());
+  std::shuffle(ptrs.begin(), ptrs.end(), g);
   for (auto p : ptrs) {
     Arena::free(p);
   }
