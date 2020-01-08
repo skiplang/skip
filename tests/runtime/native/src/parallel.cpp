@@ -270,8 +270,10 @@ struct Tabulate : private boost::noncopyable {
     summonAncestors();
 
     std::vector<std::thread> workers;
-    std::atomic<bool> hasException;
-    std::exception_ptr ep;
+    static std::exception_ptr s_ep;
+    static std::mutex s_epm;
+
+    s_ep = nullptr;
 
     for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
       if (allWorkTaken()) {
@@ -279,28 +281,24 @@ struct Tabulate : private boost::noncopyable {
         break;
       }
 
-      workers.push_back(
-          std::thread([tab = Tabulate::Ptr{this}, &hasException, &ep]() {
-            try {
-              initializeNormalThread();
-              tab->runWorkerThread();
-            } catch (...) {
-              if (!hasException.exchange(true, std::memory_order_acquire)) {
-                ep = std::current_exception();
-              }
-            }
-          }));
+      workers.push_back(std::thread([tab = Tabulate::Ptr{this}]() {
+        try {
+          initializeNormalThread();
+          tab->runWorkerThread();
+        } catch (SkipException& exc) {
+          std::lock_guard<std::mutex> lock{s_epm};
+          s_ep = make_exception_ptr(exc);
+        }
+      }));
     }
+
     for (auto& worker : workers) {
       worker.join();
-      if (hasException) {
-        std::rethrow_exception(ep);
-      }
     }
-    /*
-            skip::getCPUExecutor()->add(
-                [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
-    */
+
+    if (s_ep != nullptr) {
+      std::rethrow_exception(s_ep);
+    }
   }
 
   // We might be in an arbitrarily nested parallelTabulate.
