@@ -25,9 +25,6 @@
 #include <folly/Subprocess.h>
 #include <folly/init/Init.h>
 #include <folly/executors/GlobalExecutor.h>
-#include <folly/executors/ThreadPoolExecutor.h>
-#include <folly/executors/CPUThreadPoolExecutor.h>
-#include <folly/executors/IOThreadPoolExecutor.h>
 #include <boost/algorithm/string/predicate.hpp>
 
 using namespace skip;
@@ -41,96 +38,6 @@ const size_t kSkipWorkerThreadStackSize = 8ULL * 1024 * 1024;
 
 std::string s_cppArgument0; // argv[0]
 std::vector<std::string> s_cppArguments; // argv[1..argc-1]
-
-// A custom ThreadFactory that runs initializeThread() for each thread.
-struct SkipThreadFactory final : folly::ThreadFactory {
-  std::thread newThread(folly::Func&& func) override {
-    auto name = folly::to<std::string>("CPUThreadPool", m_suffix++);
-    return consThread(
-        [func = std::move(func), name = std::move(name)]() mutable {
-          folly::setThreadName(name);
-          // Run our own thread setup code before chaining on to 'func'.
-          initializeThreadWithPermanentProcess();
-          func();
-        });
-  }
-
- private:
-#if !defined(__APPLE__)
-  template <typename FN>
-  std::thread consThread(FN fn) {
-    return std::thread(std::move(fn));
-  }
-#else
-  // Disgusting hack to allow us to intercept the pthread_create() call so we
-  // can set the stack size.
-  struct OsxHackedThread {
-    std::thread::native_handle_type __t_;
-
-    // This is just a copy from thread::thread().  The one difference is that
-    // when we call __libcpp_thread_create() it's calling our static function
-    // rather than the global.
-    template <
-        class _Fp,
-        class... _Args,
-        class = typename std::enable_if<
-            !std::is_same<typename std::decay<_Fp>::type, std::thread>::value>::
-            type>
-    explicit OsxHackedThread(_Fp&& __f, _Args&&... __args) {
-      using namespace std;
-      typedef unique_ptr<__thread_struct> _TSPtr;
-      _TSPtr __tsp(new __thread_struct);
-      typedef tuple<
-          _TSPtr,
-          typename decay<_Fp>::type,
-          typename decay<_Args>::type...>
-          _Gp;
-      _VSTD::unique_ptr<_Gp> __p(new _Gp(
-          std::move(__tsp),
-          __decay_copy(_VSTD::forward<_Fp>(__f)),
-          __decay_copy(_VSTD::forward<_Args>(__args))...));
-      int __ec = __libcpp_thread_create(&__t_, &__thread_proxy<_Gp>, __p.get());
-      if (__ec == 0)
-        __p.release();
-      else
-        __throw_system_error(__ec, "thread constructor failed");
-    }
-
-    // __libcpp_thread_create() from __threading_support just calls
-    // pthread_create().
-    static int __libcpp_thread_create(
-        std::thread::native_handle_type* __t,
-        void* (*__func)(void*),
-        void* __arg) {
-      pthread_attr_t attr;
-      int res = pthread_attr_init(&attr);
-      if (res == 0) {
-        res = pthread_attr_setstacksize(&attr, kSkipWorkerThreadStackSize);
-        if (res == 0) {
-          res = pthread_create(__t, &attr, __func, __arg);
-        }
-        pthread_attr_destroy(&attr);
-      }
-      return res;
-    }
-  };
-  // Make sure that we're at least not totally bonkers
-  static_assert(
-      sizeof(OsxHackedThread) == sizeof(std::thread),
-      "something has changed - our hack won't work");
-  template <typename FN>
-  std::thread consThread(FN fn) {
-    // Clowntown notice: Ugh gross - construct our hacked up thread object and
-    // then just "pretend" it's a std::thread and return it.  This isn't super
-    // safe but we know that std::thread is just a simple wrapper around a
-    // pthread handle -- so how complex could it be / what could go wrong?
-    OsxHackedThread th{std::move(fn)};
-    return std::move(reinterpret_cast<std::thread&>(th));
-  }
-#endif
-
-  std::atomic<uint64_t> m_suffix{0};
-};
 
 // A unique id for this skip process instance, useful for isolating
 // sample sets for compiler logs. TODO: make this more than just a timestamp.
@@ -324,23 +231,6 @@ thread_local clock_t duration;
 thread_local std::chrono::time_point<clock_spec> lastStart;
 thread_local std::vector<double> records;
 } // namespace profile
-
-std::shared_ptr<folly::ThreadPoolExecutor> skip::getCPUExecutor() {
-  static std::shared_ptr<folly::ThreadPoolExecutor> s_executor;
-  static std::once_flag s_once;
-  call_once(
-      s_once,
-      [](std::shared_ptr<folly::ThreadPoolExecutor>* executor) {
-        // Because getNumThreads() is the total number of threads
-        // (including the caller) we need one less executor worker - but
-        // make sure we create at least one.
-        auto numThreads = std::max((size_t)1, getNumThreads() - 1);
-        *executor = std::make_shared<folly::CPUThreadPoolExecutor>(
-            numThreads, std::make_shared<SkipThreadFactory>());
-      },
-      &s_executor);
-  return s_executor;
-}
 
 void SKIP_profile_start() {
   profile::duration = profile::clock_t(0);

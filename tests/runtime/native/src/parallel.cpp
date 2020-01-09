@@ -269,19 +269,35 @@ struct Tabulate : private boost::noncopyable {
   void spawnWorkers() {
     summonAncestors();
 
-    try {
-      for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
-        if (allWorkTaken()) {
-          // Threads already grabbed all the work, don't spawn more threads.
-          break;
-        }
+    std::vector<std::thread> workers;
+    static std::exception_ptr s_ep;
+    static std::mutex s_epm;
 
-        skip::getCPUExecutor()->add(
-            [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
+    s_ep = nullptr;
+
+    for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
+      if (allWorkTaken()) {
+        // Threads already grabbed all the work, don't spawn more threads.
+        break;
       }
-    } catch (folly::QueueFullException&) {
-      // Folly supports 16K posted tasks by default. If even that fills up,
-      // just abandon posting any more.
+
+      workers.push_back(std::thread([tab = Tabulate::Ptr{this}]() {
+        try {
+          initializeNormalThread();
+          tab->runWorkerThread();
+        } catch (SkipException& exc) {
+          std::lock_guard<std::mutex> lock{s_epm};
+          s_ep = make_exception_ptr(exc);
+        }
+      }));
+    }
+
+    for (auto& worker : workers) {
+      worker.join();
+    }
+
+    if (s_ep != nullptr) {
+      std::rethrow_exception(s_ep);
     }
   }
 
