@@ -85,81 +85,80 @@ using namespace skip;
 size_t s_numThreads = 1;
 
 class ThreadPool {
-    public:
+ public:
+  ThreadPool(size_t n) : m_shutdown{false}, m_exn{nullptr} {
+    m_threads.reserve(n);
+    for (auto i = 0; i < n; ++i)
+      m_threads.emplace_back(std::bind(&ThreadPool::run, this, i));
+  }
 
-    ThreadPool(size_t n): m_shutdown{false}, m_exn{nullptr} {
-        m_threads.reserve(n);
-        for (auto i = 0; i < n; ++i)
-            m_threads.emplace_back(std::bind(&ThreadPool::run, this, i));
-    }
-
-    ~ThreadPool () {
-      {
-        std::unique_lock <std::mutex> l (m_threadLock);
-        m_shutdown = true;
-        m_threadVar.notify_all();
-      }
-
-      for (auto& thread : m_threads) {
-        thread.join();
-      }
-    }
-
-    void addTask(std::function <void (void)> f) {
-        std::unique_lock<std::mutex> l(m_threadLock);
-        m_tasks.emplace(std::move(f));
-    }
-
-    std::exception_ptr getException() {
-      {
-        std::unique_lock<std::mutex> l(m_threadLock);
-        m_threadVar.notify_all();
-      }
-      if(!m_firstCall) { return nullptr; }
-      m_firstCall = false;
-      std::unique_lock<std::mutex> lock(m_masterLock);
-      m_masterVar.wait(lock);
-      return m_exn;
-    }
-
-    private:
-
-    void run (int i)
+  ~ThreadPool() {
     {
-      skip::initializeThreadWithPermanentProcess();
-      std::function <void (void)> task;
-      auto isFinished = false;
+      std::unique_lock<std::mutex> l(m_threadLock);
+      m_shutdown = true;
+      m_threadVar.notify_all();
+    }
 
-      while (1) {
-        {
-          std::unique_lock<std::mutex> l (m_threadLock);
+    for (auto& thread : m_threads) {
+      thread.join();
+    }
+  }
 
-          while(!m_shutdown && m_tasks.empty()) {
-            m_threadVar.wait(l);
-          }
+  void addTask(std::function<void(void)> f) {
+    std::unique_lock<std::mutex> l(m_threadLock);
+    m_tasks.emplace(std::move(f));
+  }
 
-          if(m_shutdown) return;
+  std::exception_ptr getException() {
+    {
+      std::unique_lock<std::mutex> l(m_threadLock);
+      m_threadVar.notify_all();
+    }
+    if (!m_firstCall) {
+      return nullptr;
+    }
+    m_firstCall = false;
+    std::unique_lock<std::mutex> lock(m_masterLock);
+    m_masterVar.wait(lock);
+    return m_exn;
+  }
 
-          task = std::move(m_tasks.front());
-          m_tasks.pop();
-          if(m_tasks.empty()) {
-            isFinished = true;
-          }
+ private:
+  void run(int i) {
+    skip::initializeThreadWithPermanentProcess();
+    std::function<void(void)> task;
+    auto isFinished = false;
+
+    while (1) {
+      {
+        std::unique_lock<std::mutex> l(m_threadLock);
+
+        while (!m_shutdown && m_tasks.empty()) {
+          m_threadVar.wait(l);
         }
 
-        try {
-          task();
-        } catch (SkipException& exc) {
-          std::lock_guard<std::mutex> lock{m_threadLock};
-          m_exn = make_exception_ptr(exc);
-        }
+        if (m_shutdown)
+          return;
 
-        if(isFinished) {
-          std::unique_lock<std::mutex> lock(m_masterLock);
-          m_masterVar.notify_one();
+        task = std::move(m_tasks.front());
+        m_tasks.pop();
+        if (m_tasks.empty()) {
+          isFinished = true;
         }
       }
 
+      try {
+        task();
+      } catch (SkipException& exc) {
+        std::lock_guard<std::mutex> lock{m_threadLock};
+        m_exn = make_exception_ptr(exc);
+      }
+
+      if (isFinished) {
+        std::unique_lock<std::mutex> lock(m_masterLock);
+        m_masterVar.notify_one();
+      }
+    }
   }
 
   bool m_firstCall;
@@ -169,8 +168,8 @@ class ThreadPool {
   std::mutex m_masterLock;
   std::condition_variable m_threadVar;
   std::condition_variable m_masterVar;
-  std::queue <std::function<void(void)>> m_tasks;
-  std::vector <std::thread> m_threads;
+  std::queue<std::function<void(void)>> m_tasks;
+  std::vector<std::thread> m_threads;
 };
 
 ThreadPool* getWorkers() {
@@ -371,9 +370,8 @@ struct Tabulate : private boost::noncopyable {
         break;
       }
 
-      workers->addTask([tab = Tabulate::Ptr{this}]() {
-        tab->runWorkerThread();
-      });
+      workers->addTask(
+          [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
     }
 
     auto exn = workers->getException();
