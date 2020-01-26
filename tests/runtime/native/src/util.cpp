@@ -274,8 +274,9 @@ int findLastSet(unsigned long n) {
   unsigned long bit = bitSize - 1LU;
   unsigned long r = 1LU << bit;
 
-  while((n & r) == 0LU) {
-    if(bit == 0) return 0;
+  while ((n & r) == 0LU) {
+    if (bit == 0)
+      return 0;
     bit--;
     r = 1ul << bit;
   }
@@ -287,8 +288,9 @@ int findFirstSet(unsigned long n) {
   unsigned long bit = 0LU;
   unsigned long r = 1LU << bit;
 
-  while((n & r) == 0LU) {
-    if(bit >= bitSize) return 0;
+  while ((n & r) == 0LU) {
+    if (bit >= bitSize)
+      return 0;
     bit++;
     r = 1LU << bit;
   }
