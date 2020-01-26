@@ -21,8 +21,6 @@
 
 #include <xmmintrin.h>
 
-#include <folly/MicroLock.h>
-
 #include <folly/Demangle.h>
 #ifndef __APPLE__
 #if FOLLY_USE_SYMBOLIZER
