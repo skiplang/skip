@@ -53,8 +53,8 @@ struct ChunkHooks {
     // Free any chunks we didn't get a chance to free earlier.
     std::vector<void*> pendingDestruction;
     {
-      auto state = m_state.lock();
-      std::swap(pendingDestruction, state->m_pendingDestruction);
+      std::lock_guard<std::mutex> lock(m_stateLock);
+      std::swap(pendingDestruction, m_state.m_pendingDestruction);
     }
     for (auto addr : pendingDestruction) {
       freeChunks(addr, kJeChunkSize);
@@ -94,7 +94,8 @@ struct ChunkHooks {
     std::vector<void*> m_pendingDestruction;
   };
 
-  folly::Synchronized<State, std::mutex> m_state;
+  State m_state;
+  std::mutex m_stateLock;
 
   void detach_hooks() {
     if (m_arenaIdx == -1U)
@@ -208,19 +209,19 @@ struct ChunkHooks {
     commit = true;
     zero = true;
 
-    auto state = m_state.lock();
-    void* nextBegin = roundUp(state->m_pendingBegin, alignment);
-    ptrdiff_t avail = mem::sub(state->m_pendingEnd, nextBegin);
+    std::lock_guard<std::mutex> lock(m_stateLock);
+    void* nextBegin = roundUp(m_state.m_pendingBegin, alignment);
+    ptrdiff_t avail = mem::sub(m_state.m_pendingEnd, nextBegin);
     if (avail < (ptrdiff_t)byteSize) {
       // Well darn.
       nextBegin = allocateChunks(kJeChunkSize, alignment, zero, commit);
-      state->m_pendingBegin = nextBegin;
-      state->m_pendingEnd = mem::add(state->m_pendingBegin, kJeChunkSize);
+      m_state.m_pendingBegin = nextBegin;
+      m_state.m_pendingEnd = mem::add(m_state.m_pendingBegin, kJeChunkSize);
     }
 
     chunk = nextBegin;
-    state->m_pendingBegin = mem::add(nextBegin, byteSize);
-    assert(state->m_pendingBegin <= state->m_pendingEnd);
+    m_state.m_pendingBegin = mem::add(nextBegin, byteSize);
+    assert(m_state.m_pendingBegin <= m_state.m_pendingEnd);
 
     return JeResult::success;
   }
@@ -255,8 +256,8 @@ struct ChunkHooks {
       // It's the head of a small allocation chunk - we can't free it
       // yet because we don't know if all the other blocks in that
       // chunk have been given back to us by jemalloc yet.
-      auto state = m_state.lock();
-      state->m_pendingDestruction.push_back(addr);
+      std::lock_guard<std::mutex> lock(m_stateLock);
+      m_state.m_pendingDestruction.push_back(addr);
     }
   }
 
