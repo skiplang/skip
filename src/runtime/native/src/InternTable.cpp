@@ -350,7 +350,7 @@ void InternTable::rehash(size_t slot) {
 
   // The rehashing parent is 'slot' with its highest bit turned off.
   // There must be some bit set in slot, or it wouldn't need rehashing.
-  const auto highestBitIndex = folly::findLastSet(slot) - 1;
+  const auto highestBitIndex = skip::findLastSet(slot) - 1;
   const size_t parentSlot = slot - ((size_t)1 << highestBitIndex);
 
   // Recursively lock the parent.
@@ -447,7 +447,7 @@ size_t InternTable::verifyInvariants() const {
 
     // Not a rehash sentinel. Make sure that its parent is not a rehash
     // sentinel, since that must be impossible.
-    auto highestBitIndex = folly::findLastSet(slot) - 1;
+    auto highestBitIndex = skip::findLastSet(slot) - 1;
     if (slot >= minBuckets) {
       size_t parentSlot ATTR_UNUSED = slot - ((size_t)1 << highestBitIndex);
       assert(!m_buckets[parentSlot].m_ptr.isLazyRehashSentinel());

@@ -1553,7 +1553,7 @@ void Refresher::continueRefresh_lck(
     auto mask = trace.inactive() & ~((1ull << nextIndex) - 1);
 
     for (auto n = mask; n != 0; n &= n - 1) {
-      auto index = folly::findFirstSet(n) - 1;
+      auto index = skip::findFirstSet(n) - 1;
       auto child = trace[index].target();
 
       auto childLock = lockify(*child);
@@ -1599,7 +1599,7 @@ void Refresher::continueRefresh_lck(
       // inputs were invalidated at m_latestVisibleWhenStarted + 1, which
       // is the first txn where that could have happened.
       DEBUG_TRACE(
-          "Input " << trace[folly::findFirstSet(trace.inactive()) - 1].target()
+          "Input " << trace[skip::findFirstSet(trace.inactive()) - 1].target()
                    << " for " << this << " still inactive so reducing end from "
                    << m_end << " to " << (m_latestVisibleWhenStarted + 1));
       m_end = std::min(m_end, m_latestVisibleWhenStarted + 1);

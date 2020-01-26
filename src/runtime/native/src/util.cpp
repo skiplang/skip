@@ -268,4 +268,31 @@ void SpinLock::unlock() {
     exit(70);
   }
 }
+
+int findLastSet(unsigned long n) {
+  unsigned long bitSize = sizeof(unsigned long) * 8LU;
+  unsigned long bit = bitSize - 1LU;
+  unsigned long r = 1LU << bit;
+
+  while((n & r) == 0LU) {
+    if(bit == 0) return 0;
+    bit--;
+    r = 1ul << bit;
+  }
+  return bit + 1;
+}
+
+int findFirstSet(unsigned long n) {
+  unsigned long bitSize = sizeof(unsigned long) * 8LU;
+  unsigned long bit = 0LU;
+  unsigned long r = 1LU << bit;
+
+  while((n & r) == 0LU) {
+    if(bit >= bitSize) return 0;
+    bit++;
+    r = 1LU << bit;
+  }
+  return bit + 1;
+}
+
 } // namespace skip
