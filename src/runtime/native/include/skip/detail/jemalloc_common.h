@@ -83,7 +83,8 @@ void mallctl_by_mib(
       mibx.m_parts.data(), mibx.m_size, oldp, oldlenp, (void*)newp, newlen);
   if (res) {
     std::string nameStr(mibx.m_name);
-    std::string s = "mallctlbymib(" + nameStr + ") failed, errno = " + std::to_string(res);
+    std::string s =
+        "mallctlbymib(" + nameStr + ") failed, errno = " + std::to_string(res);
     throw std::runtime_error(s);
   }
 }
