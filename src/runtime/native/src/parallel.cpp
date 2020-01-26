@@ -21,6 +21,8 @@
 
 #include <boost/intrusive_ptr.hpp>
 
+#include <iostream> 
+#include <sstream>
 #include <unistd.h>
 #include <utility>
 
@@ -33,7 +35,10 @@
 // fewer than the number of CPUs present on this machine.
 size_t skip::computeCpuCount() {
   if (auto env = std::getenv("SKIP_NUM_THREADS")) {
-    return std::max((size_t)1, (size_t)(env));
+    std::stringstream sstream(env);
+    size_t skip_num_threads = 0;
+    sstream >> skip_num_threads;
+    return std::max((size_t)1, skip_num_threads);
   }
 
 #ifdef __linux__
