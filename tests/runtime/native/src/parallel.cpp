@@ -84,6 +84,99 @@ using namespace skip;
 // Number of available CPUs.
 size_t s_numThreads = 1;
 
+class ThreadPool {
+ public:
+  ThreadPool(size_t n) : m_shutdown{false}, m_exn{nullptr} {
+    m_threads.reserve(n);
+    for (auto i = 0; i < n; ++i)
+      m_threads.emplace_back(std::bind(&ThreadPool::run, this, i));
+  }
+
+  ~ThreadPool() {
+    {
+      std::unique_lock<std::mutex> l(m_threadLock);
+      m_shutdown = true;
+      m_threadVar.notify_all();
+    }
+
+    for (auto& thread : m_threads) {
+      thread.join();
+    }
+  }
+
+  void addTask(std::function<void(void)> f) {
+    std::unique_lock<std::mutex> l(m_threadLock);
+    m_tasks.emplace(std::move(f));
+  }
+
+  std::exception_ptr getException() {
+    {
+      std::unique_lock<std::mutex> l(m_threadLock);
+      m_threadVar.notify_all();
+    }
+    if (!m_firstCall) {
+      return nullptr;
+    }
+    m_firstCall = false;
+    std::unique_lock<std::mutex> lock(m_masterLock);
+    m_masterVar.wait(lock);
+    return m_exn;
+  }
+
+ private:
+  void run(int i) {
+    skip::initializeThreadWithPermanentProcess();
+    std::function<void(void)> task;
+    auto isFinished = false;
+
+    while (1) {
+      {
+        std::unique_lock<std::mutex> l(m_threadLock);
+
+        while (!m_shutdown && m_tasks.empty()) {
+          m_threadVar.wait(l);
+        }
+
+        if (m_shutdown)
+          return;
+
+        task = std::move(m_tasks.front());
+        m_tasks.pop();
+        if (m_tasks.empty()) {
+          isFinished = true;
+        }
+      }
+
+      try {
+        task();
+      } catch (SkipException& exc) {
+        std::lock_guard<std::mutex> lock{m_threadLock};
+        m_exn = make_exception_ptr(exc);
+      }
+
+      if (isFinished) {
+        std::unique_lock<std::mutex> lock(m_masterLock);
+        m_masterVar.notify_one();
+      }
+    }
+  }
+
+  bool m_firstCall;
+  bool m_shutdown;
+  std::exception_ptr m_exn;
+  std::mutex m_threadLock;
+  std::mutex m_masterLock;
+  std::condition_variable m_threadVar;
+  std::condition_variable m_masterVar;
+  std::queue<std::function<void(void)>> m_tasks;
+  std::vector<std::thread> m_threads;
+};
+
+ThreadPool* getWorkers() {
+  static ThreadPool workers(s_numThreads);
+  return &workers;
+}
+
 struct Tabulate;
 
 struct TabulateWorker : private boost::noncopyable {
@@ -269,11 +362,7 @@ struct Tabulate : private boost::noncopyable {
   void spawnWorkers() {
     summonAncestors();
 
-    std::vector<std::thread> workers;
-    static std::exception_ptr s_ep;
-    static std::mutex s_epm;
-
-    s_ep = nullptr;
+    auto workers = getWorkers();
 
     for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
       if (allWorkTaken()) {
@@ -281,23 +370,13 @@ struct Tabulate : private boost::noncopyable {
         break;
       }
 
-      workers.push_back(std::thread([tab = Tabulate::Ptr{this}]() {
-        try {
-          initializeNormalThread();
-          tab->runWorkerThread();
-        } catch (SkipException& exc) {
-          std::lock_guard<std::mutex> lock{s_epm};
-          s_ep = make_exception_ptr(exc);
-        }
-      }));
+      workers->addTask(
+          [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
     }
 
-    for (auto& worker : workers) {
-      worker.join();
-    }
-
-    if (s_ep != nullptr) {
-      std::rethrow_exception(s_ep);
+    auto exn = workers->getException();
+    if (exn != nullptr) {
+      std::rethrow_exception(exn);
     }
   }
 
