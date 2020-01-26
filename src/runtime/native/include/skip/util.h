@@ -198,4 +198,7 @@ struct SpinLock {
   void lock();
   void unlock();
 };
+
+int findFirstSet(unsigned long n);
+int findLastSet(unsigned long n);
 } // namespace skip
