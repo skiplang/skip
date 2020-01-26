@@ -171,7 +171,8 @@ struct Process final : private boost::noncopyable {
 
   // Baton used when the Process's owning thread is sleeping, waiting
   // for a Task to be posted.
-  folly::Baton<> m_baton;
+  std::mutex m_batonLock;
+  std::condition_variable m_batonVar;
 
   // WARNING: While a thread is actively running context-switched to this
   // process, this field is junk, because for speed we temporarily move it

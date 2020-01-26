@@ -10,8 +10,6 @@
 #include "skip/util.h"
 #include "skip/memoize.h"
 
-#include <folly/experimental/FunctionScheduler.h>
-
 using namespace skip;
 
 namespace {
