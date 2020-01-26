@@ -21,7 +21,7 @@
 
 #include <boost/intrusive_ptr.hpp>
 
-#include <iostream> 
+#include <iostream>
 #include <sstream>
 #include <unistd.h>
 #include <utility>
