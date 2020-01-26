@@ -71,7 +71,7 @@ bool ThreadLocalLockManager::inArray(const void* ptr) const {
   // Iterate through all of the clear bits in m_freeSlot, i.e. the slots
   // that are currently in use.
   for (auto n = ~m_freeSlot; n != 0; n &= n - 1) {
-    auto index = folly::findFirstSet(n) - 1;
+    auto index = skip::findFirstSet(n) - 1;
     if (m_locksArray[index] == ptr) {
       return true;
     }
@@ -109,7 +109,7 @@ LockToken ThreadLocalLockManager::noteLocked(const void* ptr ATTR_UNUSED) {
   if (LIKELY(!inArray(ptr))) {
     if (LIKELY(m_freeSlot != 0)) {
       // Find an array entry from the freelist and store the pointer there.
-      auto index = folly::findFirstSet(m_freeSlot) - 1;
+      auto index = skip::findFirstSet(m_freeSlot) - 1;
       m_freeSlot &= m_freeSlot - 1;
       m_locksArray[index] = ptr;
       ++m_numLocksHeld;

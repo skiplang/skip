@@ -13,8 +13,6 @@
 #include "skip/SmallTaggedPtr.h"
 #include "skip/util.h"
 
-#include <folly/Format.h>
-
 #include <algorithm>
 #include <map>
 #include <stdexcept>
