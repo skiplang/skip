@@ -112,26 +112,14 @@ bool String::operator==(const String& o) const {
 }
 
 ssize_t String::cmp(const String& o) const {
-  // If they're both short compare words directly.
-  auto word1 = sbits();
-  auto word2 = o.sbits();
-  if ((word1 & word2) < 0) {
-    static_assert(sizeof(word1) == sizeof(ssize_t), "size expected");
-    // Ignores flags!
-    static_assert(kUnusedTagBits > 0, "cmp hack won't work with 0 tag bits");
-    auto a = (ssize_t)((size_t)folly::Endian::swap(word1) >> kUnusedTagBits);
-    auto b = (ssize_t)((size_t)folly::Endian::swap(word2) >> kUnusedTagBits);
-    return a - b;
-  } else {
-    const size_t len1 = byteSize();
-    const size_t len2 = o.byteSize();
-    DataBuffer data1;
-    DataBuffer data2;
-    int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
-    if (res == 0)
-      res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
-    return res;
-  }
+  const size_t len1 = byteSize();
+  const size_t len2 = o.byteSize();
+  DataBuffer data1;
+  DataBuffer data2;
+  int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
+  if (res == 0)
+    res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
+  return res;
 }
 
 const char* String::c_str(char buffer[CSTR_BUFFER_SIZE]) const {
