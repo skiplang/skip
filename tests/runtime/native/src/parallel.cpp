@@ -20,9 +20,6 @@
 #include "ObstackDetail.h"
 
 #include <boost/intrusive_ptr.hpp>
-#include <folly/Conv.h>
-#include <folly/executors/GlobalExecutor.h>
-#include <folly/executors/task_queue/BlockingQueue.h>
 
 #include <unistd.h>
 #include <utility>
@@ -36,7 +33,7 @@
 // fewer than the number of CPUs present on this machine.
 size_t skip::computeCpuCount() {
   if (auto env = std::getenv("SKIP_NUM_THREADS")) {
-    return std::max((size_t)1, folly::to<size_t>(env));
+    return std::max((size_t)1, (size_t)(env));
   }
 
 #ifdef __linux__
