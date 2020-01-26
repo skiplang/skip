@@ -112,10 +112,10 @@ struct ArenaData : private je::ChunkHooks {
 
 ArenaData& getDataForKind(Arena::Kind kind) {
   static thread_local ArenaData* iobj = new ArenaData(Arena::Kind::iobj);
-  static thread_local ArenaData large(Arena::Kind::large);
-  static thread_local ArenaData obstack(Arena::Kind::obstack);
+  static thread_local ArenaData* large = new ArenaData(Arena::Kind::large);
+  static thread_local ArenaData* obstack = new ArenaData(Arena::Kind::obstack);
   static thread_local std::array<ArenaData*, 4> s_dataPerKind{
-      {nullptr, iobj, &large, &obstack}};
+      {nullptr, iobj, large, obstack}};
 
   return *s_dataPerKind[(int)kind];
 }
