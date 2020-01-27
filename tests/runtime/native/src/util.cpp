@@ -19,6 +19,7 @@
 #define UNW_LOCAL_ONLY 1
 #include <libunwind.h>
 #include <cxxabi.h>
+#include <iomanip>
 #include <thread>
 
 #include <xmmintrin.h>
@@ -271,6 +272,18 @@ int findFirstSet(unsigned long n) {
     r = 1LU << bit;
   }
   return bit + 1;
+}
+
+std::string escape_json(const std::string& s) {
+  std::ostringstream o;
+  for (auto c = s.cbegin(); c != s.cend(); c++) {
+    if (*c == '"' || *c == '\\' || ('\x00' <= *c && *c <= '\x1f')) {
+      o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
+    } else {
+      o << *c;
+    }
+  }
+  return o.str();
 }
 
 } // namespace skip
