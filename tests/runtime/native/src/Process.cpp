@@ -228,7 +228,7 @@ void Process::runExactlyOneTaskSleepingIfNecessary() {
       // Now any thread that pushes a new task will post() to m_baton.
       // Wait for that to happen.
       std::unique_lock<std::mutex> lock(m_batonLock);
-      while(!m_batonCond) {
+      while (!m_batonCond) {
         m_batonSignal.wait(lock);
       }
       m_batonCond = false;
