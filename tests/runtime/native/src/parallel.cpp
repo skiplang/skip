@@ -109,19 +109,15 @@ class ThreadPool {
   void addTask(std::function<void(void)> f) {
     std::unique_lock<std::mutex> l(m_threadLock);
     m_tasks.emplace(std::move(f));
+    m_threadVar.notify_one();
   }
 
-  std::exception_ptr getException() {
-    {
-      std::unique_lock<std::mutex> l(m_threadLock);
-      m_threadVar.notify_all();
-    }
-    if (!m_firstCall) {
-      return nullptr;
-    }
-    m_firstCall = false;
+  std::exception_ptr waitForThreadsAndThrowIfNecessary() {
     std::unique_lock<std::mutex> lock(m_masterLock);
     m_masterVar.wait(lock);
+    if (m_exn != nullptr) {
+      std::rethrow_exception(m_exn);
+    }
     return m_exn;
   }
 
@@ -374,11 +370,6 @@ struct Tabulate : private boost::noncopyable {
 
       workers->addTask(
           [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
-    }
-
-    auto exn = workers->getException();
-    if (exn != nullptr) {
-      std::rethrow_exception(exn);
     }
   }
 
