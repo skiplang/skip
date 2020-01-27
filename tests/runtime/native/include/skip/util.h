@@ -15,11 +15,6 @@
 
 #include <boost/noncopyable.hpp>
 
-#include <folly/lang/Bits.h>
-#include <folly/Memory.h>
-
-#include <folly/MicroLock.h>
-
 // #define ENABLE_DEBUG_TRACE 1
 
 #if ENABLE_DEBUG_TRACE
@@ -72,11 +67,20 @@ inline size_t mungeBits(size_t n) {
   // The high bits of a 64x64 -> 128 multiply will be well mixed.
   using uint128_t = unsigned __int128;
   const uint128_t m = (uint128_t)n * multiplier64;
-  const uint64_t mul = (uint64_t)m + ((uint64_t)(m >> 64));
+  uint64_t mul = (uint64_t)m + ((uint64_t)(m >> 64));
 #else
 #error error
 #endif
-  return folly::Endian::swap(mul);
+
+  // Swap endianness
+  mul = ((mul & 0x00000000FFFFFFFFull) << 32) |
+      ((mul & 0xFFFFFFFF00000000ull) >> 32);
+  mul = ((mul & 0x0000FFFF0000FFFFull) << 16) |
+      ((mul & 0xFFFF0000FFFF0000ull) >> 16);
+  mul = ((mul & 0x00FF00FF00FF00FFull) << 8) |
+      ((mul & 0xFF00FF00FF00FF00ull) >> 8);
+
+  return mul;
 }
 
 /**
@@ -189,8 +193,6 @@ void throwRuntimeErrorV(const char* msg, va_list ap)
 
 void throwRuntimeError(const char* msg, ...)
     __attribute__((__noreturn__, __format__(printf, 1, 2)));
-
-void mlock(folly::MicroLock*);
 
 struct SpinLock {
   std::atomic<uint8_t> m_bits;
