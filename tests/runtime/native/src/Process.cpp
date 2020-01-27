@@ -228,7 +228,10 @@ void Process::runExactlyOneTaskSleepingIfNecessary() {
       // Now any thread that pushes a new task will post() to m_baton.
       // Wait for that to happen.
       std::unique_lock<std::mutex> lock(m_batonLock);
-      m_batonVar.wait(lock);
+      while(!m_batonCond) {
+        m_batonSignal.wait(lock);
+      }
+      m_batonCond = false;
     }
   }
 }
@@ -319,7 +322,8 @@ bool UnownedProcess::scheduleTaskIfNotDead(std::unique_ptr<Task>& task) {
     // We were the first to post after the owner went to sleep waiting
     // for a Task to show up. So wake it up.
     std::unique_lock<std::mutex> lock(m_process->m_batonLock);
-    m_process->m_batonVar.notify_one();
+    m_process->m_batonCond = true;
+    m_process->m_batonSignal.notify_one();
   }
 
   return true;
