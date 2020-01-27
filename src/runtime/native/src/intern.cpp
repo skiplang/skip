@@ -17,8 +17,6 @@
 #include <deque>
 #include <iostream>
 
-#include <folly/lang/SafeAssert.h>
-
 #if ENABLE_VALGRIND
 #include <valgrind/memcheck.h>
 #endif
