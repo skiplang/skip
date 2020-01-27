@@ -20,10 +20,9 @@
 #include "ObstackDetail.h"
 
 #include <boost/intrusive_ptr.hpp>
-#include <folly/Conv.h>
-#include <folly/executors/GlobalExecutor.h>
-#include <folly/executors/task_queue/BlockingQueue.h>
 
+#include <iostream>
+#include <sstream>
 #include <unistd.h>
 #include <utility>
 
@@ -36,7 +35,10 @@
 // fewer than the number of CPUs present on this machine.
 size_t skip::computeCpuCount() {
   if (auto env = std::getenv("SKIP_NUM_THREADS")) {
-    return std::max((size_t)1, folly::to<size_t>(env));
+    std::stringstream sstream(env);
+    size_t skip_num_threads = 0;
+    sstream >> skip_num_threads;
+    return std::max((size_t)1, skip_num_threads);
   }
 
 #ifdef __linux__
@@ -107,19 +109,15 @@ class ThreadPool {
   void addTask(std::function<void(void)> f) {
     std::unique_lock<std::mutex> l(m_threadLock);
     m_tasks.emplace(std::move(f));
+    m_threadVar.notify_one();
   }
 
-  std::exception_ptr getException() {
-    {
-      std::unique_lock<std::mutex> l(m_threadLock);
-      m_threadVar.notify_all();
-    }
-    if (!m_firstCall) {
-      return nullptr;
-    }
-    m_firstCall = false;
+  std::exception_ptr waitForThreadsAndThrowIfNecessary() {
     std::unique_lock<std::mutex> lock(m_masterLock);
     m_masterVar.wait(lock);
+    if (m_exn != nullptr) {
+      std::rethrow_exception(m_exn);
+    }
     return m_exn;
   }
 
@@ -372,11 +370,6 @@ struct Tabulate : private boost::noncopyable {
 
       workers->addTask(
           [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
-    }
-
-    auto exn = workers->getException();
-    if (exn != nullptr) {
-      std::rethrow_exception(exn);
     }
   }
 

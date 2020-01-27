@@ -15,8 +15,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#include <folly/Synchronized.h>
-
 #if USE_JEMALLOC
 #include <jemalloc/jemalloc.h>
 #endif

@@ -197,21 +197,6 @@ struct ObjectSize final {
   size_t m_userSize;
 };
 
-template <class... Args>
-void logIt(Args&&... args) {
-  folly::writeTo(stderr, folly::format(std::forward<Args>(args)...));
-}
-
-std::string prettyBytes(size_t n) {
-  // bytes suffix kB, MB, GB, ... goes up by 1024 each
-  return folly::prettyPrint(n, folly::PRETTY_BYTES);
-}
-
-std::string prettyCount(size_t n) {
-  // counts k, M, G, ... up by 1000 each
-  return folly::prettyPrint(n, folly::PRETTY_UNITS_METRIC);
-}
-
 #if OBSTACK_VERIFY_NOTE
 const auto kVerifyNote = parseEnv("OBSTACK_VERIFY_NOTE", 0) != 0;
 #else
@@ -1134,27 +1119,29 @@ struct ObstackDetail::Collector {
       const auto total = m_obstack.m_detail->totalUsage(m_obstack);
       const auto workVol = scanVol + m_copyVol + m_shadowVol;
       if (workVol > std::max(freed, kChunkSize) * kGCSquawk) {
-        logIt(
-            "{} low-yield: eligible {} min {} scan {} copy {} "
-            "freed {} survived {} total {}\n",
+        fprintf(
+            stderr,
+            "%s low-yield: eligible %lu min %lu scan %lu copy %lu "
+            "freed %lu survived %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
-            prettyBytes(m_preUsage),
-            prettyBytes(min),
-            prettyBytes(scanVol),
-            prettyBytes(m_copyVol),
-            prettyBytes(freed),
-            prettyBytes(postUsage),
-            prettyBytes(total));
+            m_preUsage,
+            min,
+            scanVol,
+            m_copyVol,
+            freed,
+            postUsage,
+            total);
       } else if (kGCVerbose >= 2) {
-        logIt(
-            "{} eligible {} {} min {} survived {} work {} total {}\n",
+        fprintf(
+            stderr,
+            "%s eligible %lu %s min %lu survived %lu work %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
-            prettyBytes(m_preUsage),
+            m_preUsage,
             (m_preUsage >= min ? ">=" : "<"),
-            prettyBytes(min),
-            prettyBytes(postUsage),
-            prettyBytes(workVol),
-            prettyBytes(total));
+            min,
+            postUsage,
+            workVol,
+            total);
       }
     }
   }
@@ -1528,13 +1515,14 @@ void ObstackDetail::collect(
   if (UNLIKELY(verbose)) {
     const auto min = obstack.m_detail->m_minUsage;
     const auto total = obstack.m_detail->totalUsage(obstack);
-    logIt(
-        "{} eligible {} {} min {} total {}\n",
+    fprintf(
+        stderr,
+        "%s eligible %lu %s min %lu total %lu\n",
         kSweepModeNames[(int)mode],
-        prettyBytes(preUsage),
+        preUsage,
         (preUsage >= min ? ">=" : "<"),
-        prettyBytes(min),
-        prettyBytes(total));
+        min,
+        total);
   }
 }
 
@@ -2239,44 +2227,42 @@ void ObstackDetail::AllocStats::countSweep(CollectMode mode) {
 }
 
 void ObstackDetail::AllocStats::reportFinal() const {
-  auto PB = [](size_t n) { return prettyBytes(n); };
-  auto PC = [](size_t n) { return prettyCount(n); };
   const auto totalVol = m_smallVol + m_largeVol;
   const auto maxChunkBytes = m_maxChunkCount * kChunkSize;
   const auto collects = m_runtimeCollects + m_manualCollects + m_autoCollects;
   const auto sweeps = m_runtimeSweeps + m_manualSweeps + m_autoSweeps;
-  logIt("Obstack Peak Memory Usage Statistics\n");
-  logIt("  total:      {0}\n", PB(m_maxTotalSize));
-  logIt("  chunks:     {0} ({1})\n", PC(m_maxChunkCount), PB(maxChunkBytes));
-  logIt("  largeObj:   {0} ({1})\n", PC(m_maxLargeCount), PB(m_maxLargeSize));
-  logIt("  iobj:       {0}\n", PC(m_maxInternCount));
-  logIt("Obstack Volume\n");
-  logIt("  allocated:  {0}\n", PB(totalVol));
-  logIt("  |-large:    {0}\n", PB(m_largeVol));
-  logIt("  |-small:    {0}\n", PB(m_smallVol));
-  logIt("    |-places: {0}\n", PB(m_placeholderVol));
-  logIt("    |-frags:  {0}\n", PB(m_fragmentVol));
-  logIt("Collector Volume\n");
-  logIt("  sweeps:    {0}\n", PC(sweeps));
-  logIt("  |-runtime: {0}\n", PC(m_runtimeSweeps));
-  logIt("  |-manual:  {0}\n", PC(m_manualSweeps));
-  logIt("  |-auto:    {0}\n", PC(m_autoSweeps));
-  logIt("  collects:  {0}\n", PC(collects));
-  logIt("  |-runtime: {0}\n", PC(m_runtimeCollects));
-  logIt("  |-manual:  {0}\n", PC(m_manualCollects));
-  logIt("  |-auto:    {0}\n", PC(m_autoCollects));
-  logIt("  visited:   {0}\n", PC(m_gcVisitCount));
-  logIt("  scanned:   {0}\n", PB(m_gcScanVol));
-  logIt("  copied:    {0}\n", PB(m_gcVol));
-  logIt("  shadowed:  {0}\n", PB(m_shadowVol));
-  logIt("  reclaimed: {0}\n", PB(m_gcReclaimVol));
+  fprintf(stderr, "Obstack Peak Memory Usage Statistics\n");
+  fprintf(stderr, "  total:      %lu\n", m_maxTotalSize);
+  fprintf(stderr, "  chunks:     %lu (%lu)\n", m_maxChunkCount, maxChunkBytes);
+  fprintf(stderr, "  largeObj:   %lu (%lu)\n", m_maxLargeCount, m_maxLargeSize);
+  fprintf(stderr, "  iobj:       %lu\n", m_maxInternCount);
+  fprintf(stderr, "Obstack Volume\n");
+  fprintf(stderr, "  allocated:  %lu\n", totalVol);
+  fprintf(stderr, "  |-large:    %lu\n", m_largeVol);
+  fprintf(stderr, "  |-small:    %lu\n", m_smallVol);
+  fprintf(stderr, "    |-places: %lu\n", m_placeholderVol);
+  fprintf(stderr, "    |-frags:  %lu\n", m_fragmentVol);
+  fprintf(stderr, "Collector Volume\n");
+  fprintf(stderr, "  sweeps:    %lu\n", sweeps);
+  fprintf(stderr, "  |-runtime: %lu\n", m_runtimeSweeps);
+  fprintf(stderr, "  |-manual:  %lu\n", m_manualSweeps);
+  fprintf(stderr, "  |-auto:    %lu\n", m_autoSweeps);
+  fprintf(stderr, "  collects:  %lu\n", collects);
+  fprintf(stderr, "  |-runtime: %lu\n", m_runtimeCollects);
+  fprintf(stderr, "  |-manual:  %lu\n", m_manualCollects);
+  fprintf(stderr, "  |-auto:    %lu\n", m_autoCollects);
+  fprintf(stderr, "  visited:   %lu\n", m_gcVisitCount);
+  fprintf(stderr, "  scanned:   %lu\n", m_gcScanVol);
+  fprintf(stderr, "  copied:    %lu\n", m_gcVol);
+  fprintf(stderr, "  shadowed:  %lu\n", m_shadowVol);
+  fprintf(stderr, "  reclaimed: %lu\n", m_gcReclaimVol);
 }
 
 void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
-  auto PB = [](size_t n) { return prettyBytes(n); };
+  auto PB = [](size_t n) { return n; };
   const auto usage = obstack.usage(obstack.m_detail->m_firstNote);
-  logIt(
-      "Obstack Memory Usage: {0} ({1} peak)\n", PB(usage), PB(m_maxTotalSize));
+  fprintf(
+      stderr, "Obstack Memory Usage: %lu (%lu peak)\n", usage, m_maxTotalSize);
 }
 
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)

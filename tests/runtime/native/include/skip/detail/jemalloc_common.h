@@ -11,6 +11,8 @@
 #error Only include this file from within Arena.cpp
 #endif
 
+#include <stdio.h>
+
 #include "jemalloc/jemalloc.h"
 
 #if (JEMALLOC_VERSION_MAJOR < 4) ||                                    \
@@ -34,8 +36,8 @@ struct Mib {
     assert(m_size <= MAX_MIB_SIZE);
     int res = ::mallctlnametomib(name, &m_parts[0], &m_size);
     if (res) {
-      std::string s = folly::sformat("mallctlnametomib({}) failed", name);
-      throw std::runtime_error(s);
+      std::string nameStr(name);
+      throw std::runtime_error("mallctlnametomib(" + nameStr + ") failed");
     }
   }
 
@@ -80,8 +82,9 @@ void mallctl_by_mib(
   int res = ::mallctlbymib(
       mibx.m_parts.data(), mibx.m_size, oldp, oldlenp, (void*)newp, newlen);
   if (res) {
+    std::string nameStr(mibx.m_name);
     std::string s =
-        folly::sformat("mallctlbymib({}) failed, errno = {}", mibx.m_name, res);
+        "mallctlbymib(" + nameStr + ") failed, errno = " + std::to_string(res);
     throw std::runtime_error(s);
   }
 }
