@@ -73,9 +73,12 @@ inline size_t mungeBits(size_t n) {
 #endif
 
   // Swap endianness
-  mul = ((mul & 0x00000000FFFFFFFFull) << 32) | ((mul & 0xFFFFFFFF00000000ull) >> 32);
-  mul = ((mul & 0x0000FFFF0000FFFFull) << 16) | ((mul & 0xFFFF0000FFFF0000ull) >> 16);
-  mul = ((mul & 0x00FF00FF00FF00FFull) << 8)  | ((mul & 0xFF00FF00FF00FF00ull) >> 8);
+  mul = ((mul & 0x00000000FFFFFFFFull) << 32) |
+      ((mul & 0xFFFFFFFF00000000ull) >> 32);
+  mul = ((mul & 0x0000FFFF0000FFFFull) << 16) |
+      ((mul & 0xFFFF0000FFFF0000ull) >> 16);
+  mul = ((mul & 0x00FF00FF00FF00FFull) << 8) |
+      ((mul & 0xFF00FF00FF00FF00ull) >> 8);
 
   return mul;
 }
