@@ -15,25 +15,17 @@
 #include <cstdarg>
 #include <cstdint>
 #include <sys/uio.h>
+
+#define UNW_LOCAL_ONLY 1
 #include <libunwind.h>
 #include <cxxabi.h>
 #include <thread>
 
 #include <xmmintrin.h>
 
-#include <folly/MicroLock.h>
+namespace skip {
 
-#include <folly/Demangle.h>
-#ifndef __APPLE__
-#if FOLLY_USE_SYMBOLIZER
-#include <folly/experimental/symbolizer/Symbolizer.h>
-#endif
-#endif // __APPLE__
-
-#ifdef __APPLE__
-namespace {
-
-void osxPrintStackTrace() {
+void printStackTrace() {
   unw_cursor_t cursor;
   unw_context_t context;
 
@@ -48,39 +40,23 @@ void osxPrintStackTrace() {
     if (pc == 0) {
       break;
     }
-    fprintf(stderr, "  0x%.16llx:", pc);
+    fprintf(stderr, "  0x%.16lu:", pc);
 
     char sym[256];
     if (unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
-      fprintf(stderr, " %s + 0x%llx\n", folly::demangle(sym).c_str(), offset);
+      fprintf(stderr, " %s + 0x%lu\n", sym, offset);
     } else {
       fprintf(
           stderr, " -- error: unable to obtain symbol name for this frame\n");
     }
   }
 }
-} // namespace
-#endif
-
-namespace skip {
 
 template <class T>
 inline T loadUnaligned(const void* p) {
   T value;
   memcpy(&value, p, sizeof(T));
   return value;
-}
-
-void printStackTrace() {
-#ifndef __APPLE__
-#if FOLLY_USE_SYMBOLIZER
-  folly::symbolizer::SafeStackTracePrinter sstp;
-
-  sstp.printStackTrace(true);
-#endif
-#else
-  osxPrintStackTrace();
-#endif
 }
 
 uint64_t parseEnv(const char* name, uint64_t defaultVal) {
