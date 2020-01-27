@@ -298,15 +298,14 @@ int findFirstSet(unsigned long n) {
   return bit + 1;
 }
 
-std::string escape_json(const std::string &s) {
+std::string escape_json(const std::string& s) {
   std::ostringstream o;
   for (auto c = s.cbegin(); c != s.cend(); c++) {
-      if (*c == '"' || *c == '\\' || ('\x00' <= *c && *c <= '\x1f')) {
-          o << "\\u"
-            << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
-      } else {
-          o << *c;
-      }
+    if (*c == '"' || *c == '\\' || ('\x00' <= *c && *c <= '\x1f')) {
+      o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
+    } else {
+      o << *c;
+    }
   }
   return o.str();
 }

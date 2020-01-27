@@ -201,5 +201,5 @@ struct SpinLock {
 
 int findFirstSet(unsigned long n);
 int findLastSet(unsigned long n);
-std::string escape_json(const std::string &s);
+std::string escape_json(const std::string& s);
 } // namespace skip
