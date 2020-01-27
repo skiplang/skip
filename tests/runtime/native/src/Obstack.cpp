@@ -1119,7 +1119,8 @@ struct ObstackDetail::Collector {
       const auto total = m_obstack.m_detail->totalUsage(m_obstack);
       const auto workVol = scanVol + m_copyVol + m_shadowVol;
       if (workVol > std::max(freed, kChunkSize) * kGCSquawk) {
-        fprintf(stderr, 
+        fprintf(
+            stderr,
             "%s low-yield: eligible %lu min %lu scan %lu copy %lu "
             "freed %lu survived %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
@@ -1131,7 +1132,8 @@ struct ObstackDetail::Collector {
             postUsage,
             total);
       } else if (kGCVerbose >= 2) {
-        fprintf(stderr, 
+        fprintf(
+            stderr,
             "%s eligible %lu %s min %lu survived %lu work %lu total %lu\n",
             kCollectModeNames[(int)m_mode],
             m_preUsage,
@@ -1513,7 +1515,8 @@ void ObstackDetail::collect(
   if (UNLIKELY(verbose)) {
     const auto min = obstack.m_detail->m_minUsage;
     const auto total = obstack.m_detail->totalUsage(obstack);
-    fprintf(stderr, 
+    fprintf(
+        stderr,
         "%s eligible %lu %s min %lu total %lu\n",
         kSweepModeNames[(int)mode],
         preUsage,
@@ -2258,8 +2261,8 @@ void ObstackDetail::AllocStats::reportFinal() const {
 void ObstackDetail::AllocStats::report(const Obstack& obstack) const {
   auto PB = [](size_t n) { return n; };
   const auto usage = obstack.usage(obstack.m_detail->m_firstNote);
-  fprintf(stderr,
-      "Obstack Memory Usage: %lu (%lu peak)\n", usage, m_maxTotalSize);
+  fprintf(
+      stderr, "Obstack Memory Usage: %lu (%lu peak)\n", usage, m_maxTotalSize);
 }
 
 RObjHandle::RObjHandle(RObjOrFakePtr robj, Process::Ptr owner)
