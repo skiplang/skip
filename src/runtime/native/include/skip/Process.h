@@ -173,7 +173,7 @@ struct Process final : private boost::noncopyable {
   // for a Task to be posted.
   std::mutex m_batonLock;
   std::condition_variable m_batonSignal;
-  bool m_batonCond;
+  bool m_batonCond = false;
 
   // WARNING: While a thread is actively running context-switched to this
   // process, this field is junk, because for speed we temporarily move it
