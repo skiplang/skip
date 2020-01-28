@@ -11,13 +11,6 @@
 // we compile the preamble with very little config, so including
 // this stuff will break who-knows-what.
 
-// For FOLLY_SANITIZE_*
-#include <folly/CPortability.h>
-
-#if FOLLY_SANITIZE || FOLLY_SANITIZE_ADDRESS || FOLLY_SANITIZE_THREAD
-#define SKIP_SANITIZE 1
-#endif
-
 #if !SKIP_SANITIZE
 // For JEMALLOC_VERSION_*
 #include <algorithm>

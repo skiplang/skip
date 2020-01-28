@@ -21,7 +21,7 @@ namespace skip {
 /**
  * An IObj* plus some tag bits used by the InternTable.
  *
- * The low two bits are a folly::MicroLock, used to lock a Bucket.
+ * The low two bits are a skip::SpinLock, used to lock a Bucket.
  * They are only used in the head of the list, i.e. the pointer stored
  * directly in the buckets_ array.
  *
@@ -47,7 +47,7 @@ struct InternPtr final : SmallTaggedPtr<
                              2 // numAlignBits: interned pointers are only
                                // guaranteed aligned mod 4.
                              > {
-  /// The low two bits of each bucket are used as a folly::MicroLock.
+  /// The low two bits of each bucket are used as a skip::SpinLock.
   enum { kNumLockBits = 2 };
 
   enum { kNumExtraHashBits = kNumTagBits - kNumLockBits };
@@ -74,7 +74,7 @@ struct InternPtr final : SmallTaggedPtr<
  * This is a hash table used to intern Skip objects (IObj*).
  *
  * It uses an intrusive linked list of objects per bucket with per-bucket
- * locking via a folly::MicroLock.
+ * locking via a skip::SpinLock.
  *
  * Each pointer in the chain uses leftover "tag bits" to hold additional
  * bits of the hash of the pointed-to object. There is no need to even
