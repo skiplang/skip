@@ -13,7 +13,6 @@
 
 #include <utility>
 #include <boost/noncopyable.hpp>
-#include <folly/Function.h>
 
 namespace skip {
 
@@ -200,8 +199,8 @@ class ThreadLocalLockManager final : private boost::noncopyable {
   std::vector<InvalidationWatcher::Ptr>& invalidationWatchersToNotify();
 
   template <typename T>
-  folly::Function<void()> setTestOnUnlockHook(T&& func) {
-    folly::Function<void()> old = std::move(m_testOnUnlockHook);
+  std::function<void()> setTestOnUnlockHook(T&& func) {
+    std::function<void()> old = std::move(m_testOnUnlockHook);
     m_testOnUnlockHook = std::forward<T>(func);
     m_callTestOnUnlockHook = bool(m_testOnUnlockHook);
     return old;
@@ -254,7 +253,7 @@ class ThreadLocalLockManager final : private boost::noncopyable {
   // held transitions from nonzero to zero. This allows interesting side
   // effects to be injected at sensitive points in the code, simulating
   // multiple threads making changes but in a deterministic way.
-  folly::Function<void()> m_testOnUnlockHook;
+  std::function<void()> m_testOnUnlockHook;
 
 #if SKIP_DEBUG_LOCKS
   // Bit mask of which entries in m_locksArray are not in use.
@@ -353,6 +352,6 @@ struct TestHookGuard {
   ~TestHookGuard();
 
  private:
-  folly::Function<void()> m_oldHook;
+  std::function<void()> m_oldHook;
 };
 } // namespace skip
