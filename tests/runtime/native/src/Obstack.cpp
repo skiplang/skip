@@ -24,7 +24,6 @@
 #include "ObstackDetail.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <map>
 #include <stdexcept>
@@ -222,9 +221,6 @@ const auto kGCSquawk = parseEnvD("SKIP_GC_SQUAWK", kGCRatio* kGCRatio);
 // 3 = include sweeps (0-root collections)
 const auto kGCVerbose = parseEnv("SKIP_GC_VERBOSE", 0);
 
-std::chrono::time_point<std::chrono::high_resolution_clock> threadNanos() {
-  return std::chrono::high_resolution_clock::now();
-}
 } // anonymous namespace
 
 const uint64_t kMemstatsLevel = parseEnv("SKIP_MEMSTATS", 0);
@@ -1058,9 +1054,6 @@ struct ObstackDetail::Collector {
   void* const m_oldNextAlloc;
 
   const size_t m_preUsage; // memory usage at collection start
-  const std::chrono::time_point<std::chrono::high_resolution_clock>
-      m_preNs; // timestamp at start
-  int64_t m_markNs;
   const CollectMode m_mode;
   size_t m_rootSize{0};
   size_t m_markCount{0}; // number objects marked reachable
@@ -1095,7 +1088,6 @@ struct ObstackDetail::Collector {
         m_collectChunk(Chunk::fromRaw(note.ptr)),
         m_oldNextAlloc(obstack.m_nextAlloc),
         m_preUsage(obstack.usage(note)),
-        m_preNs(threadNanos()),
         m_mode(mode) {}
 
   ~Collector() {
@@ -1163,7 +1155,6 @@ struct ObstackDetail::Collector {
       // shadow to the collect chunk.
       copyShadowToCollectChunk();
     }
-    m_markNs = (threadNanos() - m_preNs).count();
     DEBUG_ONLY const auto stats =
         m_obstack.m_detail->sweep(m_obstack, m_collectAddr, m_oldNextAlloc);
     assert(stats.largeYoungSurvivors == m_largeYoungCount);
