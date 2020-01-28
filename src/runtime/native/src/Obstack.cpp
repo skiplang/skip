@@ -32,7 +32,6 @@
 #include <vector>
 #include <array>
 
-#include <folly/Format.h>
 #include <folly/ClockGettimeWrappers.h>
 
 #if ENABLE_VALGRIND
@@ -494,12 +493,7 @@ void ObstackDetail::printObjectSize(const RObj* o) const {
     });
   }
 
-  folly::writeTo(
-      stderr,
-      folly::format(
-          "Obstack size of {0}: {1}\n",
-          (void*)o,
-          folly::prettyPrint(total, folly::PRETTY_BYTES)));
+  fprintf(stderr, "Obstack size of %p: %lu\n", (void*)o, total);
 }
 
 size_t Obstack::usage(SkipObstackPos noteAddr) const {
