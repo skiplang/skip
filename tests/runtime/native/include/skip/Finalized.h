@@ -13,7 +13,6 @@
 #include "Obstack.h"
 #include "objects.h"
 
-#include <folly/lang/SafeAssert.h>
 #include <boost/intrusive_ptr.hpp>
 
 namespace skip {

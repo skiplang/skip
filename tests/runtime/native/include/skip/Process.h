@@ -62,7 +62,7 @@ struct UnownedProcess {
 
 // A Process is analogous to an operating system process, containing
 // an "address space" (Obstack, in our case) and other "local" context.
-// Unlike a folly fiber, it does not retain an associated program stack.
+// It does not retain an associated program stack.
 //
 // Just as an OS process can be either suspended in the kernel or actively
 // run by some core, so can a Process be suspended or actively run by some
