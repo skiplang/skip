@@ -20,7 +20,6 @@
 #include <boost/noncopyable.hpp>
 #include <boost/iterator/iterator_facade.hpp>
 
-#include <folly/lang/Bits.h>
 #include <folly/Likely.h>
 
 #include <atomic>
