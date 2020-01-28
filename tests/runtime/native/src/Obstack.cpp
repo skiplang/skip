@@ -24,6 +24,7 @@
 #include "ObstackDetail.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <map>
 #include <stdexcept>
@@ -31,9 +32,6 @@
 #include <utility>
 #include <vector>
 #include <array>
-
-#include <folly/Format.h>
-#include <folly/ClockGettimeWrappers.h>
 
 #if ENABLE_VALGRIND
 #include <valgrind/memcheck.h>
@@ -224,8 +222,8 @@ const auto kGCSquawk = parseEnvD("SKIP_GC_SQUAWK", kGCRatio* kGCRatio);
 // 3 = include sweeps (0-root collections)
 const auto kGCVerbose = parseEnv("SKIP_GC_VERBOSE", 0);
 
-int64_t threadNanos() {
-  return folly::chrono::clock_gettime_ns(CLOCK_THREAD_CPUTIME_ID);
+std::chrono::time_point<std::chrono::high_resolution_clock> threadNanos() {
+  return std::chrono::high_resolution_clock::now();
 }
 } // anonymous namespace
 
@@ -494,12 +492,7 @@ void ObstackDetail::printObjectSize(const RObj* o) const {
     });
   }
 
-  folly::writeTo(
-      stderr,
-      folly::format(
-          "Obstack size of {0}: {1}\n",
-          (void*)o,
-          folly::prettyPrint(total, folly::PRETTY_BYTES)));
+  fprintf(stderr, "Obstack size of %p: %lu\n", (void*)o, total);
 }
 
 size_t Obstack::usage(SkipObstackPos noteAddr) const {
@@ -1065,7 +1058,8 @@ struct ObstackDetail::Collector {
   void* const m_oldNextAlloc;
 
   const size_t m_preUsage; // memory usage at collection start
-  const int64_t m_preNs; // timestamp at start
+  const std::chrono::time_point<std::chrono::high_resolution_clock>
+      m_preNs; // timestamp at start
   int64_t m_markNs;
   const CollectMode m_mode;
   size_t m_rootSize{0};
@@ -1169,7 +1163,7 @@ struct ObstackDetail::Collector {
       // shadow to the collect chunk.
       copyShadowToCollectChunk();
     }
-    m_markNs = threadNanos() - m_preNs;
+    m_markNs = (threadNanos() - m_preNs).count();
     DEBUG_ONLY const auto stats =
         m_obstack.m_detail->sweep(m_obstack, m_collectAddr, m_oldNextAlloc);
     assert(stats.largeYoungSurvivors == m_largeYoungCount);

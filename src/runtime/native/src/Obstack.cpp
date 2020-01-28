@@ -32,9 +32,6 @@
 #include <vector>
 #include <array>
 
-#include <folly/Format.h>
-#include <folly/ClockGettimeWrappers.h>
-
 #if ENABLE_VALGRIND
 #include <valgrind/memcheck.h>
 #endif
@@ -224,9 +221,6 @@ const auto kGCSquawk = parseEnvD("SKIP_GC_SQUAWK", kGCRatio* kGCRatio);
 // 3 = include sweeps (0-root collections)
 const auto kGCVerbose = parseEnv("SKIP_GC_VERBOSE", 0);
 
-int64_t threadNanos() {
-  return folly::chrono::clock_gettime_ns(CLOCK_THREAD_CPUTIME_ID);
-}
 } // anonymous namespace
 
 const uint64_t kMemstatsLevel = parseEnv("SKIP_MEMSTATS", 0);
@@ -494,12 +488,7 @@ void ObstackDetail::printObjectSize(const RObj* o) const {
     });
   }
 
-  folly::writeTo(
-      stderr,
-      folly::format(
-          "Obstack size of {0}: {1}\n",
-          (void*)o,
-          folly::prettyPrint(total, folly::PRETTY_BYTES)));
+  fprintf(stderr, "Obstack size of %p: %lu\n", (void*)o, total);
 }
 
 size_t Obstack::usage(SkipObstackPos noteAddr) const {
@@ -1065,8 +1054,6 @@ struct ObstackDetail::Collector {
   void* const m_oldNextAlloc;
 
   const size_t m_preUsage; // memory usage at collection start
-  const int64_t m_preNs; // timestamp at start
-  int64_t m_markNs;
   const CollectMode m_mode;
   size_t m_rootSize{0};
   size_t m_markCount{0}; // number objects marked reachable
@@ -1101,7 +1088,6 @@ struct ObstackDetail::Collector {
         m_collectChunk(Chunk::fromRaw(note.ptr)),
         m_oldNextAlloc(obstack.m_nextAlloc),
         m_preUsage(obstack.usage(note)),
-        m_preNs(threadNanos()),
         m_mode(mode) {}
 
   ~Collector() {
@@ -1169,7 +1155,6 @@ struct ObstackDetail::Collector {
       // shadow to the collect chunk.
       copyShadowToCollectChunk();
     }
-    m_markNs = threadNanos() - m_preNs;
     DEBUG_ONLY const auto stats =
         m_obstack.m_detail->sweep(m_obstack, m_collectAddr, m_oldNextAlloc);
     assert(stats.largeYoungSurvivors == m_largeYoungCount);
