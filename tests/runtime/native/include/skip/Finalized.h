@@ -32,7 +32,6 @@ struct IntrusiveFinalized : MutableIObj {
 
     const size_t numBytes = (ubs + metadataSize);
     void* const raw = Arena::alloc(numBytes, Arena::Kind::iobj);
-    FOLLY_SAFE_CHECK(raw != nullptr, "Out of memory.");
 
     // Initialize the metadata before we initialize the class
     auto metadata = mem::add(raw, metadataSize - sizeof(IObjMetadata));
