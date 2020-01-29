@@ -211,4 +211,12 @@ struct SpinLock {
 int findFirstSet(unsigned long n);
 int findLastSet(unsigned long n);
 std::string escape_json(const std::string& s);
+
+template <class T>
+inline constexpr bool isPowTwo(T const v) {
+  static_assert(std::is_integral<T>::value, "non-integral type");
+  static_assert(std::is_unsigned<T>::value, "signed type");
+  static_assert(!std::is_same<T, bool>::value, "bool type");
+  return (v != 0) && !(v & (v - 1));
+}
 } // namespace skip
