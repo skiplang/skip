@@ -1221,7 +1221,6 @@ void* rawShallowCloneObjectIntoIntern(
   const size_t numBytes =
       internedMetadataByteSize + std::max<size_t>(userByteSize, 8);
   void* const raw = Arena::alloc(numBytes, Arena::Kind::iobj);
-  FOLLY_SAFE_CHECK(raw != nullptr, "Out of memory.");
 
   // Copy in the VTable* and user data.
   memcpy(
