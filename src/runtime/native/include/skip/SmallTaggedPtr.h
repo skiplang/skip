@@ -81,35 +81,6 @@ struct PackedUInt : boost::totally_ordered<
   using UIntType = typename boost::uint_t<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
   /* implicit */ operator UIntType() const {
-#ifndef FOLLY_SANITIZE_ADDRESS
-    // Consider doing evil hacks that look a few bytes outside this value's
-    // storage, if the template parameters said that is safe.
-
-    const auto raw = reinterpret_cast<const char*>(&m_lo);
-
-    UIntType ret;
-
-    const int junkBytes = sizeof(ret) - sizeof(*this);
-
-    if (safeToLoadBefore) {
-      // Load a full unaligned word containing the data we want,
-      // in a single instruction on x86, GOING OUTSIDE OF OUR STORAGE,
-      // then right shift away any garbage low bits. Yes, this is
-      // officially undefined behavior, but safeToLoadBefore said it
-      // was OK.
-      //
-      // We use memcpy here rather than loadUnaligned to avoid strict
-      // aliasing problems. The compiler inlines it to a load so it's fast.
-      ::memcpy(&ret, raw - junkBytes, sizeof(ret));
-      return ret >> (junkBytes * 8);
-    } else if (safeToLoadAfter) {
-      // Load a full unaligned word containing the data we want, GOING OUTSIDE
-      // OUR STORAGE, and bit-AND away any garbage high bits. Yes, this is
-      // officially undefined behavior, but safeToLoadAfter said it was OK.
-      ::memcpy(&ret, raw, sizeof(ret));
-      return ret & (~(UIntType)0 >> (junkBytes * 8));
-    }
-#endif
 
     // Combine the unaligned pieces into a single number.
     const UIntType loBits = m_lo;
