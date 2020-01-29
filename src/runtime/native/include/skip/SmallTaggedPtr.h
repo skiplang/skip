@@ -32,30 +32,30 @@ namespace detail {
  * the right class.
  */
 template <typename T>
-struct UnalignedValue : boost::totally_ordered<UnalignedValue<T>> {
+struct __attribute__((packed)) UnalignedValue : boost::totally_ordered<UnalignedValue<T>> {
   /* implicit */ operator T() const {
-    return m_bits.value;
+    return m_bits;
   }
 
   UnalignedValue& operator=(T n) {
-    m_bits.value = n;
+    m_bits = n;
     return *this;
   }
 
   UnalignedValue& operator=(const UnalignedValue& other) = default;
 
   bool operator==(const UnalignedValue& other) {
-    return m_bits.value == other.value;
+    return m_bits == other;
   }
 
   bool operator<(const UnalignedValue& other) {
-    return m_bits.value < other.value;
+    return m_bits < other;
   }
 
  private:
   static_assert(sizeof(T) > 1, "No need to pack one-byte value.");
 
-  folly::Unaligned<T> m_bits;
+  T m_bits;
 };
 
 /**
