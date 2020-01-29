@@ -229,7 +229,7 @@ inline T loadUnaligned(const void* p) {
 }
 
 class StringPiece {
-  public:
+ public:
   StringPiece(std::string str, size_t size) {
     m_iter = str.begin();
     m_end = m_iter + size;

@@ -121,7 +121,6 @@ ssize_t String::cmp(const String& o) const {
 }
 
 const char* String::c_str(char buffer[CSTR_BUFFER_SIZE]) const {
-
   const auto bytes = byteSize();
   if (isShortString()) {
     // For short strings always copy - we copy an extra byte but that way the
