@@ -301,7 +301,8 @@ size_t purgeLruList() {
 
 ::std::ostream& operator<<(::std::ostream& os, const String& s) {
   String::DataBuffer buf;
-  for (auto ch : s.slice(buf)) {
+  std::string str = s.data(buf);
+  for (auto ch : str) {
     if (isprint(ch)) {
       os << ch;
     } else {
