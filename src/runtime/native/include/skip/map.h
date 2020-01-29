@@ -17,8 +17,7 @@ namespace skip {
 template <class T, class U, class V = std::hash<T>, class W = std::equal_to<T>>
 using node_map = std::unordered_map<T, U, V, W>;
 
-// Use this when you don't require ref/iter stability, and want to let
-// folly choose between F14ValueMap or F14VectorMap
+// Use this when you don't require ref/iter stability
 template <class T, class U, class V = std::hash<T>, class W = std::equal_to<T>>
 using fast_map = std::unordered_map<T, U, V, W>;
 } // namespace skip
