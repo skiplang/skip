@@ -65,7 +65,6 @@ list(APPEND PRELUDE_SOURCES
   stdlib/other/Regex.sk
   stdlib/other/Stats.sk
   stdlib/other/StringIterator.sk
-  stdlib/other/Subprocess.sk
   stdlib/other/System.sk
   stdlib/other/Util.sk
   stdlib/parsing/LexingPosition.sk
