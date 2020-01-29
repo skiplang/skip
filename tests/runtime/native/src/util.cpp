@@ -53,13 +53,6 @@ void printStackTrace() {
   }
 }
 
-template <class T>
-inline T loadUnaligned(const void* p) {
-  T value;
-  memcpy(&value, p, sizeof(T));
-  return value;
-}
-
 uint64_t parseEnv(const char* name, uint64_t defaultVal) {
   auto s = std::getenv(name);
   return s ? strtoull(s, nullptr, 0) : defaultVal;
