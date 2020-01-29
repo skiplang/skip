@@ -15,8 +15,6 @@
 
 #include <atomic>
 
-#include <folly/Range.h>
-
 namespace skip {
 
 struct LongString final : RObj {
