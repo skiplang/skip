@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include <boost/noncopyable.hpp>
@@ -219,4 +220,12 @@ inline constexpr bool isPowTwo(T const v) {
   static_assert(!std::is_same<T, bool>::value, "bool type");
   return (v != 0) && !(v & (v - 1));
 }
+
+template <class T>
+inline T loadUnaligned(const void* p) {
+  T value;
+  memcpy(&value, p, sizeof(T));
+  return value;
+}
+
 } // namespace skip

@@ -2512,23 +2512,23 @@ void UpEdge::assign(DownEdge d) {
 MemoValue::MemoValue(Type type) : m_type(type) {
   // Initialize all bits so that operator== can blindly compare them,
   // even for union members that don't use all the bits.
-  memset(&m_value.value, 0, sizeof(m_value.value));
+  memset(&m_value, 0, sizeof(m_value));
 }
 
 MemoValue::MemoValue(Context& ctx) : MemoValue(Type::kContext) {
-  m_value.value.m_context = &ctx;
+  m_value.m_context = &ctx;
 }
 
 MemoValue::MemoValue(InvalidationWatcher& watcher)
     : MemoValue(Type::kInvalidationWatcher) {
-  m_value.value.m_invalidationWatcher = &watcher;
+  m_value.m_invalidationWatcher = &watcher;
 }
 
 MemoValue::MemoValue(IObj* iobj, Type type, bool incref) : MemoValue(type) {
   assert(
       type == Type::kIObj || type == Type::kException ||
       type == Type::kLongString);
-  m_value.value.m_IObj = iobj;
+  m_value.m_IObj = iobj;
 
   if (iobj != nullptr && incref) {
     skip::incref(iobj);
@@ -2536,41 +2536,41 @@ MemoValue::MemoValue(IObj* iobj, Type type, bool incref) : MemoValue(type) {
 }
 
 MemoValue::MemoValue(intptr_t n, Type /*type*/) : MemoValue(Type::kFakePtr) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(long n) : MemoValue(Type::kInt64) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(long long n) : MemoValue(Type::kInt64) {
-  m_value.value.m_int64 = n;
+  m_value.m_int64 = n;
 }
 
 MemoValue::MemoValue(int n) : MemoValue(static_cast<int64_t>(n)) {}
 
 MemoValue::MemoValue(double n) : MemoValue(Type::kDouble) {
-  m_value.value.m_double = n;
+  m_value.m_double = n;
 }
 
 MemoValue::MemoValue(const StringPtr& s) {
   if (auto longString = s->asLongString()) {
-    m_value.value.m_IObj = &longString->cast<IObj>();
+    m_value.m_IObj = &longString->cast<IObj>();
     m_type = Type::kLongString;
-    incref(m_value.value.m_IObj);
+    incref(m_value.m_IObj);
   } else {
-    m_value.value.m_int64 = s->sbits();
+    m_value.m_int64 = s->sbits();
     m_type = Type::kShortString;
   }
 }
 
 MemoValue::MemoValue(StringPtr&& s) noexcept {
   if (auto longString = s->asLongString()) {
-    m_value.value.m_IObj = &longString->cast<IObj>();
+    m_value.m_IObj = &longString->cast<IObj>();
     m_type = Type::kLongString;
     s.release();
   } else {
-    m_value.value.m_int64 = s->sbits();
+    m_value.m_int64 = s->sbits();
     m_type = Type::kShortString;
   }
 }
@@ -2613,7 +2613,10 @@ void MemoValue::reset() {
 }
 
 void MemoValue::swap(MemoValue& v) noexcept {
-  std::swap(m_value, v.m_value);
+  // We cannot use std::swap here because the field is packed.
+  Value tmp = m_value;
+  m_value = v.m_value;
+  v.m_value = tmp;
   std::swap(m_type, v.m_type);
 }
 
@@ -2623,7 +2626,7 @@ bool MemoValue::operator==(const MemoValue& v) const {
   // operator on doubles.
   return (
       m_type == v.m_type &&
-      !memcmp(&m_value.value, &v.m_value.value, sizeof(m_value.value)));
+      !memcmp(&m_value, &v.m_value, sizeof(m_value)));
 }
 
 bool MemoValue::operator!=(const MemoValue& v) const {
@@ -2635,13 +2638,13 @@ bool MemoValue::isSkipValue() const {
 }
 
 Context* MemoValue::asContext() const {
-  return (m_type == Type::kContext) ? m_value.value.m_context : nullptr;
+  return (m_type == Type::kContext) ? m_value.m_context : nullptr;
 }
 
 IObj* MemoValue::asIObj() const {
   if (m_type == Type::kIObj || m_type == Type::kException ||
       m_type == Type::kLongString) {
-    return m_value.value.m_IObj;
+    return m_value.m_IObj;
   } else {
     return nullptr;
   }
@@ -2650,9 +2653,9 @@ IObj* MemoValue::asIObj() const {
 IObjOrFakePtr MemoValue::asIObjOrFakePtr() const {
   if (m_type == Type::kIObj || m_type == Type::kException ||
       m_type == Type::kLongString || m_type == Type::kNull) {
-    return {m_value.value.m_IObj};
+    return {m_value.m_IObj};
   } else if (m_type == Type::kFakePtr || m_type == Type::kShortString) {
-    return IObjOrFakePtr((intptr_t)m_value.value.m_int64);
+    return IObjOrFakePtr((intptr_t)m_value.m_int64);
   } else {
     fatal("Unhandled type for asIObjOrFakePtr()");
   }
@@ -2669,7 +2672,7 @@ IObj* MemoValue::detachIObj() {
 
 InvalidationWatcher::Ptr MemoValue::detachInvalidationWatcher() {
   assert(m_type == Type::kInvalidationWatcher);
-  InvalidationWatcher::Ptr watcher{m_value.value.m_invalidationWatcher, false};
+  InvalidationWatcher::Ptr watcher{m_value.m_invalidationWatcher, false};
   m_type = Type::kUndef;
   memset(&m_value, 0, sizeof(m_value));
   return watcher;
@@ -2677,20 +2680,20 @@ InvalidationWatcher::Ptr MemoValue::detachInvalidationWatcher() {
 
 int64_t MemoValue::asInt64() const {
   assert(m_type == Type::kInt64);
-  return m_value.value.m_int64;
+  return m_value.m_int64;
 }
 
 double MemoValue::asDouble() const {
   assert(m_type == Type::kDouble);
-  return m_value.value.m_double;
+  return m_value.m_double;
 }
 
 StringPtr MemoValue::asString() const {
   assert(isString());
   if (m_type == Type::kShortString) {
-    return StringPtr(String::fromSBits(m_value.value.m_int64));
+    return StringPtr(String::fromSBits(m_value.m_int64));
   } else {
-    return StringPtr(String(m_value.value.m_IObj->cast<const LongString>()));
+    return StringPtr(String(m_value.m_IObj->cast<const LongString>()));
   }
 }
 

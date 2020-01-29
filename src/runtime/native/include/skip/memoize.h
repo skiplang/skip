@@ -608,7 +608,7 @@ InvalidationWatcher::Ptr watchDependencies(
     const std::function<void(void)>& func);
 
 /** A memoized value (a tagged union). A Revision holds one of these. */
-struct MemoValue {
+struct __attribute__((packed)) MemoValue {
   // NOTE: If you change this enum, update isSkipValue().
   enum class Type : uint8_t {
     // No known value.
@@ -744,7 +744,7 @@ struct MemoValue {
 
   // Raw underlying bits. Use with care!
   uint64_t bits() const {
-    return static_cast<uint64_t>(m_value.value.m_int64);
+    return static_cast<uint64_t>(m_value.m_int64);
   }
 
   // A tagged union holding the memoized value. m_type distinguishes.
@@ -758,7 +758,7 @@ struct MemoValue {
 
  private:
   // This is unaligned so it only takes up 9 bytes in Revision.
-  folly::Unaligned<Value> m_value;
+  Value m_value;
   Type m_type;
 };
 
