@@ -152,7 +152,7 @@ struct String final : StringRep, boost::less_than_comparable<String> {
   // not be used.
   const char* data(DataBuffer& buffer) const;
 
-  folly::StringPiece slice(DataBuffer& buffer) const;
+  skip::StringPiece slice(DataBuffer& buffer) const;
 
   void clear();
 

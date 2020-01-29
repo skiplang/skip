@@ -4138,7 +4138,7 @@ std::ostream& operator<<(std::ostream& out, const MemoValue& m) {
     case MemoValue::Type::kLongString:
     case MemoValue::Type::kShortString: {
       String::DataBuffer buf;
-      out << "[string:" << m.asString()->slice(buf) << ']';
+      out << "[string:" << m.asString()->data(buf) << ']';
       break;
     }
 

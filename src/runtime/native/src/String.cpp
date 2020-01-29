@@ -31,8 +31,6 @@
 #include <unicode/ucnv.h>
 #include <unicode/ustring.h>
 
-#include <folly/Conv.h>
-
 #include <boost/format.hpp>
 
 namespace skip {
@@ -157,9 +155,9 @@ std::string String::toCppString() const {
   return std::string(text, text + byteSize());
 }
 
-folly::StringPiece String::slice(DataBuffer& buffer) const {
+skip::StringPiece String::slice(DataBuffer& buffer) const {
   auto p = data(buffer);
-  return {p, p + byteSize()};
+  return StringPiece(p, byteSize());
 }
 
 void String::clear() {
@@ -627,7 +625,10 @@ String SKIP_String__fromUtf8(const void*, const RObj* src_) {
 
 double SKIP_String__toFloat_raw(String s) {
   String::DataBuffer buf;
-  return folly::to<double>(String(s).slice(buf));
+  std::string str = s.data(buf);
+  std::string::size_type sz;
+  return std::stod(str, &sz);
+//  return folly::to<double>(String(s).slice(buf));
 }
 
 struct toIntOptionHelperRet_t SKIP_String_toIntOptionHelper(String s) {
