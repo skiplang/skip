@@ -14,8 +14,6 @@
 
 #include <boost/functional/hash.hpp>
 
-#include <folly/Hash.h>
-
 #include <gtest/gtest.h>
 
 #include "skip/String.h"
