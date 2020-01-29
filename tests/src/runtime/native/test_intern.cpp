@@ -15,8 +15,6 @@
 #include <boost/functional/hash.hpp>
 #include <boost/scope_exit.hpp>
 
-#include <folly/Hash.h>
-
 #include <gtest/gtest.h>
 
 #include "skip/intern-extc.h"
