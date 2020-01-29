@@ -18,21 +18,20 @@ namespace {
 // Simple tests to make sure UIntTypeSelector returns a matching type.
 //
 
-#define CHECK_UINT_TYPE_SELECTOR(SZ)                                   \
-  static_assert(                                                       \
-      sizeof(UIntTypeSelector<SZ, false, false, false>::type) == (SZ), \
-      "Bad size");                                                     \
-  static_assert(                                                       \
-      alignof(UIntTypeSelector<SZ, false, false, false>::type) ==      \
-          (skip::isPowTwo(SZ)                                         \
-               ? alignof(typename boost::uint_t<(SZ)*8>::least)        \
-               : 1),                                                   \
-      "Bad align");                                                    \
-  static_assert(                                                       \
-      sizeof(UIntTypeSelector<SZ, false, false, true>::type) == (SZ),  \
-      "Bad size");                                                     \
-  static_assert(                                                       \
-      alignof(UIntTypeSelector<SZ, false, false, true>::type) == 1,    \
+#define CHECK_UINT_TYPE_SELECTOR(SZ)                                           \
+  static_assert(                                                               \
+      sizeof(UIntTypeSelector<SZ, false, false, false>::type) == (SZ),         \
+      "Bad size");                                                             \
+  static_assert(                                                               \
+      alignof(UIntTypeSelector<SZ, false, false, false>::type) ==              \
+          (skip::isPowTwo(SZ) ? alignof(typename boost::uint_t<(SZ)*8>::least) \
+                              : 1),                                            \
+      "Bad align");                                                            \
+  static_assert(                                                               \
+      sizeof(UIntTypeSelector<SZ, false, false, true>::type) == (SZ),          \
+      "Bad size");                                                             \
+  static_assert(                                                               \
+      alignof(UIntTypeSelector<SZ, false, false, true>::type) == 1,            \
       "Bad align")
 
 CHECK_UINT_TYPE_SELECTOR(1U);
