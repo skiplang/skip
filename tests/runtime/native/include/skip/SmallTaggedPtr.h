@@ -8,6 +8,7 @@
 #pragma once
 
 #include "fwd.h"
+#include "util.h"
 
 #include <cassert>
 #include <cstdint>
@@ -18,8 +19,6 @@
 #include <boost/integer.hpp>
 #include <boost/integer/static_log2.hpp>
 #include <boost/operators.hpp>
-
-#include <folly/lang/Bits.h>
 
 namespace skip {
 namespace detail {
@@ -32,30 +31,30 @@ namespace detail {
  * the right class.
  */
 template <typename T>
-struct UnalignedValue : boost::totally_ordered<UnalignedValue<T>> {
+struct __attribute__((packed)) UnalignedValue : boost::totally_ordered<UnalignedValue<T>> {
   /* implicit */ operator T() const {
-    return m_bits.value;
+    return m_bits;
   }
 
   UnalignedValue& operator=(T n) {
-    m_bits.value = n;
+    m_bits = n;
     return *this;
   }
 
   UnalignedValue& operator=(const UnalignedValue& other) = default;
 
   bool operator==(const UnalignedValue& other) {
-    return m_bits.value == other.value;
+    return m_bits == other;
   }
 
   bool operator<(const UnalignedValue& other) {
-    return m_bits.value < other.value;
+    return m_bits < other;
   }
 
  private:
   static_assert(sizeof(T) > 1, "No need to pack one-byte value.");
 
-  folly::Unaligned<T> m_bits;
+  T m_bits;
 };
 
 /**
@@ -80,35 +79,6 @@ struct PackedUInt : boost::totally_ordered<
   using UIntType = typename boost::uint_t<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
   /* implicit */ operator UIntType() const {
-#ifndef FOLLY_SANITIZE_ADDRESS
-    // Consider doing evil hacks that look a few bytes outside this value's
-    // storage, if the template parameters said that is safe.
-
-    const auto raw = reinterpret_cast<const char*>(&m_lo);
-
-    UIntType ret;
-
-    const int junkBytes = sizeof(ret) - sizeof(*this);
-
-    if (safeToLoadBefore) {
-      // Load a full unaligned word containing the data we want,
-      // in a single instruction on x86, GOING OUTSIDE OF OUR STORAGE,
-      // then right shift away any garbage low bits. Yes, this is
-      // officially undefined behavior, but safeToLoadBefore said it
-      // was OK.
-      //
-      // We use memcpy here rather than loadUnaligned to avoid strict
-      // aliasing problems. The compiler inlines it to a load so it's fast.
-      ::memcpy(&ret, raw - junkBytes, sizeof(ret));
-      return ret >> (junkBytes * 8);
-    } else if (safeToLoadAfter) {
-      // Load a full unaligned word containing the data we want, GOING OUTSIDE
-      // OUR STORAGE, and bit-AND away any garbage high bits. Yes, this is
-      // officially undefined behavior, but safeToLoadAfter said it was OK.
-      ::memcpy(&ret, raw, sizeof(ret));
-      return ret & (~(UIntType)0 >> (junkBytes * 8));
-    }
-#endif
 
     // Combine the unaligned pieces into a single number.
     const UIntType loBits = m_lo;
@@ -198,7 +168,7 @@ struct UIntTypeSelector<
     safeToLoadBefore,
     safeToLoadAfter,
     pack,
-    typename std::enable_if<pack && folly::isPowTwo(size) && size != 1>::type> {
+    typename std::enable_if<pack && skip::isPowTwo(size) && size != 1>::type> {
   using type = detail::UnalignedValue<typename boost::uint_t<size * 8>::exact>;
 };
 
@@ -210,7 +180,7 @@ struct UIntTypeSelector<
     safeToLoadAfter,
     pack,
     typename std::enable_if<
-        folly::isPowTwo(size) && (!pack || size == 1)>::type> {
+        skip::isPowTwo(size) && (!pack || size == 1)>::type> {
   // Just use a simple C++ scalar type, not one of our structs.
   using type = typename boost::uint_t<size * 8>::exact;
 };
