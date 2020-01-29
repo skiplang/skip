@@ -2624,9 +2624,7 @@ bool MemoValue::operator==(const MemoValue& v) const {
   // NOTE: We intentially use bitwise equality so that e.g. 0.0 != -0.0 and
   // NaN == NaN (if same bit pattern). This is different than the C++ ==
   // operator on doubles.
-  return (
-      m_type == v.m_type &&
-      !memcmp(&m_value, &v.m_value, sizeof(m_value)));
+  return (m_type == v.m_type && !memcmp(&m_value, &v.m_value, sizeof(m_value)));
 }
 
 bool MemoValue::operator!=(const MemoValue& v) const {
