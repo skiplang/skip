@@ -53,7 +53,7 @@ constexpr bool isChunkAligned(T p) {
 
 #define ARENA_PRIVATE 1
 #include "skip/detail/jemalloc_common.h"
-static_assert(JEMALLOC_VERSION_MAJOR == 5)
+static_assert(JEMALLOC_VERSION_MAJOR == 5);
 #include "skip/detail/jemalloc5.h"
 #undef ARENA_PRIVATE
 
