@@ -73,8 +73,10 @@ struct String final : StringRep, boost::less_than_comparable<String> {
     *static_cast<StringRep*>(this) = s;
   }
   String(const char* begin, const char* end);
-  explicit String(folly::StringPiece range)
-      : String(range.start(), range.end()) {}
+  explicit String(skip::StringPiece range)
+      : String(range.begin(), range.begin() + range.size()) {}
+  explicit String(std::string str)
+      : String(str.begin(), str.end()) {}
   explicit String(const char* cstr) : String(cstr, cstr + strlen(cstr)) {}
   explicit String(const LongString& p) {
     m_longString = &p;
