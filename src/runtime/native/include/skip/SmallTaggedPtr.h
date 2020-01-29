@@ -20,8 +20,6 @@
 #include <boost/integer/static_log2.hpp>
 #include <boost/operators.hpp>
 
-#include <folly/lang/Bits.h>
-
 namespace skip {
 namespace detail {
 
