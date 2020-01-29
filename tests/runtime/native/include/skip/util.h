@@ -161,13 +161,11 @@ constexpr T roundDown(T n, size_t align) {
   return detail::RoundDown<T>::roundDown(n, align);
 }
 
-struct pair_hash
-{
-    template <class T1, class T2>
-    std::size_t operator() (const std::pair<T1, T2> &pair) const
-    {
-        return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-    }
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2>& pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
 };
 
 /// Hash a block of memory.

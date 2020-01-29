@@ -48,7 +48,8 @@ struct ReactiveGlobalCache {
   using KeyType = std::pair<int64_t, std::string>;
   std::unordered_map<KeyType, Cell, pair_hash> m_cells;
 
-  std::unordered_map<KeyType, Cell, pair_hash>::iterator constructEmptyCell(KeyType key) {
+  std::unordered_map<KeyType, Cell, pair_hash>::iterator constructEmptyCell(
+      KeyType key) {
     return m_cells
         .emplace(
             std::piecewise_construct,
