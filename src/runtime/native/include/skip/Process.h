@@ -12,12 +12,13 @@
 #include "Obstack.h"
 #include "Refcount.h"
 #include "Task.h"
+#include "Type.h"
 
+#include <condition_variable>
 #include <memory>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/noncopyable.hpp>
-#include <folly/synchronization/Baton.h>
 
 namespace skip {
 
