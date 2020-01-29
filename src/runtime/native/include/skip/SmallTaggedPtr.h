@@ -8,6 +8,7 @@
 #pragma once
 
 #include "fwd.h"
+#include "util.h"
 
 #include <cassert>
 #include <cstdint>
@@ -198,7 +199,7 @@ struct UIntTypeSelector<
     safeToLoadBefore,
     safeToLoadAfter,
     pack,
-    typename std::enable_if<pack && folly::isPowTwo(size) && size != 1>::type> {
+    typename std::enable_if<pack && skip::isPowTwo(size) && size != 1>::type> {
   using type = detail::UnalignedValue<typename boost::uint_t<size * 8>::exact>;
 };
 
@@ -210,7 +211,7 @@ struct UIntTypeSelector<
     safeToLoadAfter,
     pack,
     typename std::enable_if<
-        folly::isPowTwo(size) && (!pack || size == 1)>::type> {
+        skip::isPowTwo(size) && (!pack || size == 1)>::type> {
   // Just use a simple C++ scalar type, not one of our structs.
   using type = typename boost::uint_t<size * 8>::exact;
 };
