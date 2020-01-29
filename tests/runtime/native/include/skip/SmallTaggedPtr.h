@@ -31,7 +31,8 @@ namespace detail {
  * the right class.
  */
 template <typename T>
-struct __attribute__((packed)) UnalignedValue : boost::totally_ordered<UnalignedValue<T>> {
+struct __attribute__((packed)) UnalignedValue
+    : boost::totally_ordered<UnalignedValue<T>> {
   /* implicit */ operator T() const {
     return m_bits;
   }
@@ -79,7 +80,6 @@ struct PackedUInt : boost::totally_ordered<
   using UIntType = typename boost::uint_t<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
   /* implicit */ operator UIntType() const {
-
     // Combine the unaligned pieces into a single number.
     const UIntType loBits = m_lo;
     const UIntType hiBits = m_hi;
