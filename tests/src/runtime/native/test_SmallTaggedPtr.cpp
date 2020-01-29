@@ -24,7 +24,7 @@ namespace {
       "Bad size");                                                     \
   static_assert(                                                       \
       alignof(UIntTypeSelector<SZ, false, false, false>::type) ==      \
-          (folly::isPowTwo(SZ)                                         \
+          (skip::isPowTwo(SZ)                                         \
                ? alignof(typename boost::uint_t<(SZ)*8>::least)        \
                : 1),                                                   \
       "Bad align");                                                    \
@@ -122,7 +122,7 @@ void testSmallTaggedPtr() {
 
   // Simple (power of two) sizes without packing should be aligned.
   static_assert(
-      pack || !folly::isPowTwo(sizeof(T)) ||
+      pack || !skip::isPowTwo(sizeof(T)) ||
           alignof(T) == alignof(typename boost::uint_t<sizeof(T) * 8>::least),
       "alignment unexpectedly low.");
 
