@@ -229,8 +229,8 @@ inline T loadUnaligned(const void* p) {
 }
 
 class StringPiece {
-  public:
-  StringPiece(char* begin, char* end): m_begin(begin), m_end(end) {}
+ public:
+  StringPiece(char* begin, char* end) : m_begin(begin), m_end(end) {}
 
   char front() {
     return *m_begin;
