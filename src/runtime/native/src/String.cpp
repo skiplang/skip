@@ -157,9 +157,9 @@ std::string String::toCppString() const {
   return std::string(text, text + byteSize());
 }
 
-folly::StringPiece String::slice(DataBuffer& buffer) const {
-  auto p = data(buffer);
-  return {p, p + byteSize()};
+skip::StringPiece String::slice(DataBuffer& buffer) const {
+  auto p = (char*)data(buffer);
+  return StringPiece(p, p + byteSize());
 }
 
 void String::clear() {
@@ -627,7 +627,9 @@ String SKIP_String__fromUtf8(const void*, const RObj* src_) {
 
 double SKIP_String__toFloat_raw(String s) {
   String::DataBuffer buf;
-  return folly::to<double>(String(s).slice(buf));
+  std::string str = s.data(buf);
+  std::string::size_type sz;
+  return std::stod(str, &sz);
 }
 
 struct toIntOptionHelperRet_t SKIP_String_toIntOptionHelper(String s) {

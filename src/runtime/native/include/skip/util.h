@@ -228,4 +228,32 @@ inline T loadUnaligned(const void* p) {
   return value;
 }
 
+class StringPiece {
+  public:
+  StringPiece(char* begin, char* end): m_begin(begin), m_end(end) {}
+
+  char front() {
+    return *m_begin;
+  }
+
+  char* begin() {
+    return m_begin;
+  }
+
+  void pop_front() {
+    m_begin++;
+  }
+
+  bool empty() {
+    return m_begin == m_end;
+  }
+
+  size_t size() {
+    return m_end - m_begin;
+  }
+
+  char* m_begin;
+  char* m_end;
+};
+
 } // namespace skip
