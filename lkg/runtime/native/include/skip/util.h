@@ -9,13 +9,12 @@
 
 #include "fwd.h"
 
+#include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include <boost/noncopyable.hpp>
-
-#include <folly/lang/Bits.h>
-#include <folly/Memory.h>
 
 // #define ENABLE_DEBUG_TRACE 1
 
@@ -69,11 +68,20 @@ inline size_t mungeBits(size_t n) {
   // The high bits of a 64x64 -> 128 multiply will be well mixed.
   using uint128_t = unsigned __int128;
   const uint128_t m = (uint128_t)n * multiplier64;
-  const uint64_t mul = (uint64_t)m + ((uint64_t)(m >> 64));
+  uint64_t mul = (uint64_t)m + ((uint64_t)(m >> 64));
 #else
 #error error
 #endif
-  return folly::Endian::swap(mul);
+
+  // Swap endianness
+  mul = ((mul & 0x00000000FFFFFFFFull) << 32) |
+      ((mul & 0xFFFFFFFF00000000ull) >> 32);
+  mul = ((mul & 0x0000FFFF0000FFFFull) << 16) |
+      ((mul & 0xFFFF0000FFFF0000ull) >> 16);
+  mul = ((mul & 0x00FF00FF00FF00FFull) << 8) |
+      ((mul & 0xFF00FF00FF00FF00ull) >> 8);
+
+  return mul;
 }
 
 /**
@@ -154,6 +162,13 @@ constexpr T roundDown(T n, size_t align) {
   return detail::RoundDown<T>::roundDown(n, align);
 }
 
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2>& pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
 /// Hash a block of memory.
 size_t hashMemory(const void* p, size_t size, size_t seed = ~0);
 
@@ -186,4 +201,63 @@ void throwRuntimeErrorV(const char* msg, va_list ap)
 
 void throwRuntimeError(const char* msg, ...)
     __attribute__((__noreturn__, __format__(printf, 1, 2)));
+
+struct SpinLock {
+  std::atomic<uint8_t> m_bits;
+  void init();
+  void lock();
+  void unlock();
+};
+
+int findFirstSet(unsigned long n);
+int findLastSet(unsigned long n);
+std::string escape_json(const std::string& s);
+
+template <class T>
+inline constexpr bool isPowTwo(T const v) {
+  static_assert(std::is_integral<T>::value, "non-integral type");
+  static_assert(std::is_unsigned<T>::value, "signed type");
+  static_assert(!std::is_same<T, bool>::value, "bool type");
+  return (v != 0) && !(v & (v - 1));
+}
+
+template <class T>
+inline T loadUnaligned(const void* p) {
+  T value;
+  memcpy(&value, p, sizeof(T));
+  return value;
+}
+
+class StringPiece {
+ public:
+  StringPiece(char* begin, char* end) : m_begin(begin), m_end(end) {}
+
+  char front() {
+    return *m_begin;
+  }
+
+  char* begin() {
+    return m_begin;
+  }
+
+  char* end() {
+    return m_end;
+  }
+
+  void pop_front() {
+    m_begin++;
+  }
+
+  bool empty() {
+    return m_begin == m_end;
+  }
+
+  size_t size() {
+    return m_end - m_begin;
+  }
+
+  char* m_begin;
+  char* m_end;
+};
+
 } // namespace skip

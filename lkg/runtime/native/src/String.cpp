@@ -31,8 +31,6 @@
 #include <unicode/ucnv.h>
 #include <unicode/ustring.h>
 
-#include <folly/Conv.h>
-
 #include <boost/format.hpp>
 
 namespace skip {
@@ -112,35 +110,17 @@ bool String::operator==(const String& o) const {
 }
 
 ssize_t String::cmp(const String& o) const {
-  // If they're both short compare words directly.
-  auto word1 = sbits();
-  auto word2 = o.sbits();
-  if ((word1 & word2) < 0) {
-    static_assert(sizeof(word1) == sizeof(ssize_t), "size expected");
-    // Ignores flags!
-    static_assert(kUnusedTagBits > 0, "cmp hack won't work with 0 tag bits");
-    auto a = (ssize_t)((size_t)folly::Endian::swap(word1) >> kUnusedTagBits);
-    auto b = (ssize_t)((size_t)folly::Endian::swap(word2) >> kUnusedTagBits);
-    return a - b;
-  } else {
-    const size_t len1 = byteSize();
-    const size_t len2 = o.byteSize();
-    DataBuffer data1;
-    DataBuffer data2;
-    int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
-    if (res == 0)
-      res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
-    return res;
-  }
+  const size_t len1 = byteSize();
+  const size_t len2 = o.byteSize();
+  DataBuffer data1;
+  DataBuffer data2;
+  int res = memcmp(data(data1), o.data(data2), std::min(len1, len2));
+  if (res == 0)
+    res = static_cast<ssize_t>(len1) - static_cast<ssize_t>(len2);
+  return res;
 }
 
 const char* String::c_str(char buffer[CSTR_BUFFER_SIZE]) const {
-#ifdef FOLLY_SANITIZE_ADDRESS
-  // Write to the buffer so ASAN will catch it if we pass a too-small buffer.
-  buffer[0] = 0xFF;
-  buffer[CSTR_BUFFER_SIZE - 1] = 0xFF;
-#endif
-
   const auto bytes = byteSize();
   if (isShortString()) {
     // For short strings always copy - we copy an extra byte but that way the
@@ -169,9 +149,9 @@ std::string String::toCppString() const {
   return std::string(text, text + byteSize());
 }
 
-folly::StringPiece String::slice(DataBuffer& buffer) const {
-  auto p = data(buffer);
-  return {p, p + byteSize()};
+skip::StringPiece String::slice(DataBuffer& buffer) const {
+  auto p = (char*)data(buffer);
+  return StringPiece(p, p + byteSize());
 }
 
 void String::clear() {
@@ -639,12 +619,12 @@ String SKIP_String__fromUtf8(const void*, const RObj* src_) {
 
 double SKIP_String__toFloat_raw(String s) {
   String::DataBuffer buf;
-  return folly::to<double>(String(s).slice(buf));
+  std::string str = s.data(buf);
+  std::string::size_type sz;
+  return std::stod(str, &sz);
 }
 
 struct toIntOptionHelperRet_t SKIP_String_toIntOptionHelper(String s) {
-  // Note: We could use folly::to<int64_t>(&StringPiece) but that wouldn't
-  // follow the same conversion rules as the other backends.
   String::DataBuffer buf;
   auto sp = s.slice(buf);
   if (sp.empty())

@@ -19,11 +19,10 @@
 #include "Process.h"
 
 #include <functional>
+#include <future>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/operators.hpp>
-
-#include <folly/futures/Future.h>
 
 namespace skip {
 
@@ -565,8 +564,8 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   void incref();
   void decref();
 
-  folly::Future<folly::Unit> getFuture() {
-    return m_promise.getFuture();
+  std::future<void> getFuture() {
+    return m_promise.get_future();
   }
 
   // This method is called during invalidation notify. The lock is not held
@@ -600,7 +599,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   // no longer points back, and uses m_revision's lock as its own lock.
   boost::intrusive_ptr<Revision> m_revision;
 
-  folly::Promise<folly::Unit> m_promise;
+  std::promise<void> m_promise;
 };
 
 // Execute the given code and collect any memoized dependencies it visited into
@@ -609,7 +608,7 @@ InvalidationWatcher::Ptr watchDependencies(
     const std::function<void(void)>& func);
 
 /** A memoized value (a tagged union). A Revision holds one of these. */
-struct MemoValue {
+struct __attribute__((packed)) MemoValue {
   // NOTE: If you change this enum, update isSkipValue().
   enum class Type : uint8_t {
     // No known value.
@@ -745,7 +744,7 @@ struct MemoValue {
 
   // Raw underlying bits. Use with care!
   uint64_t bits() const {
-    return static_cast<uint64_t>(m_value.value.m_int64);
+    return static_cast<uint64_t>(m_value.m_int64);
   }
 
   // A tagged union holding the memoized value. m_type distinguishes.
@@ -759,7 +758,7 @@ struct MemoValue {
 
  private:
   // This is unaligned so it only takes up 9 bytes in Revision.
-  folly::Unaligned<Value> m_value;
+  Value m_value;
   Type m_type;
 };
 
@@ -809,7 +808,7 @@ class OwnerAndFlags {
     This object is logically the following 64-bit bitfield, but stored in an
     atomic so we don't literally implement it that way.
 
-    // A folly::MicroLock for this Revision. We only use this once m_owner
+    // A SpinLock for this Revision. We only use this once m_owner
     // becomes nullptr; until then, locking the Revision means locking
     // the owning Invocation, and therefore the entire Revision list.
     uintptr_t m_lock : 2;
@@ -945,7 +944,7 @@ class OwnerAndFlags {
 
   union {
     std::atomic<uintptr_t> m_bits;
-    folly::MicroLock m_mutex;
+    SpinLock m_mutex;
   };
 };
 
@@ -1299,12 +1298,12 @@ struct Invocation final : LeakChecker<Invocation> {
   template <typename FN>
   void asyncEvaluateWithCustomEval(Caller& caller, FN eval);
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluateAndSubscribe();
+  std::future<AsyncEvaluateResult> asyncEvaluateAndSubscribe();
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluate(
+  std::future<AsyncEvaluateResult> asyncEvaluate(
       MemoTask::Ptr memoTask = MemoTask::Ptr());
 
-  folly::Future<AsyncEvaluateResult> asyncEvaluate(
+  std::future<AsyncEvaluateResult> asyncEvaluate(
       bool preserve,
       bool subscribeToInvalidations,
       MemoTask::Ptr memoTask = MemoTask::Ptr());
@@ -1331,11 +1330,11 @@ struct Invocation final : LeakChecker<Invocation> {
 
   bool inList_lck() const;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
   static const uint8_t kMetadataSize;
 
-  mutable folly::MicroLock m_mutex;
+  mutable SpinLock m_mutex;
   bool m_isNonMvccAware = false;
 
   // Which list is this in, if any? Protected by mutex().
@@ -1367,7 +1366,7 @@ struct Cell final : LeakChecker<Cell> {
 
   Invocation::Ptr invocation() const;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
  private:
   Invocation::Ptr m_invocation;
@@ -1438,7 +1437,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
   /// This is also the original "begin" for its placeholder.
   const TxnId m_queryTxn;
 
-  folly::MicroLock& mutex() const;
+  SpinLock& mutex() const;
 
  private:
   Invocation::Ptr m_owner;
@@ -1455,7 +1454,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
 
   // NOTE: This is separate from m_placeholder::mutex to simplify the lock
   // ordering rules. It only protects m_calls.
-  mutable folly::MicroLock m_mutex;
+  mutable SpinLock m_mutex;
 
  public:
   // This is the actual entry that shows up in the Invocation linked list.
@@ -1584,7 +1583,7 @@ struct InvocationHelperBase : IObj {
   ~InvocationHelperBase() = default;
   InvocationHelperBase() = default;
 
-  static void static_evaluate_helper(folly::Future<MemoValue>&& future);
+  static void static_evaluate_helper(std::future<MemoValue>&& future);
 };
 
 /**
@@ -1612,7 +1611,7 @@ struct InvocationHelperBase : IObj {
     // asyncEvaluate() should eventually (either directly or indirectly) call
     // promise.setValue().
 
-    int64_t asyncEvaluate(folly::Promise<MemoValue>&& promise) const;
+    int64_t asyncEvaluate(std::promise<MemoValue>&& promise) const;
 
     // The static_offsets() function should return the offsets of any internal
     // pointers within ArgType.
@@ -1750,14 +1749,14 @@ struct InvocationHelper : InvocationHelperBase {
     auto& argType = iobjToArgType(*obj);
     auto& objType = iobjToObjType(*obj);
 
-    folly::Promise<MemoValue> promise;
-    static_evaluate_helper(promise.getFuture());
+    std::promise<MemoValue> promise;
+    static_evaluate_helper(promise.get_future());
     try {
       argType.asyncEvaluate(objType, std::move(promise));
     } catch (const std::exception& e) {
       // TODO: For some reason if I just pass 'e' then it just returns the
       // exception type instead of the exception message.
-      promise.setException(std::runtime_error(e.what()));
+      promise.set_exception(make_exception_ptr(std::runtime_error(e.what())));
     }
 
     return nullptr;
