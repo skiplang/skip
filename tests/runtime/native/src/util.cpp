@@ -101,7 +101,6 @@ size_t hashMemory(const void* p, size_t size, size_t seed) {
 }
 
 void fatal(const char* msg, const char* err) {
-  // TODO: Replace this with folly::writeFull or FOLLY_SAFE_CHECK or somesuch.
   std::array<struct iovec, 4> vec{{
       {const_cast<char*>(msg), strlen(msg)},
   }};
