@@ -240,6 +240,10 @@ class StringPiece {
     return m_begin;
   }
 
+  char* end() {
+    return m_end;
+  }
+
   void pop_front() {
     m_begin++;
   }
