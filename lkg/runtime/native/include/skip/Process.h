@@ -12,12 +12,13 @@
 #include "Obstack.h"
 #include "Refcount.h"
 #include "Task.h"
+#include "Type.h"
 
+#include <condition_variable>
 #include <memory>
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/noncopyable.hpp>
-#include <folly/synchronization/Baton.h>
 
 namespace skip {
 
@@ -62,7 +63,7 @@ struct UnownedProcess {
 
 // A Process is analogous to an operating system process, containing
 // an "address space" (Obstack, in our case) and other "local" context.
-// Unlike a folly fiber, it does not retain an associated program stack.
+// It does not retain an associated program stack.
 //
 // Just as an OS process can be either suspended in the kernel or actively
 // run by some core, so can a Process be suspended or actively run by some
@@ -171,7 +172,9 @@ struct Process final : private boost::noncopyable {
 
   // Baton used when the Process's owning thread is sleeping, waiting
   // for a Task to be posted.
-  folly::Baton<> m_baton;
+  std::mutex m_batonLock;
+  std::condition_variable m_batonSignal;
+  bool m_batonCond = false;
 
   // WARNING: While a thread is actively running context-switched to this
   // process, this field is junk, because for speed we temporarily move it

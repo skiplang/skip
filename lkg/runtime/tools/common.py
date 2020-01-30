@@ -580,9 +580,8 @@ class RunCommand(object):
         data = data.strip()
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
-            data = data.decode('ascii', 'ignore')
             if limit:
-                lines = data.split('\n')
+                lines = data.decode().split('\n')
                 if len(lines) > limit[0]:
                     lines = ['<output truncated>'] + lines[-limit[0]:]
                 lines = map(lambda x: x if (len(x) < limit[1]) else (x[:limit[1] - 3] + '...'), lines)

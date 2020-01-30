@@ -17,8 +17,6 @@
 #include <deque>
 #include <iostream>
 
-#include <folly/lang/SafeAssert.h>
-
 #if ENABLE_VALGRIND
 #include <valgrind/memcheck.h>
 #endif
@@ -1213,6 +1211,9 @@ void* rawShallowCloneObjectIntoIntern(
     size_t userByteSize,
     const RObj* userData,
     size_t numMetadataBytesToCopy) {
+  assert(
+      internedMetadataByteSize % sizeof(void*) == 0 &&
+      userByteSize % sizeof(void*) == 0);
 
   // We can't have a userByteSize of 0 - if we did then when we asked the memory
   // subsystem if the first non-metadata address is interned we'd actually be
@@ -1220,7 +1221,6 @@ void* rawShallowCloneObjectIntoIntern(
   const size_t numBytes =
       internedMetadataByteSize + std::max<size_t>(userByteSize, 8);
   void* const raw = Arena::alloc(numBytes, Arena::Kind::iobj);
-  FOLLY_SAFE_CHECK(raw != nullptr, "Out of memory.");
 
   // Copy in the VTable* and user data.
   memcpy(

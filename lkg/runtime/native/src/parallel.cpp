@@ -20,10 +20,9 @@
 #include "ObstackDetail.h"
 
 #include <boost/intrusive_ptr.hpp>
-#include <folly/Conv.h>
-#include <folly/executors/GlobalExecutor.h>
-#include <folly/executors/task_queue/BlockingQueue.h>
 
+#include <iostream>
+#include <sstream>
 #include <unistd.h>
 #include <utility>
 
@@ -36,7 +35,10 @@
 // fewer than the number of CPUs present on this machine.
 size_t skip::computeCpuCount() {
   if (auto env = std::getenv("SKIP_NUM_THREADS")) {
-    return std::max((size_t)1, folly::to<size_t>(env));
+    std::stringstream sstream(env);
+    size_t skip_num_threads = 0;
+    sstream >> skip_num_threads;
+    return std::max((size_t)1, skip_num_threads);
   }
 
 #ifdef __linux__
@@ -83,6 +85,95 @@ using namespace skip;
 
 // Number of available CPUs.
 size_t s_numThreads = 1;
+
+class ThreadPool {
+ public:
+  ThreadPool(size_t n) : m_shutdown{false}, m_exn{nullptr} {
+    m_threads.reserve(n);
+    for (auto i = 0; i < n; ++i)
+      m_threads.emplace_back(std::bind(&ThreadPool::run, this, i));
+  }
+
+  ~ThreadPool() {
+    {
+      std::unique_lock<std::mutex> l(m_threadLock);
+      m_shutdown = true;
+      m_threadVar.notify_all();
+    }
+
+    for (auto& thread : m_threads) {
+      thread.join();
+    }
+  }
+
+  void addTask(std::function<void(void)> f) {
+    std::unique_lock<std::mutex> l(m_threadLock);
+    m_tasks.emplace(std::move(f));
+    m_threadVar.notify_one();
+  }
+
+  std::exception_ptr waitForThreadsAndThrowIfNecessary() {
+    std::unique_lock<std::mutex> lock(m_masterLock);
+    m_masterVar.wait(lock);
+    if (m_exn != nullptr) {
+      std::rethrow_exception(m_exn);
+    }
+    return m_exn;
+  }
+
+ private:
+  void run(int i) {
+    skip::initializeThreadWithPermanentProcess();
+    std::function<void(void)> task;
+    auto isFinished = false;
+
+    while (1) {
+      {
+        std::unique_lock<std::mutex> l(m_threadLock);
+
+        while (!m_shutdown && m_tasks.empty()) {
+          m_threadVar.wait(l);
+        }
+
+        if (m_shutdown)
+          return;
+
+        task = std::move(m_tasks.front());
+        m_tasks.pop();
+        if (m_tasks.empty()) {
+          isFinished = true;
+        }
+      }
+
+      try {
+        task();
+      } catch (SkipException& exc) {
+        std::lock_guard<std::mutex> lock{m_threadLock};
+        m_exn = make_exception_ptr(exc);
+      }
+
+      if (isFinished) {
+        std::unique_lock<std::mutex> lock(m_masterLock);
+        m_masterVar.notify_one();
+      }
+    }
+  }
+
+  bool m_firstCall;
+  bool m_shutdown;
+  std::exception_ptr m_exn;
+  std::mutex m_threadLock;
+  std::mutex m_masterLock;
+  std::condition_variable m_threadVar;
+  std::condition_variable m_masterVar;
+  std::queue<std::function<void(void)>> m_tasks;
+  std::vector<std::thread> m_threads;
+};
+
+ThreadPool* getWorkers() {
+  static ThreadPool workers(s_numThreads);
+  return &workers;
+}
 
 struct Tabulate;
 
@@ -269,19 +360,16 @@ struct Tabulate : private boost::noncopyable {
   void spawnWorkers() {
     summonAncestors();
 
-    try {
-      for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
-        if (allWorkTaken()) {
-          // Threads already grabbed all the work, don't spawn more threads.
-          break;
-        }
+    auto workers = getWorkers();
 
-        skip::getCPUExecutor()->add(
-            [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
+    for (auto n = std::min<size_t>(s_numThreads, m_count); n != 0; --n) {
+      if (allWorkTaken()) {
+        // Threads already grabbed all the work, don't spawn more threads.
+        break;
       }
-    } catch (folly::QueueFullException&) {
-      // Folly supports 16K posted tasks by default. If even that fills up,
-      // just abandon posting any more.
+
+      workers->addTask(
+          [tab = Tabulate::Ptr{this}]() { tab->runWorkerThread(); });
     }
   }
 
