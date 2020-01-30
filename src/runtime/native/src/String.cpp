@@ -31,8 +31,6 @@
 #include <unicode/ucnv.h>
 #include <unicode/ustring.h>
 
-#include <folly/Conv.h>
-
 #include <boost/format.hpp>
 
 namespace skip {
@@ -123,11 +121,6 @@ ssize_t String::cmp(const String& o) const {
 }
 
 const char* String::c_str(char buffer[CSTR_BUFFER_SIZE]) const {
-#ifdef FOLLY_SANITIZE_ADDRESS
-  // Write to the buffer so ASAN will catch it if we pass a too-small buffer.
-  buffer[0] = 0xFF;
-  buffer[CSTR_BUFFER_SIZE - 1] = 0xFF;
-#endif
 
   const auto bytes = byteSize();
   if (isShortString()) {
@@ -633,8 +626,6 @@ double SKIP_String__toFloat_raw(String s) {
 }
 
 struct toIntOptionHelperRet_t SKIP_String_toIntOptionHelper(String s) {
-  // Note: We could use folly::to<int64_t>(&StringPiece) but that wouldn't
-  // follow the same conversion rules as the other backends.
   String::DataBuffer buf;
   auto sp = s.slice(buf);
   if (sp.empty())
