@@ -155,8 +155,6 @@ add_dependencies(native_cc.${PHASE} skip_runtime.${PHASE} gtest_main)
 add_executable(_dummy_exe.${PHASE} EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/src/sk_standalone.cpp ${CMAKE_SOURCE_DIR}/tests/src/runtime/native/testutil.cpp)
 target_link_libraries(_dummy_exe.${PHASE} native_cc.${PHASE})
 
-find_package(LibEvent REQUIRED)
-
 set(cc_args)
 append_target_flags(cc_args _dummy_exe.${PHASE})
 set(ld_args
@@ -169,7 +167,6 @@ set(ld_args
   ${JEMALLOC_LIBRARY}
   ${PCRE_LIBRARY}
   ${Boost_LIBRARIES}
-  ${LIBEVENT_LIBRARY}
   ${DL_LIBRARIES}
   -lpthread
 )
