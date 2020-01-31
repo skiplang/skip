@@ -310,8 +310,8 @@ if [ $command == "build" ]; then
 	     -Wl,--gc-sections \
 	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
 	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
-	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
-	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -fdata-sections -ffunction-sections \
+	     -lglog -lgflags \
 	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
 	     -lpcre -lboost_system \
 	     -lboost_filesystem -lboost_chrono -lboost_date_time \
@@ -335,8 +335,8 @@ if [ $command == "build" ]; then
 	     -lboost_atomic-mt \
 	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
 	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
-	     -fdata-sections -ffunction-sections -DFOLLY_HAVE_MALLOC_H \
-	     -lfolly -lglog -lgflags -ldouble-conversion \
+	     -fdata-sections -ffunction-sections \
+	     -lglog -lgflags  \
 	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
 	     -lpcre -lboost_system \
 	     -lboost_filesystem -lboost_chrono -lboost_date_time \

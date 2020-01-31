@@ -15,8 +15,6 @@ option(CONFIGURE_TESTS "Configure including tests" ON)
 
 option(DISABLE_THIRD_PARTY "Disable all built-in third-party submodules" OFF)
 option(DISABLE_THIRD_PARTY_UPDATE "Disable automatic update of third-party" ${DISABLE_THIRD_PARTY})
-option(DISABLE_TP_DOUBLE_CONVERSION "Disable built-in double-conversion" ${DISABLE_THIRD_PARTY})
-option(DISABLE_TP_FOLLY "Disable built-in folly" ${DISABLE_THIRD_PARTY})
 option(DISABLE_TP_GFLAGS "Disable built-in gflags" ${DISABLE_THIRD_PARTY})
 option(DISABLE_TP_GTEST "Disable built-in gtest" ${DISABLE_THIRD_PARTY})
 option(DISABLE_TP_ICU4C "Disable built-in icu4c" ${DISABLE_THIRD_PARTY})
