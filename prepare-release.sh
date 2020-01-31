@@ -63,7 +63,6 @@ if [ $distrib == Linux ]; then
     cp "$linuxGnuLibDir/libboost_chrono.a" "$installDir/lib"
     cp "$linuxGnuLibDir/libboost_date_time.a" "$installDir/lib"
     cp "$linuxGnuLibDir/libboost_atomic.a" "$installDir/lib"
-    cp "$linuxGnuLibDir/libevent.a" "$installDir/lib"
 fi
 
 cp "$pathToSkip/sktools/sk" "$installDir/bin/sk"

@@ -29,7 +29,7 @@
     wget https://deb.nodesource.com/setup_7.x ; bash setup_7.x
     apt-add-repository "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-6.0 main"
     apt-get update
-    apt-get install ninja-build g++-6 libgflags-dev nodejs clang-6.0 autoconf libdwarf-dev libelf-dev libssl-dev libgoogle-glog-dev libboost1.55-all-dev libevent-dev libtool pkg-config
+    apt-get install ninja-build g++-6 libgflags-dev nodejs clang-6.0 autoconf libdwarf-dev libelf-dev libssl-dev libgoogle-glog-dev libboost1.55-all-dev libtool pkg-config
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 60 --slave /usr/bin/g++ g++ /usr/bin/g++-6
     wget https://cmake.org/files/v3.11/cmake-3.11.3-Linux-x86_64.sh
     sh cmake-3.11.3-Linux-x86_64.sh --prefix=/usr/local
@@ -39,7 +39,7 @@
 Install packages
 
 ```
-pacman -S base-devel git cmake python3 ninja nodejs clang boost libevent google-glog
+pacman -S base-devel git cmake python3 ninja nodejs clang boost google-glog
 ```
 
 Set `python` to default to Python 3
@@ -76,7 +76,7 @@ Install Homebrew
 Install packages
 ```
 brew tap hhvm/hhvm
-brew install git-lfs ninja cmake dwarfutils libelf boost libevent gflags glog jemalloc node autoconf automake pkg-config libtool hhvm clang-format
+brew install git-lfs ninja cmake dwarfutils libelf boost gflags glog jemalloc node autoconf automake pkg-config libtool hhvm clang-format
 git lfs install
 ```
 
