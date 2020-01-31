@@ -235,7 +235,7 @@ struct UpEdge final : Edge {
  *
  * Once created, these are immutable except for the kNumInactiveFlagBits field.
  */
-class alignas(kTraceArrayAlign) TraceArray final : private boost::noncopyable {
+class alignas(kTraceArrayAlign) TraceArray final : private skip::noncopyable {
   // You can only create one by calling the "make" factory.
   explicit TraceArray(EdgeIndex size) : m_size(size), m_inactive(0) {
     std::uninitialized_fill_n(m_inputs, size, DownEdge());
@@ -296,7 +296,7 @@ static_assert(
  * DownEdges are "strong" references, so a Trace's edge array "keeps alive"
  * the inputs to a Revision.
  */
-struct Trace final : private boost::noncopyable {
+struct Trace final : private skip::noncopyable {
   Trace() : Trace(0) {}
   explicit Trace(size_t size);
 
@@ -437,7 +437,7 @@ static_assert(
  * Since subscriptions come and go, available storage for UpEdges is chained
  * together into a freelist.
  */
-struct SubscriptionSet : private boost::noncopyable {
+struct SubscriptionSet : private skip::noncopyable {
   SubscriptionSet();
 
   ~SubscriptionSet();
@@ -765,7 +765,7 @@ struct __attribute__((packed)) MemoValue {
 /**
  * The continuation that handles the result of an asyncEvaluate being ready.
  */
-struct Caller : private boost::noncopyable {
+struct Caller : private skip::noncopyable {
   explicit Caller(TxnId queryTxn) : m_queryTxn(queryTxn) {}
 
   virtual ~Caller() = default;
@@ -1413,7 +1413,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
   static Context* setCurrent(Context* ctx);
 
   // RAII guard that changes then restores the thread-local Context.
-  struct Guard : private boost::noncopyable {
+  struct Guard : private skip::noncopyable {
     explicit Guard(Context* newContext);
     ~Guard();
 

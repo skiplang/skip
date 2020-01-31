@@ -229,7 +229,7 @@ std::chrono::time_point<std::chrono::high_resolution_clock> threadNanos() {
 
 const uint64_t kMemstatsLevel = parseEnv("SKIP_MEMSTATS", 0);
 
-struct LargeObjHeader final : private boost::noncopyable {
+struct LargeObjHeader final : private skip::noncopyable {
   using Pos = ObstackDetail::Pos;
 
   LargeObjHeader* m_prev; // Next older large object
@@ -513,7 +513,7 @@ size_t ObstackDetail::totalUsage(const Obstack& obstack) const {
   return usage(obstack, m_firstNote);
 }
 
-struct ObstackDetail::ChunkMap : private boost::noncopyable {
+struct ObstackDetail::ChunkMap : private skip::noncopyable {
   // Build a set of Chunks. This lets us quickly determine if a pointer is
   // allocated within the Chunks.
   std::set<const void*> m_chunks;

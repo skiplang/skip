@@ -24,7 +24,6 @@
 #include "skip/util.h"
 
 #include <boost/io/ios_state.hpp>
-#include <boost/noncopyable.hpp>
 #include <boost/version.hpp>
 #include <shared_mutex>
 
@@ -285,7 +284,7 @@ struct RefreshCaller final : Caller, LeakChecker<RefreshCaller> {
 /**
  * Doubly-linked list of Invocations.
  */
-struct InvocationList final : private boost::noncopyable {
+struct InvocationList final : private skip::noncopyable {
   explicit InvocationList(bool isTopLevel = false)
       : m_sentinel(sentinelVTable()) {
     // The sentinel node points to itself. This way linking and unlinking
@@ -1448,7 +1447,7 @@ void Invocation::moveToLruHead_lck() {
  *
  * Pushing something onto this list only requires the read lock
  */
-struct CleanupList final : private boost::noncopyable {
+struct CleanupList final : private skip::noncopyable {
   CleanupList() : m_numActiveMemoTasks(0), m_head(nullptr) {}
 
   // Atomically pushes a locked Invocation onto the cleanup list.
