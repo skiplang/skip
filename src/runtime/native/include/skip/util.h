@@ -14,8 +14,6 @@
 #include <cstring>
 #include <type_traits>
 
-#include <boost/noncopyable.hpp>
-
 // #define ENABLE_DEBUG_TRACE 1
 
 #if ENABLE_DEBUG_TRACE
@@ -42,6 +40,14 @@
 #endif
 
 namespace skip {
+
+class noncopyable {
+  protected:
+    noncopyable() = default;
+    ~noncopyable() = default;
+    noncopyable( const noncopyable& ) = delete;
+    noncopyable& operator=( const noncopyable& ) = delete;
+};
 
 void printStackTrace();
 
@@ -182,7 +188,7 @@ void* allocAligned(size_t size, size_t align) _MALLOC_ALIGN_ATTR(1, 2);
 
 /// CRTP base class for types with higher-than-usual alignment.
 template <typename Derived, ssize_t alignment = -1>
-struct Aligned : private boost::noncopyable {
+struct Aligned : private skip::noncopyable {
   void* operator new(size_t size) {
     return allocAligned(size, alignment == -1 ? alignof(Derived) : alignment);
   }

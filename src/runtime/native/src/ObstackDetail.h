@@ -25,7 +25,7 @@ struct Chunk;
  * ObstackDetail implements most of the Obstack functionality; the C++ public
  * interface is struct Obstack.
  */
-struct ObstackDetail final : private boost::noncopyable {
+struct ObstackDetail final : private skip::noncopyable {
   ObstackDetail();
   ~ObstackDetail();
 
@@ -203,7 +203,7 @@ struct ObstackDetail final : private boost::noncopyable {
   // handles, if none of the handles wrap a valid pointer.
   bool empty(Obstack&) const;
 
-  struct IObjRef : private boost::noncopyable {
+  struct IObjRef : private skip::noncopyable {
     IObjRef(Pos pos, IObj* prev) : m_pos(std::move(pos)), m_prev(prev) {}
     IObjRef(IObjRef&& o) noexcept : m_pos(o.m_pos), m_prev(o.m_prev) {}
     IObjRef& operator=(IObjRef&& o) noexcept {

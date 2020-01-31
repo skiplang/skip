@@ -14,7 +14,6 @@
 #include <atomic>
 
 #include <boost/functional/hash.hpp>
-#include <boost/noncopyable.hpp>
 
 namespace skip {
 
@@ -101,7 +100,7 @@ struct InternPtr final : SmallTaggedPtr<
  * nothing else. Over time the newly-accessible buckets will get lazily
  * populated with the correct contents when they are first accessed.
  */
-struct InternTable final : private boost::noncopyable {
+struct InternTable final : private skip::noncopyable {
   explicit InternTable(int log2MaxBuckets = kLog2MaxBuckets);
 
   ~InternTable();
