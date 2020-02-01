@@ -269,6 +269,9 @@ struct LargeObjHeader final : private skip::noncopyable {
   }
 };
 
+const size_t numAlignBits = 14;
+static_assert(std::log2(kChunkSize) == numAlignBits);
+
 struct Chunk;
 struct ChunkHeader {
   explicit ChunkHeader(Chunk* prev, size_t startingGeneration)
@@ -281,7 +284,7 @@ struct ChunkHeader {
       false, // safeToLoadBefore
       false, // safeToLoadAfter
       false, // pack
-      boost::static_log2<kChunkSize>::value> // numAlignBits
+      numAlignBits> // numAlignBits
       m_prev_gen;
 };
 
