@@ -23,8 +23,6 @@
 #include "skip/System.h"
 #include "skip/util.h"
 
-#include <boost/io/ios_state.hpp>
-#include <boost/version.hpp>
 #include <shared_mutex>
 
 #include <exception>
@@ -4129,8 +4127,6 @@ std::ostream& operator<<(std::ostream& out, const MemoValue& m) {
     }
 
     case MemoValue::Type::kDouble: {
-      boost::io::ios_precision_saver prec{out};
-      out << std::setprecision(std::numeric_limits<double>::max_digits10);
       out << m.asDouble();
     } break;
 
