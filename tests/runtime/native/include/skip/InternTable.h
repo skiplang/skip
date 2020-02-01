@@ -13,8 +13,6 @@
 
 #include <atomic>
 
-#include <boost/functional/hash.hpp>
-
 namespace skip {
 
 /**
