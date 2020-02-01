@@ -31,8 +31,6 @@
 #include <unicode/ucnv.h>
 #include <unicode/ustring.h>
 
-#include <boost/format.hpp>
-
 namespace skip {
 
 static_assert(
