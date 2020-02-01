@@ -14,10 +14,6 @@
 #include <cstdint>
 #include <cstddef>
 
-#ifndef GEN_PREAMBLE
-#include <boost/intrusive_ptr.hpp>
-#endif
-
 namespace skip {
 
 template <class T>

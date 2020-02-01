@@ -19,8 +19,6 @@
 
 #include "ObstackDetail.h"
 
-#include <boost/intrusive_ptr.hpp>
-
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
