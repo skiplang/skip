@@ -52,28 +52,28 @@
 
 namespace skip {
 
-// boost::intrusive_ptr::detach() is only from v1.56+
+// skip::intrusive_ptr::detach() is only from v1.56+
 // boost::reset(T*, bool) is only from v1.56+
 #if BOOST_VERSION >= 105600
 template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
+T* boost_detach(skip::intrusive_ptr<T>& p) {
   return p.detach();
 }
 template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
+void boost_reset(skip::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
   p.reset(rhs, add_ref);
 }
 #else
 template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
+T* boost_detach(skip::intrusive_ptr<T>& p) {
   T* raw = p.get();
   intrusive_ptr_add_ref(raw);
   p.reset();
   return raw;
 }
 template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  boost::intrusive_ptr<T>(rhs, add_ref).swap(p);
+void boost_reset(skip::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
+  skip::intrusive_ptr<T>(rhs, add_ref).swap(p);
 }
 #endif
 

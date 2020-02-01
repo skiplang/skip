@@ -172,7 +172,7 @@ struct VTable;
 using CycleHandle = const MutableCycleHandle;
 using IObj = const MutableIObj;
 #ifndef GEN_PREAMBLE
-using IObjPtr = boost::intrusive_ptr<IObj>;
+using IObjPtr = skip::intrusive_ptr<IObj>;
 #endif
 
 namespace detail {
