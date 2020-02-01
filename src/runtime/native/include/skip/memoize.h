@@ -21,8 +21,6 @@
 #include <functional>
 #include <future>
 
-#include <boost/operators.hpp>
-
 namespace skip {
 
 namespace detail {
