@@ -55,7 +55,7 @@ class intrusive_ptr {
     rhs.px = 0;
   }
 
-  intrusive_ptr& operator=(intrusive_ptr&& rhs) BOOST_SP_NOEXCEPT {
+  intrusive_ptr& operator=(intrusive_ptr&& rhs) {
     this_type(static_cast<intrusive_ptr&&>(rhs)).swap(*this);
     return *this;
   }
