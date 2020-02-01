@@ -2202,7 +2202,7 @@ SubscriptionSet::iterator::iterator() = default;
 
 SubscriptionSet::iterator::iterator(Edge pos) : m_pos(pos) {}
 
-const UpEdge& SubscriptionSet::iterator::dereference() const {
+const UpEdge& SubscriptionSet::iterator::operator*() const {
   const Edge* e;
 
   if (auto a = m_pos.asSubArray()) {
@@ -2214,11 +2214,15 @@ const UpEdge& SubscriptionSet::iterator::dereference() const {
   return *static_cast<const UpEdge*>(e);
 }
 
-bool SubscriptionSet::iterator::equal(const iterator& other) const {
+bool SubscriptionSet::iterator::operator==(const iterator& other) const {
   return m_pos == other.m_pos;
 }
 
-void SubscriptionSet::iterator::increment() {
+bool SubscriptionSet::iterator::operator!=(const iterator& other) const {
+  return m_pos != other.m_pos;
+}
+
+SubscriptionSet::iterator& SubscriptionSet::iterator::operator++() {
   if (auto a = m_pos.asSubArray()) {
     for (EdgeIndex i = m_pos.index() + 1;; i = 0) {
       // Find the next live slot in the current array, if any.
@@ -2226,7 +2230,7 @@ void SubscriptionSet::iterator::increment() {
         if (!a->m_subs[i].isSubArray()) {
           // Found a non-freelist entry.
           m_pos = DownEdge(*a, i);
-          return;
+          return *this;
         }
       }
 
@@ -2241,6 +2245,7 @@ void SubscriptionSet::iterator::increment() {
 
   // We hit the end, make it the same thing that end() returns.
   *this = iterator();
+  return *this;
 }
 
 SubscriptionSet::iterator SubscriptionSet::begin() const {
