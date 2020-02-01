@@ -171,7 +171,7 @@ constexpr T roundDown(T n, size_t align) {
 }
 
 class vector_hash {
-public:
+ public:
   template <class T>
   std::size_t operator()(std::vector<T> const& vec) const {
     std::size_t ret = 0;
