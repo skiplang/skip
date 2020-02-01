@@ -37,7 +37,7 @@ struct IntrusiveFinalized : MutableIObj {
     auto metadata = mem::add(raw, metadataSize - sizeof(IObjMetadata));
     new (metadata) IObjMetadata(0, static_vtable());
 
-    auto p = boost::intrusive_ptr<Derived>{
+    auto p = skip::intrusive_ptr<Derived>{
         new (mem::add(raw, metadataSize)) Derived(std::forward<ARGS>(args)...)};
     obstack.registerIObj(p.get());
     return p.get();

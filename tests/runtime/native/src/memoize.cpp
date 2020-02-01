@@ -52,30 +52,17 @@
 
 namespace skip {
 
-// boost::intrusive_ptr::detach() is only from v1.56+
-// boost::reset(T*, bool) is only from v1.56+
-#if BOOST_VERSION >= 105600
 template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
-  return p.detach();
-}
-template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  p.reset(rhs, add_ref);
-}
-#else
-template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
+T* intrusive_ptr_detach(skip::intrusive_ptr<T>& p) {
   T* raw = p.get();
   intrusive_ptr_add_ref(raw);
   p.reset();
   return raw;
 }
 template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  boost::intrusive_ptr<T>(rhs, add_ref).swap(p);
+void intrusive_ptr_reset(skip::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
+  skip::intrusive_ptr<T>(rhs, add_ref).swap(p);
 }
-#endif
 
 // These are protected by cleanupsMutex(), but safe to read without the lock if
 // only a conservative value is needed (it can only increase).
@@ -1459,7 +1446,7 @@ struct CleanupList final : private skip::noncopyable {
   // Extracting the list requires having s_cleanupListsMutex write-locked.
   void push(Invocation::Ptr invPtr) {
     // Steal the reference from the caller.
-    auto inv = boost_detach(invPtr);
+    auto inv = intrusive_ptr_detach(invPtr);
 
     assertLocked(*inv);
     assert(!inv->inList_lck());
@@ -3191,7 +3178,7 @@ void Revision::createTrace_lck(Revision::Ptr* inputs, size_t size) {
         inputPtr->subscribe_lck(UpEdge(*this, (EdgeIndex)index));
 
         // m_trace now owns the refcount, so drop it here.
-        auto input = boost_detach(inputPtr);
+        auto input = intrusive_ptr_detach(inputPtr);
 
         // Now that we are subscribed, get the current begin/end.
         // If the end becomes finite we will be invalidated.
@@ -3465,7 +3452,7 @@ static void registerCleanup(Invocation& inv, TxnId txn) {
     case OwningList::kLru:
       // Transfer existing refcount from LRU list to cleanup.
       s_lruList.erase(inv, false);
-      boost_reset(invPtr, &inv, false);
+      intrusive_ptr_reset(invPtr, &inv, false);
       break;
     case OwningList::kNone:
       invPtr.reset(&inv);

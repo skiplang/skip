@@ -217,7 +217,7 @@ struct OptString final {
 };
 
 // StringPtr is a smart pointer which manages the lifetimes of its owned string.
-// We can't use boost::intrusive_ptr<String> because that would then be a
+// We can't use skip::intrusive_ptr<String> because that would then be a
 // String* - which we don't want.  The owned string MUST be interned.
 struct StringPtr final {
   ~StringPtr();

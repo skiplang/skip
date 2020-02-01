@@ -218,7 +218,7 @@ struct TabulateWorker : private skip::noncopyable {
 // worker threads work on this until there are no more values for them to
 // compute.
 struct Tabulate : private skip::noncopyable {
-  using Ptr = boost::intrusive_ptr<Tabulate>;
+  using Ptr = skip::intrusive_ptr<Tabulate>;
 
   Tabulate(int64_t count, RObj* closure)
       : m_index(0),
