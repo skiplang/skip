@@ -19,11 +19,12 @@
 
 #include <functional>
 #include <cstdlib>
+#include <memory>
 #include <mutex>
 #include <iostream>
 #include <fstream>
 #include <libunwind.h>
-#include <boost/functional/hash.hpp>
+#include <unistd.h>
 
 /*
  * Simple heap profiling, based on logging all calls to ObStack::alloc.
@@ -56,10 +57,6 @@ using CallStack = std::vector<unw_word_t>;
  * within the same function resulted in more fine grained allocation
  * sites that didn't seem super helpful for analysis.
  *
- * impl note: Tried using boost::flyweight<std::string> instead of string to
- * have an intern'ed string for each entry.
- * Somewhat surprisingly that turned out to be a touch slower
- * than just using std::string directly.
  */
 using Symbol = std::string;
 using SymbolicCallStack = std::vector<Symbol>;
@@ -72,11 +69,11 @@ using SymbolicAllocSite = std::pair<SymbolicCallStack, K>;
 
 // For each AllocSite, we'll simply log number of calls:
 template <typename K, typename V>
-using AllocLog = skip::fast_map<AllocSite<K>, V, boost::hash<AllocSite<K>>>;
+using AllocLog = skip::fast_map<AllocSite<K>, V, pair_vector_hash>;
 
 template <typename K, typename V>
 using SymbolicAllocLog =
-    skip::fast_map<SymbolicAllocSite<K>, V, boost::hash<SymbolicAllocSite<K>>>;
+    skip::fast_map<SymbolicAllocSite<K>, V, pair_vector_hash>;
 
 using ObstackAllocLog = AllocLog<size_t, uint64_t>;
 using ObstackSymbolicAllocLog = SymbolicAllocLog<size_t, uint64_t>;
