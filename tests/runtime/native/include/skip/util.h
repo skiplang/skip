@@ -171,6 +171,7 @@ constexpr T roundDown(T n, size_t align) {
 }
 
 class vector_hash {
+public:
   template <class T>
   std::size_t operator()(std::vector<T> const& vec) const {
     std::size_t ret = 0;
@@ -185,6 +186,13 @@ struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2>& pair) const {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+struct pair_vector_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<std::vector<T1>, T2>& pair) const {
+    return vector_hash()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
 
