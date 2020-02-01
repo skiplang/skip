@@ -51,43 +51,37 @@ class intrusive_ptr {
       intrusive_ptr_add_ref(px);
   }
 
-    intrusive_ptr(intrusive_ptr && rhs) : px( rhs.px )
-    {
-        rhs.px = 0;
-    }
+  intrusive_ptr(intrusive_ptr&& rhs) : px(rhs.px) {
+    rhs.px = 0;
+  }
 
-    intrusive_ptr & operator=(intrusive_ptr && rhs) BOOST_SP_NOEXCEPT
-    {
-        this_type( static_cast< intrusive_ptr && >( rhs ) ).swap(*this);
-        return *this;
-    }
+  intrusive_ptr& operator=(intrusive_ptr&& rhs) BOOST_SP_NOEXCEPT {
+    this_type(static_cast<intrusive_ptr&&>(rhs)).swap(*this);
+    return *this;
+  }
 
-    template<class U>
-    intrusive_ptr(intrusive_ptr<U> && rhs)
+  template <class U>
+  intrusive_ptr(intrusive_ptr<U>&& rhs)
 
-    : px( rhs.px )
-    {
-        rhs.px = 0;
-    }
+      : px(rhs.px) {
+    rhs.px = 0;
+  }
 
-    template<class U>
-    intrusive_ptr & operator=(intrusive_ptr<U> && rhs)
-    {
-        this_type( static_cast< intrusive_ptr<U> && >( rhs ) ).swap(*this);
-        return *this;
-    }
+  template <class U>
+  intrusive_ptr& operator=(intrusive_ptr<U>&& rhs) {
+    this_type(static_cast<intrusive_ptr<U>&&>(rhs)).swap(*this);
+    return *this;
+  }
 
-    intrusive_ptr & operator=(intrusive_ptr const & rhs)
-    {
-        this_type(rhs).swap(*this);
-        return *this;
-    }
+  intrusive_ptr& operator=(intrusive_ptr const& rhs) {
+    this_type(rhs).swap(*this);
+    return *this;
+  }
 
-    intrusive_ptr & operator=(T * rhs)
-    {
-        this_type(rhs).swap(*this);
-        return *this;
-    }
+  intrusive_ptr& operator=(T* rhs) {
+    this_type(rhs).swap(*this);
+    return *this;
+  }
 
   T* get() const {
     return px;
