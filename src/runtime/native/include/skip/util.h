@@ -174,7 +174,7 @@ class vector_hash {
   template <class T>
   std::size_t operator()(std::vector<T> const& vec) const {
     std::size_t ret = 0;
-    for(auto& i : vec) {
+    for (auto& i : vec) {
       ret ^= std::hash<T>()(i);
     }
     return ret;
