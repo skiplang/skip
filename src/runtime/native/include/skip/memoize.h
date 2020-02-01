@@ -476,29 +476,21 @@ struct SubscriptionSet : private skip::noncopyable {
 
   // Iterator for walking through subscriptions. It knows how to skip over
   // freelisted entries.
-  struct iterator final : boost::iterator_facade<
-                              iterator,
-                              const UpEdge,
-                              boost::forward_traversal_tag> {
+  struct iterator final {
     iterator();
 
     iterator(const iterator&) = default;
     iterator& operator=(const iterator&) = default;
 
+   public:
+    iterator& operator++();
+    bool operator==(const iterator&) const;
+    bool operator!=(const iterator&) const;
+    const UpEdge& operator*() const;
+
    private:
-    // Provide the boost iterator_facade with the magic it needs.
-    friend boost::iterator_core_access;
-
     friend struct SubscriptionSet;
-
     explicit iterator(Edge pos);
-
-    const UpEdge& dereference() const;
-
-    bool equal(const iterator& other) const;
-
-    void increment();
-
     Edge m_pos;
   };
 
