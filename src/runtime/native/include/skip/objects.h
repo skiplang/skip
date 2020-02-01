@@ -16,8 +16,6 @@
 #include "Type.h"
 #include "VTable.h"
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 /*

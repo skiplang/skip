@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <type_traits>
 
 // #define ENABLE_DEBUG_TRACE 1

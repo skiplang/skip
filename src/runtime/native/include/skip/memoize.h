@@ -21,7 +21,6 @@
 #include <functional>
 #include <future>
 
-#include <boost/intrusive_ptr.hpp>
 #include <boost/operators.hpp>
 
 namespace skip {
@@ -76,7 +75,7 @@ struct alignas(kRevisionAlign) Revision;
 
 using RevisionLock = LockGuard<const Revision>;
 using InvocationLock = LockGuard<const Invocation>;
-using InvocationPtr = boost::intrusive_ptr<Invocation>;
+using InvocationPtr = skip::intrusive_ptr<Invocation>;
 
 /// See docs for Edge.
 using EdgeIndex = uint8_t;
@@ -539,7 +538,7 @@ struct SubscriptionSet : private skip::noncopyable {
 // A future-like object that gets notified when the value returned by
 // asyncEvaluate() becomes invalidated by some input dependency change.
 struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
-  using Ptr = boost::intrusive_ptr<InvalidationWatcher>;
+  using Ptr = skip::intrusive_ptr<InvalidationWatcher>;
 
   static Ptr make() {
     // The RefCount of 2 is for one coming from m_revision, and one
@@ -547,7 +546,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
     return Ptr(new InvalidationWatcher(2), false);
   }
 
-  static Ptr make(std::vector<boost::intrusive_ptr<Revision>>&& trace);
+  static Ptr make(std::vector<skip::intrusive_ptr<Revision>>&& trace);
 
   ~InvalidationWatcher();
 
@@ -597,7 +596,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   //
   // The InvalidationWatcher always points to the m_revision, even when it
   // no longer points back, and uses m_revision's lock as its own lock.
-  boost::intrusive_ptr<Revision> m_revision;
+  skip::intrusive_ptr<Revision> m_revision;
 
   std::promise<void> m_promise;
 };
@@ -963,7 +962,7 @@ static_assert(sizeof(OwnerAndFlags) == sizeof(uintptr_t), "");
  */
 struct alignas(kRevisionAlign) Revision final : Aligned<Revision>,
                                                 LeakChecker<Revision> {
-  using Ptr = boost::intrusive_ptr<Revision>;
+  using Ptr = skip::intrusive_ptr<Revision>;
 
   Revision(
       TxnId begin,
@@ -1046,7 +1045,7 @@ struct alignas(kRevisionAlign) Revision final : Aligned<Revision>,
   Refresher* refresher_lck() const;
 
   /// Callable by the holder of mutex().
-  boost::intrusive_ptr<Invocation> owner_lck() const;
+  skip::intrusive_ptr<Invocation> owner_lck() const;
 
   bool isPlaceholder() const;
 
@@ -1500,7 +1499,7 @@ struct Transaction {
   std::vector<std::pair<Invocation::Ptr, MemoValue>> m_commits;
 };
 
-// boost::intrusive_ptr support.
+// skip::intrusive_ptr support.
 void intrusive_ptr_add_ref(Revision* rev);
 void intrusive_ptr_release(Revision* rev);
 void intrusive_ptr_add_ref(Invocation* inv);
@@ -1651,9 +1650,9 @@ template <typename _ObjType, typename _ArgType>
 struct InvocationHelper : InvocationHelperBase {
   using ArgType = _ArgType;
   using ObjType = _ObjType;
-  using Ptr = boost::intrusive_ptr<InvocationHelper<ObjType, ArgType>>;
+  using Ptr = skip::intrusive_ptr<InvocationHelper<ObjType, ArgType>>;
 
-  static boost::intrusive_ptr<const InvocationHelper> factory(ArgType&& args) {
+  static skip::intrusive_ptr<const InvocationHelper> factory(ArgType&& args) {
     auto vtable = static_vtable();
     auto& type = static_type();
 
@@ -1675,7 +1674,7 @@ struct InvocationHelper : InvocationHelperBase {
     auto robj = std::unique_ptr<InvocationHelperRObj, decltype(deleter)>(
         ret, std::move(deleter));
 
-    auto iobj = boost::intrusive_ptr<const InvocationHelper>(
+    auto iobj = skip::intrusive_ptr<const InvocationHelper>(
         reinterpret_cast<const InvocationHelper*>(intern(robj.get())), false);
 
     return iobj;
@@ -1819,8 +1818,8 @@ struct alignas(Obstack::kAllocAlign) ZeroOnConstruct {
 
 namespace std {
 template <>
-struct hash<boost::intrusive_ptr<const skip::MutableIObj>> {
-  size_t operator()(boost::intrusive_ptr<skip::IObj> p) const noexcept {
+struct hash<skip::intrusive_ptr<const skip::MutableIObj>> {
+  size_t operator()(skip::intrusive_ptr<skip::IObj> p) const noexcept {
     return p->hash();
   }
 };

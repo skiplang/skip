@@ -13,15 +13,13 @@
 #include <atomic>
 #include <memory>
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 // NOTE: These are here so Obstack.h can see them without causing
 // a circular #include by pussing in all of Process.h.
 void intrusive_ptr_add_ref(Process* p);
 void intrusive_ptr_release(Process* p);
-using ProcessPtr = boost::intrusive_ptr<Process>;
+using ProcessPtr = skip::intrusive_ptr<Process>;
 
 // Work that a Process can be asked to do.
 struct Task : private skip::noncopyable {
@@ -53,7 +51,7 @@ struct OneShotTask final : Task {
   // A first come, first serve guard around the underlying Task we want
   // to run. Many OneShotTasks can point to the same Arbiter.
   struct Arbiter final : skip::noncopyable {
-    using Ptr = boost::intrusive_ptr<Arbiter>;
+    using Ptr = skip::intrusive_ptr<Arbiter>;
     static Ptr make(std::unique_ptr<Task> task);
 
     // Return the underlying Task if this is the first call to this method,

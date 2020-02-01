@@ -17,8 +17,6 @@
 #include <condition_variable>
 #include <memory>
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 extern __thread Process* tl_currentProcess;
@@ -33,7 +31,7 @@ struct UnownedProcess {
   UnownedProcess(UnownedProcess&&) = default;
   UnownedProcess& operator=(UnownedProcess&& other) = default;
 
-  explicit UnownedProcess(boost::intrusive_ptr<Process> process)
+  explicit UnownedProcess(skip::intrusive_ptr<Process> process)
       : m_process(std::move(process)) {}
 
   template <typename T>
@@ -57,7 +55,7 @@ struct UnownedProcess {
   }
 
  private:
-  boost::intrusive_ptr<Process> m_process;
+  skip::intrusive_ptr<Process> m_process;
 };
 
 // A Process is analogous to an operating system process, containing
