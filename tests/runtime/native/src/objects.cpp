@@ -11,13 +11,6 @@
 #include "skip/set.h"
 #include "skip/String.h"
 
-#include <boost/version.hpp>
-#if BOOST_VERSION >= 105600
-#include <boost/polymorphic_cast.hpp>
-#else
-#include <boost/cast.hpp>
-#endif
-
 namespace skip {
 
 // Make sure there is no local state, these are supposed to be empty dummy

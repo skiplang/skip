@@ -651,7 +651,7 @@ static bool findEqualNeighbor(TarjanNode& sccList) {
 }
 
 // C++11 doesn't seem to provide a standard pair hasher.
-using HashIObjPair = boost::hash<std::pair<IObj*, IObj*>>;
+using HashIObjPair = skip::pair_hash;
 
 /**
  * Which objects we are already in the process of comparing (or have

@@ -22,8 +22,6 @@
 #include <chrono>
 #include <iostream>
 
-#include <boost/algorithm/string/predicate.hpp>
-
 using namespace skip;
 
 namespace {
@@ -71,8 +69,7 @@ void skip::initializeSkip(int argc, char** argv) {
     s_cppArguments.emplace_back(argv[i]);
   }
   // HACK: See T28176670 for some thoughts on how we might avoid this hack:
-  auto isSkipCompiler =
-      boost::algorithm::ends_with(s_cppArgument0, "skip_to_llvm");
+  auto isSkipCompiler = ends_with(s_cppArgument0, "skip_to_llvm");
   AllocProfiler::init(isSkipCompiler);
 
   (void)Arena::KindMapper::singleton();
