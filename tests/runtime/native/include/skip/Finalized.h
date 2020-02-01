@@ -13,8 +13,6 @@
 #include "Obstack.h"
 #include "objects.h"
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 template <typename Derived>

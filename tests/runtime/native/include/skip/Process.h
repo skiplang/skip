@@ -17,8 +17,6 @@
 #include <condition_variable>
 #include <memory>
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 extern __thread Process* tl_currentProcess;

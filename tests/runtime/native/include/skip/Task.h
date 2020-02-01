@@ -13,8 +13,6 @@
 #include <atomic>
 #include <memory>
 
-#include <boost/intrusive_ptr.hpp>
-
 namespace skip {
 
 // NOTE: These are here so Obstack.h can see them without causing

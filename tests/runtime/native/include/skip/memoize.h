@@ -21,7 +21,6 @@
 #include <functional>
 #include <future>
 
-#include <boost/intrusive_ptr.hpp>
 #include <boost/operators.hpp>
 
 namespace skip {
