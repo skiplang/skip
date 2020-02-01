@@ -13,8 +13,6 @@
 #include "skip/String.h"
 #include "skip/util.h"
 
-#include <boost/pointer_cast.hpp>
-
 #include <cassert>
 #include <cstddef>
 
