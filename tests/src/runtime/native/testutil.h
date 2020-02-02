@@ -30,9 +30,8 @@ namespace skip {
 
 namespace test {
 
-using RObjPairSet = skip::fast_set<
-    std::pair<const RObj*, const RObj*>,
-    pair_hash>;
+using RObjPairSet =
+    skip::fast_set<std::pair<const RObj*, const RObj*>, pair_hash>;
 
 // Each test type we create here registers an explicit function to
 // recursively compare two instances of the right VTable.
