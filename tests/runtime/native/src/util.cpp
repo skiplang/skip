@@ -18,6 +18,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <unistd.h>
 #include <sys/uio.h>
 
 #define UNW_LOCAL_ONLY 1

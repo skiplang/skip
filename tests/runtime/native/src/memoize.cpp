@@ -2457,6 +2457,10 @@ bool Edge::operator==(const Edge& other) const {
   return m_pointerAndIndex.bits() == other.m_pointerAndIndex.bits();
 }
 
+bool Edge::operator!=(const Edge& other) const {
+  return m_pointerAndIndex.bits() != other.m_pointerAndIndex.bits();
+}
+
 bool Edge::operator<(const Edge& other) const {
   return m_pointerAndIndex.bits() < other.m_pointerAndIndex.bits();
 }

@@ -18,20 +18,21 @@ namespace {
 // Simple tests to make sure UIntTypeSelector returns a matching type.
 //
 
-#define CHECK_UINT_TYPE_SELECTOR(SZ)                                           \
-  static_assert(                                                               \
-      sizeof(UIntTypeSelector<SZ, false, false, false>::type) == (SZ),         \
-      "Bad size");                                                             \
-  static_assert(                                                               \
-      alignof(UIntTypeSelector<SZ, false, false, false>::type) ==              \
-          (skip::isPowTwo(SZ) ? alignof(typename boost::uint_t<(SZ)*8>::least) \
-                              : 1),                                            \
-      "Bad align");                                                            \
-  static_assert(                                                               \
-      sizeof(UIntTypeSelector<SZ, false, false, true>::type) == (SZ),          \
-      "Bad size");                                                             \
-  static_assert(                                                               \
-      alignof(UIntTypeSelector<SZ, false, false, true>::type) == 1,            \
+#define CHECK_UINT_TYPE_SELECTOR(SZ)                                   \
+  static_assert(                                                       \
+      sizeof(UIntTypeSelector<SZ, false, false, false>::type) == (SZ), \
+      "Bad size");                                                     \
+  static_assert(                                                       \
+      alignof(UIntTypeSelector<SZ, false, false, false>::type) ==      \
+          (skip::isPowTwo(SZ)                                          \
+               ? alignof(typename skip::detail::UInt<(SZ)*8>::least)   \
+               : 1),                                                   \
+      "Bad align");                                                    \
+  static_assert(                                                       \
+      sizeof(UIntTypeSelector<SZ, false, false, true>::type) == (SZ),  \
+      "Bad size");                                                     \
+  static_assert(                                                       \
+      alignof(UIntTypeSelector<SZ, false, false, true>::type) == 1,    \
       "Bad align")
 
 CHECK_UINT_TYPE_SELECTOR(1U);
@@ -109,11 +110,10 @@ void testSmallTaggedPtr() {
 
   // It should take the minimum number of bytes.
   static_assert(
-      pack
-          ? (sizeof(T) == (ptrBits + tagBits - alignBits + 7) >> 3)
-          : (sizeof(T) ==
-             sizeof(
-                 typename boost::uint_t<ptrBits + tagBits - alignBits>::least)),
+      pack ? (sizeof(T) == (ptrBits + tagBits - alignBits + 7) >> 3)
+           : (sizeof(T) ==
+              sizeof(typename skip::detail::UInt<
+                     ptrBits + tagBits - alignBits>::least)),
       "Incorrect size.");
 
   // Packed values must have alignment 1.
@@ -122,7 +122,8 @@ void testSmallTaggedPtr() {
   // Simple (power of two) sizes without packing should be aligned.
   static_assert(
       pack || !skip::isPowTwo(sizeof(T)) ||
-          alignof(T) == alignof(typename boost::uint_t<sizeof(T) * 8>::least),
+          alignof(T) ==
+              alignof(typename skip::detail::UInt<sizeof(T) * 8>::least),
       "alignment unexpectedly low.");
 
   for (int pattern = 0; pattern <= 0xFF; pattern += 0xFF) {

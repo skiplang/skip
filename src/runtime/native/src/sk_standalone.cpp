@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <libunwind.h>
 #include <cxxabi.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "skip/Exception.h"
 #include "skip/Obstack.h"
