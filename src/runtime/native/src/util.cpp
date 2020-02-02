@@ -15,6 +15,9 @@
 #include <cerrno>
 #include <cstdarg>
 #include <cstdint>
+#include <iostream>
+#include <string>
+#include <sstream>
 #include <sys/uio.h>
 
 #define UNW_LOCAL_ONLY 1
