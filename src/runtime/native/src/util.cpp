@@ -11,6 +11,7 @@
 #include "skip/external.h"
 #include "skip/VTable.h"
 
+#include <array>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdint>
