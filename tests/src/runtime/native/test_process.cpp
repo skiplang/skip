@@ -7,7 +7,6 @@
 
 #include <vector>
 
-#include <boost/thread/barrier.hpp>
 #include <gtest/gtest.h>
 
 #include <thread>
@@ -16,6 +15,34 @@
 #include "testutil.h"
 
 using namespace skip;
+
+class barrier {
+public:
+    explicit barrier(std::size_t iCount) : 
+      mThreshold(iCount), 
+      mCount(iCount), 
+      mGeneration(0) {
+    }
+
+    void wait() {
+        std::unique_lock<std::mutex> lLock{mMutex};
+        auto lGen = mGeneration;
+        if (!--mCount) {
+            mGeneration++;
+            mCount = mThreshold;
+            mCond.notify_all();
+        } else {
+            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+        }
+    }
+
+private:
+    std::mutex mMutex;
+    std::condition_variable mCond;
+    std::size_t mThreshold;
+    std::size_t mCount;
+    std::size_t mGeneration;
+};
 
 // Make sure we run tasks in the reverse order they were scheduled.
 TEST(Process, testSimpleOrdering) {
@@ -82,7 +109,7 @@ TEST(Process, testThreads) {
   auto process = Process::make();
   std::vector<int> answers;
 
-  boost::barrier barrier{2};
+  barrier barrier{2};
 
   auto thread = std::thread([&]() {
     barrier.wait();
@@ -125,7 +152,7 @@ TEST(Process, testRunOne) {
   int counter = 0;
 
   for (int repeat = 0; repeat < 3; ++repeat) {
-    boost::barrier barrier{2};
+    barrier barrier{2};
 
     auto thread = std::thread([&]() {
       barrier.wait();
