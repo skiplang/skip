@@ -190,7 +190,8 @@ class UInt<64> {
 template <typename Lo, typename Hi, bool safeToLoadBefore, bool safeToLoadAfter>
 struct PackedUInt {
   // Smallest unsigned integer type large enough to hold this value.
-  using UIntType = typename skip::detail::UInt<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
+  using UIntType =
+      typename skip::detail::UInt<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
   /* implicit */ operator UIntType() const {
     // Combine the unaligned pieces into a single number.
@@ -282,7 +283,8 @@ struct UIntTypeSelector<
     safeToLoadAfter,
     pack,
     typename std::enable_if<pack && skip::isPowTwo(size) && size != 1>::type> {
-  using type = detail::UnalignedValue<typename skip::detail::UInt<size * 8>::exact>;
+  using type =
+      detail::UnalignedValue<typename skip::detail::UInt<size * 8>::exact>;
 };
 
 // Specialization for 1, 2, 4, 8 byte unpacked (aligned) values.
@@ -479,7 +481,8 @@ struct SmallTaggedPtr {
       kPack>::type;
 
  public:
-  using TagBits = typename skip::detail::UInt<kNumTagBits ? kNumTagBits : 1>::fast;
+  using TagBits =
+      typename skip::detail::UInt<kNumTagBits ? kNumTagBits : 1>::fast;
 
   /// A pair of a pointer and tag bits.
   struct PointerTagPair {
