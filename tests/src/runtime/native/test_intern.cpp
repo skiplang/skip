@@ -12,9 +12,6 @@
 #include <cstddef>
 #include <iostream>
 
-#include <boost/functional/hash.hpp>
-#include <boost/scope_exit.hpp>
-
 #include <gtest/gtest.h>
 
 #include "skip/intern-extc.h"
