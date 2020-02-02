@@ -99,7 +99,7 @@ struct MutableITest1 final : Test1<IObj>, TestIObjHelper<MutableITest1> {
 };
 
 using ITest1 = const MutableITest1;
-using ITest1Ptr = boost::intrusive_ptr<ITest1>;
+using ITest1Ptr = skip::intrusive_ptr<ITest1>;
 
 // An RTest1 is a Test1 which inherits from RObj
 struct RTest1 final : Test1<RObj>, TestRObjHelper<RTest1, ITest1> {};
