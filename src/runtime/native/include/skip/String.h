@@ -121,6 +121,15 @@ struct String final : StringRep {
   bool operator<(const String& o) const {
     return cmp(o) < 0;
   }
+  bool operator>(const String& o) const {
+    return cmp(o) > 0;
+  }
+  bool operator<=(const String& o) const {
+    return cmp(o) <= 0;
+  }
+  bool operator>=(const String& o) const {
+    return cmp(o) >= 0;
+  }
   ssize_t cmp(const String& o) const;
 
   // The size of a buffer used to hold temporary c_str() values.  Strings this
