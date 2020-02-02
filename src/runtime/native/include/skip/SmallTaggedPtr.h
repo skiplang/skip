@@ -16,10 +16,6 @@
 
 #include <algorithm>
 
-#include <boost/integer.hpp>
-#include <boost/integer/static_log2.hpp>
-#include <boost/operators.hpp>
-
 namespace skip {
 namespace detail {
 
