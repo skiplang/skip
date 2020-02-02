@@ -17,8 +17,6 @@
 #include "skip/util.h"
 #include "skip/VTable.h"
 
-#include <boost/intrusive_ptr.hpp>
-
 #include <memory>
 #include <vector>
 #include <set>
@@ -34,7 +32,7 @@ namespace test {
 
 using RObjPairSet = skip::fast_set<
     std::pair<const RObj*, const RObj*>,
-    boost::hash<std::pair<const RObj*, const RObj*>>>;
+    pair_hash>;
 
 // Each test type we create here registers an explicit function to
 // recursively compare two instances of the right VTable.
@@ -82,10 +80,10 @@ template <typename Derived, typename DerivedIObj>
 struct TestRObjHelper {
   using InternType = DerivedIObj;
 
-  boost::intrusive_ptr<DerivedIObj> intern() {
+  skip::intrusive_ptr<DerivedIObj> intern() {
     auto derived_this = reinterpret_cast<Derived*>(this);
     auto p = reinterpret_cast<DerivedIObj*>(skip::intern(derived_this));
-    return boost::intrusive_ptr<DerivedIObj>(p, false);
+    return skip::intrusive_ptr<DerivedIObj>(p, false);
   }
 
   bool equal(const RObj& other) const {
@@ -107,7 +105,7 @@ struct TestIObjHelper {
     return objectsEqual(derived_this, &other);
   }
 
-  using Ptr = boost::intrusive_ptr<const Derived>;
+  using Ptr = skip::intrusive_ptr<const Derived>;
 };
 
 template <typename Derived>
