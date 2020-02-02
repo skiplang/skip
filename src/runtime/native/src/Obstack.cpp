@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cmath>
 #include <map>
 #include <stdexcept>
 #include <set>

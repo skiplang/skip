@@ -14,6 +14,7 @@
 #include <cstring>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 // #define ENABLE_DEBUG_TRACE 1
 
@@ -169,10 +170,29 @@ constexpr T roundDown(T n, size_t align) {
   return detail::RoundDown<T>::roundDown(n, align);
 }
 
+class vector_hash {
+ public:
+  template <class T>
+  std::size_t operator()(std::vector<T> const& vec) const {
+    std::size_t ret = 0;
+    for (auto& i : vec) {
+      ret ^= std::hash<T>()(i);
+    }
+    return ret;
+  }
+};
+
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2>& pair) const {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+struct pair_vector_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<std::vector<T1>, T2>& pair) const {
+    return vector_hash()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
 

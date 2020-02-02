@@ -20,6 +20,7 @@
 #include "skip/map.h"
 
 #include <chrono>
+#include <cmath>
 #include <iostream>
 
 using namespace skip;

@@ -11,9 +11,13 @@
 #include "skip/external.h"
 #include "skip/VTable.h"
 
+#include <array>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdint>
+#include <iostream>
+#include <string>
+#include <sstream>
 #include <sys/uio.h>
 
 #define UNW_LOCAL_ONLY 1

@@ -17,8 +17,6 @@
 #include "detail/FakePtr.h"
 #include "detail/Refs.h"
 
-#include <boost/iterator/iterator_facade.hpp>
-
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
 

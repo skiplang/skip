@@ -13,6 +13,7 @@
 #include "objects.h"
 #include "Type.h"
 
+#include <array>
 #include <atomic>
 
 namespace skip {

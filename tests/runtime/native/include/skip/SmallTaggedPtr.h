@@ -31,8 +31,7 @@ namespace detail {
  * the right class.
  */
 template <typename T>
-struct __attribute__((packed)) UnalignedValue
-    : boost::totally_ordered<UnalignedValue<T>> {
+struct __attribute__((packed)) UnalignedValue {
   /* implicit */ operator T() const {
     return m_bits;
   }
@@ -74,8 +73,7 @@ struct __attribute__((packed)) UnalignedValue
  * @param safeToLoadAfter See documentation for SmallTaggedPtr.
  */
 template <typename Lo, typename Hi, bool safeToLoadBefore, bool safeToLoadAfter>
-struct PackedUInt : boost::totally_ordered<
-                        PackedUInt<Lo, Hi, safeToLoadBefore, safeToLoadAfter>> {
+struct PackedUInt {
   // Smallest unsigned integer type large enough to hold this value.
   using UIntType = typename boost::uint_t<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
