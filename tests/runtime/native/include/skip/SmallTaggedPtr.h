@@ -16,10 +16,6 @@
 
 #include <algorithm>
 
-#include <boost/integer.hpp>
-#include <boost/integer/static_log2.hpp>
-#include <boost/operators.hpp>
-
 namespace skip {
 namespace detail {
 
@@ -58,6 +54,125 @@ struct __attribute__((packed)) UnalignedValue {
 };
 
 /**
+ * Originally we were using boost::static_log2 and boost::uint_t,
+ * but it's silly to depend on boost just for that, so I replaced
+ * them with the following section. Added a bunch of assertions to
+ * make sure the assumption I made on sizes were correct. Of course
+ * we will have to adjust once support for new architectures is added.
+ */
+
+template <size_t>
+class StaticLog2;
+
+template <>
+class StaticLog2<8> {
+ public:
+  static const size_t value = 4;
+};
+
+template <>
+class StaticLog2<64> {
+ public:
+  static const size_t value = 6;
+};
+
+template <size_t>
+class UInt;
+
+template <>
+class UInt<1> {
+ public:
+  typedef unsigned char fast;
+  static_assert(sizeof(fast) == 1);
+};
+
+template <>
+class UInt<5> {
+ public:
+  typedef unsigned char fast;
+  static_assert(sizeof(fast) == 1);
+};
+
+template <>
+class UInt<7> {
+ public:
+  typedef unsigned char fast;
+  static_assert(sizeof(fast) == 1);
+};
+
+template <>
+class UInt<16> {
+ public:
+  typedef unsigned short exact;
+  static_assert(sizeof(exact) == 2);
+};
+
+template <>
+class UInt<19> {
+ public:
+  typedef unsigned int fast;
+  static_assert(sizeof(fast) == 4);
+};
+
+template <>
+class UInt<31> {
+ public:
+  typedef unsigned int fast;
+  static_assert(sizeof(fast) == 4);
+};
+
+template <>
+class UInt<32> {
+ public:
+  typedef unsigned int exact;
+  static_assert(sizeof(exact) == 4);
+};
+
+template <>
+class UInt<41> {
+ public:
+  typedef unsigned long least;
+  static_assert(sizeof(least) == 8);
+};
+
+template <>
+class UInt<43> {
+ public:
+  typedef unsigned long least;
+  static_assert(sizeof(least) == 8);
+};
+
+template <>
+class UInt<44> {
+ public:
+  typedef unsigned long least;
+  static_assert(sizeof(least) == 8);
+};
+
+template <>
+class UInt<47> {
+ public:
+  typedef unsigned long least;
+  static_assert(sizeof(least) == 8);
+};
+
+template <>
+class UInt<48> {
+ public:
+  typedef unsigned long least;
+  static_assert(sizeof(least) == 8);
+};
+
+template <>
+class UInt<64> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long exact;
+  static_assert(sizeof(least) == 8);
+  static_assert(sizeof(exact) == 8);
+};
+
+/**
  * Holds an unsigned integer that is guaranteed to fit in "size" bytes,
  * rather than rounding up to the next power of two size like normal ints.
  *
@@ -75,7 +190,7 @@ struct __attribute__((packed)) UnalignedValue {
 template <typename Lo, typename Hi, bool safeToLoadBefore, bool safeToLoadAfter>
 struct PackedUInt {
   // Smallest unsigned integer type large enough to hold this value.
-  using UIntType = typename boost::uint_t<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
+  using UIntType = typename skip::detail::UInt<(sizeof(Lo) + sizeof(Hi)) * 8>::least;
 
   /* implicit */ operator UIntType() const {
     // Combine the unaligned pieces into a single number.
@@ -167,7 +282,7 @@ struct UIntTypeSelector<
     safeToLoadAfter,
     pack,
     typename std::enable_if<pack && skip::isPowTwo(size) && size != 1>::type> {
-  using type = detail::UnalignedValue<typename boost::uint_t<size * 8>::exact>;
+  using type = detail::UnalignedValue<typename skip::detail::UInt<size * 8>::exact>;
 };
 
 // Specialization for 1, 2, 4, 8 byte unpacked (aligned) values.
@@ -180,7 +295,7 @@ struct UIntTypeSelector<
     typename std::enable_if<
         skip::isPowTwo(size) && (!pack || size == 1)>::type> {
   // Just use a simple C++ scalar type, not one of our structs.
-  using type = typename boost::uint_t<size * 8>::exact;
+  using type = typename skip::detail::UInt<size * 8>::exact;
 };
 
 // Hack to provide a legal return value for operator* for SmallTaggedPtr<void>.
@@ -264,7 +379,7 @@ template <
     bool safeToLoadBefore = false,
     bool safeToLoadAfter = false,
     bool pack = true,
-    int numAlignBits = boost::static_log2<alignof(T)>::value,
+    int numAlignBits = skip::detail::StaticLog2<alignof(T)>::value,
     int numPtrBits = detail::kMaxPtrBits,
     typename TPtr = T*>
 struct SmallTaggedPtr {
@@ -289,7 +404,7 @@ struct SmallTaggedPtr {
   /// Number of bytes taken by this pointer type.
   static constexpr unsigned int numBytes =
       (pack ? detail::bitsToBytes(numPtrBits - kNumAlignBits + kNumTagBits)
-            : sizeof(typename boost::uint_t<
+            : sizeof(typename skip::detail::UInt<
                      numPtrBits - kNumAlignBits + kNumTagBits>::least));
 
   static constexpr bool kPack = pack;
@@ -364,7 +479,7 @@ struct SmallTaggedPtr {
       kPack>::type;
 
  public:
-  using TagBits = typename boost::uint_t<kNumTagBits ? kNumTagBits : 1>::fast;
+  using TagBits = typename skip::detail::UInt<kNumTagBits ? kNumTagBits : 1>::fast;
 
   /// A pair of a pointer and tag bits.
   struct PointerTagPair {
@@ -519,7 +634,7 @@ template <
     bool safeToLoadBefore = false,
     bool safeToLoadAfter = false,
     bool pack = true,
-    int numAlignBits = boost::static_log2<alignof(T)>::value,
+    int numAlignBits = skip::detail::StaticLog2<alignof(T)>::value,
     int numPtrBits = detail::kMaxPtrBits>
 using SmallTaggedUnion = SmallTaggedPtr<
     void,

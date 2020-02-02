@@ -140,7 +140,7 @@ index() == kInlineSubscriptionIndex even if it has "moved" to no longer
 be inline.
 
 */
-struct Edge : boost::totally_ordered<Edge> {
+struct Edge {
   enum {
     kInlineSubscriptionIndex = kRevisionAlign - 1,
     kNoEdgeIndex = kInlineSubscriptionIndex - 1
@@ -171,6 +171,8 @@ struct Edge : boost::totally_ordered<Edge> {
   bool isDownEdge() const;
 
   bool operator==(const Edge& other) const;
+
+  bool operator!=(const Edge& other) const;
 
   bool operator<(const Edge& other) const;
 

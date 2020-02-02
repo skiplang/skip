@@ -66,7 +66,7 @@ struct LongString final : RObj {
  * Long String format:
  *   The 64-bit value is a pointer to a LongString.  The high bit must be clear.
  */
-struct String final : StringRep, boost::less_than_comparable<String> {
+struct String final : StringRep {
   String();
   /* implicit */ String(StringRep s) {
     *static_cast<StringRep*>(this) = s;
