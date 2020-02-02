@@ -9,9 +9,6 @@
 #include "skip/Obstack.h"
 #include "skip/AllocProfiler.h"
 
-#include <boost/noncopyable.hpp>
-#include <boost/operators.hpp>
-
 #include <utility>
 #include <vector>
 #include <queue>
@@ -36,7 +33,7 @@ struct ObstackDetail final : private skip::noncopyable {
    * low order bits are the byte offset into the chunk. This allows relational
    * comparisons on Pos values even with arbitrary chunk addresses
    */
-  struct Pos final : boost::totally_ordered<Pos> {
+  struct Pos final {
     Pos() = default;
     Pos(const Pos& o) = default;
     Pos& operator=(const Pos& o) {
@@ -49,8 +46,20 @@ struct ObstackDetail final : private skip::noncopyable {
     bool operator<(const Pos& o) const {
       return m_position < o.m_position;
     }
+    bool operator<=(const Pos& o) const {
+      return m_position <= o.m_position;
+    }
+    bool operator>(const Pos& o) const {
+      return m_position > o.m_position;
+    }
+    bool operator>=(const Pos& o) const {
+      return m_position >= o.m_position;
+    }
     bool operator==(const Pos& o) const {
       return m_position == o.m_position;
+    }
+    bool operator!=(const Pos& o) const {
+      return m_position != o.m_position;
     }
     intptr_t operator-(const Pos& o) const {
       return m_position - o.m_position;
