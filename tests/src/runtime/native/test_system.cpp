@@ -13,7 +13,6 @@
 #include "skip/System.h"
 #include "skip/System-extc.h"
 
-
 using namespace skip;
 using namespace skip::test;
 
