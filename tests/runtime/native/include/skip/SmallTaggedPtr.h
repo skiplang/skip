@@ -79,304 +79,409 @@ class StaticLog2<64> {
 template <size_t>
 class UInt;
 
+// Types represented with a char
+static_assert(sizeof(unsigned char) == 1);
+
 template <>
 class UInt<1> {
  public:
+  typedef unsigned char least;
   typedef unsigned char fast;
-  static_assert(sizeof(fast) == 1);
 };
-
 template <>
 class UInt<2> {
  public:
+  typedef unsigned char least;
   typedef unsigned char fast;
-  static_assert(sizeof(fast) == 1);
 };
-
+template <>
+class UInt<3> {
+ public:
+  typedef unsigned char least;
+  typedef unsigned char fast;
+};
+template <>
+class UInt<4> {
+ public:
+  typedef unsigned char least;
+  typedef unsigned char fast;
+};
 template <>
 class UInt<5> {
  public:
+  typedef unsigned char least;
   typedef unsigned char fast;
-  static_assert(sizeof(fast) == 1);
 };
-
+template <>
+class UInt<6> {
+ public:
+  typedef unsigned char least;
+  typedef unsigned char fast;
+};
 template <>
 class UInt<7> {
  public:
+  typedef unsigned char least;
   typedef unsigned char fast;
-  static_assert(sizeof(fast) == 1);
 };
-
 template <>
 class UInt<8> {
  public:
   typedef unsigned char least;
+  typedef unsigned char fast;
   typedef unsigned char exact;
-  static_assert(sizeof(least) == 1);
-  static_assert(sizeof(exact) == 1);
 };
+
+// Types represented with a short
+static_assert(sizeof(unsigned short) == 2);
 
 template <>
 class UInt<9> {
  public:
   typedef unsigned short least;
-  static_assert(sizeof(least) == 2);
+  typedef unsigned short fast;
 };
 
+template <>
+class UInt<10> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
+template <>
+class UInt<11> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
+template <>
+class UInt<12> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
+template <>
+class UInt<13> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
+template <>
+class UInt<14> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
+template <>
+class UInt<15> {
+ public:
+  typedef unsigned short least;
+  typedef unsigned short fast;
+};
 template <>
 class UInt<16> {
  public:
   typedef unsigned short least;
+  typedef unsigned short fast;
   typedef unsigned short exact;
-  static_assert(sizeof(least) == 2);
-  static_assert(sizeof(exact) == 2);
 };
+
+// Types represented with an int
+static_assert(sizeof(unsigned int) == 4);
 
 template <>
 class UInt<17> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
+  typedef unsigned int fast;
 };
-
+template <>
+class UInt<18> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
 template <>
 class UInt<19> {
  public:
+  typedef unsigned int least;
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<20> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<21> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<22> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<23> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<24> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
   typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
 };
-
 template <>
 class UInt<25> {
  public:
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
+  typedef unsigned int fast;
 };
-
+template <>
+class UInt<26> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
+template <>
+class UInt<27> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
+template <>
+class UInt<28> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
+template <>
+class UInt<29> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
+template <>
+class UInt<30> {
+ public:
+  typedef unsigned int least;
+  typedef unsigned int fast;
+};
 template <>
 class UInt<31> {
  public:
-  typedef unsigned int fast;
-  static_assert(sizeof(fast) == 4);
   typedef unsigned int least;
-  static_assert(sizeof(least) == 4);
+  typedef unsigned int fast;
 };
-
 template <>
 class UInt<32> {
  public:
   typedef unsigned int least;
+  typedef unsigned int fast;
   typedef unsigned int exact;
-  static_assert(sizeof(least) == 4);
-  static_assert(sizeof(exact) == 4);
 };
+
+// Types represented with a long
+static_assert(sizeof(unsigned long) == 8);
 
 template <>
 class UInt<33> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
+template <>
+class UInt<34> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<35> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<36> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<37> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<38> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<39> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
 template <>
 class UInt<40> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<41> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
+template <>
+class UInt<42> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
 template <>
 class UInt<43> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<44> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
+template <>
+class UInt<45> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
+template <>
+class UInt<46> {
+ public:
+  typedef unsigned long least;
+  typedef unsigned long fast;
+};
 template <>
 class UInt<47> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<48> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<49> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<50> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<51> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<52> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<53> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<54> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<55> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<56> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<57> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<58> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<59> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<60> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<61> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<62> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<63> {
  public:
   typedef unsigned long least;
-  static_assert(sizeof(least) == 8);
+  typedef unsigned long fast;
 };
-
 template <>
 class UInt<64> {
  public:
   typedef unsigned long least;
+  typedef unsigned long fast;
   typedef unsigned long exact;
-  static_assert(sizeof(least) == 8);
-  static_assert(sizeof(exact) == 8);
 };
 
 /**
