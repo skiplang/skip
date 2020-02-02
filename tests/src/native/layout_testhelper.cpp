@@ -13,8 +13,6 @@
 #include <cstdarg>
 #include <limits>
 #include <deque>
-#include <boost/format.hpp>
-#include <boost/intrusive_ptr.hpp>
 
 namespace {
 
