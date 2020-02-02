@@ -18,10 +18,36 @@
 #include <random>
 #include <vector>
 
-#include <boost/thread/barrier.hpp>
-
 using namespace skip;
 using namespace skip::test;
+
+class barrier {
+public:
+    explicit barrier(std::size_t iCount) : 
+      mThreshold(iCount), 
+      mCount(iCount), 
+      mGeneration(0) {
+    }
+
+    void wait() {
+        std::unique_lock<std::mutex> lLock{mMutex};
+        auto lGen = mGeneration;
+        if (!--mCount) {
+            mGeneration++;
+            mCount = mThreshold;
+            mCond.notify_all();
+        } else {
+            mCond.wait(lLock, [this, lGen] { return lGen != mGeneration; });
+        }
+    }
+
+private:
+    std::mutex mMutex;
+    std::condition_variable mCond;
+    std::size_t mThreshold;
+    std::size_t mCount;
+    std::size_t mGeneration;
+};
 
 TEST(ArenaTest, testSimple) {
   // Try some simple allocations
@@ -185,7 +211,7 @@ TEST(ArenaTest, testThread) {
   const size_t kNumThreads = 8;
 
   std::array<std::thread, kNumThreads> threads;
-  boost::barrier barrier{kNumThreads};
+  barrier barrier{kNumThreads};
   std::map<void*, int> allocations;
   std::mutex mutex;
 
