@@ -1244,15 +1244,17 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_EQ(s.asLongString(), nullptr);
 
     auto res = SKIP_intern(RObjOrFakePtr(s.sbits()));
-    BOOST_SCOPE_EXIT(res) {
+    try {
+      auto s2 = String(res.bits());
+      EXPECT_EQ(s, s2);
+      EXPECT_EQ(s2.asLongString(), nullptr);
       if (auto p = res.asPtr())
         decref(p);
+    } catch (const std::exception& ex) {
+      if (auto p = res.asPtr())
+        decref(p);
+      throw ex;
     }
-    BOOST_SCOPE_EXIT_END;
-
-    auto s2 = String(res.bits());
-    EXPECT_EQ(s, s2);
-    EXPECT_EQ(s2.asLongString(), nullptr);
   }
 
   // Intern a long string
@@ -1262,16 +1264,18 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_FALSE(s.asLongString()->isInterned());
 
     auto res = SKIP_intern(RObjOrFakePtr(s.sbits()));
-    BOOST_SCOPE_EXIT(res) {
+    try {
+      auto s2 = String(res.bits());
+      EXPECT_EQ(s, s2);
+      EXPECT_NE(s2.asLongString(), nullptr);
+      EXPECT_TRUE(s2.asLongString()->isInterned());
       if (auto p = res.asPtr())
         decref(p);
+    } catch (const std::exception& ex) {
+      if (auto p = res.asPtr())
+        decref(p);
+      throw ex;
     }
-    BOOST_SCOPE_EXIT_END;
-
-    auto s2 = String(res.bits());
-    EXPECT_EQ(s, s2);
-    EXPECT_NE(s2.asLongString(), nullptr);
-    EXPECT_TRUE(s2.asLongString()->isInterned());
   }
 
   // Intern a generic object
@@ -1281,15 +1285,17 @@ TEST(InternUtilTest, testExtIntern) {
     EXPECT_FALSE(obj->isInterned());
 
     auto res = SKIP_intern(RObjOrFakePtr(obj.get()));
-    BOOST_SCOPE_EXIT(res) {
+    try {
+      EXPECT_TRUE(res->isInterned());
+      ITest1* iobj = (ITest1*)res.asPtr();
+      EXPECT_EQ(iobj->n3, 123);
       if (auto p = res.asPtr())
         decref(p);
+    } catch (const std::exception& ex) {
+      if (auto p = res.asPtr())
+        decref(p);
+      throw ex;
     }
-    BOOST_SCOPE_EXIT_END;
-
-    EXPECT_TRUE(res->isInterned());
-    ITest1* iobj = (ITest1*)res.asPtr();
-    EXPECT_EQ(iobj->n3, 123);
   }
 
   EXPECT_EQ(internTable.size(), 0);
