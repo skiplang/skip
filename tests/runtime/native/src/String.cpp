@@ -287,8 +287,7 @@ String String::concat(const String* strings, size_t size) {
   return String(*longString);
 }
 
-uint32_t
-String::computeStringHash(const void* ptr, arraysize_t byteSize) {
+uint32_t String::computeStringHash(const void* ptr, arraysize_t byteSize) {
   auto data = static_cast<const char*>(ptr);
   std::hash<const char*> ptr_hash;
   auto sum = ptr_hash(data);
