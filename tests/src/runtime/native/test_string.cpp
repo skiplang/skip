@@ -12,8 +12,6 @@
 
 #include <cstddef>
 
-#include <boost/functional/hash.hpp>
-
 #include <gtest/gtest.h>
 
 #include "skip/String.h"

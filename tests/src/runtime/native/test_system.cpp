@@ -13,8 +13,6 @@
 #include "skip/System.h"
 #include "skip/System-extc.h"
 
-#include <boost/format.hpp>
-
 using namespace skip;
 using namespace skip::test;
 
@@ -23,7 +21,7 @@ namespace {
 TEST(SystemTest, test_itoa) {
   auto interestingNumbers = generateInterestingInt64s();
   for (int64_t i : interestingNumbers) {
-    std::string s1 = (boost::format("%d") % i).str();
+    std::string s1 = std::to_string(i);
     String s2 = SKIP_Int_toString(i);
     EXPECT_EQ(String(s1.begin(), s1.end()), s2);
   }
