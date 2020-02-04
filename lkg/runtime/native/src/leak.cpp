@@ -9,11 +9,6 @@
 #include "skip/String.h"
 #include "skip/System-extc.h"
 
-#include <boost/version.hpp>
-#if BOOST_VERSION >= 105600
-#include <boost/core/demangle.hpp>
-#endif
-
 // @lint-ignore HOWTOEVEN1
 #include <iostream>
 
@@ -34,12 +29,7 @@ void assertLeakCountersZero() {
 
   for (auto c = LeakCounter::s_allLeakCounters; c; c = c->m_next) {
     if (auto count = c->count()) {
-#if BOOST_VERSION >= 105600
-      boost::core::scoped_demangled_name dname{c->m_className};
-      std::string name{dname.get() ? dname.get() : "<unknown>"};
-#else
       std::string name{c->m_className};
-#endif
 
       std::cerr << "Detected memory leak of " << count << " instance"
                 << ((count != 1) ? "s" : "") << " of type " << name

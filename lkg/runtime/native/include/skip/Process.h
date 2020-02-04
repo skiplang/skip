@@ -17,9 +17,6 @@
 #include <condition_variable>
 #include <memory>
 
-#include <boost/intrusive_ptr.hpp>
-#include <boost/noncopyable.hpp>
-
 namespace skip {
 
 extern __thread Process* tl_currentProcess;
@@ -34,7 +31,7 @@ struct UnownedProcess {
   UnownedProcess(UnownedProcess&&) = default;
   UnownedProcess& operator=(UnownedProcess&& other) = default;
 
-  explicit UnownedProcess(boost::intrusive_ptr<Process> process)
+  explicit UnownedProcess(skip::intrusive_ptr<Process> process)
       : m_process(std::move(process)) {}
 
   template <typename T>
@@ -58,7 +55,7 @@ struct UnownedProcess {
   }
 
  private:
-  boost::intrusive_ptr<Process> m_process;
+  skip::intrusive_ptr<Process> m_process;
 };
 
 // A Process is analogous to an operating system process, containing
@@ -77,7 +74,7 @@ struct UnownedProcess {
 // "Context switching" to a Process installs the Process object as
 // Process::cur(), and may also set up other thread-local variables
 // associated with that Process.
-struct Process final : private boost::noncopyable {
+struct Process final : private skip::noncopyable {
   using Ptr = ProcessPtr;
 
   // Create a new, empty Process.
@@ -193,7 +190,7 @@ struct Process final : private boost::noncopyable {
 
 // RAII guard for context switching to a Skip Process.
 // On destruction, it switches back.
-struct ProcessContextSwitcher final : private boost::noncopyable {
+struct ProcessContextSwitcher final : private skip::noncopyable {
   explicit ProcessContextSwitcher(Process::Ptr newProcess)
       : m_oldProcess(Process::contextSwitchTo(std::move(newProcess))) {}
 

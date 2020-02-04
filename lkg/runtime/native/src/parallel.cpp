@@ -19,8 +19,6 @@
 
 #include "ObstackDetail.h"
 
-#include <boost/intrusive_ptr.hpp>
-
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
@@ -177,7 +175,7 @@ ThreadPool* getWorkers() {
 
 struct Tabulate;
 
-struct TabulateWorker : private boost::noncopyable {
+struct TabulateWorker : private skip::noncopyable {
   explicit TabulateWorker(Tabulate* master);
 
   // Processes all available array entries.
@@ -217,8 +215,8 @@ struct TabulateWorker : private boost::noncopyable {
 // to find individual "count" values that haven't been worked on yet. So
 // worker threads work on this until there are no more values for them to
 // compute.
-struct Tabulate : private boost::noncopyable {
-  using Ptr = boost::intrusive_ptr<Tabulate>;
+struct Tabulate : private skip::noncopyable {
+  using Ptr = skip::intrusive_ptr<Tabulate>;
 
   Tabulate(int64_t count, RObj* closure)
       : m_index(0),

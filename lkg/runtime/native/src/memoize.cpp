@@ -23,15 +23,13 @@
 #include "skip/System.h"
 #include "skip/util.h"
 
-#include <boost/io/ios_state.hpp>
-#include <boost/noncopyable.hpp>
-#include <boost/version.hpp>
 #include <shared_mutex>
 
 #include <exception>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <cstring>
@@ -53,30 +51,17 @@
 
 namespace skip {
 
-// boost::intrusive_ptr::detach() is only from v1.56+
-// boost::reset(T*, bool) is only from v1.56+
-#if BOOST_VERSION >= 105600
 template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
-  return p.detach();
-}
-template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  p.reset(rhs, add_ref);
-}
-#else
-template <typename T>
-T* boost_detach(boost::intrusive_ptr<T>& p) {
+T* intrusive_ptr_detach(skip::intrusive_ptr<T>& p) {
   T* raw = p.get();
   intrusive_ptr_add_ref(raw);
   p.reset();
   return raw;
 }
 template <typename T>
-void boost_reset(boost::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
-  boost::intrusive_ptr<T>(rhs, add_ref).swap(p);
+void intrusive_ptr_reset(skip::intrusive_ptr<T>& p, T* rhs, bool add_ref) {
+  skip::intrusive_ptr<T>(rhs, add_ref).swap(p);
 }
-#endif
 
 // These are protected by cleanupsMutex(), but safe to read without the lock if
 // only a conservative value is needed (it can only increase).
@@ -285,7 +270,7 @@ struct RefreshCaller final : Caller, LeakChecker<RefreshCaller> {
 /**
  * Doubly-linked list of Invocations.
  */
-struct InvocationList final : private boost::noncopyable {
+struct InvocationList final : private skip::noncopyable {
   explicit InvocationList(bool isTopLevel = false)
       : m_sentinel(sentinelVTable()) {
     // The sentinel node points to itself. This way linking and unlinking
@@ -1448,7 +1433,7 @@ void Invocation::moveToLruHead_lck() {
  *
  * Pushing something onto this list only requires the read lock
  */
-struct CleanupList final : private boost::noncopyable {
+struct CleanupList final : private skip::noncopyable {
   CleanupList() : m_numActiveMemoTasks(0), m_head(nullptr) {}
 
   // Atomically pushes a locked Invocation onto the cleanup list.
@@ -1460,7 +1445,7 @@ struct CleanupList final : private boost::noncopyable {
   // Extracting the list requires having s_cleanupListsMutex write-locked.
   void push(Invocation::Ptr invPtr) {
     // Steal the reference from the caller.
-    auto inv = boost_detach(invPtr);
+    auto inv = intrusive_ptr_detach(invPtr);
 
     assertLocked(*inv);
     assert(!inv->inList_lck());
@@ -2218,7 +2203,7 @@ SubscriptionSet::iterator::iterator() = default;
 
 SubscriptionSet::iterator::iterator(Edge pos) : m_pos(pos) {}
 
-const UpEdge& SubscriptionSet::iterator::dereference() const {
+const UpEdge& SubscriptionSet::iterator::operator*() const {
   const Edge* e;
 
   if (auto a = m_pos.asSubArray()) {
@@ -2230,11 +2215,15 @@ const UpEdge& SubscriptionSet::iterator::dereference() const {
   return *static_cast<const UpEdge*>(e);
 }
 
-bool SubscriptionSet::iterator::equal(const iterator& other) const {
+bool SubscriptionSet::iterator::operator==(const iterator& other) const {
   return m_pos == other.m_pos;
 }
 
-void SubscriptionSet::iterator::increment() {
+bool SubscriptionSet::iterator::operator!=(const iterator& other) const {
+  return m_pos != other.m_pos;
+}
+
+SubscriptionSet::iterator& SubscriptionSet::iterator::operator++() {
   if (auto a = m_pos.asSubArray()) {
     for (EdgeIndex i = m_pos.index() + 1;; i = 0) {
       // Find the next live slot in the current array, if any.
@@ -2242,7 +2231,7 @@ void SubscriptionSet::iterator::increment() {
         if (!a->m_subs[i].isSubArray()) {
           // Found a non-freelist entry.
           m_pos = DownEdge(*a, i);
-          return;
+          return *this;
         }
       }
 
@@ -2257,6 +2246,7 @@ void SubscriptionSet::iterator::increment() {
 
   // We hit the end, make it the same thing that end() returns.
   *this = iterator();
+  return *this;
 }
 
 SubscriptionSet::iterator SubscriptionSet::begin() const {
@@ -2465,6 +2455,10 @@ bool Edge::isDownEdge() const {
 
 bool Edge::operator==(const Edge& other) const {
   return m_pointerAndIndex.bits() == other.m_pointerAndIndex.bits();
+}
+
+bool Edge::operator!=(const Edge& other) const {
+  return m_pointerAndIndex.bits() != other.m_pointerAndIndex.bits();
 }
 
 bool Edge::operator<(const Edge& other) const {
@@ -3192,7 +3186,7 @@ void Revision::createTrace_lck(Revision::Ptr* inputs, size_t size) {
         inputPtr->subscribe_lck(UpEdge(*this, (EdgeIndex)index));
 
         // m_trace now owns the refcount, so drop it here.
-        auto input = boost_detach(inputPtr);
+        auto input = intrusive_ptr_detach(inputPtr);
 
         // Now that we are subscribed, get the current begin/end.
         // If the end becomes finite we will be invalidated.
@@ -3466,7 +3460,7 @@ static void registerCleanup(Invocation& inv, TxnId txn) {
     case OwningList::kLru:
       // Transfer existing refcount from LRU list to cleanup.
       s_lruList.erase(inv, false);
-      boost_reset(invPtr, &inv, false);
+      intrusive_ptr_reset(invPtr, &inv, false);
       break;
     case OwningList::kNone:
       invPtr.reset(&inv);
@@ -4143,8 +4137,6 @@ std::ostream& operator<<(std::ostream& out, const MemoValue& m) {
     }
 
     case MemoValue::Type::kDouble: {
-      boost::io::ios_precision_saver prec{out};
-      out << std::setprecision(std::numeric_limits<double>::max_digits10);
       out << m.asDouble();
     } break;
 

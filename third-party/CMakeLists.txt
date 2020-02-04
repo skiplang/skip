@@ -26,7 +26,6 @@ if(NOT DISABLE_THIRD_PARTY_UPDATE)
   endif()
 endif()
 
-add_subdirectory(boost)
 add_subdirectory(gflags)
 add_subdirectory(googletest)
 add_subdirectory(icu)
