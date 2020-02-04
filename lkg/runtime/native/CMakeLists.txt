@@ -74,7 +74,7 @@ set(SKIP_RUNTIME_SOURCES
 
 add_library(skip_runtime.${PHASE} ${SKIP_RUNTIME_SOURCES})
 target_compile_options(skip_runtime.${PHASE} PRIVATE -Wmissing-declarations)
-target_link_libraries(skip_runtime.${PHASE} pthread gtest_main)
+target_link_libraries(skip_runtime.${PHASE} pthread)
 target_link_libraries(skip_runtime.${PHASE} ${Boost_LIBRARIES})
 target_link_libraries(skip_runtime.${PHASE} icui18n icuuc icudata pcre dl)
 set_target_properties(skip_runtime.${PHASE} PROPERTIES OUTPUT_NAME skip_runtime)
@@ -148,8 +148,8 @@ function(append_link_libs cc_vars target)
 endfunction()
 
 add_library(native_cc.${PHASE} INTERFACE)
-target_link_libraries(native_cc.${PHASE} INTERFACE skip_runtime.${PHASE} gtest_main)
-add_dependencies(native_cc.${PHASE} skip_runtime.${PHASE} gtest_main)
+target_link_libraries(native_cc.${PHASE} INTERFACE skip_runtime.${PHASE})
+add_dependencies(native_cc.${PHASE} skip_runtime.${PHASE})
 
 # Make a dummy executable that we can examine the compilation properties of
 add_executable(_dummy_exe.${PHASE} EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/src/sk_standalone.cpp ${CMAKE_SOURCE_DIR}/tests/src/runtime/native/testutil.cpp)
@@ -159,10 +159,6 @@ set(cc_args)
 append_target_flags(cc_args _dummy_exe.${PHASE})
 set(ld_args
   $<TARGET_LINKER_FILE:skip_runtime.${PHASE}>
-  $<TARGET_LINKER_FILE:gtest_main>
-  ${LIBGLOG_LIBRARY}
-  ${GFLAGS_LIBRARY}
-  ${DOUBLE_CONVERSION_LIBRARY}
   ${ICU4C_LIBRARIES}
   ${JEMALLOC_LIBRARY}
   ${PCRE_LIBRARY}
