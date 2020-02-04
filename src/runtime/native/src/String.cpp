@@ -16,11 +16,6 @@
 #include "skip/objects.h"
 #include "skip/SmallTaggedPtr.h"
 
-#include <cassert>
-#ifdef __x86_64__
-#include <nmmintrin.h>
-#endif
-
 #include <iterator>
 
 #include <unicode/utypes.h>
@@ -292,43 +287,12 @@ String String::concat(const String* strings, size_t size) {
   return String(*longString);
 }
 
-#ifndef __x86_64__
-namespace {
-
-uint64_t crc32_u64(uint64_t a, uint64_t b) {
-  constexpr uint32_t POLY = 0x82f63b78;
-  for (int j = 0; j < 64; ++j, b >>= 1) {
-    a = (a >> 1) ^ (((a ^ b) & 1) * POLY);
-  }
-  return a;
-}
-} // namespace
-
-#define _mm_crc32_u64 crc32_u64
-#endif
-
-// computeStringHash() matches HHVM's string CRC including making the hash ascii
-// case-insensitive (and worse because it's masking off 'interesting' utf8
-// bits).
-#ifdef __x86_64__
-__attribute__((__target__("sse4.2")))
-#endif
 uint32_t
 String::computeStringHash(const void* ptr, arraysize_t byteSize) {
-  uint64_t sum = static_cast<uint32_t>(-1);
-  if (byteSize > 0) {
-    constexpr uint64_t CASE_MASK = 0xdfdfdfdfdfdfdfdfULL;
-    auto data = static_cast<const uint64_t*>(ptr);
-    for (; byteSize > 8; byteSize -= 8) {
-      sum = _mm_crc32_u64(sum, *data++ & CASE_MASK);
-    }
+  auto data = static_cast<const char*>(ptr);
+  std::hash<const char*> ptr_hash;
+  auto sum = ptr_hash(data);
 
-    // Handle the final bytes of the string.  Note that because this is shifting
-    // the bytes it makes strings hash as if they have embedded NULs.
-    // i.e. "Hello, World" hashes as "Hello, W\0\0\0\0orld" and not
-    // "Hello, World\0\0\0\0".
-    sum = _mm_crc32_u64(sum, (*data & CASE_MASK) << (64 - 8 * byteSize));
-  }
   return (uint32_t)(sum >> 1) | LongStringMetadata::kTagMask;
 }
 
