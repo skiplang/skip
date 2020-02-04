@@ -26,8 +26,4 @@ if(NOT DISABLE_THIRD_PARTY_UPDATE)
   endif()
 endif()
 
-add_subdirectory(gflags)
-add_subdirectory(googletest)
-add_subdirectory(icu)
 add_subdirectory(jemalloc)
-add_subdirectory(pcre)
