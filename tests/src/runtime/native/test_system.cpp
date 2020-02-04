@@ -21,9 +21,7 @@ namespace {
 TEST(SystemTest, test_itoa) {
   auto interestingNumbers = generateInterestingInt64s();
   for (int64_t i : interestingNumbers) {
-    char string[50];
-    sprintf(string, "%lu", i);
-    std::string s1 = std::string(string);
+    std::string s1 = std::to_string(i);
     String s2 = SKIP_Int_toString(i);
     EXPECT_EQ(String(s1.begin(), s1.end()), s2);
   }
