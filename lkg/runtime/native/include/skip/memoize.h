@@ -21,9 +21,6 @@
 #include <functional>
 #include <future>
 
-#include <boost/intrusive_ptr.hpp>
-#include <boost/operators.hpp>
-
 namespace skip {
 
 namespace detail {
@@ -76,7 +73,7 @@ struct alignas(kRevisionAlign) Revision;
 
 using RevisionLock = LockGuard<const Revision>;
 using InvocationLock = LockGuard<const Invocation>;
-using InvocationPtr = boost::intrusive_ptr<Invocation>;
+using InvocationPtr = skip::intrusive_ptr<Invocation>;
 
 /// See docs for Edge.
 using EdgeIndex = uint8_t;
@@ -143,7 +140,7 @@ index() == kInlineSubscriptionIndex even if it has "moved" to no longer
 be inline.
 
 */
-struct Edge : boost::totally_ordered<Edge> {
+struct Edge {
   enum {
     kInlineSubscriptionIndex = kRevisionAlign - 1,
     kNoEdgeIndex = kInlineSubscriptionIndex - 1
@@ -174,6 +171,8 @@ struct Edge : boost::totally_ordered<Edge> {
   bool isDownEdge() const;
 
   bool operator==(const Edge& other) const;
+
+  bool operator!=(const Edge& other) const;
 
   bool operator<(const Edge& other) const;
 
@@ -235,7 +234,7 @@ struct UpEdge final : Edge {
  *
  * Once created, these are immutable except for the kNumInactiveFlagBits field.
  */
-class alignas(kTraceArrayAlign) TraceArray final : private boost::noncopyable {
+class alignas(kTraceArrayAlign) TraceArray final : private skip::noncopyable {
   // You can only create one by calling the "make" factory.
   explicit TraceArray(EdgeIndex size) : m_size(size), m_inactive(0) {
     std::uninitialized_fill_n(m_inputs, size, DownEdge());
@@ -296,7 +295,7 @@ static_assert(
  * DownEdges are "strong" references, so a Trace's edge array "keeps alive"
  * the inputs to a Revision.
  */
-struct Trace final : private boost::noncopyable {
+struct Trace final : private skip::noncopyable {
   Trace() : Trace(0) {}
   explicit Trace(size_t size);
 
@@ -437,7 +436,7 @@ static_assert(
  * Since subscriptions come and go, available storage for UpEdges is chained
  * together into a freelist.
  */
-struct SubscriptionSet : private boost::noncopyable {
+struct SubscriptionSet : private skip::noncopyable {
   SubscriptionSet();
 
   ~SubscriptionSet();
@@ -477,29 +476,21 @@ struct SubscriptionSet : private boost::noncopyable {
 
   // Iterator for walking through subscriptions. It knows how to skip over
   // freelisted entries.
-  struct iterator final : boost::iterator_facade<
-                              iterator,
-                              const UpEdge,
-                              boost::forward_traversal_tag> {
+  struct iterator final {
     iterator();
 
     iterator(const iterator&) = default;
     iterator& operator=(const iterator&) = default;
 
+   public:
+    iterator& operator++();
+    bool operator==(const iterator&) const;
+    bool operator!=(const iterator&) const;
+    const UpEdge& operator*() const;
+
    private:
-    // Provide the boost iterator_facade with the magic it needs.
-    friend boost::iterator_core_access;
-
     friend struct SubscriptionSet;
-
     explicit iterator(Edge pos);
-
-    const UpEdge& dereference() const;
-
-    bool equal(const iterator& other) const;
-
-    void increment();
-
     Edge m_pos;
   };
 
@@ -539,7 +530,7 @@ struct SubscriptionSet : private boost::noncopyable {
 // A future-like object that gets notified when the value returned by
 // asyncEvaluate() becomes invalidated by some input dependency change.
 struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
-  using Ptr = boost::intrusive_ptr<InvalidationWatcher>;
+  using Ptr = skip::intrusive_ptr<InvalidationWatcher>;
 
   static Ptr make() {
     // The RefCount of 2 is for one coming from m_revision, and one
@@ -547,7 +538,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
     return Ptr(new InvalidationWatcher(2), false);
   }
 
-  static Ptr make(std::vector<boost::intrusive_ptr<Revision>>&& trace);
+  static Ptr make(std::vector<skip::intrusive_ptr<Revision>>&& trace);
 
   ~InvalidationWatcher();
 
@@ -597,7 +588,7 @@ struct InvalidationWatcher : LeakChecker<InvalidationWatcher> {
   //
   // The InvalidationWatcher always points to the m_revision, even when it
   // no longer points back, and uses m_revision's lock as its own lock.
-  boost::intrusive_ptr<Revision> m_revision;
+  skip::intrusive_ptr<Revision> m_revision;
 
   std::promise<void> m_promise;
 };
@@ -765,7 +756,7 @@ struct __attribute__((packed)) MemoValue {
 /**
  * The continuation that handles the result of an asyncEvaluate being ready.
  */
-struct Caller : private boost::noncopyable {
+struct Caller : private skip::noncopyable {
   explicit Caller(TxnId queryTxn) : m_queryTxn(queryTxn) {}
 
   virtual ~Caller() = default;
@@ -963,7 +954,7 @@ static_assert(sizeof(OwnerAndFlags) == sizeof(uintptr_t), "");
  */
 struct alignas(kRevisionAlign) Revision final : Aligned<Revision>,
                                                 LeakChecker<Revision> {
-  using Ptr = boost::intrusive_ptr<Revision>;
+  using Ptr = skip::intrusive_ptr<Revision>;
 
   Revision(
       TxnId begin,
@@ -1046,7 +1037,7 @@ struct alignas(kRevisionAlign) Revision final : Aligned<Revision>,
   Refresher* refresher_lck() const;
 
   /// Callable by the holder of mutex().
-  boost::intrusive_ptr<Invocation> owner_lck() const;
+  skip::intrusive_ptr<Invocation> owner_lck() const;
 
   bool isPlaceholder() const;
 
@@ -1413,7 +1404,7 @@ struct Context final : Aligned<Context>, LeakChecker<Context> {
   static Context* setCurrent(Context* ctx);
 
   // RAII guard that changes then restores the thread-local Context.
-  struct Guard : private boost::noncopyable {
+  struct Guard : private skip::noncopyable {
     explicit Guard(Context* newContext);
     ~Guard();
 
@@ -1500,7 +1491,7 @@ struct Transaction {
   std::vector<std::pair<Invocation::Ptr, MemoValue>> m_commits;
 };
 
-// boost::intrusive_ptr support.
+// skip::intrusive_ptr support.
 void intrusive_ptr_add_ref(Revision* rev);
 void intrusive_ptr_release(Revision* rev);
 void intrusive_ptr_add_ref(Invocation* inv);
@@ -1651,9 +1642,9 @@ template <typename _ObjType, typename _ArgType>
 struct InvocationHelper : InvocationHelperBase {
   using ArgType = _ArgType;
   using ObjType = _ObjType;
-  using Ptr = boost::intrusive_ptr<InvocationHelper<ObjType, ArgType>>;
+  using Ptr = skip::intrusive_ptr<InvocationHelper<ObjType, ArgType>>;
 
-  static boost::intrusive_ptr<const InvocationHelper> factory(ArgType&& args) {
+  static skip::intrusive_ptr<const InvocationHelper> factory(ArgType&& args) {
     auto vtable = static_vtable();
     auto& type = static_type();
 
@@ -1675,7 +1666,7 @@ struct InvocationHelper : InvocationHelperBase {
     auto robj = std::unique_ptr<InvocationHelperRObj, decltype(deleter)>(
         ret, std::move(deleter));
 
-    auto iobj = boost::intrusive_ptr<const InvocationHelper>(
+    auto iobj = skip::intrusive_ptr<const InvocationHelper>(
         reinterpret_cast<const InvocationHelper*>(intern(robj.get())), false);
 
     return iobj;
@@ -1819,8 +1810,8 @@ struct alignas(Obstack::kAllocAlign) ZeroOnConstruct {
 
 namespace std {
 template <>
-struct hash<boost::intrusive_ptr<const skip::MutableIObj>> {
-  size_t operator()(boost::intrusive_ptr<skip::IObj> p) const noexcept {
+struct hash<skip::intrusive_ptr<const skip::MutableIObj>> {
+  size_t operator()(skip::intrusive_ptr<skip::IObj> p) const noexcept {
     return p->hash();
   }
 };

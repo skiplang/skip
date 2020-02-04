@@ -16,8 +16,6 @@
 #include <memory>
 #include <cstdlib>
 
-#include <boost/noncopyable.hpp>
-
 namespace skip {
 
 struct RObj;
@@ -65,7 +63,7 @@ struct Arena final {
   static void setMemoryKind(const void* start, const void* end, Kind kind);
 
   // Map pointers to Kind
-  struct KindMapper : private boost::noncopyable {
+  struct KindMapper : private skip::noncopyable {
     // This is the smallest block that the KindMapper can relate to.
     static constexpr size_t kKmSlabSizeLog2 = 21; // 2MiB
     static constexpr size_t kKmSlabSize = (size_t)1 << kKmSlabSizeLog2;

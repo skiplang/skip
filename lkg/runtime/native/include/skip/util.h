@@ -12,9 +12,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <type_traits>
-
-#include <boost/noncopyable.hpp>
+#include <vector>
 
 // #define ENABLE_DEBUG_TRACE 1
 
@@ -42,6 +42,14 @@
 #endif
 
 namespace skip {
+
+class noncopyable {
+ protected:
+  noncopyable() = default;
+  ~noncopyable() = default;
+  noncopyable(const noncopyable&) = delete;
+  noncopyable& operator=(const noncopyable&) = delete;
+};
 
 void printStackTrace();
 
@@ -162,10 +170,29 @@ constexpr T roundDown(T n, size_t align) {
   return detail::RoundDown<T>::roundDown(n, align);
 }
 
+class vector_hash {
+ public:
+  template <class T>
+  std::size_t operator()(std::vector<T> const& vec) const {
+    std::size_t ret = 0;
+    for (auto& i : vec) {
+      ret ^= std::hash<T>()(i);
+    }
+    return ret;
+  }
+};
+
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2>& pair) const {
     return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+struct pair_vector_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<std::vector<T1>, T2>& pair) const {
+    return vector_hash()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
 
@@ -182,7 +209,7 @@ void* allocAligned(size_t size, size_t align) _MALLOC_ALIGN_ATTR(1, 2);
 
 /// CRTP base class for types with higher-than-usual alignment.
 template <typename Derived, ssize_t alignment = -1>
-struct Aligned : private boost::noncopyable {
+struct Aligned : private skip::noncopyable {
   void* operator new(size_t size) {
     return allocAligned(size, alignment == -1 ? alignof(Derived) : alignment);
   }
@@ -259,5 +286,11 @@ class StringPiece {
   char* m_begin;
   char* m_end;
 };
+
+inline bool ends_with(std::string const& value, std::string const& ending) {
+  if (ending.size() > value.size())
+    return false;
+  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
 
 } // namespace skip

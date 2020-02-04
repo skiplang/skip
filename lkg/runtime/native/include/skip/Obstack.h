@@ -24,7 +24,7 @@ namespace skip {
  * the underlying object from being moved. Also encapsulates the owner
  * obstack, so objects can be migrated between obstacks transparently.
  */
-struct RObjHandle final : private boost::noncopyable {
+struct RObjHandle final : private skip::noncopyable {
   ~RObjHandle();
 
   // the pointer returned is only valid until the next garbage collection.

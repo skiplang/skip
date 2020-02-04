@@ -15,8 +15,6 @@
 #include <sys/mman.h>
 #include <thread>
 
-#include <boost/noncopyable.hpp>
-
 namespace skip {
 
 InternTable& getInternTable() {
@@ -79,7 +77,7 @@ static bool objectsEqual(const RObj& o1, IObj& o2) {
 
 /// A hash bucket in InternTable (i.e. an entry in its array).
 // @lint-ignore HOWTOEVEN1
-struct Bucket : private boost::noncopyable {
+struct Bucket : private skip::noncopyable {
   friend InternTable;
 
   Bucket(const Bucket& other) : m_bits(other.m_bits) {}

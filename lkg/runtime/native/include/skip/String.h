@@ -13,6 +13,7 @@
 #include "objects.h"
 #include "Type.h"
 
+#include <array>
 #include <atomic>
 
 namespace skip {
@@ -65,7 +66,7 @@ struct LongString final : RObj {
  * Long String format:
  *   The 64-bit value is a pointer to a LongString.  The high bit must be clear.
  */
-struct String final : StringRep, boost::less_than_comparable<String> {
+struct String final : StringRep {
   String();
   /* implicit */ String(StringRep s) {
     *static_cast<StringRep*>(this) = s;
@@ -119,6 +120,15 @@ struct String final : StringRep, boost::less_than_comparable<String> {
   }
   bool operator<(const String& o) const {
     return cmp(o) < 0;
+  }
+  bool operator>(const String& o) const {
+    return cmp(o) > 0;
+  }
+  bool operator<=(const String& o) const {
+    return cmp(o) <= 0;
+  }
+  bool operator>=(const String& o) const {
+    return cmp(o) >= 0;
   }
   ssize_t cmp(const String& o) const;
 
@@ -217,7 +227,7 @@ struct OptString final {
 };
 
 // StringPtr is a smart pointer which manages the lifetimes of its owned string.
-// We can't use boost::intrusive_ptr<String> because that would then be a
+// We can't use skip::intrusive_ptr<String> because that would then be a
 // String* - which we don't want.  The owned string MUST be interned.
 struct StringPtr final {
   ~StringPtr();

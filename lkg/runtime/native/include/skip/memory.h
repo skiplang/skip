@@ -13,8 +13,6 @@
 #include <cstddef>
 #include <memory>
 
-#include <boost/noncopyable.hpp>
-
 namespace skip {
 
 namespace mem {

@@ -11,6 +11,7 @@
 #error Only include this file from within Arena.cpp
 #endif
 
+#include <array>
 #include <stdio.h>
 
 #include "jemalloc/jemalloc.h"

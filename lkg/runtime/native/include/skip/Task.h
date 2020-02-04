@@ -8,12 +8,10 @@
 #pragma once
 
 #include "fwd.h"
+#include "util.h"
 
 #include <atomic>
 #include <memory>
-
-#include <boost/intrusive_ptr.hpp>
-#include <boost/noncopyable.hpp>
 
 namespace skip {
 
@@ -21,10 +19,10 @@ namespace skip {
 // a circular #include by pussing in all of Process.h.
 void intrusive_ptr_add_ref(Process* p);
 void intrusive_ptr_release(Process* p);
-using ProcessPtr = boost::intrusive_ptr<Process>;
+using ProcessPtr = skip::intrusive_ptr<Process>;
 
 // Work that a Process can be asked to do.
-struct Task : private boost::noncopyable {
+struct Task : private skip::noncopyable {
   virtual ~Task() = default;
   virtual void run() = 0;
 
@@ -52,8 +50,8 @@ struct LambdaTask final : Task {
 struct OneShotTask final : Task {
   // A first come, first serve guard around the underlying Task we want
   // to run. Many OneShotTasks can point to the same Arbiter.
-  struct Arbiter final : boost::noncopyable {
-    using Ptr = boost::intrusive_ptr<Arbiter>;
+  struct Arbiter final : skip::noncopyable {
+    using Ptr = skip::intrusive_ptr<Arbiter>;
     static Ptr make(std::unique_ptr<Task> task);
 
     // Return the underlying Task if this is the first call to this method,

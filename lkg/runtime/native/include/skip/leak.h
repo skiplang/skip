@@ -12,8 +12,6 @@
 #include <atomic>
 #include <typeinfo>
 
-#include <boost/noncopyable.hpp>
-
 namespace skip {
 
 #if SKIP_PARANOID
@@ -21,7 +19,7 @@ namespace skip {
 // Each type of LeakChecker creates a static instance of this counter.
 // Their constructors chain them together into a global list checked by
 // assertLeakCountersZero().
-struct LeakCounter : private boost::noncopyable {
+struct LeakCounter : private skip::noncopyable {
   explicit LeakCounter(const char* className);
 
   size_t count() const {

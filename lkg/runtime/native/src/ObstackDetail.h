@@ -9,9 +9,6 @@
 #include "skip/Obstack.h"
 #include "skip/AllocProfiler.h"
 
-#include <boost/noncopyable.hpp>
-#include <boost/operators.hpp>
-
 #include <utility>
 #include <vector>
 #include <queue>
@@ -25,7 +22,7 @@ struct Chunk;
  * ObstackDetail implements most of the Obstack functionality; the C++ public
  * interface is struct Obstack.
  */
-struct ObstackDetail final : private boost::noncopyable {
+struct ObstackDetail final : private skip::noncopyable {
   ObstackDetail();
   ~ObstackDetail();
 
@@ -36,7 +33,7 @@ struct ObstackDetail final : private boost::noncopyable {
    * low order bits are the byte offset into the chunk. This allows relational
    * comparisons on Pos values even with arbitrary chunk addresses
    */
-  struct Pos final : boost::totally_ordered<Pos> {
+  struct Pos final {
     Pos() = default;
     Pos(const Pos& o) = default;
     Pos& operator=(const Pos& o) {
@@ -49,8 +46,20 @@ struct ObstackDetail final : private boost::noncopyable {
     bool operator<(const Pos& o) const {
       return m_position < o.m_position;
     }
+    bool operator<=(const Pos& o) const {
+      return m_position <= o.m_position;
+    }
+    bool operator>(const Pos& o) const {
+      return m_position > o.m_position;
+    }
+    bool operator>=(const Pos& o) const {
+      return m_position >= o.m_position;
+    }
     bool operator==(const Pos& o) const {
       return m_position == o.m_position;
+    }
+    bool operator!=(const Pos& o) const {
+      return m_position != o.m_position;
     }
     intptr_t operator-(const Pos& o) const {
       return m_position - o.m_position;
@@ -203,7 +212,7 @@ struct ObstackDetail final : private boost::noncopyable {
   // handles, if none of the handles wrap a valid pointer.
   bool empty(Obstack&) const;
 
-  struct IObjRef : private boost::noncopyable {
+  struct IObjRef : private skip::noncopyable {
     IObjRef(Pos pos, IObj* prev) : m_pos(std::move(pos)), m_prev(prev) {}
     IObjRef(IObjRef&& o) noexcept : m_pos(o.m_pos), m_prev(o.m_prev) {}
     IObjRef& operator=(IObjRef&& o) noexcept {
