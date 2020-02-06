@@ -79,7 +79,7 @@ jobs:
       - run:
           name: compile third-party
           working_directory: ~/skip/build
-          command: ${COMMAND_PREFIX} ninja -j 8 jemalloc_sub gtest_main icu4c pcre_sub
+          command: ${COMMAND_PREFIX} ninja -j 8 jemalloc_sub
       - run:
           name: compile runtimes
           working_directory: ~/skip/build
