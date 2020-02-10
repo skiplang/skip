@@ -223,7 +223,7 @@ void SpinLock::unlock() {
   uint8_t oldBits = m_bits.load();
   const uint8_t newBits = oldBits & ~1;
 
-  if (oldBits & 1 == 0) {
+  if ((oldBits & 1) == 0) {
     fprintf(stderr, "Internal error: spinlock double unlock\n");
     exit(70);
   }
@@ -236,7 +236,7 @@ void SpinLock::unlock() {
     fprintf(
         stderr,
         "Internal error: spinlock in an impossible state %d\n",
-        (int)m_bits.load() & 2 != 0);
+        ((unsigned int)m_bits.load() & 2) != 0);
     exit(70);
   }
 }

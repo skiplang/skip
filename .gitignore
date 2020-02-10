@@ -8,8 +8,13 @@
 /nuclide
 
 /build
+/subbuild
+Makefile.config
 
 tools/profiler/tmp
+third-party/pcre/src/*
+third-party/icu/src/*
+third-party/jemalloc/src/*
 
 npm-debug.log
 

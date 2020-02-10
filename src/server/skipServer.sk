@@ -29,9 +29,6 @@ untracked fun writeStatus(status: String): void {
 
 untracked fun compileLoop(target: String): void {
   outputs = kConfig.mainConfig.outputFiles;
-  if (outputs.size() != 1) {
-    invariant_violation("skip_server expects exactly one output file");
-  };
   skdir = Path.dirname(outputs[0]);
   command = "";
   errors = Vector[];

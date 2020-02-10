@@ -27,11 +27,8 @@ cp -R src/runtime/prelude "$installDir/lib/skip/prelude"
 cp "$pathToSkip/build/src/runtime/native/lib/preamble.ll" "$installDir/lib/skip"
 cp "$pathToSkip/build/src/runtime/native/libskip_runtime.a" "$installDir/lib/skip"
 cp "$pathToSkip/build/src/runtime/native/CMakeFiles/sk_standalone.src.dir/src/sk_standalone.cpp.o" "$installDir/lib/skip"
-cp "$pathToSkip/build/third-party/install/lib/libfolly.a" "$installDir/lib/skip"
 
 if [ $distrib == Linux ]; then
-    cp "$pathToSkip/build/third-party/install/lib/libunwind.a" "$installDir/lib/skip"
-    cp "$pathToSkip/build/third-party/install/lib/libdouble-conversion.a" "$installDir/lib/skip"
     cp "$pathToSkip/build/third-party/install/lib/libjemalloc_pic.a" "$installDir/lib/skip"
 fi
 
