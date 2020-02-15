@@ -13,7 +13,6 @@
 
 #include <exception>
 #include <cstdlib>
-#include <libunwind.h>
 #include <cxxabi.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -29,9 +28,8 @@
 #include "skip/memoize.h"
 #include "skip/parallel.h"
 
-#ifdef __APPLE__
 namespace {
-void osxTerminate() {
+void terminate() {
   try {
     std::exception_ptr eptr = std::current_exception();
     if (eptr) {
@@ -51,7 +49,6 @@ void osxTerminate() {
   exit(1);
 }
 } // namespace
-#endif // __APPLE__
 
 extern "C" {
 extern void skip_main(void);
@@ -65,10 +62,7 @@ size_t WEAK_LINKAGE SKIPC_buildHash(void) {
 } // extern "C"
 
 int main(int argc, char** argv) {
-#ifdef __APPLE__
-  std::set_terminate(osxTerminate);
-#endif
-
+  std::set_terminate(terminate);
   skip::initializeSkip(argc, argv);
 
   auto process = skip::Process::make();
