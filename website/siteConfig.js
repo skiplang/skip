@@ -249,6 +249,10 @@ const siteConfig = {
     }
   },
   separateCss: ["specification/spec.css"],
+  algolia: {
+    apiKey: 'dfe1f25f0395cc6e7e74dd65fc4f8620',
+    indexName: 'skip',
+  },
   layouts: {
     'stdlib': require('./core/StdlibLayout.js')
   }
