@@ -10,7 +10,8 @@ module Lower;
 // WebAssembly does not currently support computed gotos, so we use
 // a IntSwitch instead.
 private const kCanUseComputedGoto: Bool = kConfig.optConfig.goto &&
-  !targetIsWasm();
+  !targetIsWasm() &&
+  !isEmbedded();
 
 private const kArrayMetadataByteSize: Int = 4 + 4 + vtableByteSize;
 

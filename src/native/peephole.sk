@@ -1737,7 +1737,7 @@ private fun peepholeStringHash(peep: StringHash, s: mutable Peephole): Instr {
       value match {
       | x @ ShortUTF8String _ -> x.bits()
       | x @ LongUTF8String _ ->
-        if (targetIsWasm()) {
+        if (targetIsWasm() || isEmbedded()) {
           x.runtimeHash
         } else {
           // bytesize | hash<<32
@@ -1840,7 +1840,7 @@ private fun peepholeStringConcat(
   | 0 -> s.constantString("")
   | 1 -> s.getInstr(args[0])
   | _ ->
-    if (targetIsWasm()) {
+    if (targetIsWasm() || isEmbedded()) {
       // WASM doesn't bother with runtime functions for different lengths.
       peep
     } else {

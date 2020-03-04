@@ -11,9 +11,9 @@
 // keep the stack aligned or is 8 OK or what? Does Linux do that too?
 // x86-64 ABI on linux and mac require 16 byte alignment.
 // Does LLVM provide an portable abstraction?
-const stackAlign: Int = if (targetIsWasm()) 8 else 16;
+const stackAlign: Int = if (targetIsWasm() || isEmbedded32()) 8 else 16;
 const stackAlignStr: String = stackAlign.toString();
-const ptrByteSize: Int = if (targetIsWasm()) 4 else 8;
+const ptrByteSize: Int = if (targetIsWasm() || isEmbedded32()) 4 else 8;
 const ptrBitSize: Int = ptrByteSize * 8;
 const vtableByteSize: Int = ptrByteSize;
 
@@ -136,7 +136,7 @@ base class UTF8String{
   string: String,
 } uses Hashable, Orderable, Show {
   static fun useShortStrings(): Bool {
-    !targetIsWasm()
+    !targetIsWasm() && !isEmbedded()
   }
 
   static fun make(string: String): UTF8String {

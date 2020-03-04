@@ -3759,7 +3759,7 @@ private fun llvmWrite(instr: Stmt, asm: mutable FunAsmDefBuilder): void {
 
       // Due to T17433959 we need to ignore the high hash bit,
       // so we left-shift it out.
-      highHashShift = if (targetIsWasm()) 0 else 1;
+      highHashShift = if (targetIsWasm() || isEmbedded()) 0 else 1;
 
       // Map each long string header word to an array of case indices
       // that have that value.

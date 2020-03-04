@@ -20,6 +20,8 @@ class Config private {
   preambleFiles: Array<String>,
   profilePath: String,
   wasm: Bool,
+  embedded32: Bool,
+  embedded64: Bool,
   asan: Bool,
   autogc: Bool,
   sampleRate: Int,
@@ -42,6 +44,8 @@ class Config private {
     AP.StringArrayParam{name => "profile-path"},
     AP.StringArrayParam{name => "preamble"},
     AP.BoolParam{name => "wasm"},
+    AP.BoolParam{name => "embedded32"},
+    AP.BoolParam{name => "embedded64"},
     AP.BoolParam{name => "asan"},
     AP.BoolParam{name => "autogc"},
     AP.IntParam{name => "sample-rate"},
@@ -64,6 +68,8 @@ class Config private {
     preambleFiles = mutable Vector[];
     profilePath = "";
     wasm = false;
+    embedded32 = false;
+    embedded64 = false;
     asan = false;
     autogc = true;
     sampleRate = 0;
@@ -90,6 +96,8 @@ class Config private {
       | AP.StringArrayValue{name => "profile-path", value} ->
         !profilePath = value[0]
       | AP.BoolValue{name => "wasm", value} -> !wasm = value
+      | AP.BoolValue{name => "embedded32", value} -> !embedded32 = value
+      | AP.BoolValue{name => "embedded64", value} -> !embedded64 = value
       | AP.BoolValue{name => "asan", value} -> !asan = value
       | AP.BoolValue{name => "autogc", value} -> !autogc = value
       | AP.IntValue{name => "sample-rate", value} -> !sampleRate = value
@@ -133,6 +141,11 @@ class Config private {
       }
     };
 
+    if (embedded32 && embedded64) {
+      print_error("Cannot use embedded 32 and 64 mode at the same time");
+      exit(1)
+    };
+
     static{
       exportedFunctions => freeze(exportedFunctions),
       exportedAsFunctions => freeze(exportAs),
@@ -148,6 +161,8 @@ class Config private {
       preambleFiles => preambleFiles.toArray(),
       profilePath,
       wasm,
+      embedded32,
+      embedded64,
       asan,
       autogc,
       sampleRate,
@@ -161,6 +176,18 @@ module end;
 
 fun targetIsWasm(): Bool {
   kConfig.mainConfig.wasm
+}
+
+fun isEmbedded32(): Bool {
+  kConfig.mainConfig.embedded32
+}
+
+fun isEmbedded64(): Bool {
+  kConfig.mainConfig.embedded64
+}
+
+fun isEmbedded(): Bool {
+  isEmbedded32() || isEmbedded64()
 }
 
 untracked fun createSpecializedIR(fileNames: Array<String>): GlobalEnv {
