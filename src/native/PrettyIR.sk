@@ -2047,6 +2047,7 @@ private fun debugWriteExtraOperands(
       out.print("%s%s" / sep / tupleIndex)
     }
 
+  | ObstackShallowClone _
   | SimpleUnaryStmt _
   | BoolCmpEq _
   | BoolCmpLe _

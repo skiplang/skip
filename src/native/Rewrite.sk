@@ -384,13 +384,16 @@ mutable base class .RewriteBase{
   }
 
   mutable fun emitObstackShallowClone{
+    byteSize: InstrID,
     value: InstrID,
     typ: Type,
     pos: Pos,
     id: InstrID = this.iid(),
     prettyName: String = "",
   }: ObstackShallowClone {
-    this.emitStmt(ObstackShallowClone{value, typ, pos, id, prettyName})
+    this.emitStmt(
+      ObstackShallowClone{byteSize, value, typ, pos, id, prettyName},
+    )
   }
 
   mutable fun emitReinterpret{
