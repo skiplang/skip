@@ -323,8 +323,10 @@ private fun allocateBestSlot(
     iterators.push(mutable VTableBuilderIterator(builders[sc], val))
   };
 
-  if (targetIsWasm() || isEmbedded32) {
-    align = 2 * request.mapping[0].i1.typ.getScalarType(env).bitAlignment;
+  align = request.mapping[0].i1.typ.getScalarType(env).bitAlignment;
+
+  if (targetIsWasm() || isEmbedded32()) {
+    !align = 2 * align;
   };
 
   bestBitOffset = -1;
