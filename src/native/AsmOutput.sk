@@ -3545,12 +3545,21 @@ private fun llvmWrite(instr: Stmt, asm: mutable FunAsmDefBuilder): void {
   | ObstackNote _ ->
     llvmWriteIntrinsicCall(asm, instr, "SKIP_Obstack_note_inl", Array[])
   | ObstackShallowClone{byteSize, value} ->
-    llvmWriteIntrinsicCall(
-      asm,
-      instr,
-      "SKIP_Obstack_shallowClone",
-      Array[byteSize, value],
-    )
+    if (isEmbedded()) {
+      llvmWriteIntrinsicCall(
+        asm,
+        instr,
+        "SKIP_Obstack_shallowClone",
+        Array[byteSize, value],
+      )
+    } else {
+      llvmWriteIntrinsicCall(
+        asm,
+        instr,
+        "SKIP_Obstack_shallowClone",
+        Array[value],
+      )
+    }
   | Reinterpret{value} ->
     src = optinfo.getInstr(value);
     srcPrim = src.typ.getScalarType(asm.env());

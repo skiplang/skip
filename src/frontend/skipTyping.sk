@@ -196,8 +196,9 @@ fun solve_call_constraints(
 /*****************************************************************************/
 /* The main entry point */
 /*****************************************************************************/
-fun makeEnv(): TUtils.Env {
+fun makeEnv(embeddedMode: Bool): TUtils.Env {
   TUtils.Env{
+    embeddedMode,
     locals => SortedMap[],
     this_class => None(),
     orig_this_class => None(),
@@ -232,7 +233,7 @@ fun programToDefinitions(
 /*****************************************************************************/
 /* The main entry point */
 /*****************************************************************************/
-fun program(prog: SkipAst.Program): SkipTypedAst.Program {
+fun program(embeddedMode: Bool, prog: SkipAst.Program): SkipTypedAst.Program {
   for (ta in prog.type_defs) {
     SkipNaming.check_type_alias(ta)
   };
@@ -241,9 +242,10 @@ fun program(prog: SkipAst.Program): SkipTypedAst.Program {
   defsOrErrors = defs.parallelMap(def ~> {
     SkipError.doWithError(() -> {
       def match {
-      | SkipAst.DClass(x) -> SkipTypedAst.DClass(class_def(x.name))
+      | SkipAst.DClass(x) ->
+        SkipTypedAst.DClass(class_def(embeddedMode, x.name))
       | SkipAst.DConst(x) -> SkipTypedAst.DConst(global_const_def(x.name))
-      | SkipAst.DFun(x) -> SkipTypedAst.DFun(fun_def(x.name))
+      | SkipAst.DFun(x) -> SkipTypedAst.DFun(fun_def(embeddedMode, x.name))
       | _ -> invariant_violation("ICE: unexpected definition type")
       }
     })
@@ -328,7 +330,7 @@ fun const_def(
 
 memoized fun global_const_def(constName: N.Name): TAst.Const_def {
   cst = SkipNaming.getConst(constName);
-  env = makeEnv();
+  env = makeEnv(false);
   (pos, _) = constName;
   acc = TUtils.empty_acc;
   annotations = cst.annotations;
@@ -465,9 +467,12 @@ fun method_is_copydown(name: N.Name, met: N.Method_def): Bool {
     }
 }
 
-memoized fun class_def(className: SkipAst.Name): TAst.Class_def {
+memoized fun class_def(
+  embeddedMode: Bool,
+  className: SkipAst.Name,
+): TAst.Class_def {
   cd = SkipNaming.getClass(className);
-  env = makeEnv();
+  env = makeEnv(embeddedMode);
   next_id = sk_create_counter();
   depth = cd.depth;
   native_ = cd.native_;
@@ -812,14 +817,14 @@ fun merge_extend(
   }
 }
 
-memoized fun fun_def(funName: SkipAst.Name): TAst.Fun_def {
+memoized fun fun_def(embeddedMode: Bool, funName: SkipAst.Name): TAst.Fun_def {
   fd = SkipNaming.getFun(funName);
-  result = named_fun_def(fd);
+  result = named_fun_def(embeddedMode, fd);
   result
 }
 
-fun named_fun_def(fd: SkipNamedAst.Fun_def): TAst.Fun_def {
-  env = makeEnv();
+fun named_fun_def(embeddedMode: Bool, fd: SkipNamedAst.Fun_def): TAst.Fun_def {
+  env = makeEnv(embeddedMode);
   next_id = sk_create_counter();
   acc = TUtils.empty_acc;
   native_ = fd.native_;
@@ -2875,6 +2880,9 @@ fun expr_(
     };
     (acc2, (rty1, e2))
   | N.Try(match_expr, mbl) ->
+    if (env.embeddedMode) {
+      SkipError.error(pos, "Cannot use try/catch in embedded mode (use etry)");
+    };
     (acc1, e1) = expr(next_id, env, acc, match_expr);
     e_ty = TAstUtils.get_type(e1);
     pat_ty = TUtils.make_texn(pos, Ast.Vplus());
