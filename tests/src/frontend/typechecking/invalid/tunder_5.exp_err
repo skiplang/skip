@@ -21,7 +21,6 @@ Is not a subtype of: _[1]
 5 | fun bar(f: Int -> _): _ {
   |                       ^
 6 |   f(42)
-
 File "./typechecking/invalid/tunder_5.sk", line 2, characters 3-3:
 The value returned from the function is incompatible with the return type '_[1]'
 1 | fun foo(x: _): _ {

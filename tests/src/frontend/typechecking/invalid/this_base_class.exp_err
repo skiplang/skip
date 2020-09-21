@@ -29,7 +29,6 @@ To make these types compatible, annotate as this type: MyBase
  9 |   fun foo(_: this): this {
    |              ^^^^
 10 |     this
-
 File "./typechecking/invalid/this_base_class.sk", line 15, characters 3-10:
 The value returned from the function is incompatible with the return type 'T'
 13 |

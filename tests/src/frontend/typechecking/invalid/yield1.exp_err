@@ -22,7 +22,6 @@ Is incompatible with the invariant type: mutable Iterator<_>
 4 |   yield x
   |   ^^^^^^^
 5 | }
-
 File "./typechecking/invalid/yield1.sk", line 8, characters 3-9:
 Generators must return 'mutable Iterator<_>'
 This function is a generator because of 'yield'
@@ -56,7 +55,6 @@ To make these types compatible, annotate as this type: readonly Iterator<Int>
  8 |   yield x
    |   ^^^^^^^
  9 | }
-
 File "./typechecking/invalid/yield1.sk", line 12, characters 3-9:
 Generators must return 'mutable Iterator<_>'
 This function is a generator because of 'yield'
@@ -90,7 +88,6 @@ To make these types compatible, annotate as this type: readonly Iterator<Int>
 12 |   yield x
    |   ^^^^^^^
 13 | }
-
 File "./typechecking/invalid/yield1.sk", line 16, characters 3-9:
 Generators must return 'mutable Iterator<_>'
 This function is a generator because of 'yield'

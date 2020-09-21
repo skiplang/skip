@@ -30,7 +30,6 @@ To make these types compatible, annotate as this type: ArrayKey_
 6 |   fun bar(x: this): String
   |              ^^^^
 7 |   | IntKey_(_) -> x.asInt().toString()
-
 File "./typechecking/invalid/inst_with_this.sk", line 17, characters 7-16:
 Invalid override for the field 'bar' on child 'StringKey_' for parent 'ArrayKey_'
 15 | }

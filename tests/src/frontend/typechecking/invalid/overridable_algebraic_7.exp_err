@@ -6,7 +6,6 @@ Note you cannot have multiple parents with algebraic patterns
 3 |   | B _ -> void
   |   ^^^^^^^^^^^^^
 4 | }
-
 File "./typechecking/invalid/overridable_algebraic_7.sk", line 3, characters 12-15:
 foo has two algebraic declarations
 1 | base class L {

@@ -21,7 +21,6 @@ Is not a subtype of: Equality
 14 | fun selfEq<T: Equality>(x: T): Bool {
    |               ^^^^^^^^
 15 |   x == x
-
 File "./typechecking/invalid/invalid_conditional_use_7.sk", line 33, characters 3-8:
 Constraint not satisfied
 31 | fun no_inv(): Bool {

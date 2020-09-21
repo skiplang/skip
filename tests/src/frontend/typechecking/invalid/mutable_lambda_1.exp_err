@@ -23,7 +23,6 @@ Try '->' instead
   |       ^
 6 |     () ~> {
   |     ^^^^^^^
-
 File "./typechecking/invalid/mutable_lambda_1.sk", line 17, characters 14-14:
 You cannot capture this variable
 15 |   f = (
@@ -49,7 +48,6 @@ Try '->' instead
    |       ^
 16 |     () ~> {
    |     ^^^^^^^
-
 File "./typechecking/invalid/mutable_lambda_1.sk", line 27, characters 8-8:
 Cannot modify this local
 25 |   f = (

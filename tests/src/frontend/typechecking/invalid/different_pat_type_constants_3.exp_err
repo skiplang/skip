@@ -14,7 +14,6 @@ No constraint here
 13 | base class P2 extends P1<this::Tbody::C1, this::Tbody>
    |                                       ^^
 14 |
-
 File "./typechecking/invalid/different_pat_type_constants_3.sk", line 7, characters 37-44:
 Invalid usage of unconstrained type constant.
 Unconstrained type constants must be used only with 'deferred' class members

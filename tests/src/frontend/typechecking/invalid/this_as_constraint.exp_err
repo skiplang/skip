@@ -9,7 +9,6 @@ Cannot use 'this/inst' as a constraint: it introduces a recursive type
 1 | base class Foo<T: this>
   |                   ^^^^
 2 | class Bar() extends Foo<this>
-
 File "./typechecking/invalid/this_as_constraint.sk", line 1, characters 19-22:
 Cannot use 'this/inst' as a constraint: it introduces a recursive type
 1 | base class Foo<T: this>

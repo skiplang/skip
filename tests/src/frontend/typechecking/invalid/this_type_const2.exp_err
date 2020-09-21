@@ -30,7 +30,6 @@ To make these types compatible, annotate as this type: A
 16 |   fun foo(B): void {
    |           ^
 17 |     void
-
 File "./typechecking/invalid/this_type_const2.sk", line 21, characters 7-12:
 Invalid override for the field 'foo' on child 'Child2' for parent 'Parent'
 19 | }

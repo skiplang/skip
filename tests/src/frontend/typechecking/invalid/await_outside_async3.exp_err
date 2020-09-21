@@ -5,7 +5,6 @@ Cannot await outside an async context
 12 |     await x // error, await outside async context
    |     ^^^^^^^
 13 | }
-
 File "./typechecking/invalid/await_outside_async3.sk", line 3, characters 3-5:
 The value returned from the function is incompatible with the return type '^((T) -> T1)'
 1 | // synchronously build and return a lambda with an async block - ok

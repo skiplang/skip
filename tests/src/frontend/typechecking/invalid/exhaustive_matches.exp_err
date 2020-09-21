@@ -5,7 +5,6 @@ Unnecessary 'is' expression. The value will always successfully match the patter
 17 |   PC(42) is PC _;
    |             ^^^^
 18 | }
-
 File "./typechecking/invalid/exhaustive_matches.sk", line 21, characters 35-44:
 Unnecessary 'is' expression. The value will always successfully match the pattern given.
 19 |
@@ -13,7 +12,6 @@ Unnecessary 'is' expression. The value will always successfully match the patter
 21 |   NC{s => "Hello", b => false} is NC{b => _};
    |                                   ^^^^^^^^^^
 22 | }
-
 File "./typechecking/invalid/exhaustive_matches.sk", line 13, characters 15-17:
 Unnecessary 'is' expression. The value will always successfully match the pattern given.
 11 |
@@ -21,7 +19,6 @@ Unnecessary 'is' expression. The value will always successfully match the patter
 13 |   (40 + 2) is (_);
    |               ^^^
 14 | }
-
 File "./typechecking/invalid/exhaustive_matches.sk", line 25, characters 13-17:
 Unnecessary 'is' expression. The value will always successfully match the pattern given.
 23 |
@@ -29,7 +26,6 @@ Unnecessary 'is' expression. The value will always successfully match the patter
 25 |   PC(42) is PC(_);
    |             ^^^^^
 26 | }
-
 File "./typechecking/invalid/exhaustive_matches.sk", line 9, characters 31-39:
 Unnecessary 'is' expression. The value will always successfully match the pattern given.
  7 |
@@ -37,7 +33,6 @@ Unnecessary 'is' expression. The value will always successfully match the patter
  9 |   (40 + 2, !true, "Hello") is (_, _, _);
    |                               ^^^^^^^^^
 10 | }
-
 File "./typechecking/invalid/exhaustive_matches.sk", line 29, characters 16-16:
 Unnecessary 'is' expression. The value will always successfully match the pattern given.
 27 |

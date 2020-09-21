@@ -29,7 +29,6 @@ To make these types compatible, annotate as this type: Arry
 7 |   fun bad(x: this): this {
   |              ^^^^
 8 |     Inty(x.x + this.x)
-
 File "./typechecking/invalid/this_base_trait.sk", line 12, characters 7-13:
 Invalid override for the field 'bad' on child 'Stringy' for parent 'Arry'
 10 | }

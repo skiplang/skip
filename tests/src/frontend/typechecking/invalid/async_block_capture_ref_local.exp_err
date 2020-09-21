@@ -5,7 +5,6 @@ Async blocks cannot refer to an updated variable
 4 |     bad_x + 1
   |     ^^^^^
 5 |   };
-
 File "./typechecking/invalid/async_block_capture_ref_local.sk", line 13, characters 5-9:
 Async blocks cannot refer to an updated variable
 11 |   bad_x = 1;

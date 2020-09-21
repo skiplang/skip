@@ -19,7 +19,6 @@ Is not a subtype of: UnorderedMap<K2, V2>
 11 |   fun set<K2, V2>[K: K2, V: V2](K2, V2): UnorderedMap<K2, V2> {
    |                                          ^^^^^^^^^^^^
 12 |     this
-
 File "./syntax/invalid/lvalue5.sk", line 18, characters 3-7:
 Non-void expressions must be the last expression in an expression sequence. Either use the expression result, or bind it to a variable whose name starts with '_'.
 16 | fun main(): void {

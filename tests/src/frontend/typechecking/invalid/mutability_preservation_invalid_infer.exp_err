@@ -37,7 +37,6 @@ This is not safe since the original type contained this non-frozen type
 60 |   static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
    |                                                                   ^^^^^^^^^^^^
 61 |     size = items.size(); // can't trust that each() will yield exactly this many items
-
 File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 27, characters 3-3:
 The value returned from the function is incompatible with the return type 'P<Int>'
 Invalid upcast. Mutability is not preserved.
@@ -78,7 +77,6 @@ This is not safe since the original type contained this non-frozen type
 60 |   static fun mcreateFromItems<I: readonly Sequence<T>>(items: I): mutable this {
    |                                                                   ^^^^^^^^^^^^
 61 |     size = items.size(); // can't trust that each() will yield exactly this many items
-
 File "./typechecking/invalid/mutability_preservation_invalid_infer.sk", line 31, characters 3-6:
 The value returned from the function is incompatible with the return type 'P<mutable Vector<Int>>'
 Invalid upcast. The frozen status of the type is not preserved.

@@ -30,7 +30,6 @@ To make these types compatible, annotate as this type: P
  8 |   fun no1{x: L = R()}: void {
    |              ^
  9 |     void
-
 File "./typechecking/invalid/bad_default_value_method.sk", line 11, characters 33-35:
 Invalid default value
  9 |     void

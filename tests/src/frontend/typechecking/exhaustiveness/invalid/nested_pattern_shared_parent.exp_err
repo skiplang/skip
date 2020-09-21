@@ -18,7 +18,6 @@ In that position.
 29 |     | MyPositional(this::T1(e)) -> "1digit" + e
    |                    ^^^^^^^^^^^
 30 |     | _ -> "other"
-
 File "./typechecking/exhaustiveness/invalid/nested_pattern_shared_parent.sk", line 17, characters 5-27:
 The following pattern is unused:
  | MyPositional(MyList(e))

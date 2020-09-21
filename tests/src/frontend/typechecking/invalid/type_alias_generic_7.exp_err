@@ -21,7 +21,6 @@ Is not a subtype of: Bool
 11 | fun no1(): Triple<Bool, String, Int> {
    |                   ^^^^
 12 |   (0, "", false)
-
 File "./typechecking/invalid/type_alias_generic_7.sk", line 15, characters 3-16:
 The value returned from the function is incompatible with the return type '(MM<P, String> = MyMap<P, String>)'
 13 | }

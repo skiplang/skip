@@ -19,7 +19,6 @@ It is defined here
 1 | class Foo<T: frozen>(T) {
   |       ^^^
 2 |   fun test(x: Array<T>): mutable this {
-
 File "./typechecking/invalid/infer_frozen_cla_5.sk", line 8, characters 3-23:
 Constraint not satisfied
  6 |
