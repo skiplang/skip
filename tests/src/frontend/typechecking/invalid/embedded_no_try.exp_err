@@ -1,0 +1,7 @@
+File "./typechecking/invalid/embedded_no_try.sk", line 2, characters 3-3:
+Cannot use try/catch in embedded mode (use etry)
+1 | fun main(): void {
+2 |   try {
+  |   ^^^^^
+3 |     void
+  |     ^^^^
