@@ -13,7 +13,6 @@ It was declared as protected
 74 |   | .InspectCall(protected name: String, protected value: Array<Inspect>)
    |                  ^^^^^^^^^
 75 |   // Object{key1 => elem1, key2 => elem2}
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 23, characters 20-24:
 Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
 21 |   inspect: Inspect = InspectLiteral("foo");
@@ -29,7 +28,6 @@ It was declared as protected
 65 |   | .InspectLiteral(protected value: String)
    |                     ^^^^^^^^^
 66 |   // Array[elem1, elem2, ...]
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 44, characters 16-19:
 Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
 42 |   );
@@ -45,7 +43,6 @@ It was declared as protected
 70 |     protected name: String,
    |     ^^^^^^^^^
 71 |     protected value: Array<(Inspect, Inspect)>,
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 65, characters 19-22:
 Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
 63 |   );
@@ -61,7 +58,6 @@ It was declared as protected
 77 |     protected name: String,
    |     ^^^^^^^^^
 78 |     protected value: Array<(String, Inspect)>,
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 5, characters 20-24:
 Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
 3 |   inspect: Inspect = InspectSpecial("foo");
@@ -77,7 +73,6 @@ It was declared as protected
 61 |   | .InspectSpecial(protected value: String)
    |                     ^^^^^^^^^
 62 |   // "value"
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 14, characters 19-23:
 Invalid pattern match against the field 'value' due to visibility. Try replacing this pattern with '_'
 12 |   inspect: Inspect = InspectString("foo");
@@ -93,7 +88,6 @@ It was declared as protected
 63 |   | .InspectString(protected value: String)
    |                    ^^^^^^^^^
 64 |   // value
-
 File "./tests/src/runtime/prelude/invalid/InspectTest.sk", line 32, characters 19-22:
 Invalid pattern match against the field 'name' due to visibility. Try replacing this pattern with '_'
 30 |   inspect: Inspect = InspectVector("foo", Array[InspectString("item")]);
