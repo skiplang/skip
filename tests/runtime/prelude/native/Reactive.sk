@@ -300,36 +300,41 @@ untracked fun test(): void {
   verbose = false;
 
   debug("Reactive table Test: STARTING");
-  try {
-    r = Random::mcreate(23);
-    rtable = Reactive.Table::create();
+  etry(
+    (() -> {
+      r = Random::mcreate(23);
+      rtable = Reactive.Table::create();
 
-    map = mutable Map<(String, String), Array<String>>[];
-    for (_ in Range(0, iterations)) {
-      source = "" + r.random(0, sourceRange);
-      key = "" + r.random(0, keyRange);
-      if (r.random(0, 100) < percentChancesOfRemoval) {
-        rtable.set(source, key, Array[]);
-        map![(source, key)] = Array[];
-      } else {
-        values = mutable Vector[];
-        for (_ in Range(0, valueSize)) {
-          values.push("" + r.random(0, valueRange));
-        };
-        if (verbose) {
-          debug(`Adding: (${source}, ${key}) => ${values})`);
-        };
-        arr = values.toArray();
-        rtable.set(source, key, arr);
-        map![(source, key)] = arr;
-        rtable.set(source, key, arr);
-        testTable(rtable, map, keyRange);
-      }
-    };
-    debug("Reactive table test: OK");
-  } catch {
-  | TestFailure() -> debug("FAILED")
-  }
+      map = mutable Map<(String, String), Array<String>>[];
+      for (_ in Range(0, iterations)) {
+        source = "" + r.random(0, sourceRange);
+        key = "" + r.random(0, keyRange);
+        if (r.random(0, 100) < percentChancesOfRemoval) {
+          rtable.set(source, key, Array[]);
+          map![(source, key)] = Array[];
+        } else {
+          values = mutable Vector[];
+          for (_ in Range(0, valueSize)) {
+            values.push("" + r.random(0, valueRange));
+          };
+          if (verbose) {
+            debug(`Adding: (${source}, ${key}) => ${values})`);
+          };
+          arr = values.toArray();
+          rtable.set(source, key, arr);
+          map![(source, key)] = arr;
+          rtable.set(source, key, arr);
+          testTable(rtable, map, keyRange);
+        }
+      };
+      debug("Reactive table test: OK");
+    }),
+    (e ->
+      e match {
+      | TestFailure() -> debug("FAILED")
+      | _ -> throw (e)
+      }),
+  )
 }
 
 module end;

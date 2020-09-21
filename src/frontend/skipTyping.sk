@@ -819,6 +819,10 @@ fun merge_extend(
 
 memoized fun fun_def(embeddedMode: Bool, funName: SkipAst.Name): TAst.Fun_def {
   fd = SkipNaming.getFun(funName);
+  if (embeddedMode && fd.name.i1 == "etry") {
+    !fd.native_ = Some(fd.name.i0);
+    !fd.body = N.Native()
+  };
   result = named_fun_def(embeddedMode, fd);
   result
 }

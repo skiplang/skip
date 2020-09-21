@@ -35,19 +35,24 @@ private class Format() {
     write: .String -> void,
     isPretty: .Bool = false,
   ): Result<void, Serialization.SerializationError> {
-    try {
-      jsonFormatter = if (isPretty) {
-        mutable PrettyFormatter(write)
-      } else {
-        mutable CompactFormatter(write)
-      };
-      writer = static::writer(jsonFormatter);
-      serializer.serialize(value, writer);
-      writer.result();
-      Success(void)
-    } catch {
-    | exn @ Serialization.SerializationError _ -> Failure(exn)
-    }
+    etry<Result<void, Serialization.SerializationError>>(
+      (() -> {
+        jsonFormatter = if (isPretty) {
+          mutable PrettyFormatter(write)
+        } else {
+          mutable CompactFormatter(write)
+        };
+        writer = static::writer(jsonFormatter);
+        serializer.serialize(value, writer);
+        writer.result();
+        Success(void)
+      }),
+      (e ->
+        e match {
+        | exn @ Serialization.SerializationError _ -> Failure(exn)
+        | _ -> throw (e)
+        }),
+    )
   }
 
   static fun deserialize<T, S: Serialization.Serializer<T>>(
@@ -61,13 +66,18 @@ private class Format() {
     data: mutable Lexer.LexingPosition,
     serializer: S,
   ): Result<T, Serialization.SerializationError> {
-    try {
-      reader = static::reader(data);
-      result = serializer.deserialize(reader);
-      Success(result)
-    } catch {
-    | exn @ Serialization.SerializationError _ -> Failure(exn)
-    }
+    etry<Result<T, Serialization.SerializationError>>(
+      (() -> {
+        reader = static::reader(data);
+        result = serializer.deserialize(reader);
+        Success(result)
+      }),
+      (e ->
+        e match {
+        | exn @ Serialization.SerializationError _ -> Failure(exn)
+        | _ -> throw (e)
+        }),
+    )
   }
 }
 
