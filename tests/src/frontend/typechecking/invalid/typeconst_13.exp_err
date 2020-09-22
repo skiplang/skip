@@ -21,7 +21,6 @@ File "./typechecking/invalid/typeconst_13.sk", line 4, characters 3-10:
 4 |   deferred fun inout(x: this::T): this::T;
   |   ^^^^^^^^
 5 |
-
 File "./typechecking/invalid/typeconst_13.sk", line 20, characters 7-13:
 In 'Stringy's version of the member 'breaky' inherited from 'Foo'
 18 | }

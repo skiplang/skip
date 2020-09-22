@@ -13,7 +13,6 @@ For the expression of type A
  8 | fun f(a: A): String {
    |          ^
  9 |   a.filter()
-
 File "./syntax/invalid/did_you_mean_synonym.sk", line 13, characters 3-11:
 The field filtr is undefined. Did you mean where?
 11 |
@@ -29,7 +28,6 @@ For the expression of type A
 12 | fun f2(a: A): String {
    |           ^
 13 |   a.filtr() // mistyped synonyms are also matched
-
 File "./syntax/invalid/did_you_mean_synonym.sk", line 24, characters 3-11:
 The field items is undefined. Did you mean entries or item?
 22 |
@@ -45,7 +43,6 @@ For the expression of type B
 23 | fun g(b: B): String {
    |          ^
 24 |   b.items() // matches both synonyms and other fields/methods
-
 File "./syntax/invalid/did_you_mean_synonym.sk", line 35, characters 3-10:
 The field new is undefined. Did you mean create?
 33 |

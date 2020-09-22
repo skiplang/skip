@@ -21,7 +21,6 @@ Does not share a common super type with: Some<_>
 14 |   for (_ in MyClass()) void
    |        ^
 15 | }
-
 File "./typechecking/invalid/foreach_bindings.sk", line 18, characters 8-13:
 Invalid pattern
 16 |
@@ -45,7 +44,6 @@ Does not share a common super type with: Some<_>
 18 |   for (_ => _ in MyClass()) void
    |        ^^^^^^
 19 | }
-
 File "./typechecking/invalid/foreach_bindings.sk", line 22, characters 8-16:
 Invalid pattern
 20 |

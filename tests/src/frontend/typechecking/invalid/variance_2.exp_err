@@ -30,7 +30,6 @@ To make these types compatible, annotate as this type: Parent
 13 | class Foo<T: Parent>(x: (T ~> Int)) {
    |           ^
 14 |   fun foo(x: ChildB): Int {
-
 File "./typechecking/invalid/variance_2.sk", line 21, characters 3-8:
 The value returned from the function is incompatible with the return type 'Foo<Parent>'
 19 | fun getFoo(): Foo<Parent> {

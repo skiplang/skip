@@ -20,7 +20,6 @@ Is not a subtype of: Int
 2 |   macro fun typeError1(): Int {
   |                           ^^^
 3 |     #thisClassName
-
 File "./typechecking/invalid/macro_type_error.sk", line 7, characters 35-35:
 Constraint not satisfied
 5 |   macro fun typeError2(): Int {

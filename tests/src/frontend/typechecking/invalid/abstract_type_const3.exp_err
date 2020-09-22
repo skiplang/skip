@@ -13,7 +13,6 @@ This type is, or contains, an uninistantiated type constant
 3 |   type T2: this::T;
   |        ^^
 4 | }
-
 File "./typechecking/invalid/abstract_type_const3.sk", line 3, characters 12-18:
 Only `this` can use abstract type constants in constraints
 1 | class Foo() {

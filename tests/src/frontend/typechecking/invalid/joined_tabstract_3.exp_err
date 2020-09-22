@@ -13,7 +13,6 @@ File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
-
 File "./typechecking/invalid/joined_tabstract_3.sk", line 12, characters 12-15:
 In 'IntC's version of the member 'test' inherited from 'AbsC'
 10 | }
@@ -37,7 +36,6 @@ File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
-
 File "./typechecking/invalid/joined_tabstract_3.sk", line 27, characters 12-18:
 In 'StringC's version of the member 'test' inherited from 'AbsC'
 25 | }
@@ -61,7 +59,6 @@ File "./typechecking/invalid/joined_tabstract_3.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   static fun test(c1: Concrete<AbsC>, c2: Concrete<AbsC>): void {
-
 File "./typechecking/invalid/joined_tabstract_3.sk", line 43, characters 3-26:
 The field add is undefined
 41 |

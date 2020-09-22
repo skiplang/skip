@@ -20,7 +20,6 @@ Defined here
 2 |   readonly fun xtoString(): String;
   |                ^^^^^^^^^
 3 | }
-
 File "./typechecking/invalid/unimplementable_conditional_method_4.sk", line 7, characters 5-8:
 In 'XNil's version of the member 'xtoString' inherited from 'XShow'
 5 | base class XList<+T> uses XShow[T: XShow] {

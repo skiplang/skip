@@ -13,7 +13,6 @@ For the expression of type MyClass
 5 |   fun values(): this {
   |                 ^^^^
 6 |     this
-
 File "./typechecking/invalid/foreach_next.sk", line 15, characters 18-26:
 The field next is undefined
 13 |
@@ -28,7 +27,6 @@ For the expression of type MyClass
 2 |   fun items(): this {
   |                ^^^^
 3 |     this
-
 File "./typechecking/invalid/foreach_next.sk", line 19, characters 21-29:
 The field next is undefined
 17 |

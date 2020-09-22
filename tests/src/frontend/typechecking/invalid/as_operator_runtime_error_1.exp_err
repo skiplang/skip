@@ -1,1 +1,11 @@
-Uncaught exception: Failed to cast object of type P to type T _ in 'as' expression
+*** Uncaught exception of type N4skip13SkipExceptionE: Failed to cast object of type P to type T _ in 'as' expression
+*** Stack trace:
+ _ZN12_GLOBAL__N_19terminateEv
+ _ZSt17rethrow_exceptionNSt15__exception_ptr13exception_ptrE
+ _ZSt9terminatev
+ __cxa_throw
+ SKIP_throw
+ skip_main
+ main
+ __libc_start_main
+ _start

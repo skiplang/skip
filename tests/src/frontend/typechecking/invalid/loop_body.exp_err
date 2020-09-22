@@ -19,7 +19,6 @@ Is not a subtype of: void
 2 |   _: String = while (false) "is this how it works?" else "no"
   |                             ^^^^^^^^^^^^^^^^^^^^^^^
 3 | }
-
 File "./typechecking/invalid/loop_body.sk", line 6, characters 15-63:
 Invalid loop body. The body of loops is discarded so it must have type 'void'
 If you want the loop to have result, use 'break'
@@ -44,7 +43,6 @@ Is not a subtype of: void
 6 |   _: String = do "is this how it works?" while (true) else "no"
   |                  ^^^^^^^^^^^^^^^^^^^^^^^
 7 | }
-
 File "./typechecking/invalid/loop_body.sk", line 10, characters 35-57:
 Invalid loop body. The body of loops is discarded so it must have type 'void'
 If you want the loop to have result, use 'break'
@@ -69,7 +67,6 @@ Is not a subtype of: void
 10 |   _: String = for (_ in Vector[]) "is this how it works?" else "no"
    |                                   ^^^^^^^^^^^^^^^^^^^^^^^
 11 | }
-
 File "./typechecking/invalid/loop_body.sk", line 14, characters 15-45:
 Invalid loop body. The body of loops is discarded so it must have type 'void'
 If you want the loop to have result, use 'break'

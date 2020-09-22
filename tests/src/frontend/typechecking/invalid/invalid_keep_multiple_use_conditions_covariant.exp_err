@@ -13,7 +13,6 @@ For the expression of type U
 12 | class C<+U, +T: U>(u: U, t: T) extends P1<T>, P2<U> {
    |          ^
 13 |   fun doit[T: HasBar](): Int {
-
 File "./typechecking/invalid/invalid_keep_multiple_use_conditions_covariant.sk", line 2, characters 7-10:
 Invalid conditional type override for the field 'doit' on child 'C2' for parent 'P1'.
 With additional constraints on the child's method,

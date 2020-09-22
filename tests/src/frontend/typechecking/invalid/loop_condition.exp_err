@@ -18,7 +18,6 @@ Is not a subtype of: Bool
 2 |   while (0) void
   |         ^^^
 3 | }
-
 File "./typechecking/invalid/loop_condition.sk", line 6, characters 17-20:
 Invalid loop condition
 4 |

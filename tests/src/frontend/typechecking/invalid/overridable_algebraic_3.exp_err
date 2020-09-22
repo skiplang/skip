@@ -13,7 +13,6 @@ Additional declaration defined here
 7 |   | B _ -> void
   |   ^^^^^^^^^^^^^
 8 | }
-
 File "./typechecking/invalid/overridable_algebraic_3.sk", line 3, characters 3-15:
 Case B is missing.
 Note you cannot have multiple parents with algebraic patterns

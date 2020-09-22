@@ -45,7 +45,6 @@ void terminate() {
   // which dumps a less-than-useful stack trace on OS/X.
   // Let's just exit explicitly with a failure exit code here to reduce
   // confusion.
-  std::cerr << "*** PID " << getpid() << " exiting" << std::endl;
   exit(1);
 }
 } // namespace

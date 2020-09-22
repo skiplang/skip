@@ -37,7 +37,6 @@ This is not safe since the original type contained this non-frozen type
 6 |   _: P<Int> = C1<mutable Vector<Int>, Int>();
   |                  ^^^^^^^^^^^^^^^^^^^
 7 | }
-
 File "./typechecking/invalid/mutability_preservation_invalid.sk", line 10, characters 15-39:
 Invalid annotation
 Invalid upcast. Mutability is not preserved.

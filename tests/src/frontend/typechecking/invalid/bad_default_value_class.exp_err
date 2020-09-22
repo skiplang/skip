@@ -30,7 +30,6 @@ To make these types compatible, annotate as this type: P
 7 | class No1{x: L = R()}
   |              ^
 8 | mutable base class No2{x: mutable L = L()}
-
 File "./typechecking/invalid/bad_default_value_class.sk", line 8, characters 39-41:
 Invalid default value
  6 |

@@ -13,7 +13,6 @@ File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
-
 File "./typechecking/invalid/joined_tabstract_4.sk", line 27, characters 9-26:
 Invalid deferred call
 25 |
@@ -29,7 +28,6 @@ File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
-
 File "./typechecking/invalid/joined_tabstract_4.sk", line 46, characters 9-26:
 Invalid deferred call
 44 |
@@ -45,7 +43,6 @@ File "./typechecking/invalid/joined_tabstract_4.sk", line 6, characters 3-10:
 6 |   deferred static fun eat(Inv<this::T>): this::T;
   |   ^^^^^^^^
 7 |   overridable static fun test(c1: Concrete<this>, c2: Concrete<this>): void {
-
 File "./typechecking/invalid/joined_tabstract_4.sk", line 51, characters 14-17:
 Invalid argument
 49 |

@@ -241,15 +241,7 @@ function(add_skip_test src)
   file(RELATIVE_PATH relpath ${CMAKE_SOURCE_DIR} ${relpath})
   string(REPLACE "/" "." relpath ${relpath})
 
-  if(NOT src MATCHES "/invalid/")
-    # Tests in src/tests/*/invalid/*.sk test compile errors.
-    # Since backends can't produce compile errors, theres no need to run them
-    # for each backend.
-
-    if(BACKENDS MATCHES native)
-      _addSkipTargetTest(${src} native skip_to_native skip_native_exec ${relpath} ${RUNNER} ${LIBS})
-    endif()
-  endif()
+  _addSkipTargetTest(${src} native skip_to_native skip_native_exec ${relpath} ${RUNNER} ${LIBS})
 endfunction()
 
 # Ensures that tests/runtime/tools/skip_to_native can be run

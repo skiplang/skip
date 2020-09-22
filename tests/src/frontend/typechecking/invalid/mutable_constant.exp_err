@@ -13,7 +13,6 @@ Not frozen because of this position.
  9 |   const func: () -> Int = () -> 100;
    |               ^^^^^^^^^
 10 |   const nest: readonly Vector<Int> = Vector[100];
-
 File "./typechecking/invalid/mutable_constant.sk", line 10, characters 15-34:
 Constants cannot contain mutable values; they must be frozen.
  8 | class Tester() {
@@ -29,7 +28,6 @@ Not frozen because of this position.
 10 |   const nest: readonly Vector<Int> = Vector[100];
    |               ^^^^^^^^^^^^^^^^^^^^
 11 | }
-
 File "./typechecking/invalid/mutable_constant.sk", line 2, characters 18-23:
 Constants cannot contain mutable values; they must be frozen.
 1 | const ref: mutable Ref<Int> = mutable Ref(0);
@@ -43,7 +41,6 @@ Not frozen because of this position.
 2 | const awaitable: Vector<^Int> = Vector[
   |                         ^^^^
 3 |   async {
-
 File "./typechecking/invalid/mutable_constant.sk", line 1, characters 12-27:
 Constants cannot contain mutable values; they must be frozen.
 1 | const ref: mutable Ref<Int> = mutable Ref(0);
