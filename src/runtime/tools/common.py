@@ -577,7 +577,7 @@ class RunCommand(object):
 
     def write_file(self, name, data, limit=None):
         assert not limit or (isinstance(limit, (tuple, list)) and len(limit) == 2)
-        data = data.decode().strip()
+        data = data.strip()
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
             if limit:

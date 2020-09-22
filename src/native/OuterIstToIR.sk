@@ -4864,7 +4864,7 @@ private const kEmptyMethods: UnorderedMap<
 
 untracked private fun makeOuterIst(fileNames: Array<String>): OuterIst.Program {
   // run the compiler front end from parsing to type checking
-  typedAst = SkipMain.compile(isEmbedded(), List::createFromItems(fileNames));
+  typedAst = SkipMain.compile(List::createFromItems(fileNames), isEmbedded());
   // OuterIst skeleton is built here, but code is done lazily
   SkipMakeOuterIst.program(typedAst)
 }

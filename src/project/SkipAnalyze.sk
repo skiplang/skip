@@ -11,20 +11,16 @@ module SkipAnalyze;
 
 // filename must be a .sk file, not a target.
 untracked fun checkFile(
-  isEmbedded: Bool,
   filename: String,
 ): Result<SkipTypedAst.Program, Vector<SkipError.Error>> {
   SkipProject.getFilesToAnalyze(filename).flatMap(files ->
-    SkipMain.compileWithErrors(isEmbedded, List::createFromItems(files))
+    SkipMain.compileWithErrors(List::createFromItems(files))
   )
 }
 
 // filename must be a .sk file, not a target.
-untracked fun analyzeFile(
-  isEmbedded: Bool,
-  filename: String,
-): Vector<SkipError.Error> {
-  checkFile(isEmbedded, filename).maybeFailure().default(Vector[]).take(100)
+untracked fun analyzeFile(filename: String): Vector<SkipError.Error> {
+  checkFile(filename).maybeFailure().default(Vector[]).take(100)
 }
 
 // TODO: These are used by nuclide/skipCheck and nuclide/skipCheckJson.

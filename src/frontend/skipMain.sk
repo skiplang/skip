@@ -41,16 +41,16 @@ untracked fun type_program(
 
 @gc
 untracked fun compile(
-  emeddedMode: Bool,
   files: List<String>,
+  emeddedMode: Bool = false,
 ): SkipTypedAst.Program {
   SkipError.doAndReportErrors(() -> compileWithErrors(emeddedMode, files))
 }
 
 @gc
 untracked fun compileWithErrors(
-  emeddedMode: Bool,
   files: List<String>,
+  emeddedMode: Bool = false,
 ): Result<SkipTypedAst.Program, Vector<SkipError.Error>> {
   try {
     Success(type_program(emeddedMode, files));
