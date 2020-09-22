@@ -41,6 +41,8 @@ def compile(stack, args):
 
     PROFILE_FLAGS = ('--profile', args.profile) if args.profile else ()
 
+    EMBEDDED_FLAGS = ('--embedded64',) if args.embedded64 else ()
+
     PARALLEL_FLAGS = (('--parallel', str(args.parallel))
                       if args.parallel is not None else ())
 
@@ -51,7 +53,7 @@ def compile(stack, args):
         '--preamble', args.preamble,
         '--output', objFile.name,
         '--via-backend', args.via_backend,
-        ) + PROFILE_FLAGS + PARALLEL_FLAGS + tuple(args.srcs) + SKFLAGS + PRINT_SKIP_TO_LLVM
+        ) + PROFILE_FLAGS + EMBEDDED_FLAGS + PARALLEL_FLAGS + tuple(args.srcs) + SKFLAGS + PRINT_SKIP_TO_LLVM
 
     logger.debug('Running: ' + ' '.join(map(pipes.quote, cmd)))
     common.callHelper(cmd)
