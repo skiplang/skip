@@ -18,7 +18,7 @@
 untracked fun main(): void {
   print_raw(
     SkipError.errorsToString(
-      SkipAnalyze.analyzeFile(false, SkipAnalyze.pathOfArguments()),
+      SkipAnalyze.analyzeFile(SkipAnalyze.pathOfArguments()),
     ),
   )
 }

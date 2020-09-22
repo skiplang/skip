@@ -42,9 +42,9 @@ untracked fun type_program(
 @gc
 untracked fun compile(
   files: List<String>,
-  emeddedMode: Bool = false,
+  embeddedMode: Bool = false,
 ): SkipTypedAst.Program {
-  SkipError.doAndReportErrors(() -> compileWithErrors(emeddedMode, files))
+  SkipError.doAndReportErrors(() -> compileWithErrors(files, embeddedMode))
 }
 
 @gc
