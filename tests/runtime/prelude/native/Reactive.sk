@@ -279,7 +279,7 @@ fun testTable(
     valuesTable = rtable.get(key);
     mvaluesTable = Array::mcreateFromItems(valuesTable);
     mvaluesTable.sort();
-    !valuesTable = freeze(mvaluesTable);
+    !valuesTable = mvaluesTable.chill();
     if (valuesMap != valuesTable) {
       debug(`Inconsistent result for key: ${key}`);
       debug(`TestMap says: ${valuesMap}`);

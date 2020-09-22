@@ -2307,6 +2307,9 @@ fun magic_call(
 ): ?(TUtils.Acc, TAst.Expr) {
   (base, args) match {
   | ((_, N.Var((_, "freeze"))), Positional(arga)) if (arga.size() == 1) ->
+    if (env.embeddedMode) {
+      SkipError.error(pos, "Cannot use freeze in embedded mode");
+    };
     check_no_mutable(mut, base.i0);
     (_, e) = arga[0];
     (!acc, e1) = expr(next_id, env, acc, e);

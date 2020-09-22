@@ -1,0 +1,6 @@
+File "./typechecking/invalid/embedded_freeze.sk", line 2, characters 7-37:
+Cannot use freeze in embedded mode
+1 | fun main(): void {
+2 |   _ = freeze(mutable Vector[1, 2, 3]);
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 | }

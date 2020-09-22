@@ -86,7 +86,7 @@ fun readFilesRecursive(
   };
   processDirectory(Path.normalize(dirname));
 
-  freeze(result);
+  result.chill();
 }
 
 // TODO: Rename the C++ entrypoints and merge these into the

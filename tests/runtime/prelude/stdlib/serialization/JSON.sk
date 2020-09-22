@@ -35,7 +35,7 @@ base class Value uses Show {
   | JSON.Object(fields) ->
     next_fields = fields.clone();
     next_fields![name] = value;
-    JSON.Object(freeze(next_fields))
+    JSON.Object(next_fields.chill())
   | _ -> throw JSONSetNonObjectError()
 
   fun encode(): .String {
@@ -316,7 +316,7 @@ class Object(value: Map<.String, JSON.Value>) extends JSON.Value {
       (k, v) = kv;
       map.set(k, v);
     });
-    JSON.Object(freeze(map))
+    JSON.Object(map.chill())
   }
 }
 
@@ -361,7 +361,7 @@ class Array(value: Vector<JSON.Value>) extends JSON.Value {
   ): this {
     vector = mutable Vector[];
     items.each(vector.push);
-    JSON.Array(freeze(vector))
+    JSON.Array(vector.chill())
   }
 }
 
@@ -559,7 +559,7 @@ private fun decodeObject(iter: mutable Lexer.LexingPosition): JSON.Object {
   } else {
     map = mutable Map[];
     decodeObjectFields(iter, map);
-    JSON.Object(freeze(map));
+    JSON.Object(map.chill());
   }
 }
 
@@ -601,7 +601,7 @@ private fun decodeArray(iter: mutable Lexer.LexingPosition): JSON.Array {
   } else {
     vector = mutable Vector[];
     decodeArrayElements(iter, vector);
-    JSON.Array(freeze(vector));
+    JSON.Array(vector.chill());
   }
 }
 
