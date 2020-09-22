@@ -1,3 +1,0 @@
-/home/julienv/skip/build/tests/runtime/native/libsk_standalone.tests.a(sk_standalone.cpp.o): In function `main':
-/home/julienv/skip/build/../tests/runtime/native/src/sk_standalone.cpp:81: undefined reference to `skip_main'
-collect2: error: ld returned 1 exit status
