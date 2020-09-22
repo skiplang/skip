@@ -207,7 +207,7 @@ mutable class .Bencher(options: Bencher.Options = Options{}) {
       afterEach();
       if (options.itersPerGc > 0 && i % options.itersPerGc == 0) localGC()
     };
-    freeze(results)
+    results.chill()
   }
 
   // time fn with no compiler optimizations.

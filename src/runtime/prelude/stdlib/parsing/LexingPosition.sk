@@ -46,7 +46,7 @@ mutable class LexingPosition private {
     LexingPosition{
       source => this.source,
       position => this.position,
-      iter => freeze(this.iter),
+      iter => this.iter.chill(),
     }
   }
 

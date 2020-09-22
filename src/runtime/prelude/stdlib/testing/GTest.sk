@@ -107,24 +107,29 @@ class TestCase private {name: String, tests: UnorderedMap<String, () ~> void>} {
           ) {
             print_string("[ RUN      ] " + fullname);
             profile_start();
-            try {
-              fn();
-              !passed = passed + 1;
-              fnDuration = profile_stop().toInt();
-              print_string(
-                "[       OK ] " + fullname + " (" + fnDuration + " ms)",
-              );
-              !totalDuration = totalDuration + fnDuration;
-            } catch {
-            | e @ AssertionFailure _ ->
-              failures.push(fullname);
-              print_string(e.getMessage());
-              fnDuration = profile_stop().toInt();
-              print_string(
-                "[  FAILED  ] " + fullname + " (" + fnDuration + " ms)",
-              );
-              !totalDuration = totalDuration + fnDuration
-            }
+            etry(
+              (() -> {
+                fn();
+                !passed = passed + 1;
+                fnDuration = profile_stop().toInt();
+                print_string(
+                  "[       OK ] " + fullname + " (" + fnDuration + " ms)",
+                );
+                !totalDuration = totalDuration + fnDuration;
+              }),
+              (exn ->
+                exn match {
+                | e @ AssertionFailure _ ->
+                  failures.push(fullname);
+                  print_string(e.getMessage());
+                  fnDuration = profile_stop().toInt();
+                  print_string(
+                    "[  FAILED  ] " + fullname + " (" + fnDuration + " ms)",
+                  );
+                  !totalDuration = totalDuration + fnDuration
+                | e -> throw (e)
+                }),
+            )
           }
         };
       });

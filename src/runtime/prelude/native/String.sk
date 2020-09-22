@@ -119,45 +119,49 @@ fun convert(
     outputEncoding.code(),
     throwOnBadCharacter,
   );
-  try {
-    loop {
-      // Yield all the output
-      for (i in Range(0, converter.outputUsed)) {
-        yield converter.output[i];
+  etry(
+    (() -> {
+      loop {
+        // Yield all the output
+        for (i in Range(0, converter.outputUsed)) {
+          yield converter.output[i];
+        };
+
+        converter.convert();
+
+        // See if we need more input
+        if (converter.empty()) {
+          converter.!input = {
+            input.next() match {
+            | None() -> break void
+            | Some(tmp) ->
+              converter.!inputUsed = 0;
+              tmp
+            }
+          }
+        };
       };
 
-      converter.convert();
+      // Need to flush the remaining output
+      loop {
+        for (i in Range(0, converter.outputUsed)) {
+          yield converter.output[i];
+        };
 
-      // See if we need more input
-      if (converter.empty()) {
-        converter.!input = {
-          input.next() match {
-          | None() -> break void
-          | Some(tmp) ->
-            converter.!inputUsed = 0;
-            tmp
-          }
+        converter.flush();
+        if (converter.outputUsed == 0) break void;
+        for (i in Range(0, converter.outputUsed)) {
+          yield converter.output[i];
         }
       };
-    };
-
-    // Need to flush the remaining output
-    loop {
-      for (i in Range(0, converter.outputUsed)) {
-        yield converter.output[i];
-      };
-
-      converter.flush();
-      if (converter.outputUsed == 0) break void;
-      for (i in Range(0, converter.outputUsed)) {
-        yield converter.output[i];
-      }
-    };
-  } catch {
-  | e @ _ ->
-    converter.teardown();
-    throw e
-  };
+    }),
+    (exn ->
+      exn match {
+      | e @ _ ->
+        converter.teardown();
+        throw e
+      }),
+  );
 
   converter.teardown();
 }

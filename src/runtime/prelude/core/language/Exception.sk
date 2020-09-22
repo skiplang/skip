@@ -64,3 +64,14 @@ class RuntimeError(msg: String) extends Exception {
     this.msg
   }
 }
+
+// Function used to catch exceptions in embedded mode.
+// This is useful on platforms where C++ exceptions are not supported.
+// You can use setjump/longjmp (or any other scheme) for exceptions.
+fun etry<T>(f: () -> T, handler: Exception -> T): T {
+  try {
+    f()
+  } catch {
+  | e -> handler(e)
+  }
+}
