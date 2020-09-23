@@ -90,11 +90,15 @@ fun assertFalse(b: Bool): void {
 
 fun assertThrows<T>(f: () -> T): void {
   threw = false;
-  try {
-    _ = f();
-  } catch {
-  | _ -> !threw = true
-  };
+  etry(
+    (() -> {
+      _ = f();
+    }),
+    (e ->
+      e match {
+      | _ -> !threw = true
+      }),
+  );
   if (!threw) {
     assertFailure{
       message => "expected an exception, but none were thrown",
@@ -105,15 +109,16 @@ fun assertThrows<T>(f: () -> T): void {
 }
 
 fun assertDoesNotThrow<T: frozen>(f: () -> T): void {
-  try {
-    _ = f();
-    void;
-  } catch {
-  | e ->
-    assertFailure{
-      message => "an exception was thrown",
-      expected => "no exception",
-      actual => e.getMessage(),
-    }
-  };
+  etry(
+    (() -> {
+      _ = f();
+      void;
+    }),
+    (e ->
+      assertFailure{
+        message => "an exception was thrown",
+        expected => "no exception",
+        actual => e.getMessage(),
+      }),
+  );
 }

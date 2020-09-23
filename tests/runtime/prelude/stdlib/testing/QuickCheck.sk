@@ -123,12 +123,16 @@ fun assert<A: Shrinkable & Show>(
   config: Config = Config{},
 ): void {
   test = a ~> {
-    try {
-      _ = f(a);
-      Success(void)
-    } catch {
-    | exn -> Failure(exn.getMessage())
-    }
+    etry<Result<void, String>>(
+      (() -> {
+        _ = f(a);
+        Success(void)
+      }),
+      (e ->
+        e match {
+        | exn -> Failure(exn.getMessage())
+        }),
+    )
   };
   assertEqual(run(ForAllProperty(gen, test), config), TestSuccess())
 }

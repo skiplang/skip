@@ -51,48 +51,52 @@ untracked fun main(tests: Array<(String, untracked () -> void)>): void {
   expectError = false;
   allowEmpty = false;
   options = Options{};
-  try {
-    loop {
-      args.next() match {
-      | Some("--backend-gen") ->
-        !backendGen = args
-          .next()
-          .fromSome("Missing value for --backend-gen <value>")
-      | Some("--test-file") ->
-        !testFile = args
-          .next()
-          .fromSome("Missing value for --test-file <value>")
-      | Some("--color-success") ->
-        !options.colorSuccess = args
-          .next()
-          .fromSome("Missing value for --color-success <value>")
-      | Some("--color-failure") ->
-        !options.colorFailure = args
-          .next()
-          .fromSome("Missing value for --color-failure <value>")
-      | Some("--color-end") ->
-        !options.colorEnd = args
-          .next()
-          .fromSome("Missing value for --color-end <value>")
-      | Some("--expect-error") ->
+  etry(
+    (() -> {
+      loop {
         args.next() match {
-        | Some("true") -> !expectError = true
-        | Some("false") -> !expectError = false
-        | _ ->
-          invariant_violation(
-            "Missing value (true/false) for --expect-error <value>",
-          )
+        | Some("--backend-gen") ->
+          !backendGen = args
+            .next()
+            .fromSome("Missing value for --backend-gen <value>")
+        | Some("--test-file") ->
+          !testFile = args
+            .next()
+            .fromSome("Missing value for --test-file <value>")
+        | Some("--color-success") ->
+          !options.colorSuccess = args
+            .next()
+            .fromSome("Missing value for --color-success <value>")
+        | Some("--color-failure") ->
+          !options.colorFailure = args
+            .next()
+            .fromSome("Missing value for --color-failure <value>")
+        | Some("--color-end") ->
+          !options.colorEnd = args
+            .next()
+            .fromSome("Missing value for --color-end <value>")
+        | Some("--expect-error") ->
+          args.next() match {
+          | Some("true") -> !expectError = true
+          | Some("false") -> !expectError = false
+          | _ ->
+            invariant_violation(
+              "Missing value (true/false) for --expect-error <value>",
+            )
+          }
+        | Some("--allow-empty") -> !allowEmpty = true
+        | Some(str) -> invariant_violation(`Unexpected argument ${str}`)
+        | None() -> break void
         }
-      | Some("--allow-empty") -> !allowEmpty = true
-      | Some(str) -> invariant_violation(`Unexpected argument ${str}`)
-      | None() -> break void
-      }
-    };
-  } catch {
-  | exn ->
-    debug(arguments());
-    throw exn
-  };
+      };
+    }),
+    (e ->
+      e match {
+      | exn ->
+        debug(arguments());
+        throw exn
+      }),
+  );
   projectName = `${backendGen} ${testFile}`;
   if (!allowEmpty && tests.isEmpty()) {
     print_error_ln(
@@ -117,11 +121,15 @@ untracked fun runTests(
   for ((testName, test) in tests) {
     name = `${projectName} ${testName}`;
     // Note: cannot use Result::guard with an untracked lambda
-    result = try {
-      Success(test())
-    } catch {
-    | exn -> Failure(exn)
-    };
+    result = etry<Result<void, Exception>>(
+      (() -> {
+        Success(test())
+      }),
+      (e ->
+        e match {
+        | exn -> Failure(exn)
+        }),
+    );
     result match {
     | Success _ -> print(reportSuccess{name, options})
     | Failure(exception) ->

@@ -3544,13 +3544,22 @@ private fun llvmWrite(instr: Stmt, asm: mutable FunAsmDefBuilder): void {
     )
   | ObstackNote _ ->
     llvmWriteIntrinsicCall(asm, instr, "SKIP_Obstack_note_inl", Array[])
-  | ObstackShallowClone{value} ->
-    llvmWriteIntrinsicCall(
-      asm,
-      instr,
-      "SKIP_Obstack_shallowClone",
-      Array[value],
-    )
+  | ObstackShallowClone{byteSize, value} ->
+    if (isEmbedded()) {
+      llvmWriteIntrinsicCall(
+        asm,
+        instr,
+        "SKIP_Obstack_shallowClone",
+        Array[byteSize, value],
+      )
+    } else {
+      llvmWriteIntrinsicCall(
+        asm,
+        instr,
+        "SKIP_Obstack_shallowClone",
+        Array[value],
+      )
+    }
   | Reinterpret{value} ->
     src = optinfo.getInstr(value);
     srcPrim = src.typ.getScalarType(asm.env());
@@ -3759,7 +3768,7 @@ private fun llvmWrite(instr: Stmt, asm: mutable FunAsmDefBuilder): void {
 
       // Due to T17433959 we need to ignore the high hash bit,
       // so we left-shift it out.
-      highHashShift = if (targetIsWasm()) 0 else 1;
+      highHashShift = if (targetIsWasm() || isEmbedded()) 0 else 1;
 
       // Map each long string header word to an array of case indices
       // that have that value.

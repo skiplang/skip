@@ -98,6 +98,7 @@ base class YieldCase {
 }
 
 class Env{
+  embeddedMode: Bool,
   frozen_level: FrozenLevel,
   check_exhaustive_match: Bool,
   deferred_body: Bool,

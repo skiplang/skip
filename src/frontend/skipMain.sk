@@ -22,11 +22,14 @@ untracked fun expand_program(files: List<String>): SkipAst.Program {
   );
 }
 
-untracked fun type_program(files: List<String>): SkipTypedAst.Program {
+untracked fun type_program(
+  embeddedMode: Bool,
+  files: List<String>,
+): SkipTypedAst.Program {
   expanded_program = expand_program(files);
 
   typed_program = runCompilerPhase("frontend/type_program", () ->
-    SkipTyping.program(expanded_program)
+    SkipTyping.program(embeddedMode, expanded_program)
   );
 
   typed_program
@@ -37,16 +40,20 @@ untracked fun type_program(files: List<String>): SkipTypedAst.Program {
 /*****************************************************************************/
 
 @gc
-untracked fun compile(files: List<String>): SkipTypedAst.Program {
-  SkipError.doAndReportErrors(() -> compileWithErrors(files))
+untracked fun compile(
+  files: List<String>,
+  embeddedMode: Bool = false,
+): SkipTypedAst.Program {
+  SkipError.doAndReportErrors(() -> compileWithErrors(files, embeddedMode))
 }
 
 @gc
 untracked fun compileWithErrors(
   files: List<String>,
+  emeddedMode: Bool = false,
 ): Result<SkipTypedAst.Program, Vector<SkipError.Error>> {
   try {
-    Success(type_program(files));
+    Success(type_program(emeddedMode, files));
   } catch {
   // TODO: We shouldn't need the unique() here. Fix this with T21967329.
   | SkipError.SkipErrorException{errors} -> Failure(errors.unique())

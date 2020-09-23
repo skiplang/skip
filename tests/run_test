@@ -40,6 +40,9 @@ def runtest(args, test, libs):
     if args.sk_standalone:
       cmd += ['--sk-standalone', args.sk_standalone]
 
+    if "embedded" in test:
+      cmd += ['--embedded64']
+
     if shortBackend == 'native':
         # Tests tend to be small and should not bother with parallelism.
         cmd += ['--parallel', '1']

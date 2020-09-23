@@ -73,7 +73,7 @@ class .DirectedGraph<Vertex: Hashable & Equality & frozen>{
         }
       };
     };
-    freeze(visited);
+    visited.chill();
   }
 
   // Returns all vertices reachable from the input vertex.
@@ -119,7 +119,7 @@ class .DirectedGraph<Vertex: Hashable & Equality & frozen>{
       }
     };
 
-    freeze(result);
+    result.chill();
   }
 
   // Returns one of the shortest non-degenerate strongly connected components
@@ -185,14 +185,14 @@ class .DirectedGraph<Vertex: Hashable & Equality & frozen>{
             component.push(top);
             top != vertex;
           }) void;
-          result.push(freeze(component));
+          result.push(component.chill());
         }
       }
     };
 
     this.vertices.each(recurse);
 
-    freeze(result);
+    result.chill();
   }
 }
 

@@ -42,7 +42,7 @@ untracked fun compileLoop(target: String): void {
     invariant_violation("Error: could not find target")
   };
   loop {
-    !errors = SkipMain.compileWithErrors(files)
+    !errors = SkipMain.compileWithErrors(files, isEmbedded())
       .maybeFailure()
       .default(Vector[])
       .take(100);

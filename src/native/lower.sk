@@ -10,7 +10,8 @@ module Lower;
 // WebAssembly does not currently support computed gotos, so we use
 // a IntSwitch instead.
 private const kCanUseComputedGoto: Bool = kConfig.optConfig.goto &&
-  !targetIsWasm();
+  !targetIsWasm() &&
+  !isEmbedded();
 
 private const kArrayMetadataByteSize: Int = 4 + 4 + vtableByteSize;
 
@@ -1126,9 +1127,26 @@ mutable private class .Lower{
       this.lowerArraySize(x);
       true
     | w @ With _ ->
+      sc = w.typ.exampleSClass(this.env);
+      layout = sc.getLayout();
+
+      // The bit size is determined by the end of the last field.
+      numFieldBits = layout.maybeLast().maybe(0, f ->
+        f.bitOffset + f.typ.bitSize
+      );
+
+      // Every object has a vtable, and round sizes up to an 8 byte multiple.
+      numBytes = roundUp(vtableByteSize * 8 + numFieldBits, 64) / 8;
+
       // Clone the object, but keep the same ID as the old "with".
       mem = this.emitInstr(
-        ObstackShallowClone{id => w.id, typ => w.typ, pos, value => w.obj},
+        ObstackShallowClone{
+          byteSize => this.constantTypedInt(tIntPtr, numBytes).id,
+          id => w.id,
+          typ => w.typ,
+          pos,
+          value => w.obj,
+        },
       );
 
       // Set all the fields the user specified.

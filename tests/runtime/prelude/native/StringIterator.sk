@@ -18,6 +18,10 @@ mutable class StringIterator private (
     mutable StringIterator(s, 0)
   }
 
+  readonly fun chill(): this {
+    static(this.s, this.i)
+  }
+
   static fun makeEnd(s: String): mutable StringIterator {
     mutable StringIterator(s, s.utf8().size())
   }

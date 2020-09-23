@@ -216,10 +216,10 @@ fun parse(
 
   Success(
     ParseResult{
-      argumentValues => freeze(argumentValues),
+      argumentValues => argumentValues.chill().map((_, x) -> x.chill()),
       hasRest,
-      rest => freeze(rest),
-      unknown => freeze(unknown),
+      rest => rest.chill(),
+      unknown => unknown.chill(),
     },
   )
 }
@@ -338,6 +338,14 @@ mutable base class Value{name: String} uses Show {
   | StringValue{name, value} -> `string value: ${name}='${value}'`
   | StringArrayValue{name, value} ->
     `string array value: ${name}=[${value.map(s ~> `'${s}'`).join(", ")}]`
+
+  readonly fun chill(): this
+  | MissingValue{name, param} -> MissingValue{name, param}
+  | BoolValue{name, value} -> BoolValue{name, value}
+  | IntValue{name, value} -> IntValue{name, value}
+  | StringValue{name, value} -> StringValue{name, value}
+  | StringArrayValue{name, value} ->
+    StringArrayValue{name, value => value.chill()}
 }
 
 /**

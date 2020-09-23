@@ -17,7 +17,11 @@ mutable class .Random private (
   private mutable s1: Int,
 ) uses Show {
   static fun create(state: Int): this {
-    freeze(static::mcreate(state))
+    static::mcreate(state).chill()
+  }
+
+  readonly fun chill(): this {
+    static(this.s0, this.s1)
   }
 
   // Create an instance using a 64 bit seed. The seed is used to initialize
@@ -34,7 +38,7 @@ mutable class .Random private (
   }
 
   static fun createWithState(s0: Int, s1: Int): this {
-    freeze(static::mcreateWithState(s0, s1))
+    static::mcreateWithState(s0, s1).chill()
   }
 
   static fun mcreateWithState(s0: Int, s1: Int): mutable this {

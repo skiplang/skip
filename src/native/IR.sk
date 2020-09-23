@@ -11,9 +11,9 @@
 // keep the stack aligned or is 8 OK or what? Does Linux do that too?
 // x86-64 ABI on linux and mac require 16 byte alignment.
 // Does LLVM provide an portable abstraction?
-const stackAlign: Int = if (targetIsWasm()) 8 else 16;
+const stackAlign: Int = if (targetIsWasm() || isEmbedded32()) 8 else 16;
 const stackAlignStr: String = stackAlign.toString();
-const ptrByteSize: Int = if (targetIsWasm()) 4 else 8;
+const ptrByteSize: Int = if (targetIsWasm() || isEmbedded32()) 4 else 8;
 const ptrBitSize: Int = ptrByteSize * 8;
 const vtableByteSize: Int = ptrByteSize;
 
@@ -136,7 +136,7 @@ base class UTF8String{
   string: String,
 } uses Hashable, Orderable, Show {
   static fun useShortStrings(): Bool {
-    !targetIsWasm()
+    !targetIsWasm() && !isEmbedded()
   }
 
   static fun make(string: String): UTF8String {
@@ -519,6 +519,7 @@ base class Instr{
   | TypeSwitch{value}
   | ArrayClone{value} ->
     f(value)
+  | ObstackShallowClone{byteSize} -> f(byteSize)
   | Alloca _
   | AsyncReturn _
   | GetCurrentAwaitable _ ->
@@ -932,6 +933,8 @@ base class Stmt extends InstrWithPos {
     newSuccessors: ?Array<BlockSuccessor> = None(),
   ): Stmt
   | SimpleUnaryStmt{value} -> this with {id, typ, value => remap(value)}
+  | ObstackShallowClone{byteSize, value} ->
+    this with {id, typ, byteSize => remap(byteSize), value => remap(value)}
   | BinOp{lhs, rhs} -> this with {id, typ, lhs => remap(lhs), rhs => remap(rhs)}
   | InvokeBase{args, successors} ->
     this with {
@@ -1110,7 +1113,6 @@ base class SimpleUnaryStmt final {value: InstrID} extends Stmt {
   | IntToString
   | Intern
   | IntPopcount
-  | ObstackShallowClone
   | Reinterpret
   | StringHash
   | Suspend
@@ -1135,6 +1137,7 @@ class GetCurrentAwaitable{} extends Stmt
 class Alloca{byteSize: Int, byteAlignment: Int, zero: Bool} extends Stmt
 
 class ObstackAlloc{byteSize: InstrID, zero: Bool, pinned: Bool} extends Stmt
+class ObstackShallowClone{byteSize: InstrID, value: InstrID} extends Stmt
 
 class ObstackNote extends Stmt
 class ObstackUsage extends Stmt

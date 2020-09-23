@@ -663,7 +663,7 @@ mutable native class .Array<+T>
     count: Int,
   ): (Array<Int>, Int) {
     if (i >= this.size()) {
-      (freeze(indices), count)
+      (indices.chill(), count)
     } else if (p(this[i])) {
       indices.set(count, i);
       this.packIndex(p, indices, i + 1, count + 1)

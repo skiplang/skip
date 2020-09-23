@@ -61,27 +61,37 @@ base class Format private () {
     value: T,
     serializer: S,
   ): Result<this::T_result, SerializationError> {
-    try {
-      writer = static::writer();
-      serializer.serialize(value, writer);
-      result = writer.result();
-      Success(result)
-    } catch {
-    | exn @ SerializationError _ -> Failure(exn)
-    }
+    etry<Result<this::T_result, SerializationError>>(
+      (() -> {
+        writer = static::writer();
+        serializer.serialize(value, writer);
+        result = writer.result();
+        Success(result)
+      }),
+      (e ->
+        e match {
+        | exn @ SerializationError _ -> Failure(exn)
+        | _ -> throw (e)
+        }),
+    )
   }
 
   deferred static fun deserialize<T, S: Serializer<T>>(
     data: this::T_result,
     serializer: S,
   ): Result<T, SerializationError> {
-    try {
-      reader = static::reader(data);
-      result = serializer.deserialize(reader);
-      Success(result)
-    } catch {
-    | exn @ SerializationError _ -> Failure(exn)
-    }
+    etry<Result<T, SerializationError>>(
+      (() -> {
+        reader = static::reader(data);
+        result = serializer.deserialize(reader);
+        Success(result)
+      }),
+      (e ->
+        e match {
+        | exn @ SerializationError _ -> Failure(exn)
+        | _ -> throw (e)
+        }),
+    )
   }
 }
 

@@ -77,6 +77,7 @@ def commonArguments(needsBackend=True, backend=None):
     parser.add_argument('--profile', help='Turn on profiling metrics and dump' +
                         ' them to a file')
     parser.add_argument('--update-baseline', action='store_true')
+    parser.add_argument('--embedded64', action='store_true')
     parser.add_argument('--keep-temp', action='store_true',
                         default=os.environ.get('KEEP_TEMP', '') != '')
     parser.add_argument('--print-skip-to-llvm',
@@ -577,7 +578,7 @@ class RunCommand(object):
 
     def write_file(self, name, data, limit=None):
         assert not limit or (isinstance(limit, (tuple, list)) and len(limit) == 2)
-        data = data.decode().strip()
+        data = data.strip()
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
             if limit:
