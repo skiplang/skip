@@ -41,11 +41,6 @@ void terminate() {
   }
   std::cerr << "*** Stack trace:" << std::endl;
   skip::printStackTrace();
-  // We used to call abort(), but Folly installs the Google glog fatal handler,
-  // which dumps a less-than-useful stack trace on OS/X.
-  // Let's just exit explicitly with a failure exit code here to reduce
-  // confusion.
-  exit(1);
 }
 } // namespace
 
