@@ -278,7 +278,7 @@ jobs:
       - run:
           name: install prerequisites
           command: |
-            for item in ninja cmake dwarfutils libelf gflags glog jemalloc autoconf pkg-config libtool; do
+            for item in python3 ninja cmake dwarfutils libelf gflags glog jemalloc autoconf pkg-config libtool; do
             brew install "${item}"
             done
       - run:
