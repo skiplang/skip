@@ -235,7 +235,7 @@ jobs:
   test_mac:
     working_directory: ~/skip
     macos:
-      xcode: "10.2.0"
+      xcode: "11.3.1"
     environment:
       TERM: dumb
       SKIP_TEST_LIMIT_OUTPUT: 1
@@ -278,7 +278,7 @@ jobs:
       - run:
           name: install prerequisites
           command: |
-            for item in python3 ninja cmake dwarfutils libelf gflags glog jemalloc autoconf pkg-config libtool; do
+            for item in ninja cmake dwarfutils libelf gflags glog jemalloc autoconf pkg-config libtool; do
             brew install "${item}"
             done
       - run:
