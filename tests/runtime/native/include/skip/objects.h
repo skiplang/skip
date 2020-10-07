@@ -104,7 +104,6 @@ struct RObjMetadata {
   }
 
  protected:
-  RObjMetadata() = default;
   RObjMetadata(const RObjMetadata&) = default;
 };
 
@@ -409,7 +408,6 @@ struct AObjMetadata {
   explicit AObjMetadata(const VTableRef vtable) : m_vtable(vtable) {}
 
  protected:
-  AObjMetadata() = default;
   AObjMetadata(const AObjMetadata&) = default;
 };
 
