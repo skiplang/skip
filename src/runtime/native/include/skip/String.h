@@ -33,11 +33,6 @@ struct LongString final : RObj {
   void verifyInvariants() const;
 
   static Type& static_type();
-
- private:
-  // In opt mode the compiler complains about m_data[] if we don't have a
-  // constructor.
-  LongString() = default;
 };
 
 /**

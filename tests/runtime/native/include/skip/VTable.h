@@ -56,9 +56,6 @@ struct alignas(128) VTable {
   static constexpr size_t kFrozenBit = 8;
   static constexpr uintptr_t kFrozenMask = 1ULL << kFrozenBit;
 
- protected:
-  VTable() = default;
-
  private:
   // A function pointer - closures put their code pointer here and are
   // passed their RObj.  Normal objects are free to use this as they
