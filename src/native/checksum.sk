@@ -17,16 +17,8 @@ fun crc32_u8(a: Int, b: Int): Int {
   a
 }
 
-// v8 has an optimization for storing 31-bit signed numbers.
-// Values which have either 00 or 11 as the high order bits qualify.
-// This function drops the highest order bit in a signed Int32, maintaining
-// the sign bit.
-fun toInt31(i32: Int): Int {
-  i32.shl(33).shr(1).ushr(32)
-}
-
 fun computeWasmStringHash(utf8: Array<UInt8>): Int {
-  toInt31(utf8.foldl((acc, ch) -> acc * 31 + ch.toInt(), 0))
+  (utf8.foldl((acc, ch) -> acc * 31 + ch.toInt(), 0)).or(0x80000000)
 }
 
 fun computeNativeStringHash(utf8: Array<UInt8>): Int {
