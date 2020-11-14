@@ -579,7 +579,12 @@ mutable private class .Lower{
 
       // Zero any uninitialized bits preceding this field, or following in
       // the same 64-bit word.
-      while (nextGap.and(-64) <= last.and(-64)) {
+      // The math is wrong in 32-bits mode so disabling this for now.
+      while (
+        !isEmbedded32() &&
+        !targetIsWasm() &&
+        nextGap.and(-64) <= last.and(-64)
+      ) {
         _ = this.emitObstackInit{
           addrByteAlignment => 8,
           pos,
