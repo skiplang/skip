@@ -580,11 +580,7 @@ mutable private class .Lower{
       // Zero any uninitialized bits preceding this field, or following in
       // the same 64-bit word.
       // The math is wrong in 32-bits mode so disabling this for now.
-      while (
-        !isEmbedded32() &&
-        !targetIsWasm() &&
-        nextGap.and(-64) <= last.and(-64)
-      ) {
+      while (nextGap.and(-64) <= last.and(-64)) {
         _ = this.emitObstackInit{
           addrByteAlignment => 8,
           pos,
@@ -597,6 +593,17 @@ mutable private class .Lower{
         !nextGap = findNextGap(initSize, layout, index + 1);
       };
 
+      !initSize = max(initSize, (last + 1).and(-64));
+    });
+
+    // All words up to this bit index have been fully initialized.
+    // Always a multiple of 64.
+    !initSize = 0;
+
+    // Walk through and set all the fields.
+    layout.each(l -> {
+      first = l.bitOffset;
+
       // Store the field.
       _ = this.emitObstackInit{
         addrByteAlignment => 8,
@@ -605,8 +612,6 @@ mutable private class .Lower{
         addr => obj.id,
         bitOffset => first,
       };
-
-      !initSize = max(initSize, (last + 1).and(-64));
     })
   }
 
