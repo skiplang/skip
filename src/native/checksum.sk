@@ -18,7 +18,9 @@ fun crc32_u8(a: Int, b: Int): Int {
 }
 
 fun computeWasmStringHash(utf8: Array<UInt8>): Int {
-  (utf8.foldl((acc, ch) -> acc * 31 + ch.toInt(), 0)).or(0x80000000)
+  UInt32::truncate(
+    (utf8.foldl((acc, ch) -> acc * 31 + ch.toInt(), 0)).or(0x80000000),
+  ).toInt()
 }
 
 fun computeNativeStringHash(utf8: Array<UInt8>): Int {
