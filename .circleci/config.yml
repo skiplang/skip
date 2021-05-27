@@ -249,4 +249,4 @@ workflows:
       - all_and_test:
           requires:
             - build
-      - test_mac
+
