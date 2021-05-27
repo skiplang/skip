@@ -232,83 +232,6 @@ jobs:
       - store_artifacts:
           path: results
 
-  test_mac:
-    working_directory: ~/skip
-    macos:
-      xcode: "11.3.1"
-    environment:
-      TERM: dumb
-      SKIP_TEST_LIMIT_OUTPUT: 1
-      SKIP_TEST_TIMEOUT: 1800
-      SKIP_NUM_THREADS: 4
-      SKIP_LLVM_PARALLEL: 4
-      GIT_LFS_SKIP_SMUDGE: 1
-    steps:
-      - checkout
-      - run:
-          name: post checkout
-          command: |
-            git submodule sync
-            git submodule update --init --recursive
-            mkdir -p ~/skip/build
-      - run:
-          name: system status
-          command: |
-            uname -a
-            echo
-            ulimit -a
-            echo
-            echo Versions
-            echo $(which gcc) - $(gcc --version | head -1)
-            echo $(which clang) - $(clang --version | head -1)
-            echo $(which cmake) - $(cmake --version | head -1)
-            echo $(which ninja) - $(ninja --version | head -1)
-            echo $(which brew) - $(brew --version | head -1)
-            echo
-            echo Processor Count: $(sysctl -n hw.ncpu)
-            vm_stat
-            echo
-            df -g
-            echo
-            echo Environment
-            echo ------------------------------------------------
-            env | sort
-      - run:
-          <<: *prevent_duplicate_jobs
-      - run:
-          name: install prerequisites
-          command: |
-            for item in ninja cmake dwarfutils libelf gflags glog jemalloc autoconf pkg-config libtool; do
-            brew install "${item}"
-            done
-      - run:
-          name: configure
-          working_directory: ~/skip/build
-          command: | # Fix for broken hombrew cmake 1.15.3  Homebrew path for ICU.
-            cmake .. -DBoost_NO_BOOST_CMAKE=ON              -DICU_HINT=/usr/local/opt/icu4c
-
-      - run:
-          name: compile runtimes
-          working_directory: ~/skip/build
-          command: ninja skip_runtime.lkg.dep skip_runtime.src.dep skip_runtime.tests.dep
-      - run:
-          name: smoke test
-          command: |
-            ulimit -c 0
-            ninja -C build -k 0 mac_smoke_test
-      - run:
-          name: analyze test results
-          when: always
-          environment:
-            CIRCLE_TEST_REPORTS: /Users/distiller/skip/results
-          command: |
-            ${HOME}/skip/.circleci/collect-test-results
-            ${HOME}/skip/.circleci/collect-profile-results --input ${HOME}/skip/build/profile --output ${CIRCLE_TEST_REPORTS}/skip/profile.json
-      - store_test_results:
-          path: results
-      - store_artifacts:
-          path: results
-
 workflows:
   version: 2
   build:
@@ -326,4 +249,4 @@ workflows:
       - all_and_test:
           requires:
             - build
-      - test_mac
+
