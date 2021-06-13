@@ -488,7 +488,12 @@ private fun createGCType(sc: SClass, env: GlobalEnv): ConstantStruct {
     } else {
       // Figure out the object size.
       last = layout[layout.size() - 1];
-      roundUp(last.bitOffset + last.typ.bitSize, 64) / 8
+      size = last.bitOffset + last.typ.bitSize;
+      if ((targetIsWasm() || isEmbedded32()) && size == 32) {
+        4
+      } else {
+        roundUp(size, 64) / 8;
+      }
     };
 
     // We need this many words for our bit mask.
