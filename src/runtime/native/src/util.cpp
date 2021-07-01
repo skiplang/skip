@@ -46,9 +46,11 @@ void printStackTrace() {
     if (pc == 0) {
       break;
     }
+    fprintf(stderr, "  0x%.16lu:", pc);
+
     char sym[256];
     if (unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
-      fprintf(stderr, " %s\n", sym);
+      fprintf(stderr, " %s + 0x%lu\n", sym, offset);
     } else {
       fprintf(
           stderr, " -- error: unable to obtain symbol name for this frame\n");
