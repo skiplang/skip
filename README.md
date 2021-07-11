@@ -1,5 +1,50 @@
 [![CircleCI](https://circleci.com/gh/skiplang/skip.svg?style=svg)](https://circleci.com/gh/skiplang/skip)
 
+## Getting started
+
+### Ubuntu/Debian
+
+```
+sudo apt-get install git clang make python3 autoconf libtool gcc g++ bzip2
+git clone http://github.com/skiplang/skip.git
+cd skip/
+git submodule update --init --recursive
+./build_submodules.sh
+./configure
+make -j 16
+sudo make install
+```
+
+### Centos
+
+```
+yum install -y git which clang make autoconf automake libtool python3 bzip2
+git clone http://github.com/skiplang/skip.git
+cd skip/
+git submodule update --init --recursive
+./build_submodules.sh
+./configure
+make -j 16
+sudo make install
+```
+
+### Mac
+
+```
+git clone http://github.com/skiplang/skip.git
+cd skip/
+git submodule update --init --recursive
+./build_submodules.sh
+./configure
+make -j 16
+sudo make install
+```
+
+If you don't have clang installed (unlikely):
+```
+xcode-select --install
+```
+
 ## Skip Overview
 
 Skip is a general-purpose programming language that tracks side effects to provide caching with reactive invalidation, ergonomic and safe parallelism, and efficient garbage collection. Skip is statically typed and ahead-of-time compiled using LLVM to produce highly optimized executables.

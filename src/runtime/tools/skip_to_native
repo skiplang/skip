@@ -446,9 +446,6 @@ def main(stack):
     if args.preamble:
         extraOpts += ['--preamble', args.preamble]
 
-    if args.embedded64:
-        extraOpts += ['--embedded64']
-
     CC = findClang(args)
 
     LLC = os.environ.get('LLC', 'llc')

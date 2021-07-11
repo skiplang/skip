@@ -46,9 +46,11 @@ void printStackTrace() {
     if (pc == 0) {
       break;
     }
+    fprintf(stderr, "  0x%.16lu:", pc);
+
     char sym[256];
     if (unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
-      fprintf(stderr, " %s\n", sym);
+      fprintf(stderr, " %s + 0x%lu\n", sym, offset);
     } else {
       fprintf(
           stderr, " -- error: unable to obtain symbol name for this frame\n");
@@ -223,7 +225,7 @@ void SpinLock::unlock() {
   uint8_t oldBits = m_bits.load();
   const uint8_t newBits = oldBits & ~1;
 
-  if (oldBits & 1 == 0) {
+  if ((oldBits & 1) == 0) {
     fprintf(stderr, "Internal error: spinlock double unlock\n");
     exit(70);
   }
@@ -236,7 +238,7 @@ void SpinLock::unlock() {
     fprintf(
         stderr,
         "Internal error: spinlock in an impossible state %d\n",
-        (int)m_bits.load() & 2 != 0);
+        ((unsigned int)m_bits.load() & 2) != 0);
     exit(70);
   }
 }

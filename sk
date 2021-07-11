@@ -8,7 +8,7 @@
 #
 
 installDir=$(dirname "${BASH_SOURCE[0]}")
-clangpp=clang++-6.0
+clangpp=clang++
 preamble="$installDir/../lib/skip/preamble.ll"
 standalone="$installDir/../lib/skip/sk_standalone.cpp.o"
 prelude="$installDir/../lib/skip/prelude"
@@ -41,8 +41,6 @@ else
 	fi
     fi
 fi
-
-root=`realpath "$root"`
 
 if [ "$1" == "--args" ]; then
     shift
@@ -191,7 +189,15 @@ start() {
     readPid=$!
 
     nohup "$skip_server" "$root" --export-function-as main=skip_main \
-	  --output "$skdir/out.ll" < "$fifo_command" > "$fifo_response" \
+	  --no-inline --no-use-specialized-names \
+          --preamble "$preamble" \
+	  --output "$skdir/out1.ll" \
+	  --output "$skdir/out2.ll" \
+	  --output "$skdir/out3.ll" \
+	  --output "$skdir/out4.ll" \
+	  --output "$skdir/out5.ll" \
+	  --output "$skdir/out6.ll" \
+          < "$fifo_command" > "$fifo_response" \
 	  2> "$skdir/server_errors" &
     echo $! >> "$skdir/pids"
 
@@ -281,13 +287,18 @@ if [ $command == "build" ]; then
     # and so the server was responding to that other process.
     # These races are rare enough that we are just going to wait for
     # the file to be written.
-    while [ ! -f "$skdir/out.ll" ];
+    while [ ! -f "$skdir/out1.ll" ];
     do
 	sleep 1
     done;
 
-    # Adding the preamble to the .ll file
-    cat "$preamble" "$skdir/out.ll" > "$skdir/preamble_and_out.ll"
+    "$clangpp" -c "$skdir/out1.ll" -o "$skdir/out1.o" &
+    "$clangpp" -c "$skdir/out2.ll" -o "$skdir/out2.o" &
+    "$clangpp" -c "$skdir/out3.ll" -o "$skdir/out3.o" &
+    "$clangpp" -c "$skdir/out4.ll" -o "$skdir/out4.o" &
+    "$clangpp" -c "$skdir/out5.ll" -o "$skdir/out5.o" &
+    "$clangpp" -c "$skdir/out6.ll" -o "$skdir/out6.o" &
+    wait
 
     system=$(uname -s)
 
@@ -297,60 +308,38 @@ if [ $command == "build" ]; then
 	ccopts=`cat "$root/.ccopts"`
     fi
 
-    "$clangpp" -O2 -g -c "$skdir/preamble_and_out.ll" -o "$skdir/preamble_and_out.o"
-    if [ "$system" == "Linux" ]; then
-
-      # Linking it all together
-      "$clangpp" -s -o "$skdir/bin.out" -g \
-             "$skdir/preamble_and_out.o" "$standalone" \
-	     -L"$thirdPartyLibDir/" \
-	     "$skipRuntimeLib" \
-	     -fPIC -DPIC \
-	     -lrt \
-	     -Wl,--gc-sections \
-	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
-	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
-	     -fdata-sections -ffunction-sections \
-	     -lglog -lgflags \
-	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
-	     -lpcre -lboost_system \
-	     -lboost_filesystem -lboost_chrono -lboost_date_time \
-	     -levent \
-	     -lpthread \
-	     -lunwind \
-	     -lboost_thread \
-	     -lboost_context \
-	     -lboost_atomic \
-	     -ldl \
-	     $ccopts
+    if [ "$(uname)" == "Darwin" ]; then
+	LIBUNWIND=""
     else
-	if [ "$system" == "Darwin" ]; then
-          "$clangpp" -o "$skdir/bin.out" -g \
-	     "$skdir/preamble_and_out.o" "$standalone" \
-	     -L"$thirdPartyLibDir/" \
-	     "$skipRuntimeLib" \
-	     -fPIC -DPIC -Wl,-rpath,"$linuxGnuLibDir" \
-	     -lboost_thread-mt \
-	     -lboost_context-mt \
-	     -lboost_atomic-mt \
-	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
-	     -O3 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
-	     -fdata-sections -ffunction-sections \
-	     -lglog -lgflags  \
-	     -licuuc -licui18n -licuio -licutu -licudata -ljemalloc_pic \
-	     -lpcre -lboost_system \
-	     -lboost_filesystem -lboost_chrono -lboost_date_time \
-	     -levent -ldl \
-	     -lpthread \
-	     $ccopts
-	else
-	    2>&1 echo "Unknown system"
-	    exit 2
-	fi
+	LIBUNWIND="$installDir/../lib/skip/libunwind.a"
     fi
 
 
-    echo "Written: $skdir/bin.out"
+    "$clangpp" -o "$skdir/bin.out" -g \
+             "$skdir/out1.o" \
+             "$skdir/out2.o" \
+             "$skdir/out3.o" \
+             "$skdir/out4.o" \
+             "$skdir/out5.o" \
+             "$skdir/out6.o" \
+             "$standalone" \
+	     "$skipRuntimeLib" \
+	     -fPIC -DPIC \
+	     -DUSE_JEMALLOC -msse4.2 -std=c++14 \
+	     -O1 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer \
+	     -fdata-sections -ffunction-sections \
+	     "$installDir/../lib/skip/libicuuc.a" \
+	     "$installDir/../lib/skip/libicudata.a" \
+	     "$installDir/../lib/skip/libpcre.a" \
+	     "$installDir/../lib/skip/libjemalloc_pic.a" \
+	     -lpthread \
+	     $LIBUNWIND \
+	     -ldl \
+	     $ccopts
+
+    if [ -f "$skdir/bin.out" ]; then
+	echo "Written: $skdir/bin.out"
+    fi
 fi
 
 if [ $runAfterBuild ]; then

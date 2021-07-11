@@ -1,80 +1,102 @@
-set(RUNTIME_PATH ${CMAKE_CURRENT_SOURCE_DIR}/runtime)
-set(RUNTIME_TOOLS_PATH ${RUNTIME_PATH}/tools)
-set(RUNTIME_NATIVE_PATH ${RUNTIME_PATH}/native)
-set(PREAMBLE ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/lib/preamble.ll)
+if(EXTERN_LKG)
+  message("************************************************************************")
+  message("************************************************************************")
+  message("** Using external LKG: ${EXTERN_LKG} **")
+  message("************************************************************************")
+  message("************************************************************************")
 
-set(PHASE src)
 
-add_subdirectory(runtime)  # Sets PRELUDE_SOURCES.${PHASE}.
-add_subdirectory(frontend) # Sets FRONTEND_SOURCES.
-add_subdirectory(utils)    # Sets UTILS_SOURCES.
-add_subdirectory(project)  # Sets PROJECT_SOURCES.
-add_subdirectory(native)   # Sets COMPILER_SOURCES.
-add_subdirectory(server)
-add_subdirectory(tools)
-add_subdirectory(nuclide)
+  if(NOT EXISTS ${EXTERN_LKG}/bin/skip_to_llvm)
+    message(FATAL_ERROR "${EXTERN_LKG}/bin/skip_to_llvm not found.  Did you already build skip_to_llvm in your external LKG?")
+  endif()
 
+  # When using an external LKG we don't want to actually depend on it - just use
+  # it.  It's up to the user to rebuild it properly.
+
+  add_executable(skip_to_llvm.lkg IMPORTED GLOBAL)
+  set_target_properties(skip_to_llvm.lkg PROPERTIES
+    IMPORTED_LOCATION ${EXTERN_LKG}/bin/skip_to_llvm
+    OUTPUT_NAME skip_to_llvm
+    RUNTIME_OUTPUT_DIRECTORY ${EXTERN_LKG}/bin
+  )
+
+  return()
+endif()
+
+set(PHASE lkg)
+add_subdirectory(runtime/native)
 set(PHASE)
 
-# ------------------------------------------------------------------------------
+# This is needed for the cxx targets defined in this file.
+if(CMAKE_COMPILER_IS_GNUCXX AND
+    CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 7.0)
+  add_compile_options(-faligned-new)
+endif()
 
-# Bootstrap takes the current src/ code and promotes it to lkg/
-
-set(CHECK_LKG_COMMANDS)
-set(UPDATE_LKG_COMMANDS)
-
-set(src_ll ${CMAKE_CURRENT_BINARY_DIR}/native/lkg_prep_skip_to_llvm.ll)
-set(stage_ll ${CMAKE_CURRENT_BINARY_DIR}/skip_to_llvm.ll)
-set(lkg_ll ${LKG_DIR}/skip_to_llvm.ll.bz2)
-set(cmd awk '{print >out}; /; -* END OF PREAMBLE -*/{out=\"${stage_ll}\"}' out=/dev/null ${src_ll})
-add_command_target(
-  stage_skip_to_llvm_ll
-  OUTPUT ${stage_ll}
-  COMMAND "${cmd}"
-  DEPENDS ${src_ll}
+recursiveGlobSources(EXTC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/*-extc.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/plugin/skip_plugin.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/include/skip/rvmi/rvmi.h
 )
 
-set(SRC_RUNTIME ${CMAKE_SOURCE_DIR}/src/runtime)
-set(TESTS_RUNTIME ${CMAKE_SOURCE_DIR}/tests/runtime)
-set(LKG_RUNTIME ${CMAKE_SOURCE_DIR}/lkg/runtime)
+set(preamble_ll ${CMAKE_CURRENT_BINARY_DIR}/tmp/preamble.ll)
 
-add_custom_target(build_lkg
-  DEPENDS stage_skip_to_llvm_ll
+add_custom_command(
+  OUTPUT ${preamble_ll}
+  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/gen_preamble
+  preamble
+  --compiler ${CLANG_EXECUTABLE}
+    -o ${preamble_ll}
+  $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:--ndebug>
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime/tools/gen_preamble ${EXTC_FILES}
 )
 
-add_custom_target(check_lkg
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${stage_ll} ${lkg_ll}
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/CMakeLists.txt ${LKG_RUNTIME}/CMakeLists.txt
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/native ${LKG_RUNTIME}/native
-  COMMAND ${TOOLS_DIR}/check_lkg_file ${SRC_RUNTIME}/tools ${LKG_RUNTIME}/tools
-  DEPENDS stage_skip_to_llvm_ll
-)
 
-add_custom_target(update_lkg_compiler
-  COMMAND ${TOOLS_DIR}/check_lkg_file --update ${stage_ll} ${lkg_ll}
-  # Using rsync like this copies only if changed
-  COMMAND rsync -rc ${SRC_RUNTIME}/CMakeLists.txt ${LKG_RUNTIME}/CMakeLists.txt
-  COMMAND rsync -rc --delete ${SRC_RUNTIME}/native/ ${LKG_RUNTIME}/native
-  COMMAND rsync -rc --delete ${SRC_RUNTIME}/tools/ ${LKG_RUNTIME}/tools
-  DEPENDS stage_skip_to_llvm_ll
+add_custom_target(lkg)
+
+set(ll ${CMAKE_CURRENT_SOURCE_DIR}/skip_to_llvm.ll.bz2)
+set(gen_ll ${CMAKE_CURRENT_BINARY_DIR}/tmp/skip_to_llvm.gen.ll)
+set(gen_o ${CMAKE_CURRENT_BINARY_DIR}/tmp/skip_to_llvm.gen.o)
+
+add_custom_command(
+  OUTPUT ${gen_ll}
+  COMMAND cat ${preamble_ll} > ${gen_ll}
+  COMMAND bzcat ${ll} >> ${gen_ll}
+  DEPENDS ${preamble_ll} ${ll}
   )
 
-add_custom_target(update_lkg
-  DEPENDS update_lkg_compiler
+add_custom_command(
+  OUTPUT ${gen_o}
+  COMMAND echo Building LKG skip_to_llvm.o
+  COMMAND ${CLANG_EXECUTABLE} -fPIC -c -o ${gen_o} ${gen_ll}
+  DEPENDS ${gen_ll}
   )
 
-add_custom_target(check_runtimes
-  COMMAND ${TOOLS_DIR}/check_runtime_file ${SRC_RUNTIME} ${TESTS_RUNTIME}
-)
-add_dependencies(test check_runtimes)
+add_executable(skip_to_llvm.lkg
+  ${gen_o}
+  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/src/sk_standalone.cpp
+  )
+set_target_properties(skip_to_llvm.lkg
+  PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin
+  OUTPUT_NAME skip_to_llvm
+  )
+target_link_libraries(skip_to_llvm.lkg skip_runtime.lkg)
 
-add_custom_target(check_pretty_printed
-  COMMAND ${TOOLS_DIR}/check_pretty_printed ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/pretty_printed.testok
-  DEPENDS skip_printer
-)
-add_dependencies(test check_pretty_printed)
+#add_command_target(
+#  skip_to_llvm.lkg
+#  OUTPUT ${binary_name}
+#  COMMAND echo Building LKG skip_to_llvm
+#  COMMAND
+#  ${CLANG_EXECUTABLE}
+#  -o ${binary_name}
+#  ${gen_ll}
+#  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/src/sk_standalone.cpp
+#  `pkg-config --cflags --libs ${CMAKE_CURRENT_BINARY_DIR}/runtime/native/native_cc.pc`
+#  -pthread
+#  DEPENDS
+#  skip_runtime.lkg ${gen_ll} native_cc.lkg
+#  ${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/src/sk_standalone.cpp
+#  )
 
-add_custom_target(check_cpp_format
-  COMMAND ${CMAKE_SOURCE_DIR}/tools/check_cpp_format ${CMAKE_SOURCE_DIR} ${CLANG_EXECUTABLE}
-)
-add_dependencies(test check_cpp_format)
+add_dependencies(lkg skip_to_llvm.lkg)
