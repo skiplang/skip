@@ -34,11 +34,11 @@ Skip was designed by an experienced team including senior contributors to Action
 
 ## Website
 
-http://www.skiplang.com
+http://skiplang.com
 
 ### Playground
 
-http://www.skiplang.com/playground
+http://skiplang.com/playground
 
 ## License
 
