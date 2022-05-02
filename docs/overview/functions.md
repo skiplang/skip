@@ -99,7 +99,7 @@ expression computes a non-void value as well as produces some meaningful side ef
 the expression may be assigned to an unnamed variable `_`.
 
 ```
-fun discardUnusedValue(): 1 {
+fun discardUnusedValue(): Int {
   _ = doSomethingWhichHasSideEffectsAsWellAsProducesAValue();
   42
 }
