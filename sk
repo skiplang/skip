@@ -311,7 +311,7 @@ if [ $command == "build" ]; then
     if [ "$(uname)" == "Darwin" ]; then
 	LIBUNWIND=""
     else
-	LIBUNWIND="$installDir/../lib/skip/libunwind.a"
+	LIBUNWIND="-lunwind"
     fi
 
 

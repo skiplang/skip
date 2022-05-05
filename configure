@@ -67,7 +67,7 @@ echo "AR:=$AR" >> Makefile.config
 if [ "$(uname)" == "Darwin" ]; then
     echo "LIBUNWIND:=" >> Makefile.config
 else
-    echo "LIBUNWIND:=subbuild/lib/libunwind.a" >> Makefile.config
+    echo "LIBUNWIND:=-lunwind" >> Makefile.config
 fi
 
 echo "INCLUDEPATH:= -I$ICUDIR" >> Makefile.config

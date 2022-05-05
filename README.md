@@ -5,7 +5,7 @@
 ### Ubuntu/Debian
 
 ```
-sudo apt-get install git clang make python3 autoconf libtool gcc g++ bzip2
+sudo apt-get install git clang make python3 autoconf libtool gcc g++ bzip2 libunwind-dev
 git clone http://github.com/skiplang/skip.git
 cd skip/
 git submodule update --init --recursive

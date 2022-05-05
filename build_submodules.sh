@@ -80,11 +80,3 @@ cp third-party/pcre/src/m4/libtool.m4.back third-party/pcre/src/m4/libtool.m4
 cp third-party/pcre/src/missing.back third-party/pcre/src/missing
 cp third-party/pcre/src/test-driver.back third-party/pcre/src/test-driver
 
-
-if [ "$(uname)" != "Darwin" ]; then
-    echo "-------------------------------------------------------------------------------"
-    echo "- Building LIBUNWIND -"
-    echo "-------------------------------------------------------------------------------"
-
-    (cd third-party/libunwind && ./autogen.sh && ./configure --prefix="$TPDIR" --disable-minidebuginfo && make -j 16 && make install)
-fi
