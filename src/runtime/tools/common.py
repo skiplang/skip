@@ -77,7 +77,6 @@ def commonArguments(needsBackend=True, backend=None):
     parser.add_argument('--profile', help='Turn on profiling metrics and dump' +
                         ' them to a file')
     parser.add_argument('--update-baseline', action='store_true')
-    parser.add_argument('--embedded64', action='store_true')
     parser.add_argument('--keep-temp', action='store_true',
                         default=os.environ.get('KEEP_TEMP', '') != '')
     parser.add_argument('--print-skip-to-llvm',
@@ -582,7 +581,7 @@ class RunCommand(object):
         if data:
             print('  %s%s:%s' % (RED, name, NORMAL))
             if limit:
-                lines = data.encode().split('\n')
+                lines = data.split('\n')
                 if len(lines) > limit[0]:
                     lines = ['<output truncated>'] + lines[-limit[0]:]
                 lines = map(lambda x: x if (len(x) < limit[1]) else (x[:limit[1] - 3] + '...'), lines)

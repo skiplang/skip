@@ -1,9 +1,3 @@
-[submodule "third-party/double_conversion/src"]
-	path = third-party/double_conversion/src
-	url = https://github.com/google/double-conversion
-[submodule "third-party/folly/src"]
-	path = third-party/folly/src
-	url = https://github.com/facebook/folly.git
 [submodule "third-party/gflags/src"]
 	path = third-party/gflags/src
 	url = https://github.com/gflags/gflags.git
@@ -20,3 +14,6 @@
 [submodule "third-party/googletest/src"]
 	path = third-party/googletest/src
 	url = https://github.com/google/googletest.git
+[submodule "third-party/libunwind"]
+	path = third-party/libunwind
+	url = https://github.com/libunwind/libunwind.git

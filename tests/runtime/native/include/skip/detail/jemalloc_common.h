@@ -11,9 +11,17 @@
 #error Only include this file from within Arena.cpp
 #endif
 
+#ifndef __APPLE__
+#define je_mallctlnametomib mallctlnametomib
+#define je_mallctlbymib mallctlbymib
+#define je_dallocx dallocx
+#define je_mallocx mallocx
+#endif
+
 #include <array>
 #include <stdio.h>
 
+#define posix_memalign posix_memalign2
 #include "jemalloc/jemalloc.h"
 
 #if (JEMALLOC_VERSION_MAJOR < 4) ||                                    \
@@ -35,7 +43,7 @@ struct Mib {
   explicit Mib(const char* name) : m_name(name) {
     count_parts(name);
     assert(m_size <= MAX_MIB_SIZE);
-    int res = ::mallctlnametomib(name, &m_parts[0], &m_size);
+    int res = ::je_mallctlnametomib(name, &m_parts[0], &m_size);
     if (res) {
       std::string nameStr(name);
       throw std::runtime_error("mallctlnametomib(" + nameStr + ") failed");
@@ -80,7 +88,7 @@ void mallctl_by_mib(
     size_t* oldlenp,
     const void* newp,
     size_t newlen) {
-  int res = ::mallctlbymib(
+  int res = ::je_mallctlbymib(
       mibx.m_parts.data(), mibx.m_size, oldp, oldlenp, (void*)newp, newlen);
   if (res) {
     std::string nameStr(mibx.m_name);

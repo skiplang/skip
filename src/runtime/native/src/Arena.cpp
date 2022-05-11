@@ -83,7 +83,7 @@ struct ArenaData : private je::ChunkHooks {
     // All obstack allocations must be exactly an obstack chunk.
     assert((kind() != Arena::Kind::obstack) || (sz == Obstack::kChunkSize));
 
-    void* p = ::mallocx(
+    void* p = ::je_mallocx(
         sz,
         MALLOCX_ARENA(arenaIndex()) | MALLOCX_TCACHE(m_arenaTCache.m_id) |
             MALLOCX_ALIGN(align));
@@ -93,7 +93,7 @@ struct ArenaData : private je::ChunkHooks {
   }
 
   void free(void* p) {
-    ::dallocx(
+    ::je_dallocx(
         p, MALLOCX_ARENA(arenaIndex()) | MALLOCX_TCACHE(m_arenaTCache.m_id));
   }
 
