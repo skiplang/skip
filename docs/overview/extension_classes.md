@@ -11,7 +11,7 @@ trait Hashable {
 }
 ```
 
-The problem with that type is that it won't work with Ints, Strings or any other primitve type ... Sure, we could add the definition to Integers, but do we really want to do that? Or we could Box the integer ... But that's going to be a lot of overhead ... That's what extension classes are for:
+The problem with that type is that it won't work with Ints, Strings or any other primitive type ... Sure, we could add the definition to Integers, but do we really want to do that? Or we could Box the integer ... But that's going to be a lot of overhead ... That's what extension classes are for:
 
 ```
 extension class String uses Hashable {
