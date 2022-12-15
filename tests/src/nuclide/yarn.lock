@@ -2,9 +2,9 @@
 # yarn lockfile v1
 
 
-rfc6902@2.3.0:
-  version "2.3.0"
-  resolved "https://registry.yarnpkg.com/rfc6902/-/rfc6902-2.3.0.tgz#4613c1826342b85b1aa71823a657b8ca0c0e711e"
+rfc6902@5.0.0:
+  version "5.0.0"
+  resolved "https://registry.yarnpkg.com/rfc6902/-/rfc6902-5.0.0.tgz#cb53ac1cb8a700edc1ddc6c19afbb93422f9e385"
 
 vscode-jsonrpc@3.6.2:
   version "3.6.2"
