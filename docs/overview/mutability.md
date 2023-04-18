@@ -14,7 +14,7 @@ class Point(mutable x: Int, mutable y: Int) {
 
 Mutability at function boundaries is not forbidden, just discouraged. However, there will be cases where it is necessary. For example, when defining a mutable data structure. Mutable fields must be explicitly annotated with the keyword `mutable`. Note that this only means the field can be mutated in the mutable version of the object.
 
-Concretely, if we define a new point by writing `Point(1, 2)`, that point is immutable, and therefore the mutable methods defined on `Point` are not accessible (nor can any field be mutated). To define a mutable point, one must create it explicitly by writing: `mutable Point(1, 2)`. The same is true for its type. A mutable point is of type `mutable Point` which different from a `Point` (and their types are incompatible).
+Concretely, if we define a new point by writing `Point(1, 2)`, that point is immutable, and therefore the mutable methods defined on `Point` are not accessible (nor can any field be mutated). To define a mutable point, one must create it explicitly by writing: `mutable Point(1, 2)`. The same is true for its type. A mutable point is of type `mutable Point` which is different from a `Point` (and their types are incompatible).
 
 ## Readonly
 
