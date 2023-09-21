@@ -17,7 +17,7 @@ const siteConfig = {
     { doc: "tutorial", label: "Tutorial" },
     { doc: "hello_world", label: "Docs" },
     { doc: "string", label: "Stdlib" },
-    { href: "/playground/", label: "Playground" },
+    { href: "/playground", label: "Playground" },
     { blog: true, label: "Blog" },
     { href: "https://github.com/skiplang/skip", label: "GitHub" },
   ],
